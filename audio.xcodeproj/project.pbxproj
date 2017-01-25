@@ -1,0 +1,320 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 46;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		099E06E11E36EC720012348E /* unity.build.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 099E06E01E36EC6D0012348E /* unity.build.cpp */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		099E06FB1E36ED9D0012348E /* CopyFiles */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "include/$(PRODUCT_NAME)";
+			dstSubfolderSpec = 16;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
+/* Begin PBXFileReference section */
+		099E06DA1E36EC6D0012348E /* channel.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = channel.cpp; path = source/channel.cpp; sourceTree = "<group>"; };
+		099E06DB1E36EC6D0012348E /* out.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = out.cpp; path = source/out.cpp; sourceTree = "<group>"; };
+		099E06DC1E36EC6D0012348E /* parse.music.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = parse.music.cpp; path = source/parse.music.cpp; sourceTree = "<group>"; };
+		099E06DD1E36EC6D0012348E /* private.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = private.h; path = source/private.h; sourceTree = "<group>"; };
+		099E06DE1E36EC6D0012348E /* request.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = request.cpp; path = source/request.cpp; sourceTree = "<group>"; };
+		099E06DF1E36EC6D0012348E /* sound.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = sound.cpp; path = source/sound.cpp; sourceTree = "<group>"; };
+		099E06E01E36EC6D0012348E /* unity.build.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = unity.build.cpp; path = source/unity.build.cpp; sourceTree = "<group>"; };
+		099E06E41E36EC920012348E /* channel.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = channel.h; path = include/channel.h; sourceTree = "<group>"; };
+		099E06E51E36EC920012348E /* note.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = note.h; path = include/note.h; sourceTree = "<group>"; };
+		099E06E61E36EC920012348E /* oscillator.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = oscillator.h; path = include/oscillator.h; sourceTree = "<group>"; };
+		099E06E71E36EC920012348E /* out.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = out.h; path = include/out.h; sourceTree = "<group>"; };
+		099E06E81E36EC920012348E /* parse.music.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = parse.music.h; path = include/parse.music.h; sourceTree = "<group>"; };
+		099E06E91E36EC920012348E /* public.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = public.h; path = include/public.h; sourceTree = "<group>"; };
+		099E06EA1E36EC920012348E /* request.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = request.h; path = include/request.h; sourceTree = "<group>"; };
+		099E06EB1E36EC920012348E /* sound.defines.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = sound.defines.h; path = include/sound.defines.h; sourceTree = "<group>"; };
+		099E06EC1E36EC920012348E /* sound.functions.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = sound.functions.h; path = include/sound.functions.h; sourceTree = "<group>"; };
+		099E06ED1E36EC920012348E /* sound.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = sound.h; path = include/sound.h; sourceTree = "<group>"; };
+		099E06EE1E36EC920012348E /* stereo.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = stereo.h; path = include/stereo.h; sourceTree = "<group>"; };
+		099E06EF1E36ECE50012348E /* ios.debug.xcconfig */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.xcconfig; name = ios.debug.xcconfig; path = xcode.config/ios.debug.xcconfig; sourceTree = "<group>"; };
+		099E06F01E36ECE50012348E /* ios.release.xcconfig */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.xcconfig; name = ios.release.xcconfig; path = xcode.config/ios.release.xcconfig; sourceTree = "<group>"; };
+		099E06F11E36ECE50012348E /* ios.xcconfig */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.xcconfig; name = ios.xcconfig; path = xcode.config/ios.xcconfig; sourceTree = "<group>"; };
+		099E06F21E36ECE50012348E /* osx.debug.xcconfig */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.xcconfig; name = osx.debug.xcconfig; path = xcode.config/osx.debug.xcconfig; sourceTree = "<group>"; };
+		099E06F31E36ECE50012348E /* osx.release.xcconfig */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.xcconfig; name = osx.release.xcconfig; path = xcode.config/osx.release.xcconfig; sourceTree = "<group>"; };
+		099E06F41E36ECE50012348E /* osx.xcconfig */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.xcconfig; name = osx.xcconfig; path = xcode.config/osx.xcconfig; sourceTree = "<group>"; };
+		099E06F51E36ECE50012348E /* Project.Debug.xcconfig */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.xcconfig; name = Project.Debug.xcconfig; path = xcode.config/Project.Debug.xcconfig; sourceTree = "<group>"; };
+		099E06F61E36ECE50012348E /* Project.Release.xcconfig */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.xcconfig; name = Project.Release.xcconfig; path = xcode.config/Project.Release.xcconfig; sourceTree = "<group>"; };
+		099E06F71E36ECE50012348E /* Project.Shared.xcconfig */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.xcconfig; name = Project.Shared.xcconfig; path = xcode.config/Project.Shared.xcconfig; sourceTree = "<group>"; };
+		099E06FD1E36ED9D0012348E /* libaudio.ios.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = libaudio.ios.a; sourceTree = BUILT_PRODUCTS_DIR; };
+		09FF3F231E36EBBB00C81351 /* libaudio.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; name = libaudio.a; path = libaudio.a; sourceTree = BUILT_PRODUCTS_DIR; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		099E06FA1E36ED9D0012348E /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		09FF3F201E36EBBB00C81351 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		099E06E21E36EC7F0012348E /* source */ = {
+			isa = PBXGroup;
+			children = (
+				099E06DA1E36EC6D0012348E /* channel.cpp */,
+				099E06DB1E36EC6D0012348E /* out.cpp */,
+				099E06DC1E36EC6D0012348E /* parse.music.cpp */,
+				099E06DD1E36EC6D0012348E /* private.h */,
+				099E06DE1E36EC6D0012348E /* request.cpp */,
+				099E06DF1E36EC6D0012348E /* sound.cpp */,
+				099E06E01E36EC6D0012348E /* unity.build.cpp */,
+			);
+			name = source;
+			sourceTree = "<group>";
+		};
+		099E06E31E36EC850012348E /* include */ = {
+			isa = PBXGroup;
+			children = (
+				099E06E41E36EC920012348E /* channel.h */,
+				099E06E51E36EC920012348E /* note.h */,
+				099E06E61E36EC920012348E /* oscillator.h */,
+				099E06E71E36EC920012348E /* out.h */,
+				099E06E81E36EC920012348E /* parse.music.h */,
+				099E06E91E36EC920012348E /* public.h */,
+				099E06EA1E36EC920012348E /* request.h */,
+				099E06EB1E36EC920012348E /* sound.defines.h */,
+				099E06EC1E36EC920012348E /* sound.functions.h */,
+				099E06ED1E36EC920012348E /* sound.h */,
+				099E06EE1E36EC920012348E /* stereo.h */,
+			);
+			name = include;
+			sourceTree = "<group>";
+		};
+		099E06F81E36ECFC0012348E /* xcode.config */ = {
+			isa = PBXGroup;
+			children = (
+				099E06EF1E36ECE50012348E /* ios.debug.xcconfig */,
+				099E06F01E36ECE50012348E /* ios.release.xcconfig */,
+				099E06F11E36ECE50012348E /* ios.xcconfig */,
+				099E06F21E36ECE50012348E /* osx.debug.xcconfig */,
+				099E06F31E36ECE50012348E /* osx.release.xcconfig */,
+				099E06F41E36ECE50012348E /* osx.xcconfig */,
+				099E06F51E36ECE50012348E /* Project.Debug.xcconfig */,
+				099E06F61E36ECE50012348E /* Project.Release.xcconfig */,
+				099E06F71E36ECE50012348E /* Project.Shared.xcconfig */,
+			);
+			name = xcode.config;
+			sourceTree = "<group>";
+		};
+		09FF3F1A1E36EBBB00C81351 = {
+			isa = PBXGroup;
+			children = (
+				099E06F81E36ECFC0012348E /* xcode.config */,
+				099E06E31E36EC850012348E /* include */,
+				099E06E21E36EC7F0012348E /* source */,
+				09FF3F241E36EBBB00C81351 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		09FF3F241E36EBBB00C81351 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				09FF3F231E36EBBB00C81351 /* libaudio.a */,
+				099E06FD1E36ED9D0012348E /* libaudio.ios.a */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXHeadersBuildPhase section */
+		09FF3F211E36EBBB00C81351 /* Headers */ = {
+			isa = PBXHeadersBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXHeadersBuildPhase section */
+
+/* Begin PBXNativeTarget section */
+		099E06FC1E36ED9D0012348E /* audio.ios */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 099E07031E36ED9D0012348E /* Build configuration list for PBXNativeTarget "audio.ios" */;
+			buildPhases = (
+				099E06F91E36ED9D0012348E /* Sources */,
+				099E06FA1E36ED9D0012348E /* Frameworks */,
+				099E06FB1E36ED9D0012348E /* CopyFiles */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = audio.ios;
+			productName = audio.ios;
+			productReference = 099E06FD1E36ED9D0012348E /* libaudio.ios.a */;
+			productType = "com.apple.product-type.library.static";
+		};
+		09FF3F221E36EBBB00C81351 /* audio */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 09FF3F2E1E36EBBB00C81351 /* Build configuration list for PBXNativeTarget "audio" */;
+			buildPhases = (
+				09FF3F1F1E36EBBB00C81351 /* Sources */,
+				09FF3F201E36EBBB00C81351 /* Frameworks */,
+				09FF3F211E36EBBB00C81351 /* Headers */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = audio;
+			productName = audio;
+			productReference = 09FF3F231E36EBBB00C81351 /* libaudio.a */;
+			productType = "com.apple.product-type.library.static";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		09FF3F1B1E36EBBB00C81351 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				LastUpgradeCheck = 0820;
+				ORGANIZATIONNAME = Olivier;
+				TargetAttributes = {
+					099E06FC1E36ED9D0012348E = {
+						CreatedOnToolsVersion = 8.2.1;
+						ProvisioningStyle = Automatic;
+					};
+					09FF3F221E36EBBB00C81351 = {
+						CreatedOnToolsVersion = 8.2.1;
+						ProvisioningStyle = Automatic;
+					};
+				};
+			};
+			buildConfigurationList = 09FF3F1E1E36EBBB00C81351 /* Build configuration list for PBXProject "audio" */;
+			compatibilityVersion = "Xcode 3.2";
+			developmentRegion = English;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+			);
+			mainGroup = 09FF3F1A1E36EBBB00C81351;
+			productRefGroup = 09FF3F241E36EBBB00C81351 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				09FF3F221E36EBBB00C81351 /* audio */,
+				099E06FC1E36ED9D0012348E /* audio.ios */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXSourcesBuildPhase section */
+		099E06F91E36ED9D0012348E /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		09FF3F1F1E36EBBB00C81351 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				099E06E11E36EC720012348E /* unity.build.cpp in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		099E07041E36ED9D0012348E /* Debug */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 099E06EF1E36ECE50012348E /* ios.debug.xcconfig */;
+			buildSettings = {
+			};
+			name = Debug;
+		};
+		099E07051E36ED9D0012348E /* Release */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 099E06F01E36ECE50012348E /* ios.release.xcconfig */;
+			buildSettings = {
+			};
+			name = Release;
+		};
+		09FF3F2C1E36EBBB00C81351 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 099E06F51E36ECE50012348E /* Project.Debug.xcconfig */;
+			buildSettings = {
+			};
+			name = Debug;
+		};
+		09FF3F2D1E36EBBB00C81351 /* Release */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 099E06F61E36ECE50012348E /* Project.Release.xcconfig */;
+			buildSettings = {
+			};
+			name = Release;
+		};
+		09FF3F2F1E36EBBB00C81351 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 099E06F21E36ECE50012348E /* osx.debug.xcconfig */;
+			buildSettings = {
+			};
+			name = Debug;
+		};
+		09FF3F301E36EBBB00C81351 /* Release */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 099E06F31E36ECE50012348E /* osx.release.xcconfig */;
+			buildSettings = {
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		099E07031E36ED9D0012348E /* Build configuration list for PBXNativeTarget "audio.ios" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				099E07041E36ED9D0012348E /* Debug */,
+				099E07051E36ED9D0012348E /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		09FF3F1E1E36EBBB00C81351 /* Build configuration list for PBXProject "audio" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				09FF3F2C1E36EBBB00C81351 /* Debug */,
+				09FF3F2D1E36EBBB00C81351 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		09FF3F2E1E36EBBB00C81351 /* Build configuration list for PBXNativeTarget "audio" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				09FF3F2F1E36EBBB00C81351 /* Debug */,
+				09FF3F301E36EBBB00C81351 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = 09FF3F1B1E36EBBB00C81351 /* Project object */;
+}
