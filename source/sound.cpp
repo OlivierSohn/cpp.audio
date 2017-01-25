@@ -44,8 +44,7 @@ static float square_( float angle_radians ) {
 }
 
 static float my_rand(float) {
-    float between_zero_one = ((float)rand())/(float)(RAND_MAX);
-    return (between_zero_one * 2.f) - 1.f;
+    return std::uniform_real_distribution<float>{-1.f, 1.f}(rng::mersenne());
 }
 
 template < typename F >

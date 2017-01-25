@@ -19,6 +19,3 @@ void DelayLine::step(SAMPLE *outputBuffer, int nFrames) {
     }
 }
 
-constexpr auto osc_freq = 300.f;
-constexpr auto ramp_duration_seconds = 1.f;
-

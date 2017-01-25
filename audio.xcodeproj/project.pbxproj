@@ -8,10 +8,11 @@
 
 /* Begin PBXBuildFile section */
 		099E06E11E36EC720012348E /* unity.build.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 099E06E01E36EC6D0012348E /* unity.build.cpp */; };
+		09BA14991E38791C00A05F83 /* unity.build.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 099E06E01E36EC6D0012348E /* unity.build.cpp */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXCopyFilesBuildPhase section */
-		099E06FB1E36ED9D0012348E /* CopyFiles */ = {
+		09BA14841E3877BD00A05F83 /* CopyFiles */ = {
 			isa = PBXCopyFilesBuildPhase;
 			buildActionMask = 2147483647;
 			dstPath = "include/$(PRODUCT_NAME)";
@@ -50,12 +51,12 @@
 		099E06F51E36ECE50012348E /* Project.Debug.xcconfig */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.xcconfig; name = Project.Debug.xcconfig; path = xcode.config/Project.Debug.xcconfig; sourceTree = "<group>"; };
 		099E06F61E36ECE50012348E /* Project.Release.xcconfig */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.xcconfig; name = Project.Release.xcconfig; path = xcode.config/Project.Release.xcconfig; sourceTree = "<group>"; };
 		099E06F71E36ECE50012348E /* Project.Shared.xcconfig */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.xcconfig; name = Project.Shared.xcconfig; path = xcode.config/Project.Shared.xcconfig; sourceTree = "<group>"; };
-		099E06FD1E36ED9D0012348E /* libaudio.ios.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = libaudio.ios.a; sourceTree = BUILT_PRODUCTS_DIR; };
-		09FF3F231E36EBBB00C81351 /* libaudio.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; name = libaudio.a; path = libaudio.a; sourceTree = BUILT_PRODUCTS_DIR; };
+		09BA14861E3877BD00A05F83 /* libaudio.ios.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = libaudio.ios.a; sourceTree = BUILT_PRODUCTS_DIR; };
+		09FF3F231E36EBBB00C81351 /* libaudio.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = libaudio.a; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
-		099E06FA1E36ED9D0012348E /* Frameworks */ = {
+		09BA14831E3877BD00A05F83 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -134,7 +135,7 @@
 			isa = PBXGroup;
 			children = (
 				09FF3F231E36EBBB00C81351 /* libaudio.a */,
-				099E06FD1E36ED9D0012348E /* libaudio.ios.a */,
+				09BA14861E3877BD00A05F83 /* libaudio.ios.a */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -152,13 +153,13 @@
 /* End PBXHeadersBuildPhase section */
 
 /* Begin PBXNativeTarget section */
-		099E06FC1E36ED9D0012348E /* audio.ios */ = {
+		09BA14851E3877BD00A05F83 /* audio.ios */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = 099E07031E36ED9D0012348E /* Build configuration list for PBXNativeTarget "audio.ios" */;
+			buildConfigurationList = 09BA148C1E3877BD00A05F83 /* Build configuration list for PBXNativeTarget "audio.ios" */;
 			buildPhases = (
-				099E06F91E36ED9D0012348E /* Sources */,
-				099E06FA1E36ED9D0012348E /* Frameworks */,
-				099E06FB1E36ED9D0012348E /* CopyFiles */,
+				09BA14821E3877BD00A05F83 /* Sources */,
+				09BA14831E3877BD00A05F83 /* Frameworks */,
+				09BA14841E3877BD00A05F83 /* CopyFiles */,
 			);
 			buildRules = (
 			);
@@ -166,7 +167,7 @@
 			);
 			name = audio.ios;
 			productName = audio.ios;
-			productReference = 099E06FD1E36ED9D0012348E /* libaudio.ios.a */;
+			productReference = 09BA14861E3877BD00A05F83 /* libaudio.ios.a */;
 			productType = "com.apple.product-type.library.static";
 		};
 		09FF3F221E36EBBB00C81351 /* audio */ = {
@@ -195,7 +196,7 @@
 				LastUpgradeCheck = 0820;
 				ORGANIZATIONNAME = Olivier;
 				TargetAttributes = {
-					099E06FC1E36ED9D0012348E = {
+					09BA14851E3877BD00A05F83 = {
 						CreatedOnToolsVersion = 8.2.1;
 						ProvisioningStyle = Automatic;
 					};
@@ -218,16 +219,17 @@
 			projectRoot = "";
 			targets = (
 				09FF3F221E36EBBB00C81351 /* audio */,
-				099E06FC1E36ED9D0012348E /* audio.ios */,
+				09BA14851E3877BD00A05F83 /* audio.ios */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXSourcesBuildPhase section */
-		099E06F91E36ED9D0012348E /* Sources */ = {
+		09BA14821E3877BD00A05F83 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				09BA14991E38791C00A05F83 /* unity.build.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -242,14 +244,14 @@
 /* End PBXSourcesBuildPhase section */
 
 /* Begin XCBuildConfiguration section */
-		099E07041E36ED9D0012348E /* Debug */ = {
+		09BA148D1E3877BD00A05F83 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			baseConfigurationReference = 099E06EF1E36ECE50012348E /* ios.debug.xcconfig */;
 			buildSettings = {
 			};
 			name = Debug;
 		};
-		099E07051E36ED9D0012348E /* Release */ = {
+		09BA148E1E3877BD00A05F83 /* Release */ = {
 			isa = XCBuildConfiguration;
 			baseConfigurationReference = 099E06F01E36ECE50012348E /* ios.release.xcconfig */;
 			buildSettings = {
@@ -287,14 +289,13 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
-		099E07031E36ED9D0012348E /* Build configuration list for PBXNativeTarget "audio.ios" */ = {
+		09BA148C1E3877BD00A05F83 /* Build configuration list for PBXNativeTarget "audio.ios" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
-				099E07041E36ED9D0012348E /* Debug */,
-				099E07051E36ED9D0012348E /* Release */,
+				09BA148D1E3877BD00A05F83 /* Debug */,
+				09BA148E1E3877BD00A05F83 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
-			defaultConfigurationName = Release;
 		};
 		09FF3F1E1E36EBBB00C81351 /* Build configuration list for PBXProject "audio" */ = {
 			isa = XCConfigurationList;
