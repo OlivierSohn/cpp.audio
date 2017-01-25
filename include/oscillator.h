@@ -6,7 +6,7 @@ namespace imajuscule {
         struct AudioElementBase  {
             AudioElementBase() = default;
             
-            // no copy or move because the lambda returned by fCompute() captures this
+            // no copy or move because the lambda returned by fCompute() captures 'this'
             AudioElementBase(const AudioElementBase &) = delete;
             AudioElementBase & operator=(const AudioElementBase&) = delete;
             AudioElementBase(AudioElementBase &&) = delete;
