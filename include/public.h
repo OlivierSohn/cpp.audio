@@ -10,7 +10,6 @@
 
 #include "../../algorithms/include/public.h"
 #include "../../os.log/include/public.h"
-#include "../../cg.math/include/public.h"
 
 #include "sound.defines.h"
 #include "sound.functions.h"
