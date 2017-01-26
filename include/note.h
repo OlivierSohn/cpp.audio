@@ -27,14 +27,17 @@ namespace imajuscule {
         return powf(2.f, stretch/12.f);
     }
     
-    constexpr float freq_do = 261.64f;
     
-    constexpr float to_freq(Note n, float half_tone) {
+    constexpr float freq_do = 261.64f; // Midi C6(60) according to http://subsynth.sourceforge.net/midinote2freq.html
+    constexpr uint8_t Do_midi = 60;
+
+    static inline float to_freq(float interval_from_C6, float half_tone) {
+        return freq_do * powf(half_tone, interval_from_C6);
+    }
+    
+    static inline float to_freq(Note n, float half_tone) {
         auto diff = static_cast<int>(n) - static_cast<int>(Do);
-        if(diff == 0) {
-            return freq_do;
-        }
-        return freq_do * powf(half_tone, static_cast<float>(diff));
+        return to_freq(static_cast<float>(diff), half_tone);
     }
     
     

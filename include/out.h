@@ -63,15 +63,14 @@ namespace imajuscule {
             return value * powf(threshold/env, compression);
         }
     };
-
-    using channelVolumes = std::array<float, nAudioOut>;
     
     // reserved number to indicate "no channel"
     static constexpr auto AUDIO_CHANNEL_NONE = std::numeric_limits<uint8_t>::max();
     
     enum class CloseMode {
-        FORCE, // channel is closed now even if it is playing something
-        SOFT   // channel will be converted to autoclosing
+        NOW, // channel is closed now even if it is playing something
+        XFADE_ZERO, // channel will be converted to autoclosing and forced to crossfade to zero right now.
+        WHEN_DONE_PLAYING, // channel will be converted to autoclosing
     };
     
     enum class PostProcess {
@@ -80,6 +79,8 @@ namespace imajuscule {
     };
     template<PostProcess Post = PostProcess::NONE>
     struct outputDataBase {
+        static constexpr auto initial_n_audioelements_reserve = 4;
+        
     private:
         std::atomic_bool used { false }; // maybe we need two level of locks, one here for the vector and many inside for the elements
         
@@ -140,6 +141,8 @@ namespace imajuscule {
         clock_(false),
         consummed_frames(0)
         {
+            audioElements_computes.reserve(initial_n_audioelements_reserve);
+            
             // to avoid reallocations when we hold the lock
             // we allocate all we need for channel management now:
             channels.reserve(std::numeric_limits<uint8_t>::max());
@@ -213,10 +216,7 @@ namespace imajuscule {
         void setVolume(uint8_t channel_id, channelVolumes volumes) {
             // no need to lock, this is called from the main thread
             auto & c = editChannel(channel_id);
-            c.volume_transition_remaining = Channel::volume_transition_length;
-            for(int i=0; i<nAudioOut; ++i) {
-                c.volumes[i].increments = (volumes[i] - c.volumes[i].current) / (float) Channel::volume_transition_length;
-            }
+            c.toVolume(volumes, Channel::volume_transition_length);
         }
         
         template<class... Args>
@@ -283,9 +283,8 @@ namespace imajuscule {
                 }
             }
             // no need to lock here : the channel is not active
-            for(auto i=0; i<nAudioOut; ++i) {
-                editChannel(id).volumes[i].current = volume[i];
-            }
+            A(!editChannel(id).shouldReset()); // else, call reset?
+            editChannel(id).setVolume(volume);
             editChannel(id).set_xfade(xfade_length);
             A(id != AUDIO_CHANNEL_NONE);
             return id;
@@ -293,25 +292,38 @@ namespace imajuscule {
         
         void closeChannel(uint8_t channel_id, CloseMode mode)
         {
-#ifndef NDEBUG
-            auto it = std::find(autoclosing_ids.begin(), autoclosing_ids.end(), channel_id);
-            A(it == autoclosing_ids.end()); // make sure channel is NOT autoclosing
-#endif
             {
                 Sensor::RAIILock l(used);
                 auto & c = editChannel(channel_id);
-                if(mode == CloseMode::SOFT && c.isPlaying()) {
-                    autoclosing_ids.push_back(channel_id);
-                    A(autoclosing_ids.size() <= std::numeric_limits<uint8_t>::max());
-                    // else logic error : some users closed manually some autoclosing channels
+                if(mode != CloseMode::NOW && c.isPlaying()) {
+                    if(mode == CloseMode::XFADE_ZERO) {
+                        auto it = std::find(autoclosing_ids.begin(), autoclosing_ids.end(), channel_id);
+                        if(it == autoclosing_ids.end()) {
+                            convert_to_autoclosing(channel_id);
+                        }
+                        c.stopPlayingByXFadeToZero();
+                    }
+                    else if(mode == CloseMode::WHEN_DONE_PLAYING) {
+#ifndef NDEBUG
+                        auto it = std::find(autoclosing_ids.begin(), autoclosing_ids.end(), channel_id);
+                        A(it == autoclosing_ids.end()); // if channel is already autoclosing, this call is redundant
+#endif
+                        convert_to_autoclosing(channel_id);
+                    }
                     return;
                 }
-                c.stopPlaying();
+                c.reset();
             }
             available_ids.Return(channel_id);
         }
         
     private:
+        void convert_to_autoclosing(uint8_t channel_id) {
+            autoclosing_ids.push_back(channel_id);
+            A(autoclosing_ids.size() <= std::numeric_limits<uint8_t>::max());
+            // else logic error : some users closed manually some autoclosing channels
+        }
+        
         void playNolock( uint8_t channel_id, StackVector<Request> && v) {
             auto & c = editChannel(channel_id);
             for( auto & sound : v ) {
@@ -370,6 +382,9 @@ namespace imajuscule {
                        nFrames,
                        consummed_frames ); // with that, the channel knows when
                                            // the next computation of AudioElements will occur
+                if(c.shouldReset()) {
+                    c.reset();
+                }
             }
 
             for(int i=0; i<nFrames; ++i) {

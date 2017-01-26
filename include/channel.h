@@ -42,6 +42,8 @@ namespace imajuscule {
         return xfade;
     }
     
+    using channelVolumes = std::array<float, nAudioOut>;
+
     struct Channel : public NonCopyable {
         
         static constexpr float base_amplitude = 0.1f; // ok to have 10 chanels at max amplitude at the same time
@@ -55,6 +57,7 @@ namespace imajuscule {
         // if next is false, the current crossfade is between two requests,
         // else the current crossfade is from or to 'empty'
         bool next : 1;
+        bool active:1;
         
         unsigned int total_n_writes : relevantBits(audioelement::n_frames_per_buffer);
         unsigned int initial_audio_element_consummed : relevantBits(audioelement::n_frames_per_buffer - 1);
@@ -66,17 +69,39 @@ namespace imajuscule {
         int32_t current_next_sample_index = 0;
         int32_t other_next_sample_index = 0;
         
-    public:
         struct Volume {
             float current = 1.f;
             float increments = 0.f;
         };
         std::array<Volume, nAudioOut> volumes;
-        
-    private:
+
         std::queue<QueuedRequest> requests;
 
     public:
+        Channel() : volume_transition_remaining(0), next(false), active(true)
+        {
+            A(!isPlaying());
+        }
+        
+        void reset() {
+            *this = {}; // to release all audio elements
+            A(!isPlaying());
+        }
+        
+        // prefer using toVolume if channel is Playing
+        void setVolume(channelVolumes volumes_) {
+            for(int i=0; i<nAudioOut; ++i) {
+                volumes[i].current = volumes_[i];
+            }
+        }
+        
+        void toVolume(channelVolumes volumes_, int nSteps) {
+            volume_transition_remaining = nSteps;
+            auto invStep = 1.f / nSteps;
+            for(int i=0; i<nAudioOut; ++i) {
+                volumes[i].increments = (volumes_[i] - volumes[i].current) * invStep;
+            }
+        }
         
         void set_xfade(int const size_xfade) {
             A(!isPlaying()); // do not call this method while playing
@@ -90,11 +115,6 @@ namespace imajuscule {
         float get_xfade_increment() const { return 1.f / (get_size_xfade() - 1); };
         float duration_millis_xfade() const { return frames_to_ms(static_cast<float>(get_size_xfade())); }
         
-        Channel() : volume_transition_remaining(0), next(false)
-        {
-            A(!isPlaying());
-        }
-        
         void step(SAMPLE * outputBuffer, int nFrames, unsigned int audio_element_consummed);
         
         bool addRequest(Request r) {
@@ -105,14 +125,32 @@ namespace imajuscule {
             return true;
         }
 
-        void stopPlaying() {
-            *this = Channel{};
-            A(!isPlaying());
+        void stopPlayingByXFadeToZero() {
+            A(isPlaying()); // caller should check
+            A(active);
+            active = false;
+            toVolume({}, get_size_xfade());
         }
         
         bool isPlaying() const {
+            if(shouldReset()) {
+                return false;
+            }
             return remaining_samples_count != 0 || !requests.empty() || current.buffer;
         }
+
+        bool shouldReset() const {
+            if(active) {
+                return false;
+            }
+            for(auto const & v: volumes) {
+                if(v.increments < 0.f && std::abs(v.increments) < std::abs(v.current)) {
+                    return false;
+                }
+            }
+            return true;
+        }
+
     private:
         
         bool consume() {

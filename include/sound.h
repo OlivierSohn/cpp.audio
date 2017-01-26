@@ -107,6 +107,16 @@ namespace imajuscule {
         return (it == aes.end()) ? nullptr : &*it;
     }
     
+    template<typename T, typename F>
+    typename T::value_type * editInactiveAudioElementContainer(T & container, F f_get_audioelement) {
+        auto it = std::find_if(container.begin(),
+                               container.end(),
+                               [f_get_audioelement](auto & elt) {
+                                   return f_get_audioelement(elt).isInactive();
+                               });
+        return (it == container.end()) ? nullptr : &*it;
+    }
+    
     class Sounds {
         std::map< soundId, soundBuffer > sounds;
         std::array<audioelement::Square<float>, 8> squares;
