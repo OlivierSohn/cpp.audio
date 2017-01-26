@@ -508,7 +508,7 @@ namespace imajuscule {
                 else {
                     A(n_writes_remaining > 0);
                     
-                    other_next_sample_index = initial_audio_element_consummed; // keep separate to make the type consversion
+                    other_next_sample_index = initial_audio_element_consummed; // keep separate to make the type conversion
                     A(n_writes_remaining <= total_n_writes); // make sure it's safe to do the following substraction, total_n_writes being unsigned
                     other_next_sample_index += total_n_writes - n_writes_remaining;
                     A(other_next_sample_index < audioelement::n_frames_per_buffer);

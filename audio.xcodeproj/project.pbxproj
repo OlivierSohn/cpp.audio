@@ -276,6 +276,7 @@
 			isa = XCBuildConfiguration;
 			baseConfigurationReference = 099E06F21E36ECE50012348E /* osx.debug.xcconfig */;
 			buildSettings = {
+				ARCHS = "$(ARCHS_STANDARD_32_64_BIT)";
 			};
 			name = Debug;
 		};
@@ -283,6 +284,7 @@
 			isa = XCBuildConfiguration;
 			baseConfigurationReference = 099E06F31E36ECE50012348E /* osx.release.xcconfig */;
 			buildSettings = {
+				ARCHS = "$(ARCHS_STANDARD_32_64_BIT)";
 			};
 			name = Release;
 		};
@@ -296,6 +298,7 @@
 				09BA148E1E3877BD00A05F83 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
 		};
 		09FF3F1E1E36EBBB00C81351 /* Build configuration list for PBXProject "audio" */ = {
 			isa = XCConfigurationList;

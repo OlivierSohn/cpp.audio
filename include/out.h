@@ -120,9 +120,18 @@ namespace imajuscule {
         void registerAudioElementCompute(F f) {
             // todo prevent reallocation here to not block audio...
             audioElements_computes.push_back(std::move(f));
+            if(isInbetweenTwoAudioElementComputes()) {
+                audioElements_computes.back()(clock_);
+            }
         }
         
     public:
+        bool isInbetweenTwoAudioElementComputes() const {
+            A(consummed_frames >= 0);
+            A(consummed_frames < audioelement::n_frames_per_buffer);
+            return 0 != consummed_frames;
+        }
+        
         outputDataBase()
         :
 #if WITH_DELAY
@@ -215,17 +224,21 @@ namespace imajuscule {
             Sensor::RAIILock l(used);
             
             // it's important to register and enqueue in the same lock cycle
-            // else either it's too late and we miss some audio frames,
-            // or too early and the callback gets unscheduled
+            // else we miss some audio frames,
+            // or the callback gets unscheduled
             
+            // further more, we need to enqueue first, so that the buffer has the "queued" state
+            // because when registering compute lambdas, theycan be executed right away
+            // so the buffer needs to be in the right state
+            
+            playNolock(channel_id, {std::move(requests.second)...});
+
             auto buffers = std::make_tuple(std::ref(requests.first)...);
             for_each(buffers, [this](auto &buf) {
                 if(auto f = audioelement::fCompute(buf)) {
                     this->registerAudioElementCompute(std::move(f));
                 }
             });
-            
-            playNolock(channel_id, {std::move(requests.second)...});
         }
         
         void play( uint8_t channel_id, StackVector<Request> && v) {
@@ -308,7 +321,7 @@ namespace imajuscule {
 
         void computeNextAudioElementsBuffers() {
             A(consummed_frames == 0); // else we skip some unconsummed frames
-            clock_ = !clock_;
+            clock_ = !clock_; // keep that BEFORE passing clock_ to compute functions (dependency on registerAudioElementCompute)
             for(auto it = audioElements_computes.begin(),
                 end = audioElements_computes.end(); it!=end;) {
                 if(!((*it)(clock_))) {

@@ -374,8 +374,10 @@ namespace imajuscule {
                         // the next time
                         return false;
                     }
-                    if(e.getState() != AE::queued() && (sync_clock == e.clock_)) {
-                        return true;
+                    if(likely(e.getState() != AE::queued())) {
+                        if(sync_clock == e.clock_) {
+                            return true;
+                        }
                     }
                     e.clock_ = sync_clock;
                     for(auto & v : e.buffer) {
