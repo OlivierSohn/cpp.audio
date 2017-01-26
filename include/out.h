@@ -82,7 +82,9 @@ namespace imajuscule {
         static constexpr auto initial_n_audioelements_reserve = 4;
         
     private:
-        std::atomic_bool used { false }; // maybe we need two level of locks, one here for the vector and many inside for the elements
+        // this member should be optional : for virtual instruments all methods are called from the same thread
+        // so locking doesn't make sense
+        std::atomic_bool used { false };
         
         //////////////////////////
         /// state of last write:
@@ -133,7 +135,7 @@ namespace imajuscule {
             return 0 != consummed_frames;
         }
         
-        outputDataBase()
+        outputDataBase(int nChannelsMax = std::numeric_limits<uint8_t>::max())
         :
 #if WITH_DELAY
         delays{{1000, 0.6f},{4000, 0.2f}, {4300, 0.3f}, {5000, 0.1f}},
@@ -141,13 +143,16 @@ namespace imajuscule {
         clock_(false),
         consummed_frames(0)
         {
+            A(nChannelsMax >= 0);
+            A(nChannelsMax <= std::numeric_limits<uint8_t>::max()); // else need to update AUDIO_CHANNEL_NONE
+            
             audioElements_computes.reserve(initial_n_audioelements_reserve);
             
             // to avoid reallocations when we hold the lock
             // we allocate all we need for channel management now:
-            channels.reserve(std::numeric_limits<uint8_t>::max());
-            autoclosing_ids.reserve(std::numeric_limits<uint8_t>::max());
-            available_ids.reserve(std::numeric_limits<uint8_t>::max());
+            channels.reserve(nChannelsMax);
+            autoclosing_ids.reserve(nChannelsMax);
+            available_ids.reserve(nChannelsMax);
             if(Post == PostProcess::COMPRESS) {
                 // doesn't work : in TEST_F(AudioLimiting, CompressionSine),
                 // the beginning is wrong.
@@ -253,7 +258,7 @@ namespace imajuscule {
 
         uint8_t openChannel(channelVolumes volume, ChannelClosingPolicy l, int xfade_length) {
             uint8_t id = AUDIO_CHANNEL_NONE;
-            if(channels.size() == std::numeric_limits<uint8_t>::max() && available_ids.size() == 0) {
+            if(channels.size() == channels.capacity() && available_ids.size() == 0) {
                 // Channels are at their maximum number and all are used...
                 // Let's find one that is autoclosing and not playing :
                 for( auto it = autoclosing_ids.begin(), end = autoclosing_ids.end(); it != end; ++it )
@@ -277,9 +282,7 @@ namespace imajuscule {
             else {
                 id = available_ids.Take(channels);
                 if(l == AutoClose) {
-                    autoclosing_ids.push_back(id);
-                    A(autoclosing_ids.size() <= std::numeric_limits<uint8_t>::max());
-                    // else logic error : some users closed manually some autoclosing channels
+                    convert_to_autoclosing(id);
                 }
             }
             // no need to lock here : the channel is not active
@@ -319,9 +322,9 @@ namespace imajuscule {
         
     private:
         void convert_to_autoclosing(uint8_t channel_id) {
-            autoclosing_ids.push_back(channel_id);
-            A(autoclosing_ids.size() <= std::numeric_limits<uint8_t>::max());
+            A(autoclosing_ids.size() < autoclosing_ids.capacity());
             // else logic error : some users closed manually some autoclosing channels
+            autoclosing_ids.push_back(channel_id);
         }
         
         void playNolock( uint8_t channel_id, StackVector<Request> && v) {
