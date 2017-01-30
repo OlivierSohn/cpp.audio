@@ -218,10 +218,9 @@ namespace imajuscule {
         Channel & editChannel(uint8_t id) { return channels[id]; }
         Channel const & getChannel(uint8_t id) const { return channels[id]; }
         bool empty() const { return channels.empty(); }
-        void setVolume(uint8_t channel_id, channelVolumes volumes) {
+        void setVolume(uint8_t channel_id, channelVolumes volumes, int nSteps = Channel::default_volume_transition_length) {
             // no need to lock, this is called from the main thread
-            auto & c = editChannel(channel_id);
-            c.toVolume(volumes, Channel::volume_transition_length);
+            editChannel(channel_id).toVolume(volumes, nSteps);
         }
         
         template<class... Args>
@@ -293,7 +292,7 @@ namespace imajuscule {
             return id;
         }
         
-        void closeChannel(uint8_t channel_id, CloseMode mode)
+        void closeChannel(uint8_t channel_id, CloseMode mode, int nStepsForXfadeToZeroMode = -1)
         {
             {
                 Sensor::RAIILock l(used);
@@ -304,7 +303,7 @@ namespace imajuscule {
                         if(it == autoclosing_ids.end()) {
                             convert_to_autoclosing(channel_id);
                         }
-                        c.stopPlayingByXFadeToZero();
+                        c.stopPlayingByXFadeToZero(nStepsForXfadeToZeroMode);
                     }
                     else if(mode == CloseMode::WHEN_DONE_PLAYING) {
 #ifndef NDEBUG

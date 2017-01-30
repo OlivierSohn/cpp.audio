@@ -6,12 +6,13 @@ void Channel::step(SAMPLE * outputBuffer, int n_max_writes, unsigned int audio_e
     A(n_max_writes <= audioelement::n_frames_per_buffer);
     A(audio_element_consummed_frames < audioelement::n_frames_per_buffer);
 
+    if(done()) {
+        return;
+    }
+    
     initial_audio_element_consummed = audio_element_consummed_frames;
     total_n_writes = n_max_writes;
     
-    if(remaining_samples_count == 0 && !consume()) {
-        return;
-    }
     while(1)
     {
         while(remaining_samples_count < n_max_writes)
@@ -23,7 +24,7 @@ void Channel::step(SAMPLE * outputBuffer, int n_max_writes, unsigned int audio_e
                     xfade_written = std::min(xfade_written, remaining_samples_count);
                     write_right_xfade( outputBuffer, xfade_ratio, xfade_written );
                     remaining_samples_count -= xfade_written;
-                    if(remaining_samples_count == 0 && !consume()) {
+                    if(done()) {
                         return;
                     }
                     n_max_writes -= xfade_written;
@@ -61,7 +62,7 @@ void Channel::step(SAMPLE * outputBuffer, int n_max_writes, unsigned int audio_e
                 xfade_written = std::min(xfade_written, n_max_writes);
                 write_right_xfade( outputBuffer, xfade_ratio, xfade_written );
                 remaining_samples_count -= xfade_written;
-                if(remaining_samples_count == 0 && !consume()) {
+                if(done()) {
                     return;
                 }
                 n_max_writes -= xfade_written;

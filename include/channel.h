@@ -47,10 +47,13 @@ namespace imajuscule {
     struct Channel : public NonCopyable {
         
         static constexpr float base_amplitude = 0.1f; // ok to have 10 chanels at max amplitude at the same time
-        static constexpr unsigned int volume_transition_length = 2000;
+        static constexpr unsigned int default_volume_transition_length = 2000;
+        static constexpr unsigned int min_xfade_size = 3;
         // make sure we'll have no overflow on volume_transition_remaining
-        static_assert(volume_transition_length < (1 << 16), "");
+        static_assert(default_volume_transition_length < (1 << 16), "");
 
+    public:
+        
         uint16_t volume_transition_remaining;
 
     private:
@@ -108,7 +111,7 @@ namespace imajuscule {
             A( 1 == size_xfade % 2);
             
             size_half_xfade = (size_xfade-1) / 2;
-            A(size_half_xfade > 0);
+            A(size_half_xfade > 0); // todo make a channel that has no xfade
         }
         
         int get_size_xfade() const { return 1 + 2 * size_half_xfade; }
@@ -125,11 +128,11 @@ namespace imajuscule {
             return true;
         }
 
-        void stopPlayingByXFadeToZero() {
+        void stopPlayingByXFadeToZero(int nSteps) {
             A(isPlaying()); // caller should check
             A(active);
             active = false;
-            toVolume({}, get_size_xfade());
+            toVolume({}, nSteps < 0 ? get_size_xfade() : nSteps);
         }
         
         bool isPlaying() const {
@@ -186,6 +189,14 @@ namespace imajuscule {
             }
             other_next_sample_index = current_next_sample_index_backup;
             return true;
+        }
+        
+        bool done() {
+            if(shouldReset()) {
+                // to avoid residual noise due to very low volume
+                return true;
+            }
+            return remaining_samples_count == 0 && !consume();
         }
         
         void write_single(SAMPLE * outputBuffer, int n_writes) {
