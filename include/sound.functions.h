@@ -25,7 +25,13 @@ namespace imajuscule {
         static_assert(std::is_floating_point<T>::value, "");
         return 2 * freq / SAMPLE_RATE;
     }
-
+    
+    template<typename T>
+    constexpr T angle_increment_to_freq(T i) {
+        static_assert(std::is_floating_point<T>::value, "");
+        return i * SAMPLE_RATE * 0.5f;
+    }
+    
     template<typename T>
     constexpr T square(T ang) {
         static_assert(std::is_floating_point<T>::value, "");

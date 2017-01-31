@@ -181,12 +181,15 @@ namespace imajuscule {
                     }
                     
                     if(v[i] > 1.f) {
+                        A(0);
                         v[i] = 1.f;
                     }
                     else if(v[i] < -1.f) {
+                        A(0);
                         v[i] = -1.f;
                     }
                     else {
+                        A(0);
                         v[i] = 0.f; // v[i] is NaN
                     }
                 }
@@ -285,7 +288,9 @@ namespace imajuscule {
                 }
             }
             // no need to lock here : the channel is not active
-            A(!editChannel(id).shouldReset()); // else, call reset?
+            if(editChannel(id).shouldReset()) {
+                editChannel(id).reset();
+            }
             editChannel(id).setVolume(volume);
             editChannel(id).set_xfade(xfade_length);
             A(id != AUDIO_CHANNEL_NONE);
@@ -314,6 +319,10 @@ namespace imajuscule {
                     }
                     return;
                 }
+#ifndef NDEBUG
+                auto it = std::find(autoclosing_ids.begin(), autoclosing_ids.end(), channel_id);
+                A(it == autoclosing_ids.end()); // if channel is autoclosing, we should remove it there?
+#endif
                 c.reset();
             }
             available_ids.Return(channel_id);

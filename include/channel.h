@@ -89,6 +89,7 @@ namespace imajuscule {
         void reset() {
             *this = {}; // to release all audio elements
             A(!isPlaying());
+            A(!shouldReset());
         }
         
         // prefer using toVolume if channel is Playing

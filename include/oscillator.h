@@ -258,8 +258,23 @@ namespace imajuscule {
                      T start_sample = Tr::zero(),
                      itp::interpolation i = itp::LINEAR)
             {
-                cur_sample = start_sample;
-                
+                if(start_sample >= Tr::zero()) {
+                    cur_sample = start_sample;
+                }
+                else {
+                    // if start_sample < 0 we adapt it to be at the same ratio in the new range
+                    // and we adapt bounds order to the existing bounds
+                    A(duration_in_samples);
+                    cur_sample *= duration_in_samples_ / duration_in_samples;
+                    if(from_ > to_) {
+                        if(from < to) {
+                            std::swap(from_, to_);
+                        }
+                    }
+                    else if(from > to) {
+                        std::swap(from_, to_);
+                    }
+                }
                 from = freq_to_angle_increment(from_);
                 to = freq_to_angle_increment(to_);
                 duration_in_samples = duration_in_samples_;
@@ -276,7 +291,7 @@ namespace imajuscule {
                 A(duration_in_samples > 0);
                 interp.setInterpolation(i);
                 
-                C = -std::log(from/to) / (to-from);
+                C = (to==from) ? 1.f : -std::log(from/to) / (to-from);
             }
             
             void step() {
@@ -291,6 +306,8 @@ namespace imajuscule {
             T real() const { return osc.real(); }
             T imag() const { return osc.imag(); }
             
+            T getFromIncrements() const { return from; }
+            T getToIncrements() const { return to; }
         private:
             OscillatorAlgo<T> osc;
             NormalizedInterpolation<T> interp;
