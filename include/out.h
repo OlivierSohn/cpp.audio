@@ -19,9 +19,27 @@ namespace imajuscule {
             RAIILock & operator = (const RAIILock &) = delete;
         };
     }
+    
+    template<int nAudioOut>
     struct DelayLine {
-        DelayLine(int size, float attenuation);
-        void step(SAMPLE * outputBuffer, int nFrames);
+        DelayLine(int size, float attenuation): delay(size,{{}}), it(0), end(size), attenuation(attenuation) {}
+        
+        void step(SAMPLE *outputBuffer, int nFrames) {
+            for( int i=0; i < nFrames; i++ ) {
+                auto & d = delay[it];
+                for(auto j=0; j<nAudioOut; ++j) {
+                    auto delayed = d[j];
+                    d[j] = *outputBuffer;
+                    *outputBuffer += attenuation * delayed;
+                    ++outputBuffer;
+                }
+                ++it;
+                if( unlikely(it == end) ) {
+                    it = 0;
+                }
+            }
+        }
+
         std::vector<std::array<float, nAudioOut>> delay;
         int32_t it, end;
         float attenuation;
@@ -40,6 +58,7 @@ namespace imajuscule {
         return makeArrayImpl<T, Init>(val, std::make_index_sequence<N>{});
     }
 
+    /*
     struct Compressor {
         // some parts inspired from https://github.com/audacity/audacity/blob/master/src/effects/Compressor.cpp
         
@@ -62,7 +81,7 @@ namespace imajuscule {
             }
             return value * powf(threshold/env, compression);
         }
-    };
+    };*/
     
     // reserved number to indicate "no channel"
     static constexpr auto AUDIO_CHANNEL_NONE = std::numeric_limits<uint8_t>::max();
@@ -87,9 +106,27 @@ namespace imajuscule {
         NoOpLock(std::atomic_bool const &) {}
     };
     
+    enum ChannelClosingPolicy {
+        AutoClose,  // once the request queue is empty (or more precisely
+        // once the channel method isPlaying() returns false),
+        // the channel can be automatically reassigned without
+        // the need to close it explicitely.
+        // Explicitely closing an AutoClose channel will result in undefined behaviour.
+        ExplicitClose, // the channel cannot be reassigned unless explicitely closed
+    };
     
-    template<typename Locking = Sensor::RAIILock, PostProcess Post = PostProcess::NONE>
+    template<
+    int nAudioOut,
+    XfadePolicy XF = XfadePolicy::UseXfade,
+    typename Locking = Sensor::RAIILock,
+    PostProcess Post = PostProcess::NONE
+    >
     struct outputDataBase {
+        using Channel = Channel<nAudioOut, XF>;
+        using channelVolumes = typename Channel::channelVolumes;
+        
+        static constexpr auto nOuts = nAudioOut;
+        
         static constexpr auto initial_n_audioelements_reserve = 4;
         
     private:
@@ -271,7 +308,7 @@ namespace imajuscule {
             channels.clear();
         }
 
-        uint8_t openChannel(channelVolumes volume, ChannelClosingPolicy l, int xfade_length) {
+        uint8_t openChannel(channelVolumes volume, ChannelClosingPolicy l, int xfade_length = 0) {
             uint8_t id = AUDIO_CHANNEL_NONE;
             if(channels.size() == channels.capacity() && available_ids.size() == 0) {
                 // Channels are at their maximum number and all are used...
@@ -305,7 +342,12 @@ namespace imajuscule {
                 editChannel(id).reset();
             }
             editChannel(id).setVolume(volume);
-            editChannel(id).set_xfade(xfade_length);
+            if(XF==XfadePolicy::UseXfade) {
+                editChannel(id).set_xfade(xfade_length);
+            }
+            else {
+                A(xfade_length == 0); // make sure user is aware xfade will not be used
+            }
             A(id != AUDIO_CHANNEL_NONE);
             return id;
         }
@@ -426,5 +468,5 @@ namespace imajuscule {
         }
     };
     
-    using outputData = outputDataBase<>;
+    using outputData = outputDataBase<2>;
 }

@@ -2,28 +2,19 @@
 namespace imajuscule {
 
     struct MakeVolume {
-        template<int J = nAudioOut>
+        template<int J>
         static
         typename std::enable_if<J == 1, typename std::array<float, J>>::type
         run(float volume, StereoGain const & ) {
             return {{volume}};
         }
         
-        template<int J = nAudioOut>
+        template<int J>
         static
         typename std::enable_if<J == 2, typename std::array<float, J>>::type
         run(float volume, StereoGain const & gain) {
             return {{gain.left*volume, gain.right*volume}};
         }
-    };
-    
-    enum ChannelClosingPolicy {
-        AutoClose,  // once the request queue is empty (or more precisely
-                    // once the channel method isPlaying() returns false),
-                    // the channel can be automatically reassigned without
-                    // the need to close it explicitely.
-                    // Explicitely closing an AutoClose channel will result in undefined behaviour.
-        ExplicitClose, // the channel cannot be reassigned unless explicitely closed
     };
     
     /*
@@ -42,11 +33,17 @@ namespace imajuscule {
         return xfade;
     }
     
-    using channelVolumes = std::array<float, nAudioOut>;
+    enum class XfadePolicy {
+        SkipXfade, // internal fades are skipped but volume can act as fade in / out
+        UseXfade
+    };
 
+    static constexpr float chan_base_amplitude = 0.1f; // ok to have 10 chanels at max amplitude at the same time
+
+    template<int nAudioOut, XfadePolicy XF = XfadePolicy::UseXfade>
     struct Channel : public NonCopyable {
-        
-        static constexpr float base_amplitude = 0.1f; // ok to have 10 chanels at max amplitude at the same time
+        using channelVolumes = std::array<float, nAudioOut>;
+    
         static constexpr unsigned int default_volume_transition_length = 2000;
         static constexpr unsigned int min_xfade_size = 3;
         // make sure we'll have no overflow on volume_transition_remaining
@@ -66,11 +63,11 @@ namespace imajuscule {
         unsigned int initial_audio_element_consummed : relevantBits(audioelement::n_frames_per_buffer - 1);
         
         QueuedRequest current;
-        QueuedRequest previous;
-        int size_half_xfade;
+        QueuedRequest previous; // not for SkipXfade
+        int size_half_xfade; // not for SkipXfade
         int32_t remaining_samples_count = 0;
         int32_t current_next_sample_index = 0;
-        int32_t other_next_sample_index = 0;
+        int32_t other_next_sample_index = 0; // not for SkipXfade
         
         struct Volume {
             float current = 1.f;
@@ -81,8 +78,7 @@ namespace imajuscule {
         std::queue<QueuedRequest> requests;
 
     public:
-        Channel() : volume_transition_remaining(0), next(false), active(true)
-        {
+        Channel() : volume_transition_remaining(0), next(false), active(true) {
             A(!isPlaying());
         }
         
@@ -108,6 +104,7 @@ namespace imajuscule {
         }
         
         void set_xfade(int const size_xfade) {
+            A(XF == XfadePolicy::UseXfade);
             A(!isPlaying()); // do not call this method while playing
             A( 1 == size_xfade % 2);
             
@@ -115,15 +112,28 @@ namespace imajuscule {
             A(size_half_xfade > 0); // todo make a channel that has no xfade
         }
         
-        int get_size_xfade() const { return 1 + 2 * size_half_xfade; }
-        float get_xfade_increment() const { return 1.f / (get_size_xfade() - 1); };
-        float duration_millis_xfade() const { return frames_to_ms(static_cast<float>(get_size_xfade())); }
+        int get_size_xfade() const {
+            A(XF == XfadePolicy::UseXfade);
+            return 1 + 2 * size_half_xfade;
+        }
+        
+        float get_xfade_increment() const {
+            A(XF == XfadePolicy::UseXfade);
+            return 1.f / (get_size_xfade() - 1);
+        };
+        
+        float duration_millis_xfade() const {
+            A(XF == XfadePolicy::UseXfade);
+            return frames_to_ms(static_cast<float>(get_size_xfade()));
+        }
         
         void step(SAMPLE * outputBuffer, int nFrames, unsigned int audio_element_consummed);
         
         bool addRequest(Request r) {
-            if(r.duration_in_frames < 2*get_size_xfade()) {
-                return false;
+            if(XF == XfadePolicy::UseXfade) {
+                if(r.duration_in_frames < 2*get_size_xfade()) {
+                    return false;
+                }
             }
             requests.emplace(std::move(r));
             return true;
@@ -133,7 +143,11 @@ namespace imajuscule {
             A(isPlaying()); // caller should check
             A(active);
             active = false;
-            toVolume({}, nSteps < 0 ? get_size_xfade() : nSteps);
+            if(nSteps < 0) {
+                A(XF==XfadePolicy::UseXfade);
+                nSteps = get_size_xfade();
+            }
+            toVolume({}, nSteps);
         }
         
         bool isPlaying() const {
@@ -157,9 +171,29 @@ namespace imajuscule {
 
     private:
         
-        bool consume() {
-            auto current_next_sample_index_backup = current_next_sample_index;
+        bool consume(int n_writes_remaining) {
             A(remaining_samples_count == 0);
+            if(XF==XfadePolicy::SkipXfade) {
+                if(requests.empty()) {
+                    return false;
+                }
+                current = std::move(requests.front());
+                requests.pop();
+                remaining_samples_count = current.duration_in_frames;
+                if(current.buffer.isSoundBuffer()) {
+                    current_next_sample_index = 0;
+                }
+                else {
+                    current_next_sample_index = initial_audio_element_consummed; // keep separate to make the type conversion
+                    A(n_writes_remaining <= total_n_writes); // make sure it's safe to do the following substraction, total_n_writes being unsigned
+                    current_next_sample_index += total_n_writes - n_writes_remaining;
+                    A(current_next_sample_index < audioelement::n_frames_per_buffer);
+                }
+                
+                return true;
+            }
+
+            auto current_next_sample_index_backup = current_next_sample_index;
             if (requests.empty()) {
                 A(!next); // because we have started the crossfade and have detected that there is no more requests to process
                 if(!current.buffer) {
@@ -192,18 +226,17 @@ namespace imajuscule {
             return true;
         }
         
-        bool done() {
+        bool done(int n_writes_remaining) {
             if(shouldReset()) {
                 // to avoid residual noise due to very low volume
                 return true;
             }
-            return remaining_samples_count == 0 && !consume();
+            return remaining_samples_count == 0 && !consume(n_writes_remaining);
         }
         
         void write_single(SAMPLE * outputBuffer, int n_writes) {
             A(n_writes > 0);
-            //LG(INFO, "write %d", n_writes);
-            auto const volume = base_amplitude * current.volume;
+            auto const volume = chan_base_amplitude * current.volume;
             if(current.buffer.isSoundBuffer()) {
                 write_single_SoundBuffer(outputBuffer, n_writes, current.buffer.asSoundBuffer(), volume);
             }
@@ -240,7 +273,7 @@ namespace imajuscule {
             for( int i=0; i<n_writes; ++i) {
                 A(current_next_sample_index < audioelement::n_frames_per_buffer);
                 
-                A(crossfading_from_zero_remaining() <= 0);
+                A(XF==XfadePolicy::SkipXfade || crossfading_from_zero_remaining() <= 0);
                 A(std::abs(buf[current_next_sample_index]) < 1.1f);
                 auto val = volume * static_cast<float>(buf[current_next_sample_index]);
                 stepVolume();
@@ -257,6 +290,7 @@ namespace imajuscule {
         }
         
         void write_left_xfade(SAMPLE * outputBuffer, float xfade_ratio, int const n_writes) {
+            A(XF==XfadePolicy::UseXfade);
             A(n_writes > 0);
             //LG(INFO, "<<<<< %d", n_writes);
             A(n_writes <= remaining_samples_count);
@@ -288,6 +322,7 @@ namespace imajuscule {
         }
 
         void write_right_xfade(SAMPLE * outputBuffer, float xfade_ratio, int const n_writes) {
+            A(XF==XfadePolicy::UseXfade);
             A(n_writes > 0);
             //LG(INFO, ">>>>> %d", n_writes);
             A(n_writes <= crossfading_from_zero_remaining());
@@ -319,6 +354,7 @@ namespace imajuscule {
         
         void write_SoundBuffer_2_SoundBuffer_xfade(SAMPLE * outputBuffer, float xfade_ratio, int const n_writes, float xfade_increment,
                                                    Request const * other) {
+            A(XF==XfadePolicy::UseXfade);
             A(!other || !other->buffer || other->buffer.isSoundBuffer());
             A(!current.buffer || current.buffer.isSoundBuffer());
 
@@ -353,6 +389,7 @@ namespace imajuscule {
         
         void write_SoundBuffer_2_AudioElement_xfade(SAMPLE * outputBuffer, float xfade_ratio, int const n_writes, float xfade_increment,
                                                     Request const * other) {
+            A(XF==XfadePolicy::UseXfade);
             A(!current.buffer || current.buffer.isSoundBuffer());
             A(other->buffer.isAudioElement());
             if(other->buffer.is32()) {
@@ -370,6 +407,7 @@ namespace imajuscule {
         template<typename T>
         void write_SoundBuffer_2_AudioElement_xfade(SAMPLE * outputBuffer, float xfade_ratio, int const n_writes, float xfade_increment,
                                                     T const & buf2, float const volBuf2) {
+            A(XF==XfadePolicy::UseXfade);
             int const s = current.buffer ? (int) current.buffer.asSoundBuffer().size() : 0;
             for( int i=0; i<n_writes; i++ ) {
                 A(other_next_sample_index >= 0);
@@ -399,6 +437,7 @@ namespace imajuscule {
 
         void write_AudioElement_2_SoundBuffer_xfade(SAMPLE * outputBuffer, float xfade_ratio, int const n_writes, float xfade_increment,
                                                     Request const * other) {
+            A(XF==XfadePolicy::UseXfade);
             A(current.buffer.isAudioElement());
             A(!other || !other->buffer || other->buffer.isSoundBuffer());
             if(current.buffer.is32()) {
@@ -419,6 +458,7 @@ namespace imajuscule {
         void write_AudioElement_2_SoundBuffer_xfade(SAMPLE * outputBuffer, float xfade_ratio, int const n_writes, float xfade_increment,
                                                         T const & buf1, float const volBuf1
                                                         , Request const * other) {
+            A(XF==XfadePolicy::UseXfade);
             int const other_s = (other && other->buffer) ? safe_cast<int>(other->buffer.asSoundBuffer().size()) : 0;
             for( int i=0; i<n_writes; ++i, ++current_next_sample_index) {
                 A(current_next_sample_index >= 0);
@@ -449,6 +489,7 @@ namespace imajuscule {
         void write_AudioElement_2_AudioElement_xfade(SAMPLE * outputBuffer, float xfade_ratio, int const n_writes, float xfade_increment,
                                                      Request const * other)
         {
+            A(XF==XfadePolicy::UseXfade);
             A(other->buffer.isAudioElement());
             A(current.buffer.isAudioElement());
             if(current.buffer.is32()) {
@@ -489,6 +530,7 @@ namespace imajuscule {
         void write_AudioElement_2_AudioElement_xfade(SAMPLE * outputBuffer, float xfade_ratio, int const n_writes, float xfade_increment,
                                                          T1 const & buf1, float const volBuf1,
                                                          T2 const & buf2, float const volBuf2) {
+            A(XF==XfadePolicy::UseXfade);
             for( int i=0; i<n_writes; ++i, ++current_next_sample_index, ++other_next_sample_index, xfade_ratio -= xfade_increment) {
                 A(current_next_sample_index >= 0);
                 A(current_next_sample_index < audioelement::n_frames_per_buffer);
@@ -525,7 +567,7 @@ namespace imajuscule {
 
         void write_value(SAMPLE val, SAMPLE *& outputBuffer) {
             stepVolume();
-            val *= base_amplitude;
+            val *= chan_base_amplitude;
             for(auto i=0; i<nAudioOut; ++i) {
                 *outputBuffer += val * volumes[i].current;
                 ++outputBuffer;
@@ -533,7 +575,7 @@ namespace imajuscule {
         }
         
         int crossfading_from_zero_remaining() const {
-            if(next) {
+            if(XF==XfadePolicy::UseXfade && next) {
                 return size_half_xfade - (current.duration_in_frames - remaining_samples_count);
             }
             else {
@@ -542,6 +584,7 @@ namespace imajuscule {
         }
         
         void onBeginToZero(int n_writes_remaining) {
+            A(XF==XfadePolicy::UseXfade);
             if((next = !requests.empty())) {
                 
                 if(requests.front().buffer.isSoundBuffer()) {
@@ -567,21 +610,156 @@ namespace imajuscule {
             }
         }
         
-        bool handleToZero(SAMPLE *& outputBuffer, int & n_max_writes) {
-            if(remaining_samples_count == size_half_xfade + 1) {
-                onBeginToZero(n_max_writes);
-            }
-            auto xfade_ratio = 0.5f + (float)(remaining_samples_count-1) / (float)(2*size_half_xfade);
-            auto xfade_written = std::min(remaining_samples_count, n_max_writes);
-            write_left_xfade( outputBuffer, xfade_ratio, xfade_written );
-            n_max_writes -= xfade_written;
-            remaining_samples_count -= xfade_written;
-            if(n_max_writes <= 0) {
-                return false;
-            }
-            outputBuffer += xfade_written * nAudioOut;
-            A(remaining_samples_count == 0); // we are sure the xfade is finished
-            return consume();
-        }
+        bool handleToZero(SAMPLE *& outputBuffer, int & n_max_writes);
+            
     };
+    
+    template<int nAudioOut, XfadePolicy XF>
+    bool Channel<nAudioOut, XF>::handleToZero(SAMPLE *& outputBuffer, int & n_max_writes) {
+        A(XF==XfadePolicy::UseXfade);
+        if(remaining_samples_count == size_half_xfade + 1) {
+            onBeginToZero(n_max_writes);
+        }
+        auto xfade_ratio = 0.5f + (float)(remaining_samples_count-1) / (float)(2*size_half_xfade);
+        auto xfade_written = std::min(remaining_samples_count, n_max_writes);
+        write_left_xfade( outputBuffer, xfade_ratio, xfade_written );
+        n_max_writes -= xfade_written;
+        remaining_samples_count -= xfade_written;
+        if(n_max_writes <= 0) {
+            return false;
+        }
+        outputBuffer += xfade_written * nAudioOut;
+        A(remaining_samples_count == 0); // we are sure the xfade is finished
+        return consume(n_max_writes);
+    }
+    
+    template<int nAudioOut, XfadePolicy XF>
+    void Channel<nAudioOut, XF>::step(SAMPLE * outputBuffer, int n_max_writes, unsigned int audio_element_consummed_frames)
+    {
+        A(n_max_writes <= audioelement::n_frames_per_buffer);
+        A(audio_element_consummed_frames < audioelement::n_frames_per_buffer);
+        
+        initial_audio_element_consummed = audio_element_consummed_frames;
+        total_n_writes = n_max_writes;
+        
+        if(done(n_max_writes)) {
+            return;
+        }
+        
+        while(1)
+        {
+            while(remaining_samples_count < n_max_writes)
+            {
+                if(XF==XfadePolicy::UseXfade)
+                {
+                    auto xfade_written = crossfading_from_zero_remaining();
+                    if(xfade_written > 0) {
+                        auto xfade_ratio = (float)(xfade_written-1) / (float)(2 * size_half_xfade);
+                        xfade_written = std::min(xfade_written, remaining_samples_count);
+                        write_right_xfade( outputBuffer, xfade_ratio, xfade_written );
+                        remaining_samples_count -= xfade_written;
+                        n_max_writes -= xfade_written;
+                        if(done(n_max_writes)) {
+                            return;
+                        }
+                        A(n_max_writes > 0);
+                        outputBuffer += xfade_written * nAudioOut;
+                        A(crossfading_from_zero_remaining() <= 0);
+                    }
+                }
+                A(remaining_samples_count >= 0);
+                {
+                    auto remaining_normal = remaining_samples_count;
+                    if(XF==XfadePolicy::UseXfade) {
+                        remaining_normal -= size_half_xfade + 1;
+                    }
+                    else {
+                        A(remaining_samples_count>0);
+                    }
+                    if(XF==XfadePolicy::SkipXfade || remaining_normal > 0) {
+                        write_single( outputBuffer, remaining_normal );
+                        n_max_writes -= remaining_normal;
+                        remaining_samples_count -= remaining_normal;
+                        if(n_max_writes <= 0) {
+                            return;
+                        }
+                        outputBuffer += remaining_normal * nAudioOut;
+                    }
+                }
+                A(remaining_samples_count >= 0);
+                A(n_max_writes > 0);
+                if(XF==XfadePolicy::UseXfade) {
+                    A(remaining_samples_count <= size_half_xfade + 1);
+                    if(!handleToZero(outputBuffer, n_max_writes)) {
+                        return;
+                    }
+                }
+                else {
+                    A(remaining_samples_count == 0);
+                    if(!consume(n_max_writes)) {
+                        return;
+                    }
+                }
+            }
+            
+            if(XF==XfadePolicy::UseXfade)
+            {
+                auto xfade_written = crossfading_from_zero_remaining();
+                if(xfade_written > 0) {
+                    auto xfade_ratio = (float)(xfade_written-1) / (float)(2 * size_half_xfade);
+                    xfade_written = std::min(xfade_written, n_max_writes);
+                    write_right_xfade( outputBuffer, xfade_ratio, xfade_written );
+                    remaining_samples_count -= xfade_written;
+                    n_max_writes -= xfade_written;
+                    if(done(n_max_writes)) {
+                        return;
+                    }
+                    if(n_max_writes <= 0) {
+                        return;
+                    }
+                    outputBuffer += xfade_written * nAudioOut;
+                    A(crossfading_from_zero_remaining() <= 0); // we are sure the xfade is finished
+                    
+                    if(remaining_samples_count < n_max_writes) {
+                        continue;
+                    }
+                }
+            }
+            {
+                auto remaining_normal = remaining_samples_count;
+                if(XF==XfadePolicy::UseXfade) {
+                    remaining_normal -= size_half_xfade + 1;
+                }
+                else {
+                    A(remaining_samples_count>0);
+                }
+                if(XF==XfadePolicy::SkipXfade || remaining_normal > 0) {
+                    if(remaining_normal <= n_max_writes) {
+                        write_single( outputBuffer, remaining_normal );
+                        n_max_writes -= remaining_normal;
+                        remaining_samples_count -= remaining_normal;
+                        if(n_max_writes <= 0) {
+                            return;
+                        }
+                        outputBuffer += remaining_normal * nAudioOut;
+                    }
+                    else {
+                        write_single( outputBuffer, n_max_writes );
+                        remaining_samples_count -= n_max_writes;
+                        return;
+                    }
+                }
+            }
+            if(XF==XfadePolicy::UseXfade) {
+                A(remaining_samples_count >= 0);
+                if(remaining_samples_count <= size_half_xfade + 1) {
+                    if(!handleToZero(outputBuffer, n_max_writes)) {
+                        return;
+                    }
+                    continue;
+                }
+            }
+            return;
+        }
+    }
 }

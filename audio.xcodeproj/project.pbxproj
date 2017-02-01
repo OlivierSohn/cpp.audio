@@ -24,8 +24,6 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
-		099E06DA1E36EC6D0012348E /* channel.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = channel.cpp; path = source/channel.cpp; sourceTree = "<group>"; };
-		099E06DB1E36EC6D0012348E /* out.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = out.cpp; path = source/out.cpp; sourceTree = "<group>"; };
 		099E06DC1E36EC6D0012348E /* parse.music.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = parse.music.cpp; path = source/parse.music.cpp; sourceTree = "<group>"; };
 		099E06DD1E36EC6D0012348E /* private.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = private.h; path = source/private.h; sourceTree = "<group>"; };
 		099E06DE1E36EC6D0012348E /* request.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = request.cpp; path = source/request.cpp; sourceTree = "<group>"; };
@@ -76,8 +74,6 @@
 		099E06E21E36EC7F0012348E /* source */ = {
 			isa = PBXGroup;
 			children = (
-				099E06DA1E36EC6D0012348E /* channel.cpp */,
-				099E06DB1E36EC6D0012348E /* out.cpp */,
 				099E06DC1E36EC6D0012348E /* parse.music.cpp */,
 				099E06DD1E36EC6D0012348E /* private.h */,
 				099E06DE1E36EC6D0012348E /* request.cpp */,
