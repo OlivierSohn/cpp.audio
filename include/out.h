@@ -106,6 +106,8 @@ namespace imajuscule {
         using postProcessFunc = std::function<void(float*)>;
 
         std::vector<audioelement::ComputeFunc> audioElements_computes;
+        
+        // this should be optional, it is not used for virtual instruments.
         std::vector<postProcessFunc> post_process;
         
 #if WITH_DELAY
