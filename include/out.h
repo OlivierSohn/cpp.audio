@@ -77,7 +77,18 @@ namespace imajuscule {
         COMPRESS,
         NONE
     };
-    template<PostProcess Post = PostProcess::NONE>
+    
+    struct NoOpLock : public NonCopyable {
+        // no copy
+        NoOpLock() =default;
+        NoOpLock(const NoOpLock &) = delete;
+        NoOpLock & operator=(const NoOpLock&) = delete;
+        
+        NoOpLock(std::atomic_bool const &) {}
+    };
+    
+    
+    template<typename Locking = Sensor::RAIILock, PostProcess Post = PostProcess::NONE>
     struct outputDataBase {
         static constexpr auto initial_n_audioelements_reserve = 4;
         
@@ -200,7 +211,7 @@ namespace imajuscule {
 
         // called from audio callback
         void step(SAMPLE *outputBuffer, int nFrames) {
-            Sensor::RAIILock l(used);
+            Locking l(used);
             
             if(consummed_frames != 0) {
                 // finish consuming previous buffers
@@ -230,7 +241,7 @@ namespace imajuscule {
         
         template<class... Args>
         void playGeneric( uint8_t channel_id, Args&&... requests) {
-            Sensor::RAIILock l(used);
+            Locking l(used);
             
             // it's important to register and enqueue in the same lock cycle
             // else we miss some audio frames,
@@ -251,12 +262,12 @@ namespace imajuscule {
         }
         
         void play( uint8_t channel_id, StackVector<Request> && v) {
-            Sensor::RAIILock l(used);
+            Locking l(used);
             playNolock(channel_id, std::move(v));
         }
         
         void closeAllChannels() {
-            Sensor::RAIILock l(used);
+            Locking l(used);
             channels.clear();
         }
 
@@ -271,7 +282,7 @@ namespace imajuscule {
                     {
                         // take the lock in the loop so that at the end of each iteration
                         // the audio thread has a chance to run
-                        Sensor::RAIILock l(used);
+                        Locking l(used);
                         if(channels[id].isPlaying()) {
                             continue;
                         }
@@ -302,7 +313,7 @@ namespace imajuscule {
         void closeChannel(uint8_t channel_id, CloseMode mode, int nStepsForXfadeToZeroMode = -1)
         {
             {
-                Sensor::RAIILock l(used);
+                Locking l(used);
                 auto & c = editChannel(channel_id);
                 if(mode != CloseMode::NOW && c.isPlaying()) {
                     if(mode == CloseMode::XFADE_ZERO) {
@@ -415,5 +426,5 @@ namespace imajuscule {
         }
     };
     
-    using outputData = outputDataBase<PostProcess::COMPRESS>;
+    using outputData = outputDataBase<>;
 }
