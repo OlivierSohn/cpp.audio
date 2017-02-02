@@ -27,7 +27,6 @@ namespace imajuscule {
         return powf(2.f, stretch/12.f);
     }
     
-    
     constexpr float freq_do = 261.64f; // Midi C6(60) according to http://subsynth.sourceforge.net/midinote2freq.html
     constexpr uint8_t Do_midi = 60;
 
@@ -44,7 +43,7 @@ namespace imajuscule {
     static inline float transpose_frequency(float freq, float half_tone, int n) {
         return freq * powf(half_tone, n);
     }
-
+    
     inline Request to_request(NoteSpec s, float time_unit, float harmonic_factor, float half_tone, Sounds & sounds) {
         if(s.note == Silence) {
             return {

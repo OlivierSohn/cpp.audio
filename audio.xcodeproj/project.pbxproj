@@ -24,6 +24,13 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		09529DF81E439D8D00705B99 /* cutramp.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = cutramp.h; path = include/cutramp.h; sourceTree = "<group>"; };
+		09529DF91E439D8D00705B99 /* mononotechannel.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = mononotechannel.h; path = include/mononotechannel.h; sourceTree = "<group>"; };
+		09529DFA1E439D8D00705B99 /* events.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = events.h; path = include/events.h; sourceTree = "<group>"; };
+		09529DFB1E439E5F00705B99 /* paramspec.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = paramspec.h; path = include/paramspec.h; sourceTree = "<group>"; };
+		09529DFC1E439EC000705B99 /* program.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = program.h; path = include/program.h; sourceTree = "<group>"; };
+		09529DFD1E439F2700705B99 /* smoothparam.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = smoothparam.h; path = include/smoothparam.h; sourceTree = "<group>"; };
+		09529DFE1E439FD800705B99 /* midi.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = midi.h; path = include/midi.h; sourceTree = "<group>"; };
 		099E06DC1E36EC6D0012348E /* parse.music.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = parse.music.cpp; path = source/parse.music.cpp; sourceTree = "<group>"; };
 		099E06DD1E36EC6D0012348E /* private.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = private.h; path = source/private.h; sourceTree = "<group>"; };
 		099E06DE1E36EC6D0012348E /* request.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = request.cpp; path = source/request.cpp; sourceTree = "<group>"; };
@@ -31,7 +38,7 @@
 		099E06E01E36EC6D0012348E /* unity.build.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = unity.build.cpp; path = source/unity.build.cpp; sourceTree = "<group>"; };
 		099E06E41E36EC920012348E /* channel.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = channel.h; path = include/channel.h; sourceTree = "<group>"; };
 		099E06E51E36EC920012348E /* note.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = note.h; path = include/note.h; sourceTree = "<group>"; };
-		099E06E61E36EC920012348E /* oscillator.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = oscillator.h; path = include/oscillator.h; sourceTree = "<group>"; };
+		099E06E61E36EC920012348E /* audioelement.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = audioelement.h; path = include/audioelement.h; sourceTree = "<group>"; };
 		099E06E71E36EC920012348E /* out.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = out.h; path = include/out.h; sourceTree = "<group>"; };
 		099E06E81E36EC920012348E /* parse.music.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = parse.music.h; path = include/parse.music.h; sourceTree = "<group>"; };
 		099E06E91E36EC920012348E /* public.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = public.h; path = include/public.h; sourceTree = "<group>"; };
@@ -87,12 +94,19 @@
 			isa = PBXGroup;
 			children = (
 				099E06E41E36EC920012348E /* channel.h */,
+				09529DF81E439D8D00705B99 /* cutramp.h */,
+				09529DFA1E439D8D00705B99 /* events.h */,
+				09529DFE1E439FD800705B99 /* midi.h */,
+				09529DF91E439D8D00705B99 /* mononotechannel.h */,
 				099E06E51E36EC920012348E /* note.h */,
-				099E06E61E36EC920012348E /* oscillator.h */,
+				099E06E61E36EC920012348E /* audioelement.h */,
 				099E06E71E36EC920012348E /* out.h */,
+				09529DFB1E439E5F00705B99 /* paramspec.h */,
 				099E06E81E36EC920012348E /* parse.music.h */,
+				09529DFC1E439EC000705B99 /* program.h */,
 				099E06E91E36EC920012348E /* public.h */,
 				099E06EA1E36EC920012348E /* request.h */,
+				09529DFD1E439F2700705B99 /* smoothparam.h */,
 				099E06EB1E36EC920012348E /* sound.defines.h */,
 				099E06EC1E36EC920012348E /* sound.functions.h */,
 				099E06ED1E36EC920012348E /* sound.h */,
