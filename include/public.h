@@ -28,3 +28,4 @@
 #include "program.h"
 #include "midi.h"
 #include "cutramp.h"
+#include "voice.h"

@@ -50,6 +50,7 @@ namespace imajuscule {
                 static constexpr auto ramp_start_freq_denormalize(float v) { return min_ramp_start_freq + v*max_ramp_start_freq; }
                 
             protected:
+                using MonoNoteChannel = MonoNoteChannel<1, audioelement::FreqRamp<float>>;
                 using interleaved_buf_t = cacheline_aligned_allocated::vector<float>;
                 
                 static constexpr auto size_interleaved_one_cache_line = cache_line_n_bytes / sizeof(interleaved_buf_t::value_type);
@@ -87,21 +88,9 @@ namespace imajuscule {
                 static Programs const & getPrograms() {
                     static ProgramsI ps {{
                         {"Clean", // -------------------------     "Cut" presets
-                            {{
-                                false,
-                                max_cut_period-min_cut_period,
-                                0,
-                                max_cut_period,
-                                false
-                            }}
+                            make_ramp(0.f, itp::LINEAR, min_ramp_speed, min_ramp_start_freq, true, 0)
                         },{"Half-cut",
-                            {{
-                                true,
-                                max_cut_period-min_cut_period,
-                                max_cut_period/2,
-                                max_cut_period,
-                                false
-                            }}
+                            make_ramp(0.f, itp::LINEAR, min_ramp_speed, min_ramp_start_freq, true, max_cut_period/2)
                         }, {"Cut the Ramp", // -------------------------     "Cut & Ramp" presets
                             make_ramp(1.f, itp::EASE_INOUT_CIRC, 69.31f, 50.f, true, 41)
                         },{"Modem", // ---------------------------     "Ramp" presets
@@ -287,6 +276,7 @@ namespace imajuscule {
                 using Base::ramp_amount;
                 using Base::ramp_speed_denormalize;
                 using Base::ramp_start_freq_denormalize;
+                using typename Base::MonoNoteChannel;
                 
                 //
                 //  types
@@ -311,7 +301,7 @@ namespace imajuscule {
                         
                         if(auto c = editInactiveAudioElementContainer(channels,
                                                                       [](auto & c) -> auto & {
-                                                                          return c.osc;
+                                                                          return c.elem;
                                                                       })) {
                                                                           return startNote(*c, e.noteOn);
                                                                       }
@@ -334,12 +324,11 @@ namespace imajuscule {
                 }
                 
                 onEventResult startNote(MonoNoteChannel & c, NoteOnEvent const & e) {
-                    auto channel = out.openChannel({}, AutoClose);
-                    if(AUDIO_CHANNEL_NONE == channel) {
+                    if(!c.open(out)) {
                         return onDroppedNote(e.pitch);
                     }
+                    auto channel = c.channels[0];
                     out.setVolume(channel, MakeVolume::run<nAudioOut>(1.f, {1.f,1.f}), adjusted(xfade_len));
-                    c.channel = channel;
                     c.pitch = e.pitch;
                     c.tuning = e.tuning;
                     
@@ -355,15 +344,16 @@ namespace imajuscule {
                         ramp_size = adjusted(ramp_size);
                     }
                     auto start_freq = ramp_start_freq_denormalize(ramp_start_freq());
-                    c.osc.algo.set(freq - ramp_amount() * (freq-start_freq),
-                                   freq,
-                                   ramp_size,
-                                   0.f,
-                                   static_cast<itp::interpolation>(itp::interpolation_traversal().realValues()[static_cast<int>(.5f + params[Params::RAMP_INTERPOLATION])]));
-                    out.playGeneric(c.channel,
-                                    std::make_pair(std::ref(c.osc),
+                    auto & osc = c.elem;
+                    osc.algo.set(freq - ramp_amount() * (freq-start_freq),
+                                 freq,
+                                 ramp_size,
+                                 0.f,
+                                 static_cast<itp::interpolation>(itp::interpolation_traversal().realValues()[static_cast<int>(.5f + params[Params::RAMP_INTERPOLATION])]));
+                    out.playGeneric(channel,
+                                    std::make_pair(std::ref(osc),
                                                    Request{
-                                                       &c.osc.buffer[0],
+                                                       &osc.buffer[0],
                                                        e.velocity,
                                                        // e.noteOn.length is always 0, we must rely on noteOff
                                                        std::numeric_limits<decltype(std::declval<Request>().duration_in_frames)>::max()
@@ -373,37 +363,28 @@ namespace imajuscule {
                 
             public:
                 void allNotesOff() override {
+                    auto len = adjusted(xfade_len);
                     for(auto & c : channels) {
-                        if(c.channel == AUDIO_CHANNEL_NONE) {
-                            continue;
-                        }
-                        out.closeChannel(c.channel, CloseMode::XFADE_ZERO, adjusted(xfade_len));
-                        c.channel = AUDIO_CHANNEL_NONE;
+                        c.close(out, CloseMode::XFADE_ZERO, len);
                     }
                 }
                 
                 void allSoundsOff() override {
                     for(auto & c : channels) {
-                        if(c.channel == AUDIO_CHANNEL_NONE) {
-                            continue;
-                        }
-                        out.closeChannel(c.channel, CloseMode::NOW);
-                        c.channel = AUDIO_CHANNEL_NONE;
+                        c.close(out, CloseMode::NOW);
                     }
                 }
                 
             private:
-                // notes are identified by pitch
+                
                 onEventResult noteOff(uint8_t pitch) {
                     for(auto & c : channels) {
-                        if(c.channel == AUDIO_CHANNEL_NONE) {
-                            continue;
-                        }
                         if(c.pitch != pitch) {
                             continue;
                         }
-                        out.closeChannel(c.channel, CloseMode::XFADE_ZERO, adjusted(xfade_len));
-                        c.channel = AUDIO_CHANNEL_NONE;
+                        if(!c.close(out, CloseMode::XFADE_ZERO, adjusted(xfade_len))) {
+                            continue;
+                        }
                         // the oscillator is still used for the crossfade,
                         // it will stop being used in the call to openChannel when that channel is finished closing
                         return onEventResult::OK;
@@ -458,7 +439,8 @@ namespace imajuscule {
                     }
                     
                     for(auto& c : channels) {
-                        if(c.osc.isInactive()) {
+                        auto & osc = c.elem;
+                        if(osc.isInactive()) {
                             continue;
                         }
                         auto tunedNote = midi::tuned_note(c.pitch, c.tuning);
@@ -470,10 +452,10 @@ namespace imajuscule {
                         }
                         if(!force) {
                             // maybe from/to is swapped so we need to test with both ends
-                            if(std::abs(freq - angle_increment_to_freq(c.osc.algo.getToIncrements())) < 0.0001f) {
+                            if(std::abs(freq - angle_increment_to_freq(osc.algo.getToIncrements())) < 0.0001f) {
                                 continue;
                             }
-                            if(std::abs(freq - angle_increment_to_freq(c.osc.algo.getFromIncrements())) < 0.0001f) {
+                            if(std::abs(freq - angle_increment_to_freq(osc.algo.getFromIncrements())) < 0.0001f) {
                                 continue;
                             }
                         }
@@ -482,11 +464,11 @@ namespace imajuscule {
                             ramp_size = adjusted(ramp_size);
                         }
                         auto start_freq = ramp_start_freq_denormalize(ramp_start_freq());
-                        c.osc.algo.set(freq - ramp_amount() * (freq-start_freq),
-                                       freq,
-                                       ramp_size,
-                                       -1.f,
-                                       interp);
+                        osc.algo.set(freq - ramp_amount() * (freq-start_freq),
+                                     freq,
+                                     ramp_size,
+                                     -1.f,
+                                     interp);
                     }
                 }
                 

@@ -124,6 +124,7 @@ namespace imajuscule {
     struct outputDataBase {
         using Channel = Channel<nAudioOut, XF>;
         using channelVolumes = typename Channel::channelVolumes;
+        using LOCK = Locking;
         
         static constexpr auto nOuts = nAudioOut;
         
@@ -179,6 +180,9 @@ namespace imajuscule {
         }
         
     public:
+        
+        std::atomic_bool & lock() { return used; }
+        
         bool isInbetweenTwoAudioElementComputes() const {
             A(consummed_frames >= 0);
             A(consummed_frames < audioelement::n_frames_per_buffer);
