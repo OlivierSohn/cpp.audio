@@ -6,7 +6,7 @@
 #endif
 
 #if DO_LOG_MIDI
-#define MIDI_LG(...) LG(...)
+#define MIDI_LG( x , y, ...) LG( x , y ,##__VA_ARGS__)
 #else
 #define MIDI_LG(...)
 #endif
@@ -27,19 +27,27 @@ namespace imajuscule {
             }
             
             enum class Status { OK_CHANGED, OK_STABLE, ERROR };
-
-            template<int nAudioOut, typename Logger>
+            enum class UpdateMode {
+                FORCE_SOUND,
+                CAN_SKIP_SOUND
+            };
+            
+            template<typename Logger, UpdateMode U = UpdateMode::CAN_SKIP_SOUND>
             struct SoundEngine {
                 using ramp = audioelement::FreqRamp<float>;
-                using Request = Request<nAudioOut>;
-
-                enum class Mode : unsigned char{
-                    DISABLED,
+                
+                enum Mode : unsigned char{                    
+                    BEGIN=0,
+                    
+                    MARKOV = 0,
                     ROBOTS,
                     BIRDS,
-                    MARKOV
+
+                    END
                 };
                 
+                static enumTraversal ModeTraversal;
+                 
                 template<typename F>
                 SoundEngine(F f) :
                 get_inactive_ramp(std::move(f)),
@@ -47,13 +55,15 @@ namespace imajuscule {
                 {}
                 
                 template<typename OutputData>
-                Status update(OutputData & o, bool force = false)
+                Status update(OutputData & o)
                 {
+                    constexpr bool force = U==UpdateMode::FORCE_SOUND;
+                    
+                    constexpr auto nAudioOut = OutputData::nOuts;
+                    using Request = Request<nAudioOut>;
+
                     static_assert(nAudioOut == OutputData::nOuts, "");
                     if(!this->active) {
-                        return Status::OK_STABLE;
-                    }
-                    if(mode == Mode::DISABLED) {
                         return Status::OK_STABLE;
                     }
                     auto n_frames = static_cast<float>(ms_to_frames(length));
@@ -156,7 +166,7 @@ namespace imajuscule {
                         return Status::OK_CHANGED;
                     }
                     
-                    if(std::uniform_int_distribution<>{0,2}(rng::mersenne())) {
+                    if(!force && std::uniform_int_distribution<>{0,2}(rng::mersenne())) {
                         return Status::OK_STABLE;
                     }
                     
@@ -168,11 +178,12 @@ namespace imajuscule {
                     auto freq1 = std::uniform_real_distribution<float>{base_freq, (1+freq_scatter) * base_freq}(rng::mersenne());
                     auto freq2 = std::uniform_real_distribution<float>{freq1*0.97f, freq1/0.97f}(rng::mersenne());
                     
-                    if(!std::uniform_int_distribution<>{0,5}(rng::mersenne())) {
+                    if((force && !std::uniform_int_distribution<>{0,5}(rng::mersenne())) ||
+                       (!force && !std::uniform_int_distribution<>{0,5}(rng::mersenne()))) {
                         freq1 = transpose_frequency(freq1, ht, d1);
                         vol1 *= expt(har_att, d1);
                     }
-                    else if(!std::uniform_int_distribution<>{0,5}(rng::mersenne())) {
+                    else if(force || !std::uniform_int_distribution<>{0,5}(rng::mersenne())) {
                         freq2 = transpose_frequency(freq2, ht, d2);
                         vol2 *= expt(har_att, d2);
                     }
@@ -307,6 +318,7 @@ namespace imajuscule {
             };
             
             enum ImplParams {
+                MODE,
                 XFADE_LENGTH,
                 FREQ_SCATTER,
                 D1,
@@ -420,6 +432,8 @@ namespace imajuscule {
                 
             protected:
                 using interleaved_buf_t = cacheline_aligned_allocated::vector<float>;
+                using SoundEngine = SoundEngine<imajuscule::Logger, UpdateMode::FORCE_SOUND>;
+                using Mode = SoundEngine::Mode;
                 
                 static constexpr auto size_interleaved_one_cache_line = cache_line_n_bytes / sizeof(interleaved_buf_t::value_type);
                 
@@ -428,6 +442,7 @@ namespace imajuscule {
             public:
                 static std::vector<ParamSpec> const & getParamSpecs() {
                     static std::vector<ParamSpec> params_spec = {
+                        {"Mode", SoundEngine::ModeTraversal},
                         {"Crossfade length", static_cast<float>(Limits<XFADE_LENGTH>::m), static_cast<float>(Limits<XFADE_LENGTH>::M) }, // couldn't make it work with nsteps = max-min / 2
                         {"Frequency scatter", Limits<FREQ_SCATTER>::m, Limits<FREQ_SCATTER>::M },
                         {"D1", Limits<D1>::m, Limits<D1>::M },
@@ -441,29 +456,38 @@ namespace imajuscule {
                     return params_spec;
                 }
                 
-                static Program::ARRAY make(int xfade,
+                static Program::ARRAY make(Mode m,
+                                           int xfade,
                                            float freq_scat,
                                            float d1, float d2,
                                            float phase_ratio1, float phase_ratio2,
                                            float harmonic_attenuation,
                                            float length,
                                            itp::interpolation i) {
+                    int itp_index = 0;
+                    auto b = itp::interpolation_traversal().valToRealValueIndex(i, itp_index);
+                    A(b);
+                    int mode_index = 0;
+                    b = SoundEngine::ModeTraversal.valToRealValueIndex(m, mode_index);
+                    A(b);
+
                     return {{
+                        static_cast<float>(mode_index),
                         normalize<XFADE_LENGTH>(xfade),
-                        normalize<FREQ_SCATTER>(freq_scat),
-                        normalize<D1>(d1),
-                        normalize<D2>(d2),
+                        /*normalize<FREQ_SCATTER>*/(freq_scat),
+                        /*normalize<D1>*/(d1),
+                        /*normalize<D2>*/(d2),
                         normalize<PHASE_RATIO1>(phase_ratio1),
                         normalize<PHASE_RATIO2>(phase_ratio2),
                         normalize<HARMONIC_ATTENUATION>(harmonic_attenuation),
                         normalize<LENGTH>(length),
-                        static_cast<float>(i)
+                        static_cast<float>(itp_index)
                     }};
                 }
                 static Programs const & getPrograms() {
                     static ProgramsI ps {{
-                        {"",
-                        make(401, .0f, 12.f, 24.f, 0.f, 0.f, .95f, 100.f, itp::EASE_INOUT_QUART)
+                        {"First",
+                            make(Mode::MARKOV, 401, .0f, 12.f, 24.f, 0.f, 0.f, .95f, 100.f, itp::EASE_INOUT_QUART)
                         },
                     }};
                     return ps.v;
@@ -546,7 +570,8 @@ namespace imajuscule {
                 using Base::interleaved;
 
                 using OutputData = outputDataBase<nAudioOut, XfadePolicy::UseXfade, NoOpLock, PostProcess::NONE>;
-                using SoundEngine = SoundEngine<nAudioOut, imajuscule::Logger>;
+                using SoundEngine = typename Base::SoundEngine;
+                using Mode = typename SoundEngine::Mode;
                 
                 static constexpr auto n_max_voices = 8;
                 // notes played in rapid succession can have a common audio interval during xfades
@@ -594,19 +619,19 @@ namespace imajuscule {
                         // return noteOff(e.noteOn.pitch);
                         
                         if(auto c = editAudioElementContainer_if(channels,
-                                                                      [](auto & c) -> bool {
-                                                                          for(auto & e : c.elem.ramps) {
-                                                                              if(!e.isInactive()) {
-                                                                                  return false;
-                                                                              }
-                                                                          }
-                                                                          // here we know that all elements are inactive
-                                                                          // but if the channel has not be closed yet
-                                                                          // we cannot use it (if we want to enable that,
-                                                                          // we should review the way note on/off are detected,
-                                                                          // because it will probably cause bugs)
-                                                                          return c.closed();
-                                                                      }))
+                                                                 [](auto & c) -> bool {
+                                                                     for(auto & e : c.elem.ramps) {
+                                                                         if(!e.isInactive()) {
+                                                                             return false;
+                                                                         }
+                                                                     }
+                                                                     // here we know that all elements are inactive
+                                                                     // but if the channel has not been closed yet
+                                                                     // we cannot use it (if we want to enable that,
+                                                                     // we should review the way note on/off are detected,
+                                                                     // because it will probably cause bugs)
+                                                                     return c.closed();
+                                                                 }))
                         {
                             return startNote(*c, e.noteOn);
                         }
@@ -629,17 +654,21 @@ namespace imajuscule {
                     if(!c.open(out, 1.f, xfade_len())) {
                         return onDroppedNote(e.pitch);
                     }
-                    c.elem.engine.set_channels(c.channels[0], c.channels[1]);
-
                     c.pitch = e.pitch;
                     c.tuning = e.tuning;
-                    
+
+                    c.elem.engine.set_channels(c.channels[0], c.channels[1]);
+                    auto tunedNote = midi::tuned_note(c.pitch, c.tuning);
+                    auto f = to_freq(tunedNote-Do_midi, half_tone);
+                    c.elem.engine.set_base_freq(f);
+
+                    auto mode = static_cast<Mode>(SoundEngine::ModeTraversal.realValues()[static_cast<int>(.5f + params[MODE])]);
+                    c.elem.engine.set_mode(mode);
+                                        
                     c.elem.engine.set_xfade(xfade_len());
-                    c.elem.engine.set_base_freq(midi::tuned_note(c.pitch, c.tuning));
                     c.elem.engine.set_freq_scatter(denorm<FREQ_SCATTER>());
-                    c.elem.engine.set_d1(denorm<D1>());
-                    c.elem.engine.set_d2(denorm<D2>());
-                    c.elem.engine.set_mode(SoundEngine::Mode::MARKOV);
+                    c.elem.engine.set_d1(/*denorm<D1>()*/params[D1]);
+                    c.elem.engine.set_d2(/*denorm<D2>()*/params[D2]);
                     c.elem.engine.set_phase_ratio1(denorm<PHASE_RATIO1>());
                     c.elem.engine.set_phase_ratio2(denorm<PHASE_RATIO2>());
                     c.elem.engine.set_har_att(denorm<HARMONIC_ATTENUATION>());
@@ -650,7 +679,7 @@ namespace imajuscule {
                     c.elem.engine.set_itp(interp);
                     c.elem.engine.set_active(true);
                     
-                    c.elem.engine.update(out, true);
+                    c.elem.engine.update(out);
                     
                     return onEventResult::OK;
                 }
