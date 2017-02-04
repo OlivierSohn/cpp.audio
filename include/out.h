@@ -123,7 +123,8 @@ namespace imajuscule {
     >
     struct outputDataBase {
         using Channel = Channel<nAudioOut, XF>;
-        using channelVolumes = typename Channel::channelVolumes;
+        using Request = typename Channel::Request;
+        using Volumes = typename Channel::Volumes;
         using LOCK = Locking;
         
         static constexpr auto nOuts = nAudioOut;
@@ -273,11 +274,14 @@ namespace imajuscule {
         
         // called from main thread
         Channel & editChannel(uint8_t id) { return channels[id]; }
+        
         Channel const & getChannel(uint8_t id) const { return channels[id]; }
+        
         bool empty() const { return channels.empty(); }
-        void setVolume(uint8_t channel_id, channelVolumes volumes, int nSteps = Channel::default_volume_transition_length) {
-            // no need to lock, this is called from the main thread
-            editChannel(channel_id).toVolume(volumes, nSteps);
+        
+        void setVolume(uint8_t channel_id, float volume, int nSteps = Channel::default_volume_transition_length) {
+            Locking l(used);
+            editChannel(channel_id).toVolume(volume, nSteps);
         }
         
         template<class... Args>
@@ -307,12 +311,21 @@ namespace imajuscule {
             playNolock(channel_id, std::move(v));
         }
         
-        void closeAllChannels() {
+        void closeAllChannels(int xfade) {
             Locking l(used);
-            channels.clear();
+            if(!xfade) {
+                channels.clear();
+            }
+            else {
+                for(auto & c:channels) {
+                    if(c.isPlaying()) {
+                        c.stopPlayingByXFadeToZero(xfade);
+                    }
+                }
+            }
         }
 
-        uint8_t openChannel(channelVolumes volume, ChannelClosingPolicy l, int xfade_length = 0) {
+        uint8_t openChannel(float volume, ChannelClosingPolicy l, int xfade_length = 0) {
             uint8_t id = AUDIO_CHANNEL_NONE;
             if(channels.size() == channels.capacity() && available_ids.size() == 0) {
                 // Channels are at their maximum number and all are used...
@@ -341,6 +354,14 @@ namespace imajuscule {
                     convert_to_autoclosing(id);
                 }
             }
+            if(id == AUDIO_CHANNEL_NONE) {
+                LG(WARN, "no more channels available");
+                return id;
+            }
+            else {
+                LG(INFO, "open %d, n_available %d", id, available_ids.size());
+            }
+
             // no need to lock here : the channel is not active
             if(editChannel(id).shouldReset()) {
                 editChannel(id).reset();
@@ -352,7 +373,6 @@ namespace imajuscule {
             else {
                 A(xfade_length == 0); // make sure user is aware xfade will not be used
             }
-            A(id != AUDIO_CHANNEL_NONE);
             return id;
         }
         
@@ -397,6 +417,7 @@ namespace imajuscule {
         void playNolock( uint8_t channel_id, StackVector<Request> && v) {
             auto & c = editChannel(channel_id);
             for( auto & sound : v ) {
+                A(sound.valid());
                 c.addRequest( std::move(sound) );
             }
         }

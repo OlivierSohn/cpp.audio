@@ -13,15 +13,29 @@ namespace imajuscule {
             std::array<uint8_t, N> channels;
             AudioElem elem;
             
+            bool opened() const {
+                for(auto & c : channels) {
+                    if(c == AUDIO_CHANNEL_NONE) {
+                        return false;
+                    }
+                }
+                return true;
+            }
+            
+            bool closed() const { return !opened(); }
+            
             template<typename OutputData>
-            bool open(OutputData & out, int xfade_len = 0) {
+            bool open(OutputData & out, float inital_volume, int xfade_len) {
                 
                 // "all or nothing" strategy
                 
                 for(auto & c : channels) {
-                    c = out.openChannel({}, ExplicitClose, xfade_len);
+                    c = out.openChannel({inital_volume}, ExplicitClose, xfade_len);
                     if(c == AUDIO_CHANNEL_NONE) {
                         for(auto & c : channels) {
+                            if(c == AUDIO_CHANNEL_NONE) {
+                                continue;
+                            }
                             out.closeChannel(c, CloseMode::NOW, 0);
                             c = AUDIO_CHANNEL_NONE;
                         }

@@ -21,9 +21,11 @@ namespace imajuscule {
     using AE32Buffer = float *;
     using AE64Buffer = double *;
 
+    template<int>
     struct QueuedRequest;
 
     struct TaggedBuffer {
+        template<int>
         friend class QueuedRequest;
         
         template<typename T>
@@ -174,41 +176,193 @@ namespace imajuscule {
         }
     };
     
+    template<int nAudioOut>
+    struct Volumes {
+        using array = std::array<float, nAudioOut>;
+        array volumes;
+
+        Volumes() = default;
+        
+        Volumes(float f) {
+            volumes.fill(f);
+        }
+        
+        Volumes(array a) : volumes(std::move(a)) {}
+        
+        Volumes & operator =(float const f) {
+            for(auto & v : volumes) {
+                v = f;
+            }
+            return *this;
+        }
+        
+        Volumes & operator *=(float const f)  {
+            for(auto & v : volumes) {
+                v *= f;
+            }
+            return *this;
+        }
+
+        Volumes operator *(float const f) const {
+            Volumes v(*this);
+            v *= f;
+            return v;
+        }
+        
+        void operator +=(Volumes const & o) {
+            for(int i=0; i<volumes.size(); ++i) {
+                volumes[i] += o.volumes[i];
+            }
+        }
+        
+        void operator +=(Volumes && o) {
+            for(int i=0; i<volumes.size(); ++i) {
+                volumes[i] += o.volumes[i];
+            }
+        }
+        
+        Volumes operator +(Volumes && o) {
+            for(int i=0; i<volumes.size(); ++i) {
+                o[i] += volumes[i];
+            }
+            return std::move(o);
+        }
+                
+        bool is_zero() const {
+            for(auto const v : volumes) {
+                if(v!=0.f) {
+                    return false;
+                }
+            }
+            return true;
+        }
+        
+        bool is_valid() const {
+            for(auto const v : volumes) {
+                if(v<-1.f) {
+                    return false;
+                }
+                if(v>1.f) {
+                    return false;
+                }
+            }
+            return true;
+        }
+        
+        float & operator[](int i) {
+            return volumes[i];
+        }
+        float operator[](int i) const {
+            return volumes[i];
+        }
+    };
+
+    template<int nAudioOut>
     struct Request {
-        
-        Request( Sounds & sounds, Sound const sound, float freq_hz, float volume, float duration_ms );
-        
-        Request( soundBuffer * buffer, float volume, int duration_in_frames) :
-        buffer(buffer), volume(volume), duration_in_frames(duration_in_frames) {}
+        using Volumes = Volumes<nAudioOut>;
 
-        Request( AE32Buffer buffer, float volume, int duration_in_frames) :
-        buffer(buffer), volume(volume), duration_in_frames(duration_in_frames) {}
-        
-        Request( AE64Buffer buffer, float volume, int duration_in_frames) :
-        buffer(buffer), volume(volume), duration_in_frames(duration_in_frames) {}
+        static constexpr float chan_base_amplitude = 0.1f; // ok to have 10 chanels at max amplitude at the same time
 
-        Request( AE32Buffer buffer, float volume, float duration_in_ms) :
-        Request(buffer, volume, ms_to_frames(duration_in_ms)) {}
+        Request( Sounds & sounds, Sound const sound, float freq_hz, Volumes vol, float duration_ms ) :
+        volumes(vol*chan_base_amplitude),
+        buffer(nullptr)
+        {
+            A(duration_ms >= 0.f);
+            duration_in_frames = ms_to_frames(duration_ms);
+            
+            // we silence some sounds instead of just not playing them, in order to keep
+            // the rythm
+            
+            soundId Id;
+            bool silence = false;
+            if(sound == Sound::SILENCE) {
+                silence = true;
+            }
+            else if(freq_hz < 10.f) {
+                LG(WARN, "silenced sound of inaudible (low) frequency '%.6f Hz'", freq_hz);
+                silence = true;
+            }
+            else if(volumes.is_zero()) {
+                silence = true;
+            }
+            else {
+                Id = soundId{ sound, freq_hz };
+                if(Id.period_length < sound.minimalPeriod()) {
+                    silence = true;
+                    LG(WARN, "silenced sound of inaudible (high) frequency '%.1f Hz'", freq_hz);
+                }
+            }
+            if(silence) {
+                buffer.reset(&sounds.get( {Sound::SILENCE} ));
+                volumes = 0.f;
+            }
+            else {
+                auto & b = sounds.get( std::move(Id) );
+                buffer.reset(&b);
+                
+                if( sound.zeroOnPeriodBoundaries() ) {
+                    const int period_size = (int)b.size();
+                    if(period_size == 0) {
+                        return;
+                    }
+                    
+                    if(0 == duration_in_frames) {
+                        duration_in_frames = period_size;
+                    }
+                    else {
+                        const int mod = duration_in_frames % period_size;
+                        if(mod) {
+                            duration_in_frames += period_size-mod;
+                        }
+                    }
+                    
+                    A( 0 == duration_in_frames % period_size);
+                }        
+            }
+        }
         
-        Request( AE64Buffer buffer, float volume, float duration_in_ms) :
-        Request(buffer, volume, ms_to_frames(duration_in_ms)) {}
+        Request( soundBuffer * buffer, Volumes volume, int duration_in_frames) :
+        buffer(buffer), volumes(volume*chan_base_amplitude), duration_in_frames(duration_in_frames) { }
+
+        Request( AE32Buffer buffer, Volumes volume, int duration_in_frames) :
+        buffer(buffer), volumes(volume*chan_base_amplitude), duration_in_frames(duration_in_frames) { }
+        
+        Request( AE64Buffer buffer, Volumes volume, int duration_in_frames) :
+        buffer(buffer), volumes(volume*chan_base_amplitude), duration_in_frames(duration_in_frames) { }
+
+        Request( AE32Buffer buffer, Volumes volume, float duration_in_ms) :
+        Request(buffer, std::move(volume), ms_to_frames(duration_in_ms)) { }
+        
+        Request( AE64Buffer buffer, Volumes volume, float duration_in_ms) :
+        Request(buffer, std::move(volume), ms_to_frames(duration_in_ms)) { }
         
         Request() : buffer(nullptr) {}
         
         void reset() { buffer.reset(); }
         
-        bool valid() const { return duration_in_frames >= 1 && buffer.valid(); }
+        bool valid() const { return duration_in_frames >= 1 && buffer.valid() && volumes.is_valid(); }
 
         bool isSilence() const {
-            return volume == 0.f || buffer.isSilence();
+            return volume_is_zero() || buffer.isSilence();
         }
         
         TaggedBuffer buffer;
-        float volume;
+        Volumes volumes;
         int32_t duration_in_frames;
+
+    private:
+        bool volume_is_zero() const {
+            return volumes.is_zero();
+        }
     };
     
-    struct QueuedRequest : public Request {
+    template<int nAudioOut>
+    struct QueuedRequest : public Request<nAudioOut> {
+        using Request = Request<nAudioOut>;
+        using Request::buffer;
+        using Request::volumes;
+        using Request::duration_in_frames;
+        
         QueuedRequest() = default;
         
         // non copyable (cf. destructor implementation)
@@ -225,7 +379,7 @@ namespace imajuscule {
             if (this != &o) {
                 unqueue();
                 buffer = o.buffer;
-                volume = o.volume;
+                volumes = o.volumes;
                 duration_in_frames = o.duration_in_frames;
                 o.buffer.reset();
                 A(!o.buffer);

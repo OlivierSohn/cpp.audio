@@ -16,10 +16,11 @@ namespace imajuscule {
             
             enum class Status { OK_CHANGED, OK_STABLE, ERROR };
 
-            template<typename Logger>
+            template<int nAudioOut, typename Logger>
             struct SoundEngine {
                 using ramp = audioelement::FreqRamp<float>;
-                
+                using Request = Request<nAudioOut>;
+
                 enum class Mode : unsigned char{
                     DISABLED,
                     ROBOTS,
@@ -34,9 +35,9 @@ namespace imajuscule {
                 {}
                 
                 template<typename OutputData>
-                Status update(OutputData & o)
+                Status update(OutputData & o, bool force = false)
                 {
-                    static constexpr auto nAudioOut = OutputData::nOuts;
+                    static_assert(nAudioOut == OutputData::nOuts, "");
                     if(!this->active) {
                         return Status::OK_STABLE;
                     }
@@ -54,30 +55,13 @@ namespace imajuscule {
                         return Status::ERROR;
                     }
                     
-                    
-                    // 3 modes, in chronological order:
-                    
-                    // all modes use 2 stereo channels (for out of phase sounds) that can contain n freqramp requests
-                    
-                    //
-                    // - Robot
-                    //
-                    // - Birds
-                    //
-                    // - Markov
-                    //    in the initialization phase the chain is created
-                    //    then the chain is stepped, everything happends in the lambdas set during initialization
-                    //
-                    //
-                    
                     if(mode == Mode::MARKOV) {
                         if(!markov) {
                             markov = std::make_unique<MarkovChain>();
                             
                             auto play = [this, &o](float length, float freq1, float freq2,
                                                float phase_ratio1, float phase_ratio2,
-                                               float freq_scatter,
-                                               float vol = 1.f, int xfade = 401) {
+                                               float freq_scatter) {
                                 length *= powf(2.f,
                                                std::uniform_real_distribution<float>{1.f, 3.f}(rng::mersenne()));
                                 auto n_frames = static_cast<float>(ms_to_frames(length));
@@ -86,26 +70,19 @@ namespace imajuscule {
                                     return false;
                                 }
                                 
-                                //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-                                // todo set channels xfade if they are not playing
-                                
                                 auto factor = std::uniform_real_distribution<float>{1.f, 1.f + freq_scatter}(rng::mersenne());
                                 freq1 *= factor;
                                 freq2 *= factor;
                                 
                                 auto const stereo_gain = stereo(std::uniform_real_distribution<float>(-1.f, 1.f)(rng::mersenne()));
                                 auto volume = MakeVolume::run<nAudioOut>(1.f, stereo_gain);
-                                o.setVolume(c1, volume);
-                                o.setVolume(c2, volume);
-                                
-                                // make a lambda to get the inactive ramp
-                                
+                                                                
                                 if(auto * ramp = get_inactive_ramp()) {
                                     ramp->algo.set(freq1, freq2, n_frames, phase_ratio1 * n_frames, interpolation);
-                                    o.playGeneric(c1, std::make_pair(std::ref(*ramp), Request{&ramp->buffer[0], vol, length }));
+                                    o.playGeneric(c1, std::make_pair(std::ref(*ramp), Request{&ramp->buffer[0], volume, length }));
                                     if(auto * ramp = get_inactive_ramp()) {
                                         ramp->algo.set(freq1, freq2, n_frames, phase_ratio2 * n_frames, interpolation);
-                                        o.playGeneric(c2, std::make_pair(std::ref(*ramp), Request{&ramp->buffer[0], vol, length }));
+                                        o.playGeneric(c2, std::make_pair(std::ref(*ramp), Request{&ramp->buffer[0], volume, length }));
                                     }
                                 }
                                 return true;
@@ -142,9 +119,27 @@ namespace imajuscule {
                         };
                         
                         auto &mc= *markov;
-                        mc.step();
-                        mc.step();
-                        mc.step();
+                        int count_transitions = 0;
+                        
+                        auto cur = mc.getCurrent();
+                        for(int i=0; i<3; ++i) {
+                            auto next = mc.step();
+                            if(cur != next) {
+                                ++count_transitions;
+                                cur = next;
+                            }
+                        }
+
+                        if(force && 0==count_transitions) {
+                            while(true) {
+                                auto next = mc.step();
+                                if(cur != next) {
+                                    ++count_transitions;
+                                    cur = next;
+                                    break;
+                                }
+                            }
+                        }
                         
                         return Status::OK_CHANGED;
                     }
@@ -174,37 +169,36 @@ namespace imajuscule {
                     }
                     
                     auto const stereo_gain = stereo(std::uniform_real_distribution<float>(-1.f, 1.f)(rng::mersenne()));
+                    auto volume = MakeVolume::run<nAudioOut>(1.f, stereo_gain);
                     
+                    for(int i=0; i<2; ++i) {
+                        auto & ch = o.editChannel(i?c2:c1);
+                        A(!ch.isPlaying());
+                        ch.set_xfade(xfade);
+                    }
                     
-                    // todo restore functionnality
-                    ////////////////////////////////////////////////////////////
-                    
-                    /*auto c = a->out().openChannel(MakeVolume::run<AudioOut::nAudioOut>(1.f, stereo_gain),
-                                                  AutoClose,
-                                                  xfade);
-*/
                     if(Mode::BIRDS==mode) {
                         for(int i=0; i<1; ++i) {
                             if(auto * ramp = get_inactive_ramp()) {
                                 ramp->algo.set(freq2, freq1, n_frames, phase_ratio1 * n_frames, interpolation);
-                                o.playGeneric(c1, std::make_pair(std::ref(*ramp), Request{&ramp->buffer[0], vol2, length }));
+                                o.playGeneric(c1, std::make_pair(std::ref(*ramp), Request{&ramp->buffer[0], volume*vol2, length }));
                             }
                             if(auto * ramp = get_inactive_ramp()) {
                                 A(c2 != c1);
                                 ramp->algo.set(freq2, freq1, n_frames, phase_ratio2 * n_frames, interpolation);
                                 // replace c2 by c to have a trill
-                                o.playGeneric(c2, std::make_pair(std::ref(*ramp), Request{&ramp->buffer[0], vol2, length }));
+                                o.playGeneric(c2, std::make_pair(std::ref(*ramp), Request{&ramp->buffer[0], volume*vol2, length }));
                             }
                         }
                     }
                     else {
                         if(auto * ramp = get_inactive_ramp()) {
                             ramp->algo.set(freq1, freq1, n_frames, phase_ratio1 * n_frames, interpolation);
-                            o.playGeneric(c1, std::make_pair(std::ref(*ramp), Request{&ramp->buffer[0], vol1, length }));
+                            o.playGeneric(c1, std::make_pair(std::ref(*ramp), Request{&ramp->buffer[0], volume*vol1, length }));
                         }
                         if(auto * ramp = get_inactive_ramp()) {
                             ramp->algo.set(freq2, freq2, n_frames, phase_ratio1 * n_frames, interpolation);
-                            o.playGeneric(c1, std::make_pair(std::ref(*ramp), Request{&ramp->buffer[0], vol2, length }));
+                            o.playGeneric(c1, std::make_pair(std::ref(*ramp), Request{&ramp->buffer[0], volume*vol2, length }));
                         }
 
                         if(!std::uniform_int_distribution<>{0,10}(rng::mersenne())) {
@@ -220,13 +214,13 @@ namespace imajuscule {
 
                                 // make a helper for that!! if the first term of the pair is wrong, we got +Inf in the signal...
                                 // if the first parameter of the request is buffer instead of &buffer[0], it is wrong...
-                                o.playGeneric(c1, std::make_pair(std::ref(*ramp), Request{&ramp->buffer[0], vol2, length }));
+                                o.playGeneric(c1, std::make_pair(std::ref(*ramp), Request{&ramp->buffer[0], volume*vol2, length }));
                             }
                         }
                         if(!std::uniform_int_distribution<>{0,10}(rng::mersenne())) {
                             if(auto * ramp = get_inactive_ramp()) {
                                 ramp->algo.set(freq2, freq1, n_frames, interpolation);
-                                o.playGeneric(c1, std::make_pair(std::ref(*ramp), Request{&ramp->buffer[0], vol2, length }));
+                                o.playGeneric(c1, std::make_pair(std::ref(*ramp), Request{&ramp->buffer[0], volume*vol2, length }));
                             }
                         }
                     }
@@ -299,13 +293,113 @@ namespace imajuscule {
                 int xfade;
                 std::unique_ptr<MarkovChain> markov;
             };
-
+            
             enum ImplParams {
+                XFADE_LENGTH,
+                FREQ_SCATTER,
+                D1,
+                D2,
+                PHASE_RATIO1,
+                PHASE_RATIO2,
+                HARMONIC_ATTENUATION,
+                LENGTH,
+                INTERPOLATION,
                 
-                NPARAMS // keep last
+                NPARAMS
             };
-          
+            
+            template<ImplParams e>
+            struct Limits;
+            
+            template<int m, int M>
+            constexpr auto do_normalize_i(float v) { return (v-m) / (M-m); }
 
+            template<float const * const m, float const * const M>
+            constexpr auto do_normalize_f(float v) { return (v-*m) / (*M-*m); }
+            
+            template<int m, int M>
+            constexpr auto do_denormalize_i(float v) { return m + v * (M-m); }
+            
+            template<float const * const m, float const * const M>
+            constexpr auto do_denormalize_f(float v) { return *m + v * (*M-*m); }
+            
+            template<ImplParams N>
+            struct Normalizer {
+                template<typename lim = Limits<N>, int m = lim::m, int M = lim::M>
+                static float run(float v)
+                {
+                    return do_normalize_i<m, M>(v);
+                }
+                
+                template<typename lim = Limits<N>, float const * const m = &lim::m, float const * const M = &lim::M>
+                static float run(float v)
+                {
+                    return do_normalize_f<m, M>(v);
+                }
+            };
+            
+            template<ImplParams N>
+            struct Denormalizer {
+                template<typename lim = Limits<N>, int m = lim::m, int M = lim::M>
+                static float run(float v)
+                {
+                    return do_denormalize_i<m, M>(v);
+                }
+                
+                template<typename lim = Limits<N>, float const * const m = &lim::m, float const * const M = &lim::M>
+                static float run(float v)
+                {
+                    return do_denormalize_f<m, M>(v);
+                }
+            };
+
+            template<ImplParams N>
+            constexpr auto normalize(float v) {
+                return Normalizer<N>::run(v);
+            }
+            
+            template<ImplParams N>
+            constexpr auto denormalize(float v) {
+                return Denormalizer<N>::run(v);
+            }
+
+            /*
+            struct NormalizedParamLimits {
+                static constexpr auto m = 0.f;
+                static constexpr auto M = 1.f; };
+            */
+            
+            template<> struct Limits<XFADE_LENGTH> {
+                static constexpr auto m = 3;
+                static constexpr auto M = 2001; };
+            
+            template<> struct Limits<FREQ_SCATTER> {
+                static const float m;
+                static const float M; };
+            
+            template<> struct Limits<D1> {
+                static constexpr auto m = 0;
+                static constexpr auto M = 47; };
+            template<> struct Limits<D2> {
+                static constexpr auto m = 0;
+                static constexpr auto M = 47; };
+            
+            template<> struct Limits<PHASE_RATIO1> {
+                static const float m;
+                static const float M; };
+            
+            template<> struct Limits<PHASE_RATIO2> {
+                static const float m;
+                static const float M; };
+            
+            template<> struct Limits<HARMONIC_ATTENUATION> {
+                static const float m;
+                static const float M; };
+            
+            template<> struct Limits<LENGTH> {
+                static const float m;
+                static const float M; };
+            
             template<typename Parameters, typename ProcessData>
             struct ImplBase {
                 using Params = ImplParams;
@@ -318,19 +412,47 @@ namespace imajuscule {
                 static constexpr auto size_interleaved_one_cache_line = cache_line_n_bytes / sizeof(interleaved_buf_t::value_type);
                 
                 static constexpr auto size_interleaved = size_interleaved_one_cache_line;
-                
-                static constexpr auto xfade_len = 401;
 
             public:
-
                 static std::vector<ParamSpec> const & getParamSpecs() {
                     static std::vector<ParamSpec> params_spec = {
+                        {"Crossfade length", static_cast<float>(Limits<XFADE_LENGTH>::m), static_cast<float>(Limits<XFADE_LENGTH>::M) }, // couldn't make it work with nsteps = max-min / 2
+                        {"Frequency scatter", Limits<FREQ_SCATTER>::m, Limits<FREQ_SCATTER>::M },
+                        {"D1", Limits<D1>::m, Limits<D1>::M },
+                        {"D2", Limits<D2>::m, Limits<D2>::M},
+                        {"Phase ratio 1", Limits<PHASE_RATIO1>::m, Limits<PHASE_RATIO1>::M},
+                        {"Phase ratio 2", Limits<PHASE_RATIO2>::m, Limits<PHASE_RATIO2>::M},
+                        {"Harmonic attenuation", Limits<HARMONIC_ATTENUATION>::m, Limits<HARMONIC_ATTENUATION>::M},
+                        {"Length", Limits<LENGTH>::m, Limits<LENGTH>::M},
+                        {"Interpolation", itp::interpolation_traversal()}
                     };
                     return params_spec;
                 }
-
+                
+                static Program::ARRAY make(int xfade,
+                                           float freq_scat,
+                                           float d1, float d2,
+                                           float phase_ratio1, float phase_ratio2,
+                                           float harmonic_attenuation,
+                                           float length,
+                                           itp::interpolation i) {
+                    return {{
+                        normalize<XFADE_LENGTH>(xfade),
+                        normalize<FREQ_SCATTER>(freq_scat),
+                        normalize<D1>(d1),
+                        normalize<D2>(d2),
+                        normalize<PHASE_RATIO1>(phase_ratio1),
+                        normalize<PHASE_RATIO2>(phase_ratio2),
+                        normalize<HARMONIC_ATTENUATION>(harmonic_attenuation),
+                        normalize<LENGTH>(length),
+                        static_cast<float>(i)
+                    }};
+                }
                 static Programs const & getPrograms() {
                     static ProgramsI ps {{
+                        {"",
+                        make(401, .0f, 12.f, 24.f, 0.f, 0.f, .95f, 100.f, itp::EASE_INOUT_QUART)
+                        },
                     }};
                     return ps.v;
                 }
@@ -367,6 +489,7 @@ namespace imajuscule {
                 }
                 
                 void useProgram(int index) {
+                    A(index < getPrograms().size());
                     auto & p = getPrograms()[index];
                     for (auto i = 0; i < NPARAMS; i++) {
                         params[i] = p.params[i];
@@ -402,15 +525,16 @@ namespace imajuscule {
                 using Params = ImplParams;
                 static constexpr int NPARAMS = static_cast<int>(Params::NPARAMS);
                 static constexpr auto size_interleaved = Base::size_interleaved;
+                static constexpr auto n_frames_interleaved = size_interleaved / nAudioOut;
+                static_assert(n_frames_interleaved * nAudioOut == size_interleaved, ""); // make sure we don't waste space
                 static constexpr auto size_interleaved_one_cache_line = Base::size_interleaved_one_cache_line;
-                static constexpr auto xfade_len = Base::xfade_len;
                 
                 using Base::half_tone;
                 using Base::params;
                 using Base::interleaved;
 
                 using OutputData = outputDataBase<nAudioOut, XfadePolicy::UseXfade, NoOpLock>;
-                using SoundEngine = SoundEngine<imajuscule::Logger>;
+                using SoundEngine = SoundEngine<nAudioOut, imajuscule::Logger>;
                 
                 static constexpr auto n_max_voices = 8;
                 // notes played in rapid succession can have a common audio interval during xfades
@@ -419,6 +543,7 @@ namespace imajuscule {
                 static constexpr auto n_max_simultaneous_notes_per_voice = 2;
                 static constexpr auto n_channels_per_note = 2;
                 static constexpr auto n_channels = n_channels_per_note * n_max_voices * n_max_simultaneous_notes_per_voice;
+                
                 struct EngineAndRamps {
                     using audioElt = audioelement::FreqRamp<float>;
                     
@@ -434,6 +559,7 @@ namespace imajuscule {
                     SoundEngine engine;
                     std::array<audioElt, 3> ramps;
                 };
+                
                 using MonoNoteChannel = MonoNoteChannel<n_channels_per_note, EngineAndRamps>;
 
                 //
@@ -482,29 +608,34 @@ namespace imajuscule {
 #endif
                     return onEventResult::DROPPED_NOTE;
                 }
+                
                 onEventResult startNote(MonoNoteChannel & c, NoteOnEvent const & e) {
-                    if(!c.open(out, xfade_len)) {
+                    if(!c.open(out, 1.f, xfade_len())) {
                         return onDroppedNote(e.pitch);
                     }
                     c.elem.engine.set_channels(c.channels[0], c.channels[1]);
+                    LG(INFO, "on  %d", e.pitch);
 
                     c.pitch = e.pitch;
                     c.tuning = e.tuning;
                     
-                    c.elem.engine.set_xfade(xfade_len);
+                    c.elem.engine.set_xfade(xfade_len());
                     c.elem.engine.set_base_freq(midi::tuned_note(c.pitch, c.tuning));
-                    c.elem.engine.set_freq_scatter(0.f);
-                    c.elem.engine.set_d1(12.f);
-                    c.elem.engine.set_d2(24.f);
+                    c.elem.engine.set_freq_scatter(denorm<FREQ_SCATTER>());
+                    c.elem.engine.set_d1(denorm<D1>());
+                    c.elem.engine.set_d2(denorm<D2>());
                     c.elem.engine.set_mode(SoundEngine::Mode::MARKOV);
-                    c.elem.engine.set_phase_ratio1(0.f);
-                    c.elem.engine.set_phase_ratio2(0.f);
-                    c.elem.engine.set_har_att(0.95f);
-                    c.elem.engine.set_length(1000.f);
-                    c.elem.engine.set_itp(itp::interpolation::EASE_INOUT_QUAD);
+                    c.elem.engine.set_phase_ratio1(denorm<PHASE_RATIO1>());
+                    c.elem.engine.set_phase_ratio2(denorm<PHASE_RATIO2>());
+                    c.elem.engine.set_har_att(denorm<HARMONIC_ATTENUATION>());
+                    c.elem.engine.set_length(denorm<LENGTH>());
+                    
+                    auto interp = static_cast<itp::interpolation>(itp::interpolation_traversal().realValues()[static_cast<int>(.5f + params[INTERPOLATION])]);
+                    
+                    c.elem.engine.set_itp(interp);
                     c.elem.engine.set_active(true);
                     
-                    c.elem.engine.update(out);
+                    c.elem.engine.update(out, true);
                     
                     return onEventResult::OK;
                 }
@@ -512,7 +643,7 @@ namespace imajuscule {
             public:
                 void allNotesOff() override {
                     for(auto & c : channels) {
-                        c.close(out, CloseMode::XFADE_ZERO, xfade_len);
+                        c.close(out, CloseMode::XFADE_ZERO, xfade_len());
                     }
                 }
                 
@@ -525,11 +656,12 @@ namespace imajuscule {
             private:
                 // notes are identified by pitch
                 onEventResult noteOff(uint8_t pitch) {
+                    LG(INFO, "off %d", pitch);
                     for(auto & c : channels) {
                         if(c.pitch != pitch) {
                             continue;
                         }
-                        if(!c.close(out, CloseMode::XFADE_ZERO, xfade_len)) {
+                        if(!c.close(out, CloseMode::XFADE_ZERO, xfade_len())) {
                             continue;
                         }
                         // the oscillator is still used for the crossfade,
@@ -538,13 +670,24 @@ namespace imajuscule {
                     }
                     // it could be that the corresponding noteOn was skipped
                     // because too many notes where played at that time
+                    // or ... a bug? todo investigate...
                     return onDroppedNote(pitch);
                 }
                 
-                void onEndBufferStepParamChanges() {
+                template<ImplParams N>
+                float denorm() const {
+                    return denormalize<N>(params[N]);
                 }
                 
-                void compute_state() {
+                template<ImplParams N>
+                float norm() const {
+                    return normalize<N>(params[N]);
+                }
+                
+                int xfade_len() const {
+                    auto d = denorm<XFADE_LENGTH>();
+                    // make it odd
+                    return 1 + (static_cast<int>(.5f+d)/2)*2;
                 }
                 
             public:
@@ -592,7 +735,7 @@ namespace imajuscule {
                         // ... not more than the number of frames remaining
                         nFramesToProcess = std::min(nFramesToProcess, nRemainingFrames);
                         // ... not more than the buffer
-                        nFramesToProcess = std::min<int>(nFramesToProcess, size_interleaved);
+                        nFramesToProcess = std::min<int>(nFramesToProcess, n_frames_interleaved);
                         
                         out.step(&interleaved[0], nFramesToProcess);
                         

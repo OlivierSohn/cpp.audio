@@ -44,7 +44,8 @@ namespace imajuscule {
         return freq * powf(half_tone, n);
     }
     
-    inline Request to_request(NoteSpec s, float time_unit, float harmonic_factor, float half_tone, Sounds & sounds) {
+    template<int nAudioOut, typename Request = Request<nAudioOut>>
+    Request to_request(NoteSpec s, float time_unit, float harmonic_factor, float half_tone, Sounds & sounds, Volumes<nAudioOut> volumes) {
         if(s.note == Silence) {
             return {
                 sounds,
@@ -59,7 +60,7 @@ namespace imajuscule {
                 sounds,
                 Sound::SINE,
                 harmonic_factor * to_freq(s.note, half_tone),
-                s.loud ? 2.f : 1.f,
+                volumes * (s.loud ? 2.f : 1.f),
                 time_unit * (float)s.duration
             };
         }

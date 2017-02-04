@@ -256,7 +256,6 @@ namespace imajuscule {
                 static constexpr auto size_interleaved_one_cache_line = Base::size_interleaved_one_cache_line;
                 static constexpr auto n_channels = Base::n_channels;
                 static constexpr auto xfade_len = Base::xfade_len;
-                using Base::ramp_start_freq;
                 static constexpr auto max_length_ramp_ms = Base::max_length_ramp_ms;
                 
                 using Base::channels;
@@ -276,7 +275,10 @@ namespace imajuscule {
                 using Base::ramp_amount;
                 using Base::ramp_speed_denormalize;
                 using Base::ramp_start_freq_denormalize;
+                using Base::ramp_start_freq;
                 using typename Base::MonoNoteChannel;
+                
+                using Request = Request<nAudioOut>;
                 
                 //
                 //  types
@@ -324,11 +326,13 @@ namespace imajuscule {
                 }
                 
                 onEventResult startNote(MonoNoteChannel & c, NoteOnEvent const & e) {
-                    if(!c.open(out)) {
+                    if(!c.open(out, 0.f, // initial volume is 0, so that the volume fade starts from 0
+                               0)) {
                         return onDroppedNote(e.pitch);
                     }
                     auto channel = c.channels[0];
-                    out.setVolume(channel, MakeVolume::run<nAudioOut>(1.f, {1.f,1.f}), adjusted(xfade_len));
+                    auto len = adjusted(xfade_len);
+                    out.setVolume(channel, 1.f, len);
                     c.pitch = e.pitch;
                     c.tuning = e.tuning;
                     
