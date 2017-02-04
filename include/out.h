@@ -93,7 +93,7 @@ namespace imajuscule {
     };
     
     enum class PostProcess {
-        COMPRESS,
+        HARD_LIMIT,
         NONE
     };
     
@@ -106,7 +106,7 @@ namespace imajuscule {
         NoOpLock(std::atomic_bool const &) {}
     };
     
-    enum ChannelClosingPolicy {
+    enum class ChannelClosingPolicy {
         AutoClose,  // once the request queue is empty (or more precisely
         // once the channel method isPlaying() returns false),
         // the channel can be automatically reassigned without
@@ -119,7 +119,7 @@ namespace imajuscule {
     int nAudioOut,
     XfadePolicy XF = XfadePolicy::UseXfade,
     typename Locking = Sensor::RAIILock,
-    PostProcess Post = PostProcess::NONE
+    PostProcess Post = PostProcess::HARD_LIMIT
     >
     struct outputDataBase {
         using Channel = Channel<nAudioOut, XF>;
@@ -132,8 +132,6 @@ namespace imajuscule {
         static constexpr auto initial_n_audioelements_reserve = 4;
         
     private:
-        // this member should be optional : for virtual instruments all methods are called from the same thread
-        // so locking doesn't make sense
         std::atomic_bool used { false };
         
         //////////////////////////
@@ -157,7 +155,6 @@ namespace imajuscule {
 
         std::vector<audioelement::ComputeFunc> audioElements_computes;
         
-        // this should be optional, it is not used for virtual instruments.
         std::vector<postProcessFunc> post_process;
         
 #if WITH_DELAY
@@ -208,47 +205,29 @@ namespace imajuscule {
             channels.reserve(nChannelsMax);
             autoclosing_ids.reserve(nChannelsMax);
             available_ids.reserve(nChannelsMax);
-            if(Post == PostProcess::COMPRESS) {
-                // doesn't work : in TEST_F(AudioLimiting, CompressionSine),
-                // the beginning is wrong.
-                // I should rethink the way to do it. I'm not even sure I will
-                // need that in the future.
 
-                /*
-                post_process.push_back([](float v[nAudioOut]) mutable {
-                    static Compressor c;
-                    float avg = 0.f;
+            if(Post == PostProcess::HARD_LIMIT) {
+                post_process.emplace_back([](float v[nAudioOut]) {
                     for(int i=0; i<nAudioOut; ++i) {
-                        c.avgs[i].feed(std::abs(v[i]));
-                        avg = std::max(avg, c.avgs[i].compute());
-                    }
-                    for(int i=0; i<nAudioOut; ++i) {
-                        v[i] = c.compute(v[i], avg);
+                        if(likely(-1.f <= v[i] && v[i] <= 1.f)) {
+                            continue;
+                        }
+                        
+                        if(v[i] > 1.f) {
+                            A(0);
+                            v[i] = 1.f;
+                        }
+                        else if(v[i] < -1.f) {
+                            A(0);
+                            v[i] = -1.f;
+                        }
+                        else {
+                            A(0);
+                            v[i] = 0.f; // v[i] is NaN
+                        }
                     }
                 });
-                 */
             }
-            // hard limit
-            post_process.emplace_back([](float v[nAudioOut]) {
-                for(int i=0; i<nAudioOut; ++i) {
-                    if(likely(-1.f <= v[i] && v[i] <= 1.f)) {
-                        continue;
-                    }
-                    
-                    if(v[i] > 1.f) {
-                        A(0);
-                        v[i] = 1.f;
-                    }
-                    else if(v[i] < -1.f) {
-                        A(0);
-                        v[i] = -1.f;
-                    }
-                    else {
-                        A(0);
-                        v[i] = 0.f; // v[i] is NaN
-                    }
-                }
-            });
         }
 
         // called from audio callback
@@ -338,29 +317,35 @@ namespace imajuscule {
                         // the audio thread has a chance to run
                         Locking l(used);
                         if(channels[id].isPlaying()) {
+                            id = AUDIO_CHANNEL_NONE;
                             continue;
                         }
                     }
                     // channel 'id' is auto closing and not playing, so we will assign it to the caller.
-                    if(l != AutoClose) {
+                    if(l != ChannelClosingPolicy::AutoClose) {
                         autoclosing_ids.erase(it);
                     }
                     break;
                 }
+                if(id == AUDIO_CHANNEL_NONE) {
+                    LG(WARN, "no more channels available");
+                    return id;
+                }
+                A(!editChannel(id).isPlaying());
             }
             else {
                 id = available_ids.Take(channels);
-                if(l == AutoClose) {
+                if(id == AUDIO_CHANNEL_NONE) {
+                    LG(WARN, "no more channels available");
+                    return id;
+                }
+                A(!editChannel(id).isPlaying());
+                if(l == ChannelClosingPolicy::AutoClose) {
                     convert_to_autoclosing(id);
                 }
             }
-            if(id == AUDIO_CHANNEL_NONE) {
-                LG(WARN, "no more channels available");
-                return id;
-            }
-            else {
-                LG(INFO, "open %d, n_available %d", id, available_ids.size());
-            }
+
+            LG(INFO, "open %d, n_available %d", id, available_ids.size());
 
             // no need to lock here : the channel is not active
             if(editChannel(id).shouldReset()) {

@@ -30,7 +30,7 @@ namespace imajuscule {
                 // "all or nothing" strategy
                 
                 for(auto & c : channels) {
-                    c = out.openChannel({inital_volume}, ExplicitClose, xfade_len);
+                    c = out.openChannel({inital_volume},  ChannelClosingPolicy::ExplicitClose, xfade_len);
                     if(c == AUDIO_CHANNEL_NONE) {
                         for(auto & c : channels) {
                             if(c == AUDIO_CHANNEL_NONE) {

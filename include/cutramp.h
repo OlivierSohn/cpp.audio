@@ -288,7 +288,7 @@ namespace imajuscule {
                 static_assert(cut_period_one_cache_line <= max_cut_period, "");
                 
             private:
-                outputDataBase<nAudioOut, XfadePolicy::SkipXfade, NoOpLock> out = {n_channels};
+                outputDataBase<nAudioOut, XfadePolicy::SkipXfade, NoOpLock, PostProcess::NONE> out = {n_channels};
                 
                 //
                 //  methods

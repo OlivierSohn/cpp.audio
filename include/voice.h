@@ -1,4 +1,16 @@
 
+#ifndef NDEBUG
+#define DO_LOG_MIDI 1
+#else
+#define DO_LOG_MIDI 0
+#endif
+
+#if DO_LOG_MIDI
+#define MIDI_LG(...) LG(...)
+#else
+#define MIDI_LG(...)
+#endif
+
 namespace imajuscule {
     namespace audio {
         namespace voice {
@@ -489,7 +501,7 @@ namespace imajuscule {
                 }
                 
                 void useProgram(int index) {
-                    A(index < getPrograms().size());
+                    A(index < getPrograms().size());
                     auto & p = getPrograms()[index];
                     for (auto i = 0; i < NPARAMS; i++) {
                         params[i] = p.params[i];
@@ -533,7 +545,7 @@ namespace imajuscule {
                 using Base::params;
                 using Base::interleaved;
 
-                using OutputData = outputDataBase<nAudioOut, XfadePolicy::UseXfade, NoOpLock>;
+                using OutputData = outputDataBase<nAudioOut, XfadePolicy::UseXfade, NoOpLock, PostProcess::NONE>;
                 using SoundEngine = SoundEngine<nAudioOut, imajuscule::Logger>;
                 
                 static constexpr auto n_max_voices = 8;
@@ -588,7 +600,12 @@ namespace imajuscule {
                                                                                   return false;
                                                                               }
                                                                           }
-                                                                          return true;
+                                                                          // here we know that all elements are inactive
+                                                                          // but if the channel has not be closed yet
+                                                                          // we cannot use it (if we want to enable that,
+                                                                          // we should review the way note on/off are detected,
+                                                                          // because it will probably cause bugs)
+                                                                          return c.closed();
                                                                       }))
                         {
                             return startNote(*c, e.noteOn);
@@ -603,18 +620,16 @@ namespace imajuscule {
                 }
                 
                 onEventResult onDroppedNote(uint8_t pitch) {
-#ifndef NDEBUG
-                    LG(WARN, "dropped note '%d'", pitch);
-#endif
+                    MIDI_LG(WARN, "dropped note '%d'", pitch);
                     return onEventResult::DROPPED_NOTE;
                 }
                 
                 onEventResult startNote(MonoNoteChannel & c, NoteOnEvent const & e) {
+                    MIDI_LG(INFO, "on  %d", e.pitch);
                     if(!c.open(out, 1.f, xfade_len())) {
                         return onDroppedNote(e.pitch);
                     }
                     c.elem.engine.set_channels(c.channels[0], c.channels[1]);
-                    LG(INFO, "on  %d", e.pitch);
 
                     c.pitch = e.pitch;
                     c.tuning = e.tuning;
@@ -642,21 +657,27 @@ namespace imajuscule {
                 
             public:
                 void allNotesOff() override {
+                    MIDI_LG(INFO, "all notes off :");
                     for(auto & c : channels) {
-                        c.close(out, CloseMode::XFADE_ZERO, xfade_len());
+                        if(c.close(out, CloseMode::XFADE_ZERO, xfade_len())) {
+                            LG(INFO, " x %d", c.pitch);
+                        }
                     }
                 }
                 
                 void allSoundsOff() override {
+                    MIDI_LG(INFO, "all sounds off :");
                     for(auto & c : channels) {
-                        c.close(out, CloseMode::NOW);
+                        if(c.close(out, CloseMode::NOW)) {
+                            LG(INFO, " x %d", c.pitch);
+                        }
                     }
                 }
                 
             private:
                 // notes are identified by pitch
                 onEventResult noteOff(uint8_t pitch) {
-                    LG(INFO, "off %d", pitch);
+                    MIDI_LG(INFO, "off %d", pitch);
                     for(auto & c : channels) {
                         if(c.pitch != pitch) {
                             continue;
