@@ -92,9 +92,11 @@ namespace imajuscule {
                                     return false;
                                 }
                                 
-                                auto factor = std::uniform_real_distribution<float>{1.f, 1.f + freq_scatter}(rng::mersenne());
-                                freq1 *= factor;
-                                freq2 *= factor;
+                                if(freq_scatter) {
+                                    auto factor = 1.f + std::uniform_real_distribution<float>{0.f,freq_scatter}(rng::mersenne());
+                                    freq1 *= factor;
+                                    freq2 *= factor;
+                                }
                                 
                                 auto const stereo_gain = stereo(std::uniform_real_distribution<float>(-1.f, 1.f)(rng::mersenne()));
                                 auto volume = MakeVolume::run<nAudioOut>(1.f, stereo_gain);
