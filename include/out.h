@@ -329,7 +329,7 @@ namespace imajuscule {
                 }
                 if(id == AUDIO_CHANNEL_NONE) {
                     LG(WARN, "no more channels available");
-                    return id;
+                    return AUDIO_CHANNEL_NONE;
                 }
                 A(!editChannel(id).isPlaying());
             }
@@ -337,7 +337,7 @@ namespace imajuscule {
                 id = available_ids.Take(channels);
                 if(id == AUDIO_CHANNEL_NONE) {
                     LG(WARN, "no more channels available");
-                    return id;
+                    return AUDIO_CHANNEL_NONE;
                 }
                 A(!editChannel(id).isPlaying());
                 if(l == ChannelClosingPolicy::AutoClose) {
@@ -347,8 +347,8 @@ namespace imajuscule {
 
             LG(INFO, "open %d, n_available %d", id, available_ids.size());
 
-            // no need to lock here : the channel is not active
-            if(editChannel(id).shouldReset()) {
+            // no need to lock here : the channel is not playing
+            if(!editChannel(id).isActive()) {
                 editChannel(id).reset();
             }
             editChannel(id).setVolume(volume);

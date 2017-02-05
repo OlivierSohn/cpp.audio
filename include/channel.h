@@ -86,6 +86,7 @@ namespace imajuscule {
             *this = {}; // to release all audio elements
             A(!isPlaying());
             A(!shouldReset());
+            A(isActive());
         }
         
         // prefer using toVolume if channel is Playing
@@ -164,6 +165,8 @@ namespace imajuscule {
             }
             return true;
         }
+        
+        bool isActive() const { return active; }
 
     private:
         
