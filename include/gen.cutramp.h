@@ -1,4 +1,3 @@
-
 namespace imajuscule {
     namespace audio {
         namespace cutramp {
@@ -44,7 +43,6 @@ namespace imajuscule {
             struct ImplBase : public Parent {
                 using Params = ImplParams;
                 static constexpr auto NPARAMS = static_cast<int>(Params::NPARAMS);
-                static constexpr auto tune_stretch = 1.f;
                 static constexpr auto min_cut_period = 1;
                 static constexpr auto min_ramp_start_freq = 50.f;
                 static constexpr auto max_ramp_start_freq = 5000.f;
@@ -56,6 +54,7 @@ namespace imajuscule {
                 static constexpr auto ramp_start_freq_denormalize(float v) { return min_ramp_start_freq + v*max_ramp_start_freq; }
                 
                 using Parent::params;
+                using Parent::half_tone;
                 
             protected:
                 using interleaved_buf_t = InterleavedBuffer;
@@ -152,7 +151,6 @@ namespace imajuscule {
                 
                 // the first index in "most recent buffer" that contains an out-of-date value
                 uint8_t c : relevantBits( size_interleaved - 1 );
-                float half_tone = compute_half_tone(tune_stretch);
                 
                 // methods
             public:
@@ -162,12 +160,10 @@ namespace imajuscule {
                 , prev_p(1)
                 {}
                 
-                
-                void useProgram(int index) {
-                    auto & p = getPrograms()[index];
-                    for (auto i = 0; i < NPARAMS; i++) {
-                        params[i] = p.params[i];
-                    }
+                Program const & getProgram(int i) const override {
+                    auto & progs = getPrograms();
+                    A(i < progs.size());
+                    return progs[i];
                 }
                 
             protected:

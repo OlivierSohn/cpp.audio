@@ -1,4 +1,3 @@
-
 namespace imajuscule {
     namespace audio {
         namespace voice {            
@@ -56,15 +55,14 @@ namespace imajuscule {
             >
             struct ImplBase : public Parent {
                 using Parent::params;
-                
+                using Parent::half_tone;
+
                 using Params = ImplParams;
                 static constexpr int NPARAMS = static_cast<int>(Params::NPARAMS);
-                static constexpr auto tune_stretch = 1.f;
                 
                 using SoundEngine = SoundEngine<imajuscule::Logger, UpdateMode::FORCE_SOUND>;
             protected:
                 using Mode = SoundEngine::Mode;
-                
 
             public:
                 static std::vector<ParamSpec> const & getParamSpecs() {
@@ -113,26 +111,30 @@ namespace imajuscule {
                 }
                 static Programs const & getPrograms() {
                     static ProgramsI ps {{
-                        {"First",
-                            make(Mode::MARKOV, 401, .0f, 12.f, 24.f, 0.f, 0.f, .95f, 100.f, itp::EASE_INOUT_QUART)
+                        {"Cute bird",
+                            make(Mode::MARKOV, 1301, 0.f, 12.f, 24.f, 0.f, 0.f, .95f, 93.f, itp::EASE_INOUT_CIRC)
                         },
                     }};
                     return ps.v;
                 }
                 
-                // members
-            protected:
-                float half_tone = compute_half_tone(tune_stretch);
-                
                 // methods
             public:
                 
-                void useProgram(int index) {
-                    A(index < getPrograms().size());
-                    auto & p = getPrograms()[index];
-                    for (auto i = 0; i < NPARAMS; i++) {
-                        params[i] = p.params[i];
-                    }
+                Program const & getProgram(int i) const override {
+                    auto & progs = getPrograms();
+                    A(i < progs.size());
+                    return progs[i];
+                }
+                
+                template<ImplParams N>
+                float denorm() const {
+                    return denormalize<N>(params[N]);
+                }
+                
+                template<ImplParams N>
+                float norm() const {
+                    return normalize<N>(params[N]);
                 }
                 
             protected:
@@ -164,17 +166,6 @@ namespace imajuscule {
                     c.elem.engine.update(out);
                 }
                 
-                template<ImplParams N>
-                float denorm() const {
-                    return denormalize<N>(params[N]);
-                }
-                
-                template<ImplParams N>
-                float norm() const {
-                    return normalize<N>(params[N]);
-                }
-                
-                
                 int get_xfade_length() const {
                     auto d = denorm<XFADE_LENGTH>();
                     // make it odd
@@ -199,7 +190,6 @@ namespace imajuscule {
                 SoundEngine engine;
                 std::array<audioElt, 3> ramps;
             };
-            
             
             template<
             
@@ -282,7 +272,7 @@ namespace imajuscule {
                                 // but if the channel has not been closed yet
                                 // we cannot use it (if we want to enable that,
                                 // we should review the way note on/off are detected,
-                                // because it will probably cause bugs)
+                                // because it would probably cause bugs)
                                 return c.closed();
                             });
                             ++it;

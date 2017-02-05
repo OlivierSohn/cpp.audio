@@ -42,6 +42,7 @@ namespace imajuscule {
         }
         
         template<
+        
         typename ImplParams,
         typename Parameters,
         typename InterleavedBuffer,
@@ -50,10 +51,14 @@ namespace imajuscule {
         
         >
         struct Impl {
-            
+            static constexpr auto tune_stretch = 1.f;
+
             virtual void doProcessing (ProcessData& data) = 0;
             virtual void allNotesOff() = 0;
             virtual void allSoundsOff() = 0;
+            
+            virtual Program const & getProgram(int i) const = 0;
+
             virtual ~Impl() = default;
 
             static constexpr auto NPARAMS = ImplParams::NPARAMS;
@@ -80,14 +85,25 @@ namespace imajuscule {
                 A(index < params.size());
                 params[index] = value;
             }
+            
+            void useProgram(int index) {
+                auto const & p = getProgram(index);
+                A(p.params.size() == NPARAMS);
+                for (auto i = 0; i < NPARAMS; i++) {
+                    params[i] = p.params[i];
+                }
+            }
 
         protected:
             Parameters params;
             InterleavedBuffer interleaved;
+            float half_tone = compute_half_tone(tune_stretch);
+
         };
 
         
         template<
+        
         int nAudioOut,
         XfadePolicy xfade_policy,
         typename MNC,
@@ -95,6 +111,7 @@ namespace imajuscule {
         typename NoteOnEvent,
         typename NoteOffEvent,
         typename Base
+        
         >
         struct ImplCRTP : public Base {
             
