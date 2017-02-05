@@ -24,15 +24,19 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
-		094562341E43E475006E7076 /* cutramp.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = cutramp.h; path = include/cutramp.h; sourceTree = "<group>"; };
-		09529DF81E439D8D00705B99 /* voice.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = voice.h; path = include/voice.h; sourceTree = "<group>"; };
+		091E76E81E46B4FE009CFBA5 /* soundengine.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = soundengine.h; path = include/soundengine.h; sourceTree = "<group>"; };
+		091E76E91E46BE78009CFBA5 /* normalization.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = normalization.h; path = include/normalization.h; sourceTree = "<group>"; };
+		091E76EA1E46C02F009CFBA5 /* normalization.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = normalization.cpp; path = source/normalization.cpp; sourceTree = "<group>"; };
+		091E76EB1E46C08F009CFBA5 /* pernamespace.implparams.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = pernamespace.implparams.h; path = include/pernamespace.implparams.h; sourceTree = "<group>"; };
+		094562341E43E475006E7076 /* gen.cutramp.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = gen.cutramp.h; path = include/gen.cutramp.h; sourceTree = "<group>"; };
+		09529DF81E439D8D00705B99 /* gen.voice.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = gen.voice.h; path = include/gen.voice.h; sourceTree = "<group>"; };
 		09529DF91E439D8D00705B99 /* mononotechannel.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = mononotechannel.h; path = include/mononotechannel.h; sourceTree = "<group>"; };
 		09529DFA1E439D8D00705B99 /* events.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = events.h; path = include/events.h; sourceTree = "<group>"; };
 		09529DFB1E439E5F00705B99 /* paramspec.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = paramspec.h; path = include/paramspec.h; sourceTree = "<group>"; };
 		09529DFC1E439EC000705B99 /* program.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = program.h; path = include/program.h; sourceTree = "<group>"; };
 		09529DFD1E439F2700705B99 /* smoothparam.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = smoothparam.h; path = include/smoothparam.h; sourceTree = "<group>"; };
 		09529DFE1E439FD800705B99 /* midi.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = midi.h; path = include/midi.h; sourceTree = "<group>"; };
-		0966EA6E1E45C62B00A86E7C /* voice.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = voice.cpp; path = source/voice.cpp; sourceTree = "<group>"; };
+		0966EA6E1E45C62B00A86E7C /* gen.voice.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = gen.voice.cpp; path = source/gen.voice.cpp; sourceTree = "<group>"; };
 		099E06DC1E36EC6D0012348E /* parse.music.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = parse.music.cpp; path = source/parse.music.cpp; sourceTree = "<group>"; };
 		099E06DD1E36EC6D0012348E /* private.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = private.h; path = source/private.h; sourceTree = "<group>"; };
 		099E06DF1E36EC6D0012348E /* sound.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = sound.cpp; path = source/sound.cpp; sourceTree = "<group>"; };
@@ -83,11 +87,12 @@
 		099E06E21E36EC7F0012348E /* source */ = {
 			isa = PBXGroup;
 			children = (
-				0966EA6E1E45C62B00A86E7C /* voice.cpp */,
-				09A8F2291E442C3A0071C141 /* soundengine.cpp */,
+				0966EA6E1E45C62B00A86E7C /* gen.voice.cpp */,
+				091E76EA1E46C02F009CFBA5 /* normalization.cpp */,
 				099E06DC1E36EC6D0012348E /* parse.music.cpp */,
 				099E06DD1E36EC6D0012348E /* private.h */,
 				099E06DF1E36EC6D0012348E /* sound.cpp */,
+				09A8F2291E442C3A0071C141 /* soundengine.cpp */,
 				099E06E01E36EC6D0012348E /* unity.build.cpp */,
 			);
 			name = source;
@@ -98,14 +103,17 @@
 			children = (
 				099E06E61E36EC920012348E /* audioelement.h */,
 				099E06E41E36EC920012348E /* channel.h */,
-				09529DF81E439D8D00705B99 /* voice.h */,
 				09529DFA1E439D8D00705B99 /* events.h */,
+				094562341E43E475006E7076 /* gen.cutramp.h */,
+				09529DF81E439D8D00705B99 /* gen.voice.h */,
 				09529DFE1E439FD800705B99 /* midi.h */,
 				09529DF91E439D8D00705B99 /* mononotechannel.h */,
+				091E76E91E46BE78009CFBA5 /* normalization.h */,
 				099E06E51E36EC920012348E /* note.h */,
 				099E06E71E36EC920012348E /* out.h */,
 				09529DFB1E439E5F00705B99 /* paramspec.h */,
 				099E06E81E36EC920012348E /* parse.music.h */,
+				091E76EB1E46C08F009CFBA5 /* pernamespace.implparams.h */,
 				09529DFC1E439EC000705B99 /* program.h */,
 				099E06E91E36EC920012348E /* public.h */,
 				099E06EA1E36EC920012348E /* request.h */,
@@ -113,8 +121,8 @@
 				099E06EB1E36EC920012348E /* sound.defines.h */,
 				099E06EC1E36EC920012348E /* sound.functions.h */,
 				099E06ED1E36EC920012348E /* sound.h */,
+				091E76E81E46B4FE009CFBA5 /* soundengine.h */,
 				099E06EE1E36EC920012348E /* stereo.h */,
-				094562341E43E475006E7076 /* cutramp.h */,
 			);
 			name = include;
 			sourceTree = "<group>";

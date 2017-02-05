@@ -2,4 +2,6 @@
 
 #include "sound.cpp"
 #include "parse.music.cpp"
-#include "voice.cpp"
+#include "gen.voice.cpp"
+#include "soundengine.cpp"
+#include "normalization.cpp"
