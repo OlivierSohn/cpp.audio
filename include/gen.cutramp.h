@@ -248,18 +248,11 @@ namespace imajuscule {
             
             >
             struct Impl_ : public Parent {
-                using Programs = imajuscule::audio::Programs;
-                using Params = ImplParams;
-                using Event = typename EventIterator::object;
-                using typename Parent::MonoNoteChannel;
-                using Request = Request<nAudioOut>;
                 
-                static constexpr auto NPARAMS = static_cast<int>(Params::NPARAMS);
                 static constexpr auto min_cut_period = Base::min_cut_period;
                 static constexpr auto max_length_ramp_ms = Base::max_length_ramp_ms;
                 static constexpr auto size_interleaved = Base::size_interleaved;
                 static constexpr auto size_interleaved_one_cache_line = Base::size_interleaved_one_cache_line;
-                static constexpr auto xfade_len = Base::xfade_len;
                 
                 using Base::adjusted;
                 using Base::adjustFreq;

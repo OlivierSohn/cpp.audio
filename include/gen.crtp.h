@@ -47,7 +47,9 @@ namespace imajuscule {
         typename Parameters,
         typename InterleavedBuffer,
         int SizeInterleaved,
-        typename ProcessData
+        typename ProcessData,
+        
+        int NParams = ImplParams::NPARAMS
         
         >
         struct Impl {
@@ -61,7 +63,7 @@ namespace imajuscule {
 
             virtual ~Impl() = default;
 
-            static constexpr auto NPARAMS = ImplParams::NPARAMS;
+            static constexpr auto NPARAMS = NParams;
             static constexpr auto size_interleaved = SizeInterleaved;
             
             void initializeSlow() {

@@ -2,20 +2,45 @@ namespace imajuscule {
     namespace audio {
         namespace voice {            
             
+            // the order here should be the same as is params_markov and params_robots
             enum ImplParams {
-                MODE,
-                XFADE_LENGTH,
+                INTERPOLATION,
                 FREQ_SCATTER,
-                D1,
-                D2,
+                XFADE_LENGTH,
+                LENGTH,
                 PHASE_RATIO1,
                 PHASE_RATIO2,
+                D1,
+                D2,
                 HARMONIC_ATTENUATION,
-                LENGTH,
-                INTERPOLATION,
                 
                 NPARAMS
             };
+            
+            static std::array<ImplParams, 6> params_markov
+            {{
+                INTERPOLATION,
+                FREQ_SCATTER,
+                XFADE_LENGTH,
+                LENGTH,
+                PHASE_RATIO1,
+                PHASE_RATIO2
+            }};
+            
+            static std::array<ImplParams, 9> params_robots
+            {{
+                INTERPOLATION,
+                FREQ_SCATTER,
+                XFADE_LENGTH,
+                LENGTH,
+                PHASE_RATIO1,
+                PHASE_RATIO2,
+                D1,
+                D2,
+                HARMONIC_ATTENUATION
+            }};
+            
+            static auto params_all = make_tuple(params_markov, params_robots, params_robots);
             
 #include "pernamespace.implparams.h"
             
@@ -45,80 +70,112 @@ namespace imajuscule {
             
             static constexpr auto size_interleaved_one_cache_line = cache_line_n_bytes / sizeof(interleaved_buf_t::value_type);
             static constexpr auto size_interleaved = size_interleaved_one_cache_line;
-            
+
+            using SoundEngine = SoundEngine<imajuscule::Logger, UpdateMode::FORCE_SOUND>;
+            using Mode = SoundEngine::Mode;
+
             template<
+            Mode MODE,
             typename Parameters,
             typename ProcessData,
             typename Parent = Impl<
-            ImplParams, Parameters, interleaved_buf_t, size_interleaved, ProcessData
+            ImplParams, Parameters, interleaved_buf_t, size_interleaved, ProcessData, std::get<MODE>(params_all).size()
             >
             >
             struct ImplBase : public Parent {
                 using Parent::params;
                 using Parent::half_tone;
-
-                using Params = ImplParams;
-                static constexpr int NPARAMS = static_cast<int>(Params::NPARAMS);
                 
-                using SoundEngine = SoundEngine<imajuscule::Logger, UpdateMode::FORCE_SOUND>;
             protected:
-                using Mode = SoundEngine::Mode;
-
+            
             public:
                 static std::vector<ParamSpec> const & getParamSpecs() {
                     static std::vector<ParamSpec> params_spec = {
-                        {"Mode", SoundEngine::ModeTraversal},
-                        {"Crossfade length", static_cast<float>(Limits<XFADE_LENGTH>::m), static_cast<float>(Limits<XFADE_LENGTH>::M) }, // couldn't make it work with nsteps = max-min / 2
+                        {"Interpolation", itp::interpolation_traversal()},
                         {"Frequency scatter", Limits<FREQ_SCATTER>::m, Limits<FREQ_SCATTER>::M },
-                        {"D1", Limits<D1>::m, Limits<D1>::M },
-                        {"D2", Limits<D2>::m, Limits<D2>::M},
+                        {"Crossfade length", static_cast<float>(Limits<XFADE_LENGTH>::m), static_cast<float>(Limits<XFADE_LENGTH>::M) }, // couldn't make it work with nsteps = max-min / 2
+                        {"Length", Limits<LENGTH>::m, Limits<LENGTH>::M},
                         {"Phase ratio 1", Limits<PHASE_RATIO1>::m, Limits<PHASE_RATIO1>::M},
                         {"Phase ratio 2", Limits<PHASE_RATIO2>::m, Limits<PHASE_RATIO2>::M},
-                        {"Harmonic attenuation", Limits<HARMONIC_ATTENUATION>::m, Limits<HARMONIC_ATTENUATION>::M},
-                        {"Length", Limits<LENGTH>::m, Limits<LENGTH>::M},
-                        {"Interpolation", itp::interpolation_traversal()}
+                        {"D1", Limits<D1>::m, Limits<D1>::M },
+                        {"D2", Limits<D2>::m, Limits<D2>::M},
+                        {"Harmonic attenuation", Limits<HARMONIC_ATTENUATION>::m, Limits<HARMONIC_ATTENUATION>::M}
                     };
-                    return params_spec;
+                    
+                    static std::vector<ParamSpec> filtered;
+                    if(filtered.empty()) {
+                        filtered.reserve(std::get<MODE>(params_all).size());
+                        for(auto i : std::get<MODE>(params_all)) {
+                            filtered.push_back(params_spec[i]);
+                        }
+                    }
+                    return filtered;
                 }
                 
-                static Program::ARRAY make(Mode m,
-                                           int xfade,
+                static Program::ARRAY make(itp::interpolation i,
                                            float freq_scat,
-                                           float d1, float d2,
-                                           float phase_ratio1, float phase_ratio2,
-                                           float harmonic_attenuation,
+                                           int xfade,
                                            float length,
-                                           itp::interpolation i) {
+                                           float phase_ratio1, float phase_ratio2,
+                                           float d1, float d2,
+                                           float harmonic_attenuation) {
                     int itp_index = 0;
                     auto b = itp::interpolation_traversal().valToRealValueIndex(i, itp_index);
                     A(b);
-                    int mode_index = 0;
-                    b = SoundEngine::ModeTraversal.valToRealValueIndex(m, mode_index);
-                    A(b);
 
                     return {{
-                        static_cast<float>(mode_index),
-                        normalize<XFADE_LENGTH>(xfade),
+                        static_cast<float>(itp_index),
                         /*normalize<FREQ_SCATTER>*/(freq_scat),
-                        /*normalize<D1>*/(d1),
-                        /*normalize<D2>*/(d2),
+                        normalize<XFADE_LENGTH>(xfade),
+                        normalize<LENGTH>(length),
                         normalize<PHASE_RATIO1>(phase_ratio1),
                         normalize<PHASE_RATIO2>(phase_ratio2),
+                        /*normalize<D1>*/(d1),
+                        /*normalize<D2>*/(d2),
                         normalize<HARMONIC_ATTENUATION>(harmonic_attenuation),
-                        normalize<LENGTH>(length),
-                        static_cast<float>(itp_index)
                     }};
-                }
-                static Programs const & getPrograms() {
-                    static ProgramsI ps {{
-                        {"Cute bird",
-                            make(Mode::MARKOV, 1301, 0.f, 12.f, 24.f, 0.f, 0.f, .95f, 93.f, itp::EASE_INOUT_CIRC)
-                        },
-                    }};
-                    return ps.v;
                 }
                 
-                // methods
+                static Program::ARRAY make_markov(itp::interpolation i,
+                                                  float freq_scat,
+                                                  int xfade,
+                                                  float length,
+                                                  float phase_ratio1 = 0.f, float phase_ratio2 = 0.f) {
+                    auto a = make(i, freq_scat, xfade, length, phase_ratio1, phase_ratio2, 0,0,0);
+                    a.resize(std::get<Mode::MARKOV>(params_all).size());
+                    return a;
+                }
+                
+                static Programs const & getPrograms() {
+                    if(MODE==Mode::MARKOV) {
+                        static ProgramsI ps {{
+                            {"Cute bird",
+                                make_markov(itp::EASE_INOUT_CIRC, 0.f, 1301, 93.f)
+                            },{"Slow bird",
+                                make_markov(itp::EASE_IN_EXPO, 0.f, 1301, 73.7f)
+                            }
+                        }};
+                        return ps.v;
+                    }
+                    else if(MODE==Mode::ROBOTS) {
+                        static ProgramsI ps {{
+                            {"Robot 1",
+                                make(itp::EASE_INOUT_CIRC, 0.f, 1301, 93.f, 0.f, 0.f, 0.f, 0.f, 0.f)
+                            },
+                        }};
+                        return ps.v;
+                    }
+                    else {
+                        A(MODE==Mode::BIRDS);
+                        static ProgramsI ps {{
+                            {"Bird 1",
+                                make(itp::EASE_INOUT_CIRC, 0.f, 1301, 93.f, 0.f, 0.f, 0.f, 0.f, 0.f)
+                            },
+                        }};
+                        return ps.v;
+                    }
+                }
+                
             public:
                 
                 Program const & getProgram(int i) const override {
@@ -146,8 +203,7 @@ namespace imajuscule {
                     auto f = to_freq(tunedNote-Do_midi, half_tone);
                     c.elem.engine.set_base_freq(f);
                     
-                    auto mode = static_cast<Mode>(SoundEngine::ModeTraversal.realValues()[static_cast<int>(.5f + params[MODE])]);
-                    c.elem.engine.set_mode(mode);
+                    c.elem.engine.set_mode(MODE);
                     
                     c.elem.engine.set_xfade(get_xfade_length());
                     c.elem.engine.set_freq_scatter(denorm<FREQ_SCATTER>());
@@ -194,42 +250,30 @@ namespace imajuscule {
             template<
             
             int nAudioOut,
+            Mode MODE,
             
-            // to use it in context of Grid3d, we need to have an implementation of these:
             typename Parameters,
             typename EventIterator,
             typename NoteOnEvent,
             typename NoteOffEvent,
             typename ProcessData,
             
-            typename Base = ImplBase<Parameters, ProcessData>,
+            typename Base = ImplBase<MODE, Parameters, ProcessData>,
             
             typename Parent = ImplCRTP < nAudioOut, XfadePolicy::UseXfade,
-            MonoNoteChannel< 2, EngineAndRamps<typename Base::SoundEngine> >,
+            MonoNoteChannel< 2, EngineAndRamps<SoundEngine> >,
             EventIterator, NoteOnEvent, NoteOffEvent, Base >
             
             >
             struct Impl_ : public Parent
             {
-                using Event = typename EventIterator::object;
-                using Programs = imajuscule::audio::Programs;
-
-                using Params = ImplParams;
-                static constexpr int NPARAMS = static_cast<int>(Params::NPARAMS);
                 static constexpr auto n_frames_interleaved = size_interleaved / nAudioOut;
                 static_assert(n_frames_interleaved * nAudioOut == size_interleaved, ""); // make sure we don't waste space
                 
-                using Base::get_xfade_length;
-                using Base::half_tone;
                 using Base::interleaved;
-                using Base::params;
                 
                 using Parent::out;
                 using Parent::onEvent;
-
-                using OutputData = outputDataBase<nAudioOut, XfadePolicy::UseXfade, NoOpLock, PostProcess::NONE>;
-                using SoundEngine = typename Base::SoundEngine;
-                using Mode = typename SoundEngine::Mode;
 
             public:
                 
