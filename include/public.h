@@ -29,5 +29,6 @@
 #include "program.h"
 #include "midi.h"
 #include "normalization.h"
+#include "gen.crtp.h"
 #include "gen.cutramp.h"
 #include "gen.voice.h"

@@ -31,121 +31,21 @@ namespace imajuscule {
                 static_assert(std::is_integral<T>::value, "");
                 return ((p+1)-g)/2;
             }
-            
+
+            static constexpr auto max_cut_period = 64;
+            static constexpr auto size_interleaved = 8 * max_cut_period;
+
             template<
-            int nAudioOut,
-            typename EventIterator,
-            typename NoteOnEvent,
-            typename NoteOffEvent,
-            typename Base
+            typename Parameters,
+            typename ProcessData,
+            typename InterleavedBuffer = std::array<interleaved_buf_t, 2>,
+            typename Parent = Impl<ImplParams, Parameters, InterleavedBuffer, size_interleaved, ProcessData>
             >
-            struct ImplCRTP : public Base {
-                
-                using Base::get_xfade_length;
-                using Base::onStartNote;
-
-                using Event = typename EventIterator::object;
-
-                static constexpr auto n_max_voices = 8;
-                
-                // notes played in rapid succession can have a common audio interval during xfades
-                // even if their noteOn / noteOff intervals are disjoint.
-                // n_max_simultaneous_notes_per_voice controls the possibility to support that 'well':
-                static constexpr auto n_max_simultaneous_notes_per_voice = 2;
-                static constexpr auto n_channels = n_max_voices * n_max_simultaneous_notes_per_voice;
-
-                using MonoNoteChannel = MonoNoteChannel<1, audioelement::FreqRamp<float>>;
-                using OutputData = outputDataBase<nAudioOut, XfadePolicy::SkipXfade, NoOpLock, PostProcess::NONE>;
-
-                void allNotesOff() override {
-                    auto len =  get_xfade_length();
-                    for(auto & c : channels) {
-                        c.close(out, CloseMode::XFADE_ZERO, len);
-                    }
-                }
-                
-                void allSoundsOff() override {
-                    for(auto & c : channels) {
-                        c.close(out, CloseMode::NOW);
-                    }
-                }
-                
-                onEventResult onEvent(Event const & e) {
-                    if(e.type == Event::kNoteOnEvent) {
-                        // this case is handled by the wrapper...
-                        A(e.noteOn.velocity > 0.f );
-                        // ... in case it were not handled by the wrapper we would need to do:
-                        // return noteOff(e.noteOn.pitch);
-                        
-                        if(auto c = editInactiveAudioElementContainer(channels,
-                                                                      [](auto & c) -> auto & {
-                                                                          return c.elem;
-                                                                      })) {
-                                                                          return startNote(*c, e.noteOn);
-                                                                      }
-                        else {
-                            return onDroppedNote(e.noteOn.pitch);
-                        }
-                    }
-                    
-                    if(e.type == Event::kNoteOffEvent) {
-                        return noteOff(e.noteOff.pitch);
-                    }
-                    return onEventResult::UNHANDLED;
-                }
-                
-
-            private:
-                onEventResult startNote(MonoNoteChannel & c, NoteOnEvent const & e) {
-                    if(!c.open(out, 0.f, // initial volume is 0, so that the volume fade starts from 0
-                               0)) {
-                        return onDroppedNote(e.pitch);
-                    }
-                    c.pitch = e.pitch;
-                    c.tuning = e.tuning;
-
-                    onStartNote(e.velocity, c, out);
-                    return onEventResult::OK;
-                }
-
-                onEventResult noteOff(uint8_t pitch) {
-                    auto len =  get_xfade_length();
-                    for(auto & c : channels) {
-                        if(c.pitch != pitch) {
-                            continue;
-                        }
-                        if(!c.close(out, CloseMode::XFADE_ZERO, len)) {
-                            continue;
-                        }
-                        // the oscillator is still used for the crossfade,
-                        // it will stop being used in the call to openChannel when that channel is finished closing
-                        return onEventResult::OK;
-                    }
-                    // it could be that the corresponding noteOn was skipped
-                    // because too many notes where played at that time
-                    return onDroppedNote(pitch);
-                }
-                
-            protected:
-                onEventResult onDroppedNote(uint8_t pitch) {
-#ifndef NDEBUG
-                    LG(WARN, "dropped note '%d'", pitch);
-#endif
-                    return onEventResult::DROPPED_NOTE;
-                }
-                
-                // members
-                std::array<MonoNoteChannel, n_channels> channels;
-                OutputData out = {n_channels};
-            };
-
-            template<typename Parameters, typename ProcessData>
-            struct ImplBase {
+            struct ImplBase : public Parent {
                 using Params = ImplParams;
-                static constexpr int NPARAMS = static_cast<int>(Params::NPARAMS);
+                static constexpr auto NPARAMS = static_cast<int>(Params::NPARAMS);
                 static constexpr auto tune_stretch = 1.f;
                 static constexpr auto min_cut_period = 1;
-                static constexpr auto max_cut_period = 64;
                 static constexpr auto min_ramp_start_freq = 50.f;
                 static constexpr auto max_ramp_start_freq = 5000.f;
                 static constexpr auto min_ramp_speed = 1.f;
@@ -155,13 +55,12 @@ namespace imajuscule {
                 static constexpr auto ramp_start_freq_normalize(float v) { return (v-min_ramp_start_freq) / (max_ramp_start_freq-min_ramp_start_freq); }
                 static constexpr auto ramp_start_freq_denormalize(float v) { return min_ramp_start_freq + v*max_ramp_start_freq; }
                 
+                using Parent::params;
+                
             protected:
-                using interleaved_buf_t = cacheline_aligned_allocated::vector<float>;
+                using interleaved_buf_t = InterleavedBuffer;
                 
-                static constexpr auto size_interleaved_one_cache_line = cache_line_n_bytes / sizeof(interleaved_buf_t::value_type);
-                
-                static constexpr auto size_interleaved = 8 * max_cut_period;
-                
+                static constexpr auto size_interleaved_one_cache_line = cache_line_n_bytes / sizeof(typename interleaved_buf_t::value_type);
                 static constexpr auto xfade_len = 401;
                 static constexpr auto max_length_ramp_ms = 1000.f;
                 
@@ -241,10 +140,7 @@ namespace imajuscule {
                 }
                 
                 // members
-                Parameters params;
-                
             protected:
-                std::array<interleaved_buf_t, 2> interleaved;
                 bool most_recent_buf_idx:1;
                 SmoothedFloat<&step_1> ramp_amount, ramp_speed, ramp_start_freq;
                 
@@ -255,10 +151,8 @@ namespace imajuscule {
                 bool adjustRamp : 1;
                 
                 // the first index in "most recent buffer" that contains an out-of-date value
-                // 'c' stands for 'current'
                 uint8_t c : relevantBits( size_interleaved - 1 );
                 float half_tone = compute_half_tone(tune_stretch);
-        
                 
                 // methods
             public:
@@ -268,27 +162,6 @@ namespace imajuscule {
                 , prev_p(1)
                 {}
                 
-                void initializeSlow() {
-                    for(auto & v : interleaved) {
-                        v.resize(size_interleaved, 0.f);
-                    }
-                    params.resize(NPARAMS);
-                }
-                
-                void initializeSteal(ImplBase && o) {
-                    interleaved = std::move(o.interleaved);
-                    for(auto & v : interleaved) {
-                        std::fill(v.begin(), v.end(), 0.f);
-                        A(v.size() == size_interleaved);
-                    }
-                    params = std::move(o.params);
-                    A(params.size() == NPARAMS);
-                }
-                
-                void setParameter(int index, float value, int sampleOffset /* not supported yet */) {
-                    A(index < params.size());
-                    params[index] = value;
-                }
                 
                 void useProgram(int index) {
                     auto & p = getPrograms()[index];
@@ -296,11 +169,6 @@ namespace imajuscule {
                         params[i] = p.params[i];
                     }
                 }
-                
-                virtual void doProcessing (ProcessData& data) = 0;
-                virtual void allNotesOff() = 0;
-                virtual void allSoundsOff() = 0;
-                virtual ~ImplBase() = default;
                 
             protected:
                 int get_xfade_length() { return adjusted(xfade_len); }
@@ -377,19 +245,21 @@ namespace imajuscule {
             typename ProcessData,
             
             typename Base = ImplBase<Parameters, ProcessData>,
-            typename Parent = ImplCRTP<nAudioOut, EventIterator, NoteOnEvent, NoteOffEvent, Base>
+            
+            typename Parent = ImplCRTP</* > */ nAudioOut, XfadePolicy::SkipXfade,
+            MonoNoteChannel<1, audioelement::FreqRamp<float>>,
+            EventIterator, NoteOnEvent, NoteOffEvent, Base /* < */>
             
             >
-            struct Impl_ : public Parent
-            {
+            struct Impl_ : public Parent {
                 using Programs = imajuscule::audio::Programs;
-
                 using Params = ImplParams;
                 using Event = typename EventIterator::object;
+                using typename Parent::MonoNoteChannel;
+                using Request = Request<nAudioOut>;
                 
-                static constexpr int NPARAMS = static_cast<int>(Params::NPARAMS);
+                static constexpr auto NPARAMS = static_cast<int>(Params::NPARAMS);
                 static constexpr auto min_cut_period = Base::min_cut_period;
-                static constexpr auto max_cut_period = Base::max_cut_period;
                 static constexpr auto max_length_ramp_ms = Base::max_length_ramp_ms;
                 static constexpr auto size_interleaved = Base::size_interleaved;
                 static constexpr auto size_interleaved_one_cache_line = Base::size_interleaved_one_cache_line;
@@ -418,102 +288,10 @@ namespace imajuscule {
                 using Parent::onEvent;
                 using Parent::out;
                 
-                using typename Parent::MonoNoteChannel;
-                
-                using Request = Request<nAudioOut>;
-                
-                //
-                //  types
-                //
-                
                 static constexpr auto cut_period_one_cache_line = size_interleaved_one_cache_line / nAudioOut;
                 static_assert(cut_period_one_cache_line <= max_cut_period, "");
                 
-                //
-                //  methods
-                //
-            private:
-            private:
-                void onEndBufferStepParamChanges() {
-                    xfade.step();
-                    gap.step();
-                    period.step();
-                    
-                    ramp_speed.step();
-                    ramp_amount.step();
-                    ramp_start_freq.step();
-                }
-                
-                void compute_state() {
-                    p = period();
-                    if(0==gap()) {
-                        // since g is 0, any positive period value will give the same output
-                        // so we chose the one that uses the most out of the cacheline on which
-                        // interleaved buffers sit.
-                        A(p > 0);
-                        p = cut_period_one_cache_line;
-                    }
-                    else if(gap() >= p) {
-                        p = gap()+1;
-                    }
-                    
-                    auto interp = static_cast<itp::interpolation>(itp::interpolation_traversal().realValues()[static_cast<int>(.5f + params[RAMP_INTERPOLATION])]);
-                    
-                    auto rampWasAdjusted = adjustRamp;
-                    adjustRamp = params[CUT_ADJUST_RAMP_SIZE]? false: true;
-                    auto freqWasAdjusted = adjustFreq;
-                    adjustFreq = params[CUT_ADJUST_FREQ]? false : true; // note it's the opposite
-                    bool force = false;
-                    if((adjustRamp != rampWasAdjusted) ||
-                       period.didChange() ||
-                       gap.didChange() ||
-                       ramp_amount.didChange() ||
-                       ramp_speed.didChange() ||
-                       ramp_start_freq.didChange()) {
-                        force = true;
-                    }
-                    else if(freqWasAdjusted || adjustFreq) {
-                    }
-                    else {
-                        return;
-                    }
-                    
-                    for(auto& c : channels) {
-                        auto & osc = c.elem;
-                        if(osc.isInactive()) {
-                            continue;
-                        }
-                        auto tunedNote = midi::tuned_note(c.pitch, c.tuning);
-                        auto freq = to_freq(tunedNote-Do_midi, half_tone);
-                        
-                        if(adjustFreq) {
-                            auto r = (p - static_cast<float>(gap())) / p;
-                            freq *= r;
-                        }
-                        if(!force) {
-                            // maybe from/to is swapped so we need to test with both ends
-                            if(std::abs(freq - angle_increment_to_freq(osc.algo.getToIncrements())) < 0.0001f) {
-                                continue;
-                            }
-                            if(std::abs(freq - angle_increment_to_freq(osc.algo.getFromIncrements())) < 0.0001f) {
-                                continue;
-                            }
-                        }
-                        auto ramp_size = ms_to_frames(max_length_ramp_ms/ramp_speed_denormalize(ramp_speed()));
-                        if(adjustRamp) {
-                            ramp_size = adjusted(ramp_size);
-                        }
-                        auto start_freq = ramp_start_freq_denormalize(ramp_start_freq());
-                        osc.algo.set(freq - ramp_amount() * (freq-start_freq),
-                                     freq,
-                                     ramp_size,
-                                     -1.f,
-                                     interp);
-                    }
-                }
-                
             public:
-                
                 void doProcessing (ProcessData& data) override
                 {
                     A(data.numSamples);
@@ -589,10 +367,7 @@ namespace imajuscule {
                         // keep this loop after onEndBufferStepParamChanges()/compute_state(),
                         // so that new notes have the correct adjusted frequency
                         while(nextEventPosition == currentFrame) {
-                            // TODO use metaprogrammation to generalize
-                            Event e;
-                            it.dereference(e);
-                            onEvent(e);
+                            onEvent(it, [](auto & c) -> bool { return c.elem.isInactive(); });
                             ++it;
                             nextEventPosition = getNextEventPosition(it, end);
                         }
@@ -702,8 +477,86 @@ namespace imajuscule {
                     
                     A(nextEventPosition == event_position_infinite); // the events should all have already been processed
                 }
+                
+            private:
+                void onEndBufferStepParamChanges() {
+                    xfade.step();
+                    gap.step();
+                    period.step();
+                    
+                    ramp_speed.step();
+                    ramp_amount.step();
+                    ramp_start_freq.step();
+                }
+                
+                void compute_state() {
+                    p = period();
+                    if(0==gap()) {
+                        // since g is 0, any positive period value will give the same output
+                        // so we chose the one that uses the most out of the cacheline on which
+                        // interleaved buffers sit.
+                        A(p > 0);
+                        p = cut_period_one_cache_line;
+                    }
+                    else if(gap() >= p) {
+                        p = gap()+1;
+                    }
+                    
+                    auto interp = static_cast<itp::interpolation>(itp::interpolation_traversal().realValues()[static_cast<int>(.5f + params[RAMP_INTERPOLATION])]);
+                    
+                    auto rampWasAdjusted = adjustRamp;
+                    adjustRamp = params[CUT_ADJUST_RAMP_SIZE]? false: true;
+                    auto freqWasAdjusted = adjustFreq;
+                    adjustFreq = params[CUT_ADJUST_FREQ]? false : true; // note it's the opposite
+                    bool force = false;
+                    if((adjustRamp != rampWasAdjusted) ||
+                       period.didChange() ||
+                       gap.didChange() ||
+                       ramp_amount.didChange() ||
+                       ramp_speed.didChange() ||
+                       ramp_start_freq.didChange()) {
+                        force = true;
+                    }
+                    else if(freqWasAdjusted || adjustFreq) {
+                    }
+                    else {
+                        return;
+                    }
+                    
+                    for(auto& c : channels) {
+                        auto & osc = c.elem;
+                        if(osc.isInactive()) {
+                            continue;
+                        }
+                        auto tunedNote = midi::tuned_note(c.pitch, c.tuning);
+                        auto freq = to_freq(tunedNote-Do_midi, half_tone);
+                        
+                        if(adjustFreq) {
+                            auto r = (p - static_cast<float>(gap())) / p;
+                            freq *= r;
+                        }
+                        if(!force) {
+                            // maybe from/to is swapped so we need to test with both ends
+                            if(std::abs(freq - angle_increment_to_freq(osc.algo.getToIncrements())) < 0.0001f) {
+                                continue;
+                            }
+                            if(std::abs(freq - angle_increment_to_freq(osc.algo.getFromIncrements())) < 0.0001f) {
+                                continue;
+                            }
+                        }
+                        auto ramp_size = ms_to_frames(max_length_ramp_ms/ramp_speed_denormalize(ramp_speed()));
+                        if(adjustRamp) {
+                            ramp_size = adjusted(ramp_size);
+                        }
+                        auto start_freq = ramp_start_freq_denormalize(ramp_start_freq());
+                        osc.algo.set(freq - ramp_amount() * (freq-start_freq),
+                                     freq,
+                                     ramp_size,
+                                     -1.f,
+                                     interp);
+                    }
+                }
             };
-            
         }
     }
 } // namespaces

@@ -1,16 +1,4 @@
 
-#ifndef NDEBUG
-#define DO_LOG_MIDI 1
-#else
-#define DO_LOG_MIDI 0
-#endif
-
-#if DO_LOG_MIDI
-#define MIDI_LG( x , y, ...) LG( x , y ,##__VA_ARGS__)
-#else
-#define MIDI_LG(...)
-#endif
-
 namespace imajuscule {
     namespace audio {
         namespace voice {            
@@ -56,20 +44,27 @@ namespace imajuscule {
                 static const float M; };
             
             
-            template<typename Parameters, typename ProcessData>
-            struct ImplBase {
+            static constexpr auto size_interleaved_one_cache_line = cache_line_n_bytes / sizeof(interleaved_buf_t::value_type);
+            static constexpr auto size_interleaved = size_interleaved_one_cache_line;
+            
+            template<
+            typename Parameters,
+            typename ProcessData,
+            typename Parent = Impl<
+            ImplParams, Parameters, interleaved_buf_t, size_interleaved, ProcessData
+            >
+            >
+            struct ImplBase : public Parent {
+                using Parent::params;
+                
                 using Params = ImplParams;
                 static constexpr int NPARAMS = static_cast<int>(Params::NPARAMS);
                 static constexpr auto tune_stretch = 1.f;
                 
-            protected:
-                using interleaved_buf_t = cacheline_aligned_allocated::vector<float>;
                 using SoundEngine = SoundEngine<imajuscule::Logger, UpdateMode::FORCE_SOUND>;
+            protected:
                 using Mode = SoundEngine::Mode;
                 
-                static constexpr auto size_interleaved_one_cache_line = cache_line_n_bytes / sizeof(interleaved_buf_t::value_type);
-                
-                static constexpr auto size_interleaved = size_interleaved_one_cache_line;
 
             public:
                 static std::vector<ParamSpec> const & getParamSpecs() {
@@ -126,35 +121,11 @@ namespace imajuscule {
                 }
                 
                 // members
-                Parameters params;
-                
             protected:
                 float half_tone = compute_half_tone(tune_stretch);
                 
-                interleaved_buf_t interleaved;
-                
                 // methods
             public:
-                ImplBase()
-                {}
-                
-                void initializeSlow() {
-                    interleaved.resize(size_interleaved, 0.f);
-                    params.resize(NPARAMS);
-                }
-                
-                void initializeSteal(ImplBase && o) {
-                    interleaved = std::move(o.interleaved);
-                    std::fill(interleaved.begin(), interleaved.end(), 0.f);
-                    A(interleaved.size() == size_interleaved);
-                    params = std::move(o.params);
-                    A(params.size() == NPARAMS);
-                }
-                
-                void setParameter(int index, float value, int sampleOffset /* not supported yet */) {
-                    A(index < params.size());
-                    params[index] = value;
-                }
                 
                 void useProgram(int index) {
                     A(index < getPrograms().size());
@@ -164,141 +135,19 @@ namespace imajuscule {
                     }
                 }
                 
-                virtual void doProcessing (ProcessData& data) = 0;
-                virtual void allNotesOff() = 0;
-                virtual void allSoundsOff() = 0;
-                virtual ~ImplBase() = default;
-                
-            };
-            
-            
-            template<
-            
-            int nAudioOut,
-            
-            // to use it in context of Grid3d, we need to have an implementation of these:
-            typename Parameters,
-            typename EventIterator,
-            typename NoteOnEvent,
-            typename NoteOffEvent,
-            typename ProcessData,
-            
-            typename Base = ImplBase<Parameters, ProcessData>
-            
-            >
-            struct Impl_ : public Base
-            {
-                using Event = typename EventIterator::object;
-                using Programs = imajuscule::audio::Programs;
-
-                using Params = ImplParams;
-                static constexpr int NPARAMS = static_cast<int>(Params::NPARAMS);
-                static constexpr auto size_interleaved = Base::size_interleaved;
-                static constexpr auto n_frames_interleaved = size_interleaved / nAudioOut;
-                static_assert(n_frames_interleaved * nAudioOut == size_interleaved, ""); // make sure we don't waste space
-                static constexpr auto size_interleaved_one_cache_line = Base::size_interleaved_one_cache_line;
-                
-                using Base::half_tone;
-                using Base::params;
-                using Base::interleaved;
-
-                using OutputData = outputDataBase<nAudioOut, XfadePolicy::UseXfade, NoOpLock, PostProcess::NONE>;
-                using SoundEngine = typename Base::SoundEngine;
-                using Mode = typename SoundEngine::Mode;
-                
-                static constexpr auto n_max_voices = 8;
-                // notes played in rapid succession can have a common audio interval during xfades
-                // even if their noteOn / noteOff intervals are disjoint.
-                // n_max_simultaneous_notes_per_voice controls the possibility to support that 'well':
-                static constexpr auto n_max_simultaneous_notes_per_voice = 2;
-                static constexpr auto n_channels_per_note = 2;
-                static constexpr auto n_channels = n_channels_per_note * n_max_voices * n_max_simultaneous_notes_per_voice;
-                
-                struct EngineAndRamps {
-                    using audioElt = audioelement::FreqRamp<float>;
+            protected:
+                template<typename MonoNoteChannel, typename OutputData>
+                void onStartNote(float velocity, MonoNoteChannel & c, OutputData & out) {
                     
-                    EngineAndRamps() : engine{[this]()-> audioElt* {
-                        for(auto & r : ramps) {
-                            if(r.isInactive()) {
-                                return &r;
-                            }
-                        }
-                        return nullptr;
-                    }} {}
-                    
-                    SoundEngine engine;
-                    std::array<audioElt, 3> ramps;
-                };
-                
-                using MonoNoteChannel = MonoNoteChannel<n_channels_per_note, EngineAndRamps>;
-
-                //
-                //  types
-                //
-                
-            private:
-                OutputData out = {n_channels};
-                std::array<MonoNoteChannel, n_channels> channels;
-
-                //
-                //  methods
-                //
-            private:
-                onEventResult onEvent(Event const & e) {
-                    if(e.type == Event::kNoteOnEvent) {
-                        // this case is handled by the wrapper...
-                        A(e.noteOn.velocity > 0.f );
-                        // ... in case it were not handled by the wrapper we would need to do:
-                        // return noteOff(e.noteOn.pitch);
-                        
-                        if(auto c = editAudioElementContainer_if(channels,
-                                                                 [](auto & c) -> bool {
-                                                                     for(auto & e : c.elem.ramps) {
-                                                                         if(!e.isInactive()) {
-                                                                             return false;
-                                                                         }
-                                                                     }
-                                                                     // here we know that all elements are inactive
-                                                                     // but if the channel has not been closed yet
-                                                                     // we cannot use it (if we want to enable that,
-                                                                     // we should review the way note on/off are detected,
-                                                                     // because it will probably cause bugs)
-                                                                     return c.closed();
-                                                                 }))
-                        {
-                            return startNote(*c, e.noteOn);
-                        }
-                        return onDroppedNote(e.noteOn.pitch);
-                    }
-                    
-                    if(e.type == Event::kNoteOffEvent) {
-                        return noteOff(e.noteOff.pitch);
-                    }
-                    return onEventResult::UNHANDLED;
-                }
-                
-                onEventResult onDroppedNote(uint8_t pitch) {
-                    MIDI_LG(WARN, "dropped note '%d'", pitch);
-                    return onEventResult::DROPPED_NOTE;
-                }
-                
-                onEventResult startNote(MonoNoteChannel & c, NoteOnEvent const & e) {
-                    MIDI_LG(INFO, "on  %d", e.pitch);
-                    if(!c.open(out, 1.f, xfade_len())) {
-                        return onDroppedNote(e.pitch);
-                    }
-                    c.pitch = e.pitch;
-                    c.tuning = e.tuning;
-
                     c.elem.engine.set_channels(c.channels[0], c.channels[1]);
                     auto tunedNote = midi::tuned_note(c.pitch, c.tuning);
                     auto f = to_freq(tunedNote-Do_midi, half_tone);
                     c.elem.engine.set_base_freq(f);
-
+                    
                     auto mode = static_cast<Mode>(SoundEngine::ModeTraversal.realValues()[static_cast<int>(.5f + params[MODE])]);
                     c.elem.engine.set_mode(mode);
-                                        
-                    c.elem.engine.set_xfade(xfade_len());
+                    
+                    c.elem.engine.set_xfade(get_xfade_length());
                     c.elem.engine.set_freq_scatter(denorm<FREQ_SCATTER>());
                     c.elem.engine.set_d1(/*denorm<D1>()*/params[D1]);
                     c.elem.engine.set_d2(/*denorm<D2>()*/params[D2]);
@@ -313,48 +162,6 @@ namespace imajuscule {
                     c.elem.engine.set_active(true);
                     
                     c.elem.engine.update(out);
-                    
-                    return onEventResult::OK;
-                }
-                
-            public:
-                void allNotesOff() override {
-                    MIDI_LG(INFO, "all notes off :");
-                    for(auto & c : channels) {
-                        if(c.close(out, CloseMode::XFADE_ZERO, xfade_len())) {
-                            LG(INFO, " x %d", c.pitch);
-                        }
-                    }
-                }
-                
-                void allSoundsOff() override {
-                    MIDI_LG(INFO, "all sounds off :");
-                    for(auto & c : channels) {
-                        if(c.close(out, CloseMode::NOW)) {
-                            LG(INFO, " x %d", c.pitch);
-                        }
-                    }
-                }
-                
-            private:
-                // notes are identified by pitch
-                onEventResult noteOff(uint8_t pitch) {
-                    MIDI_LG(INFO, "off %d", pitch);
-                    for(auto & c : channels) {
-                        if(c.pitch != pitch) {
-                            continue;
-                        }
-                        if(!c.close(out, CloseMode::XFADE_ZERO, xfade_len())) {
-                            continue;
-                        }
-                        // the oscillator is still used for the crossfade,
-                        // it will stop being used in the call to openChannel when that channel is finished closing
-                        return onEventResult::OK;
-                    }
-                    // it could be that the corresponding noteOn was skipped
-                    // because too many notes where played at that time
-                    // or ... a bug? todo investigate...
-                    return onDroppedNote(pitch);
                 }
                 
                 template<ImplParams N>
@@ -367,12 +174,73 @@ namespace imajuscule {
                     return normalize<N>(params[N]);
                 }
                 
-                int xfade_len() const {
+                
+                int get_xfade_length() const {
                     auto d = denorm<XFADE_LENGTH>();
                     // make it odd
                     return 1 + (static_cast<int>(.5f+d)/2)*2;
                 }
+
+            };
+            
+            template<typename SoundEngine>
+            struct EngineAndRamps {
+                using audioElt = audioelement::FreqRamp<float>;
                 
+                EngineAndRamps() : engine{[this]()-> audioElt* {
+                    for(auto & r : ramps) {
+                        if(r.isInactive()) {
+                            return &r;
+                        }
+                    }
+                    return nullptr;
+                }} {}
+                
+                SoundEngine engine;
+                std::array<audioElt, 3> ramps;
+            };
+            
+            
+            template<
+            
+            int nAudioOut,
+            
+            // to use it in context of Grid3d, we need to have an implementation of these:
+            typename Parameters,
+            typename EventIterator,
+            typename NoteOnEvent,
+            typename NoteOffEvent,
+            typename ProcessData,
+            
+            typename Base = ImplBase<Parameters, ProcessData>,
+            
+            typename Parent = ImplCRTP < nAudioOut, XfadePolicy::UseXfade,
+            MonoNoteChannel< 2, EngineAndRamps<typename Base::SoundEngine> >,
+            EventIterator, NoteOnEvent, NoteOffEvent, Base >
+            
+            >
+            struct Impl_ : public Parent
+            {
+                using Event = typename EventIterator::object;
+                using Programs = imajuscule::audio::Programs;
+
+                using Params = ImplParams;
+                static constexpr int NPARAMS = static_cast<int>(Params::NPARAMS);
+                static constexpr auto n_frames_interleaved = size_interleaved / nAudioOut;
+                static_assert(n_frames_interleaved * nAudioOut == size_interleaved, ""); // make sure we don't waste space
+                
+                using Base::get_xfade_length;
+                using Base::half_tone;
+                using Base::interleaved;
+                using Base::params;
+                
+                using Parent::out;
+                using Parent::onEvent;
+
+                using OutputData = outputDataBase<nAudioOut, XfadePolicy::UseXfade, NoOpLock, PostProcess::NONE>;
+                using SoundEngine = typename Base::SoundEngine;
+                using Mode = typename SoundEngine::Mode;
+
             public:
                 
                 void doProcessing (ProcessData& data) override
@@ -404,10 +272,19 @@ namespace imajuscule {
                         A(nRemainingFrames > 0);
                         
                         while(nextEventPosition == currentFrame) {
-                            // TODO use metaprogrammation to generalize
-                            Event e;
-                            it.dereference(e);
-                            onEvent(e);
+                            onEvent(it, [](auto & c) -> bool {
+                                for(auto & e : c.elem.ramps) {
+                                    if(!e.isInactive()) {
+                                        return false;
+                                    }
+                                }
+                                // here we know that all elements are inactive
+                                // but if the channel has not been closed yet
+                                // we cannot use it (if we want to enable that,
+                                // we should review the way note on/off are detected,
+                                // because it will probably cause bugs)
+                                return c.closed();
+                            });
                             ++it;
                             nextEventPosition = getNextEventPosition(it, end);
                         }

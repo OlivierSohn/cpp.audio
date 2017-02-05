@@ -4,6 +4,8 @@ namespace imajuscule {
         
         template<int N, typename AudioElem>
         struct MonoNoteChannel {
+            static constexpr auto n_channels_per_note = N;
+            
             MonoNoteChannel() {
                 channels.fill(AUDIO_CHANNEL_NONE);
             }
