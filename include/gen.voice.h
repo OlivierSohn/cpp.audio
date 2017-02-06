@@ -248,6 +248,8 @@ namespace imajuscule {
                                 make_markov(0, 0, 1, 0, itp::EASE_INOUT_CIRC, 0.f, 93.f, 1301)
                             },{"Slow bird",
                                 make_markov(0, 2, 1, 0, itp::EASE_IN_EXPO, 0.f, 73.7f, 1301)
+                            },{"Many birds",
+                                make_markov(1, 0, 2, 0, itp::EASE_IN_EXPO, 1.f, 78.6f, 1301)
                             }
                         }};
                         return ps.v;
