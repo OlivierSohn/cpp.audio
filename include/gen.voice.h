@@ -2,45 +2,60 @@ namespace imajuscule {
     namespace audio {
         namespace voice {            
             
-            // the order here should be the same as is params_markov and params_robots
             enum ImplParams {
+
+                // Common
                 INTERPOLATION,
                 FREQ_SCATTER,
-                XFADE_LENGTH,
                 LENGTH,
+                XFADE_LENGTH,
                 PHASE_RATIO1,
                 PHASE_RATIO2,
+                
+                // Robot / Bird
                 D1,
                 D2,
                 HARMONIC_ATTENUATION,
                 
-                NPARAMS
+                // Markov
+                MARKOV_START_NODE,
+                MARKOV_PRE_TRIES,
+                MARKOV_MIN_PATH_LENGTH,
+                MARKOV_ADDITIONAL_TRIES,
+
             };
             
-            static std::array<ImplParams, 6> params_markov
+            static constexpr std::array<ImplParams, 10> params_markov
             {{
+                MARKOV_START_NODE,
+                MARKOV_PRE_TRIES,
+                MARKOV_MIN_PATH_LENGTH,
+                MARKOV_ADDITIONAL_TRIES,
+
                 INTERPOLATION,
                 FREQ_SCATTER,
-                XFADE_LENGTH,
                 LENGTH,
+                XFADE_LENGTH,
                 PHASE_RATIO1,
                 PHASE_RATIO2
+                
             }};
             
-            static std::array<ImplParams, 9> params_robots
+            static constexpr std::array<ImplParams, 9> params_robots
             {{
                 INTERPOLATION,
                 FREQ_SCATTER,
-                XFADE_LENGTH,
                 LENGTH,
+                XFADE_LENGTH,
                 PHASE_RATIO1,
                 PHASE_RATIO2,
+                
                 D1,
                 D2,
                 HARMONIC_ATTENUATION
             }};
             
-            static auto params_all = make_tuple(params_markov, params_robots, params_robots);
+            static constexpr auto params_all = make_tuple(params_markov, params_robots, params_robots);
             
 #include "pernamespace.implparams.h"
             
@@ -67,20 +82,39 @@ namespace imajuscule {
                 static const float m;
                 static const float M; };
             
+            template<> struct Limits<MARKOV_START_NODE> {
+                static constexpr auto m = 0;
+                static constexpr auto M = 2; };
+            
+            template<> struct Limits<MARKOV_PRE_TRIES> {
+                static constexpr auto m = 0;
+                static constexpr auto M = 20; };
+            
+            template<> struct Limits<MARKOV_MIN_PATH_LENGTH> {
+                static constexpr auto m = 0;
+                static constexpr auto M = 20; };
+            
+            template<> struct Limits<MARKOV_ADDITIONAL_TRIES> {
+                static constexpr auto m = 0;
+                static constexpr auto M = 20; };
             
             static constexpr auto size_interleaved_one_cache_line = cache_line_n_bytes / sizeof(interleaved_buf_t::value_type);
             static constexpr auto size_interleaved = size_interleaved_one_cache_line;
 
-            using SoundEngine = SoundEngine<imajuscule::Logger, UpdateMode::FORCE_SOUND>;
+            using SoundEngine = SoundEngine<imajuscule::Logger, UpdateMode::FORCE_SOUND_AT_EACH_UPDATE>;
             using Mode = SoundEngine::Mode;
 
-            template<
+            template <
+            
             Mode MODE,
             typename Parameters,
             typename ProcessData,
-            typename Parent = Impl<
-            ImplParams, Parameters, interleaved_buf_t, size_interleaved, ProcessData, std::get<MODE>(params_all).size()
+            typename Parent = Impl <
+            
+            std::get<MODE>(params_all).size(), Parameters, interleaved_buf_t, size_interleaved, ProcessData
+            
             >
+            
             >
             struct ImplBase : public Parent {
                 using Parent::params;
@@ -90,16 +124,21 @@ namespace imajuscule {
             
             public:
                 static std::vector<ParamSpec> const & getParamSpecs() {
+                    
                     static std::vector<ParamSpec> params_spec = {
                         {"Interpolation", itp::interpolation_traversal()},
                         {"Frequency scatter", Limits<FREQ_SCATTER>::m, Limits<FREQ_SCATTER>::M },
-                        {"Crossfade length", static_cast<float>(Limits<XFADE_LENGTH>::m), static_cast<float>(Limits<XFADE_LENGTH>::M) }, // couldn't make it work with nsteps = max-min / 2
                         {"Length", Limits<LENGTH>::m, Limits<LENGTH>::M},
+                        {"Crossfade length", static_cast<float>(Limits<XFADE_LENGTH>::m), static_cast<float>(Limits<XFADE_LENGTH>::M) }, // couldn't make it work with nsteps = max-min / 2
                         {"Phase ratio 1", Limits<PHASE_RATIO1>::m, Limits<PHASE_RATIO1>::M},
                         {"Phase ratio 2", Limits<PHASE_RATIO2>::m, Limits<PHASE_RATIO2>::M},
                         {"D1", Limits<D1>::m, Limits<D1>::M },
                         {"D2", Limits<D2>::m, Limits<D2>::M},
-                        {"Harmonic attenuation", Limits<HARMONIC_ATTENUATION>::m, Limits<HARMONIC_ATTENUATION>::M}
+                        {"Harmonic attenuation", Limits<HARMONIC_ATTENUATION>::m, Limits<HARMONIC_ATTENUATION>::M},
+                        {"Start node", Limits<MARKOV_START_NODE>::m, Limits<MARKOV_START_NODE>::M},
+                        {"Pre tries", Limits<MARKOV_PRE_TRIES>::m, Limits<MARKOV_PRE_TRIES>::M},
+                        {"Minimum path length", Limits<MARKOV_MIN_PATH_LENGTH>::m, Limits<MARKOV_MIN_PATH_LENGTH>::M},
+                        {"Additional tries", Limits<MARKOV_ADDITIONAL_TRIES>::m, Limits<MARKOV_ADDITIONAL_TRIES>::M},
                     };
                     
                     static std::vector<ParamSpec> filtered;
@@ -112,22 +151,22 @@ namespace imajuscule {
                     return filtered;
                 }
                 
-                static Program::ARRAY make(itp::interpolation i,
-                                           float freq_scat,
-                                           int xfade,
-                                           float length,
-                                           float phase_ratio1, float phase_ratio2,
-                                           float d1, float d2,
-                                           float harmonic_attenuation) {
+                static std::array<float,9> make_common(itp::interpolation i,
+                                                       float freq_scat,
+                                                       float length,
+                                                       int xfade,
+                                                       float phase_ratio1, float phase_ratio2,
+                                                       float d1, float d2,
+                                                       float harmonic_attenuation) {
                     int itp_index = 0;
                     auto b = itp::interpolation_traversal().valToRealValueIndex(i, itp_index);
                     A(b);
-
+                    
                     return {{
                         static_cast<float>(itp_index),
                         /*normalize<FREQ_SCATTER>*/(freq_scat),
-                        normalize<XFADE_LENGTH>(xfade),
                         normalize<LENGTH>(length),
+                        normalize<XFADE_LENGTH>(xfade),
                         normalize<PHASE_RATIO1>(phase_ratio1),
                         normalize<PHASE_RATIO2>(phase_ratio2),
                         /*normalize<D1>*/(d1),
@@ -136,23 +175,79 @@ namespace imajuscule {
                     }};
                 }
                 
-                static Program::ARRAY make_markov(itp::interpolation i,
+                static Program::ARRAY make_robot(itp::interpolation i,
+                                                 float freq_scat,
+                                                 float length,
+                                                 int xfade,
+                                                 float d1, float d2,
+                                                 float harmonic_attenuation,
+                                                 float phase_ratio1 = 0.f, float phase_ratio2 = 0.f) {
+                    auto a = make_common(i, freq_scat, length, xfade, phase_ratio1, phase_ratio2, d1,d2,harmonic_attenuation);
+                    Program::ARRAY result;
+                    result.resize(std::get<Mode::ROBOTS>(params_all).size());
+                    for(int idx = 0; idx<a.size(); ++idx) {
+                        auto e = static_cast<ImplParams>(idx);
+                        if(!has(e)) {
+                            continue;
+                        }
+                        result[index(e)] = a[idx];
+                    }
+                    return result;
+                }
+                
+                static Program::ARRAY make_bird(itp::interpolation i,
+                                                float freq_scat,
+                                                float length,
+                                                int xfade,
+                                                float d1, float d2,
+                                                float harmonic_attenuation,
+                                                float phase_ratio1 = 0.f, float phase_ratio2 = 0.f) {
+                    auto a = make_common(i, freq_scat, length, xfade, phase_ratio1, phase_ratio2, d1,d2,harmonic_attenuation);
+                    Program::ARRAY result;
+                    result.resize(std::get<Mode::BIRDS>(params_all).size());
+                    for(int idx = 0; idx<a.size(); ++idx) {
+                        auto e = static_cast<ImplParams>(idx);
+                        if(!has(e)) {
+                            continue;
+                        }
+                        result[index(e)] = a[idx];
+                    }
+                    return result;
+                }
+                
+                static Program::ARRAY make_markov(int start_node,
+                                                  int pre_tries,
+                                                  int min_path_length,
+                                                  int additionnal_tries,
+                                                  itp::interpolation i,
                                                   float freq_scat,
-                                                  int xfade,
                                                   float length,
+                                                  int xfade,
                                                   float phase_ratio1 = 0.f, float phase_ratio2 = 0.f) {
-                    auto a = make(i, freq_scat, xfade, length, phase_ratio1, phase_ratio2, 0,0,0);
-                    a.resize(std::get<Mode::MARKOV>(params_all).size());
-                    return a;
+                    auto a = make_common(i, freq_scat, length, xfade, phase_ratio1, phase_ratio2, 0,0,0);
+                    Program::ARRAY result;
+                    result.resize(std::get<Mode::MARKOV>(params_all).size());
+                    for(int idx = 0; idx<a.size(); ++idx) {
+                        auto e = static_cast<ImplParams>(idx);
+                        if(!has(e)) {
+                            continue;
+                        }
+                        result[index(e)] = a[idx];
+                    }
+                    result[index(MARKOV_START_NODE)] = start_node;
+                    result[index(MARKOV_PRE_TRIES)] = pre_tries;
+                    result[index(MARKOV_MIN_PATH_LENGTH)] = min_path_length;
+                    result[index(MARKOV_ADDITIONAL_TRIES)] = additionnal_tries;
+                    return result;
                 }
                 
                 static Programs const & getPrograms() {
                     if(MODE==Mode::MARKOV) {
                         static ProgramsI ps {{
                             {"Cute bird",
-                                make_markov(itp::EASE_INOUT_CIRC, 0.f, 1301, 93.f)
+                                make_markov(0, 0, 1, 0, itp::EASE_INOUT_CIRC, 0.f, 93.f, 1301)
                             },{"Slow bird",
-                                make_markov(itp::EASE_IN_EXPO, 0.f, 1301, 73.7f)
+                                make_markov(0, 2, 1, 0, itp::EASE_IN_EXPO, 0.f, 73.7f, 1301)
                             }
                         }};
                         return ps.v;
@@ -160,16 +255,15 @@ namespace imajuscule {
                     else if(MODE==Mode::ROBOTS) {
                         static ProgramsI ps {{
                             {"Robot 1",
-                                make(itp::EASE_INOUT_CIRC, 0.f, 1301, 93.f, 0.f, 0.f, 0.f, 0.f, 0.f)
+                                make_robot(itp::EASE_INOUT_CIRC, 0.f, 93.f, 1301, 0.f, 0.f, 0.f, 0.f, 0.f)
                             },
                         }};
                         return ps.v;
                     }
-                    else {
-                        A(MODE==Mode::BIRDS);
+                    else if(MODE==Mode::BIRDS) {
                         static ProgramsI ps {{
                             {"Bird 1",
-                                make(itp::EASE_INOUT_CIRC, 0.f, 1301, 93.f, 0.f, 0.f, 0.f, 0.f, 0.f)
+                                make_bird(itp::EASE_INOUT_CIRC, 0.f, 93.f, 1301, 0.f, 0.f, 0.f, 0.f, 0.f)
                             },
                         }};
                         return ps.v;
@@ -184,40 +278,76 @@ namespace imajuscule {
                     return progs[i];
                 }
                 
+                static constexpr int index(ImplParams n) {
+                    int idx = 0;
+                    for(auto p : std::get<MODE>(params_all)) {
+                        if(p==n) {
+                            return idx;
+                        }
+                        ++idx;
+                    }
+                    A(0);
+                    return 0;
+                }
+                
+                static constexpr bool has(ImplParams n) {
+                    for(auto p : std::get<MODE>(params_all)) {
+                        if(p==n) {
+                            return true;
+                        }
+                    }
+                    return false;
+                }
+                
+                
+                template<ImplParams N>
+                float value() const {
+                    return params[index(N)];
+                }
+                
                 template<ImplParams N>
                 float denorm() const {
-                    return denormalize<N>(params[N]);
+                    return denormalize<N>(params[index(N)]);
                 }
                 
                 template<ImplParams N>
                 float norm() const {
-                    return normalize<N>(params[N]);
+                    return normalize<N>(params[index(N)]);
                 }
                 
             protected:
                 template<typename MonoNoteChannel, typename OutputData>
                 void onStartNote(float velocity, MonoNoteChannel & c, OutputData & out) {
                     
+                    c.elem.engine.set_active(true);
+                    c.elem.engine.set_mode(MODE);
                     c.elem.engine.set_channels(c.channels[0], c.channels[1]);
+                    auto interp = static_cast<itp::interpolation>(itp::interpolation_traversal().realValues()[static_cast<int>(.5f + value<INTERPOLATION>())]);
+                    
+                    c.elem.engine.set_itp(interp);
                     auto tunedNote = midi::tuned_note(c.pitch, c.tuning);
                     auto f = to_freq(tunedNote-Do_midi, half_tone);
                     c.elem.engine.set_base_freq(f);
                     
-                    c.elem.engine.set_mode(MODE);
-                    
+                    c.elem.engine.set_length(denorm<LENGTH>());
                     c.elem.engine.set_xfade(get_xfade_length());
                     c.elem.engine.set_freq_scatter(denorm<FREQ_SCATTER>());
-                    c.elem.engine.set_d1(/*denorm<D1>()*/params[D1]);
-                    c.elem.engine.set_d2(/*denorm<D2>()*/params[D2]);
                     c.elem.engine.set_phase_ratio1(denorm<PHASE_RATIO1>());
                     c.elem.engine.set_phase_ratio2(denorm<PHASE_RATIO2>());
-                    c.elem.engine.set_har_att(denorm<HARMONIC_ATTENUATION>());
-                    c.elem.engine.set_length(denorm<LENGTH>());
+
+                    if(0) {
+                        c.elem.engine.set_d1(/*denorm<D1>()*/value<D1>());
+                        c.elem.engine.set_d2(/*denorm<D2>()*/value<D2>());
+                        c.elem.engine.set_har_att(denorm<HARMONIC_ATTENUATION>());
+                    }
                     
-                    auto interp = static_cast<itp::interpolation>(itp::interpolation_traversal().realValues()[static_cast<int>(.5f + params[INTERPOLATION])]);
-                    
-                    c.elem.engine.set_itp(interp);
-                    c.elem.engine.set_active(true);
+                    if(MODE == Mode::MARKOV) {
+                        c.elem.engine.initialize_markov(value<MARKOV_START_NODE>(),
+                                                        value<MARKOV_PRE_TRIES>(),
+                                                        value<MARKOV_MIN_PATH_LENGTH>(),
+                                                        value<MARKOV_ADDITIONAL_TRIES>(),
+                                                        SoundEngine::InitPolicy::StartAfresh);
+                    }
                     
                     c.elem.engine.update(out);
                 }
@@ -244,7 +374,10 @@ namespace imajuscule {
                 }} {}
                 
                 SoundEngine engine;
-                std::array<audioElt, 3> ramps;
+                std::array<audioElt, 30> ramps;
+                // thats a waste of space : we use the ramps in sequence, but since the scheduling happends before the sound starts,
+                // we need many if we want a long sequence.
+                // todo : allow scheduling (markov steps) to occur while sound is played
             };
             
             template<
@@ -261,7 +394,7 @@ namespace imajuscule {
             typename Base = ImplBase<MODE, Parameters, ProcessData>,
             
             typename Parent = ImplCRTP < nAudioOut, XfadePolicy::UseXfade,
-            MonoNoteChannel< 2, EngineAndRamps<SoundEngine> >,
+            MonoNoteChannel< 2, EngineAndRamps<SoundEngine> >, CloseMode::WHEN_DONE_PLAYING,
             EventIterator, NoteOnEvent, NoteOffEvent, Base >
             
             >

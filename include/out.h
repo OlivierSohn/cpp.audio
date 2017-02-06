@@ -345,8 +345,6 @@ namespace imajuscule {
                 }
             }
 
-            LG(INFO, "open %d, n_available %d", id, available_ids.size());
-
             // no need to lock here : the channel is not playing
             if(!editChannel(id).isActive()) {
                 editChannel(id).reset();

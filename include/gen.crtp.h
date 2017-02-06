@@ -43,13 +43,11 @@ namespace imajuscule {
         
         template<
         
-        typename ImplParams,
+        int NParams,
         typename Parameters,
         typename InterleavedBuffer,
         int SizeInterleaved,
-        typename ProcessData,
-        
-        int NParams = ImplParams::NPARAMS
+        typename ProcessData
         
         >
         struct Impl {
@@ -109,6 +107,7 @@ namespace imajuscule {
         int nAudioOut,
         XfadePolicy xfade_policy,
         typename MNC,
+        CloseMode note_off_policy,
         typename EventIterator,
         typename NoteOnEvent,
         typename NoteOffEvent,
@@ -139,7 +138,7 @@ namespace imajuscule {
                 MIDI_LG(INFO, "all notes off :");
                 auto len =  get_xfade_length();
                 for(auto & c : channels) {
-                    if(c.close(out, CloseMode::XFADE_ZERO, len)) {
+                    if(c.close(out, note_off_policy, len)) {
                         LG(INFO, " x %d", c.pitch);
                     }
                 }
@@ -214,7 +213,7 @@ namespace imajuscule {
                     if(c.pitch != pitch) {
                         continue;
                     }
-                    if(!c.close(out, CloseMode::XFADE_ZERO, len)) {
+                    if(!c.close(out, note_off_policy, len)) {
                         continue;
                     }
                     // the oscillator is still used for the crossfade,

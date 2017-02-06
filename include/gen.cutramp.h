@@ -38,7 +38,7 @@ namespace imajuscule {
             typename Parameters,
             typename ProcessData,
             typename InterleavedBuffer = std::array<interleaved_buf_t, 2>,
-            typename Parent = Impl<ImplParams, Parameters, InterleavedBuffer, size_interleaved, ProcessData>
+            typename Parent = Impl<ImplParams::NPARAMS, Parameters, InterleavedBuffer, size_interleaved, ProcessData>
             >
             struct ImplBase : public Parent {
                 using Params = ImplParams;
@@ -243,7 +243,7 @@ namespace imajuscule {
             typename Base = ImplBase<Parameters, ProcessData>,
             
             typename Parent = ImplCRTP</* > */ nAudioOut, XfadePolicy::SkipXfade,
-            MonoNoteChannel<1, audioelement::FreqRamp<float>>,
+            MonoNoteChannel<1, audioelement::FreqRamp<float>>, CloseMode::XFADE_ZERO,
             EventIterator, NoteOnEvent, NoteOffEvent, Base /* < */>
             
             >
