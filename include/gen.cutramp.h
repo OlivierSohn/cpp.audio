@@ -243,7 +243,7 @@ namespace imajuscule {
             typename Base = ImplBase<Parameters, ProcessData>,
             
             typename Parent = ImplCRTP</* > */ nAudioOut, XfadePolicy::SkipXfade,
-            MonoNoteChannel<1, audioelement::FreqRamp<float>>, CloseMode::XFADE_ZERO,
+            MonoNoteChannel<1, audioelement::FreqRamp<float>>, true,
             EventIterator, NoteOnEvent, NoteOffEvent, Base /* < */>
             
             >
@@ -526,10 +526,10 @@ namespace imajuscule {
                         }
                         if(!force) {
                             // maybe from/to is swapped so we need to test with both ends
-                            if(std::abs(freq - angle_increment_to_freq(osc.algo.getToIncrements())) < 0.0001f) {
+                            if(std::abs(freq - angle_increment_to_freq(osc.algo.spec.getToIncrements())) < 0.0001f) {
                                 continue;
                             }
-                            if(std::abs(freq - angle_increment_to_freq(osc.algo.getFromIncrements())) < 0.0001f) {
+                            if(std::abs(freq - angle_increment_to_freq(osc.algo.spec.getFromIncrements())) < 0.0001f) {
                                 continue;
                             }
                         }

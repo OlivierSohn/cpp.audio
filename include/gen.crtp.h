@@ -107,7 +107,7 @@ namespace imajuscule {
         int nAudioOut,
         XfadePolicy xfade_policy,
         typename MNC,
-        CloseMode note_off_policy,
+        bool close_channel_on_note_off,
         typename EventIterator,
         typename NoteOnEvent,
         typename NoteOffEvent,
@@ -138,7 +138,7 @@ namespace imajuscule {
                 MIDI_LG(INFO, "all notes off :");
                 auto len =  get_xfade_length();
                 for(auto & c : channels) {
-                    if(c.close(out, note_off_policy, len)) {
+                    if(c.close(out, CloseMode::XFADE_ZERO, len)) {
                         LG(INFO, " x %d", c.pitch);
                     }
                 }
@@ -208,12 +208,18 @@ namespace imajuscule {
             
             onEventResult noteOff(uint8_t pitch) {
                 MIDI_LG(INFO, "off %d", pitch);
+                if(!close_channel_on_note_off) {
+                    // the initial implementation was using CloseMode::WHEN_DONE_PLAYING for that case
+                    // but close method sets the channel to -1 so it's impossible to fade it to zero
+                    // afterwards using close(), so instead we don't do anything here
+                    return onEventResult::OK;
+                }
                 auto len = get_xfade_length();
                 for(auto & c : channels) {
                     if(c.pitch != pitch) {
                         continue;
                     }
-                    if(!c.close(out, note_off_policy, len)) {
+                    if(!c.close(out, CloseMode::XFADE_ZERO, len)) {
                         continue;
                     }
                     // the oscillator is still used for the crossfade,
