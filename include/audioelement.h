@@ -243,21 +243,35 @@ namespace imajuscule {
         using Oscillator = FinalAudioElement<OscillatorAlgo<T, NormPolicy>>;
         
         template<typename T>
-        struct FreqRampAlgo {
+        struct FreqRampAlgo;
+
+        template<typename T>
+        struct FreqRampAlgoSpec {
             
-            static_assert(std::is_same<T,float>::value, "non-float interpolation is not supported");
+            template<typename U> friend class FreqRampAlgo;
             
             using Tr = NumTraits<T>;
-            
-            FreqRampAlgo() : cur_sample(Tr::zero()), from{}, to{}, duration_in_samples{}
+
+            FreqRampAlgoSpec() : cur_sample(Tr::zero()), from{}, to{}, duration_in_samples{}
             {}
-            
+
             void set(T from_,
                      T to_,
                      T duration_in_samples_,
-                     T start_sample = Tr::zero(),
-                     itp::interpolation i = itp::LINEAR)
-            {
+                     T start_sample,
+                     itp::interpolation i = itp::LINEAR) {
+                set_by_increments(freq_to_angle_increment(from_),
+                                  freq_to_angle_increment(to_),
+                                  duration_in_samples_,
+                                  start_sample,
+                                  i);
+            }
+            
+            void set_by_increments(T from_increments,
+                                   T to_increments,
+                                   T duration_in_samples_,
+                                   T start_sample,
+                                   itp::interpolation i = itp::LINEAR) {
                 if(start_sample >= Tr::zero()) {
                     cur_sample = start_sample;
                 }
@@ -266,17 +280,17 @@ namespace imajuscule {
                     // and we adapt bounds order to the existing bounds
                     A(duration_in_samples);
                     cur_sample *= duration_in_samples_ / duration_in_samples;
-                    if(from_ > to_) {
+                    if(from_increments > to_increments) {
                         if(from < to) {
-                            std::swap(from_, to_);
+                            std::swap(from_increments, to_increments);
                         }
                     }
                     else if(from > to) {
-                        std::swap(from_, to_);
+                        std::swap(from_increments, to_increments);
                     }
                 }
-                from = freq_to_angle_increment(from_);
-                to = freq_to_angle_increment(to_);
+                from = from_increments;
+                to = to_increments;
                 duration_in_samples = duration_in_samples_;
                 
                 // we want to achieve the same effect as PROPORTIONAL_VALUE_DERIVATIVE
@@ -288,17 +302,54 @@ namespace imajuscule {
                 A(to > 0);
                 // else C computation cannot be done
                 
+                C = (to==from) ? 1.f : -std::log(from/to) / (to-from);
+                
                 A(duration_in_samples > 0);
                 interp.setInterpolation(i);
-                
-                C = (to==from) ? 1.f : -std::log(from/to) / (to-from);
+            }
+            
+            T step() {
+                if(cur_sample > duration_in_samples) {
+                    cur_sample = Tr::zero();
+                    std::swap(from, to);
+                }
+                // we call get_unfiltered_value instead of get_value because we ensure:
+                A(cur_sample <= duration_in_samples);
+                auto f = interp.get_unfiltered_value(cur_sample, duration_in_samples, from, to);
+                cur_sample += C * f;
+                return f;
+            }
+            
+            T getFromIncrements() const { return from; }
+            T getToIncrements() const { return to; }
+
+        private:
+            NormalizedInterpolation<T> interp;
+            T from, to, cur_sample;
+            T duration_in_samples;
+            T C;
+        };
+        
+        template<typename T>
+        struct FreqRampAlgo {
+            using Spec = FreqRampAlgoSpec<T>;
+            using Tr = NumTraits<T>;
+
+            static_assert(std::is_same<T,float>::value, "non-float interpolation is not supported");
+            
+            void set(T from_,
+                     T to_,
+                     T duration_in_samples_,
+                     T start_sample = Tr::zero(),
+                     itp::interpolation i = itp::LINEAR)
+            {
+                spec.set(from_, to_, duration_in_samples_, start_sample, i);
             }
             
             void step() {
-                auto f = currentFreq();
-                osc.setAngleIncrements(f);
+                auto current_freq = spec.step();
+                osc.setAngleIncrements(current_freq);
                 osc.step(); // we must step osc because we own it
-                cur_sample += C * f ;
             }
             
             T angleIncrements() const { return osc.angleIncrements(); }
@@ -306,23 +357,9 @@ namespace imajuscule {
             T real() const { return osc.real(); }
             T imag() const { return osc.imag(); }
             
-            T getFromIncrements() const { return from; }
-            T getToIncrements() const { return to; }
+            Spec spec;
         private:
             OscillatorAlgo<T> osc;
-            NormalizedInterpolation<T> interp;
-            T from, to, cur_sample, C;
-            T duration_in_samples;
-            
-            T currentFreq() {
-                if(cur_sample > duration_in_samples) {
-                    cur_sample = Tr::zero();
-                    std::swap(from, to);
-                }
-                // we call get_unfiltered_value instead of get_value because we ensure:
-                A(cur_sample <= duration_in_samples);
-                return interp.get_unfiltered_value(cur_sample, duration_in_samples, from, to);
-            }
         };
         
         template<typename T>
