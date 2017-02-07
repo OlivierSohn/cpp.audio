@@ -264,25 +264,35 @@ namespace imajuscule {
         }
         
         template<class... Args>
-        void playGeneric( uint8_t channel_id, Args&&... requests) {
-            Locking l(used);
+        bool playGeneric( uint8_t channel_id, Args&&... requests) {
             
             // it's important to register and enqueue in the same lock cycle
             // else we miss some audio frames,
             // or the callback gets unscheduled
             
-            // further more, we need to enqueue first, so that the buffer has the "queued" state
-            // because when registering compute lambdas, theycan be executed right away
-            // so the buffer needs to be in the right state
-            
-            playNolock(channel_id, {std::move(requests.second)...});
+            Locking l(used);
 
+            return playGenericNoLock(channel_id, std::forward<Args>(requests)...);
+        }
+        
+        
+        template<class... Args>
+        bool playGenericNoLock( uint8_t channel_id, Args&&... requests) {
+            
+            // we enqueue first, so that the buffer has the "queued" state
+            // because when registering compute lambdas, they can be executed right away
+            // so the buffer needs to be in the right state
+
+            bool res = playNolock(channel_id, {std::move(requests.second)...});
+            
             auto buffers = std::make_tuple(std::ref(requests.first)...);
             for_each(buffers, [this](auto &buf) {
                 if(auto f = audioelement::fCompute(buf)) {
                     this->registerAudioElementCompute(std::move(f));
                 }
             });
+            
+            return res;
         }
         
         void play( uint8_t channel_id, StackVector<Request> && v) {
@@ -397,12 +407,16 @@ namespace imajuscule {
             autoclosing_ids.push_back(channel_id);
         }
         
-        void playNolock( uint8_t channel_id, StackVector<Request> && v) {
+        bool playNolock( uint8_t channel_id, StackVector<Request> && v) {
+            bool res = true;
             auto & c = editChannel(channel_id);
             for( auto & sound : v ) {
                 A(sound.valid());
-                c.addRequest( std::move(sound) );
+                if(!c.addRequest( std::move(sound) )) {
+                    res = false;
+                }
             }
+            return res;
         }
 
         void computeNextAudioElementsBuffers() {
