@@ -115,6 +115,8 @@ namespace imajuscule {
         ExplicitClose, // the channel cannot be reassigned unless explicitely closed
     };
     
+    
+
     template<
     int nAudioOut,
     XfadePolicy XF = XfadePolicy::UseXfade,
@@ -131,6 +133,7 @@ namespace imajuscule {
         
         static constexpr auto initial_n_audioelements_reserve = 4;
         
+        int count_consummed_frames() const { return consummed_frames; }
     private:
         std::atomic_bool used { false };
         
@@ -170,7 +173,12 @@ namespace imajuscule {
     private:
         template<typename F>
         void registerAudioElementCompute(F f) {
-            // todo prevent reallocation here to not block audio...
+            // because we are holding the audio lock, we should not do any system calls.
+            // in case cannot know in advance how many will be needed , do 2 step locking:
+            // first lock to know how much is needed
+            // allocate outside the lock
+            // lock : copy existing to new, then swap
+            A(audioElements_computes.capacity() > audioElements_computes.size());
             audioElements_computes.push_back(std::move(f));
             if(isInbetweenTwoAudioElementComputes()) {
                 audioElements_computes.back()(clock_);
@@ -250,8 +258,7 @@ namespace imajuscule {
                 }
             }
         }
-        
-        // called from main thread
+
         Channel & editChannel(uint8_t id) { return channels[id]; }
         
         Channel const & getChannel(uint8_t id) const { return channels[id]; }

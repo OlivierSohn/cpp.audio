@@ -1,4 +1,16 @@
 
+#ifndef NDEBUG
+#define DO_LOG_XFADE 0
+#else
+#define DO_LOG_XFADE 0
+#endif
+
+#if DO_LOG_XFADE
+#define LG_XFADE( x , y, ...) LG( x , y ,##__VA_ARGS__)
+#else
+#define LG_XFADE(...)
+#endif
+
 namespace imajuscule {
 
     struct MakeVolume {
@@ -49,6 +61,32 @@ namespace imajuscule {
         // make sure we'll have no overflow on volume_transition_remaining
         static_assert(default_volume_transition_length < (1 << 16), "");
 
+        /*
+         * used in case we don't know, at the time the request is added
+         * to the channel, how long it will be.
+         * After this is called, the xfade starts immediately
+         *
+         * Prerequisite: no xfade has begun, else the functionality is not guaranteed
+         */
+        void xfade_now() {
+            A(XF!=XfadePolicy::SkipXfade);
+            A(isPlaying());
+            A(!StrictlyInsideXfade());
+            auto new_c = 1 + size_half_xfade;
+            if(!requests.empty()) {
+                A(remaining_samples_count >= new_c);
+                remaining_samples_count = new_c;
+                A(current.duration_in_frames >= get_size_xfade());
+                current.duration_in_frames = get_size_xfade();
+            }
+            else {
+
+                //current.duration_in_frames = get_size_xfade(); // doesn't work
+                // unchanged current.duration_in_frames works
+                remaining_samples_count = new_c;
+            }
+        };
+        
     public:
         
         uint16_t volume_transition_remaining;
@@ -82,6 +120,13 @@ namespace imajuscule {
             A(!isPlaying());
         }
         
+        auto const & get_requests() const { return requests; }
+        auto const & get_current() const { return current; }
+        
+        auto const get_size_half_xfade() const { A(XF == XfadePolicy::UseXfade); return size_half_xfade; }
+        
+        auto const get_remaining_samples_count() const { return remaining_samples_count; }
+
         void reset() {
             *this = {}; // to release all audio elements
             A(!isPlaying());
@@ -89,8 +134,8 @@ namespace imajuscule {
             A(isActive());
         }
         
-        // prefer using toVolume if channel is Playing
         void setVolume(float volume) {
+            A(!isPlaying());
             chan_vol.current = volume;
         }
         
@@ -168,6 +213,10 @@ namespace imajuscule {
         
         bool isActive() const { return active; }
 
+        bool StrictlyInsideXfade() const {
+            A(XF==XfadePolicy::UseXfade);
+            return (remaining_samples_count <= size_half_xfade) || (crossfading_from_zero_remaining() > 0);
+        }
     private:
         
         bool consume(int n_writes_remaining) {
@@ -200,7 +249,7 @@ namespace imajuscule {
                     return false;
                 }
                 previous = std::move(current);
-                A(!current.buffer); // move reset it
+                A(!current.buffer); // the move constructor has reset it
                 // emulate a right xfade 'to zero'
                 current.duration_in_frames = get_size_xfade()-1; // to do the right xfade
                 remaining_samples_count = size_half_xfade;  // to do the right xfade
@@ -357,6 +406,7 @@ namespace imajuscule {
             A(!other || !other->buffer || other->buffer.isSoundBuffer());
             A(!current.buffer || current.buffer.isSoundBuffer());
 
+            LG_XFADE(INFO, ".xfade %.5f", xfade_ratio);
             int const s = current.buffer ? (int) current.buffer.asSoundBuffer().size() : 0;
             int const other_s = (other && other->buffer) ? safe_cast<int>(other->buffer.asSoundBuffer().size()) : 0;
             for( int i=0; i<n_writes; i++ ) {
@@ -385,6 +435,7 @@ namespace imajuscule {
                 xfade_ratio -= xfade_increment;
                 write_value(std::move(val), outputBuffer);
             }
+            LG_XFADE(INFO, " xfade %.5f", xfade_ratio);
         }
         
         void write_SoundBuffer_2_AudioElement_xfade(SAMPLE * outputBuffer, float xfade_ratio, int const n_writes, float xfade_increment,
@@ -407,6 +458,7 @@ namespace imajuscule {
         template<typename T>
         void write_SoundBuffer_2_AudioElement_xfade(SAMPLE * outputBuffer, float xfade_ratio, int const n_writes, float xfade_increment,
                                                     T const & buf2, Volumes const & volBuf2) {
+            LG_XFADE(INFO, ".xfade %.5f", xfade_ratio);
             A(XF==XfadePolicy::UseXfade);
             int const s = current.buffer ? (int) current.buffer.asSoundBuffer().size() : 0;
             for( int i=0; i<n_writes; i++ ) {
@@ -435,6 +487,7 @@ namespace imajuscule {
             if(other_next_sample_index == audioelement::n_frames_per_buffer) {
                 other_next_sample_index = 0;
             }
+            LG_XFADE(INFO, " xfade %.5f", xfade_ratio);
         }
 
         void write_AudioElement_2_SoundBuffer_xfade(SAMPLE * outputBuffer, float xfade_ratio, int const n_writes, float xfade_increment,
@@ -460,6 +513,7 @@ namespace imajuscule {
         void write_AudioElement_2_SoundBuffer_xfade(SAMPLE * outputBuffer, float xfade_ratio, int const n_writes, float xfade_increment,
                                                         T const & buf1, Volumes const & volBuf1
                                                         , Request const * other) {
+            LG_XFADE(INFO, ".xfade %.5f", xfade_ratio);
             A(XF==XfadePolicy::UseXfade);
             int const other_s = (other && other->buffer) ? safe_cast<int>(other->buffer.asSoundBuffer().size()) : 0;
             for( int i=0; i<n_writes; ++i, ++current_next_sample_index) {
@@ -488,6 +542,7 @@ namespace imajuscule {
             if(current_next_sample_index == audioelement::n_frames_per_buffer) {
                 current_next_sample_index = 0;
             }
+            LG_XFADE(INFO, " xfade %.5f", xfade_ratio);
         }
 
         void write_AudioElement_2_AudioElement_xfade(SAMPLE * outputBuffer, float xfade_ratio, int const n_writes, float xfade_increment,
@@ -534,6 +589,7 @@ namespace imajuscule {
         void write_AudioElement_2_AudioElement_xfade(SAMPLE * outputBuffer, float xfade_ratio, int const n_writes, float xfade_increment,
                                                          T1 const & buf1, Volumes const & volBuf1,
                                                          T2 const & buf2, Volumes const & volBuf2) {
+            LG_XFADE(INFO, ".xfade %.5f", xfade_ratio);
             A(XF==XfadePolicy::UseXfade);
             for( int i=0; i<n_writes; ++i, ++current_next_sample_index, ++other_next_sample_index, xfade_ratio -= xfade_increment) {
                 stepVolume();
@@ -559,6 +615,7 @@ namespace imajuscule {
             if(other_next_sample_index == audioelement::n_frames_per_buffer) {
                 other_next_sample_index = 0;
             }
+            LG_XFADE(INFO, " xfade %.5f", xfade_ratio);
         }
         
         void stepVolume() {

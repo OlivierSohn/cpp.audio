@@ -83,7 +83,29 @@ namespace imajuscule {
                         markov->step<true>();
                     }
                     
-                    return Status::OK_CHANGED;
+                    ramp_specs.finalize();
+                    auto const stereo_gain = stereo(std::uniform_real_distribution<float>(-1.f, 1.f)(rng::mersenne()));
+                    auto volume = MakeVolume::run<nAudioOut>(1.f, stereo_gain);
+                    
+                    last_ramp_index = 1-last_ramp_index;
+                    auto & ramp = ramp_[last_ramp_index];
+                    ramp = get_inactive_ramp();
+                    A(ramp);
+                    auto spec = ramp_specs.get_next_ramp_for_run();
+                    if(spec) {
+                        ramp->algo.spec = *spec;
+                        if(o.playGeneric(c1, std::make_pair(std::ref(*ramp), Request{&ramp->buffer[0], volume, std::numeric_limits<int>::max() }))) {
+                            state_silence = false;
+                        }
+                        else {
+                            A(0);
+                        }
+                        
+                        return Status::OK_CHANGED;
+                    }
+                    else {
+                        return Status::OK_STABLE;
+                    }
                 }
                 
                 if(!force && std::uniform_int_distribution<>{0,2}(rng::mersenne())) {
@@ -192,7 +214,7 @@ namespace imajuscule {
                     auto n_frames = static_cast<float>(ms_to_frames(length));
                     if(n_frames <= 0) {
                         Logger::err("zero length");
-                        return false;
+                        return;
                     }
                     
                     if(freq_scatter) {
@@ -201,18 +223,37 @@ namespace imajuscule {
                         freq2 *= factor;
                     }
                     
-                    auto const stereo_gain = stereo(std::uniform_real_distribution<float>(-1.f, 1.f)(rng::mersenne()));
-                    auto volume = MakeVolume::run<nAudioOut>(1.f, stereo_gain);
+                    auto * current = ramp_specs.get_current();
                     
-                    if(auto * ramp = get_inactive_ramp()) {
-                        ramp->algo.set(freq1, freq2, n_frames, phase_ratio1 * n_frames, interpolation);
-                        o.playGeneric(c1, std::make_pair(std::ref(*ramp), Request{&ramp->buffer[0], volume, length }));
-                        if(auto * ramp = get_inactive_ramp()) {
-                            ramp->algo.set(freq1, freq2, n_frames, phase_ratio2 * n_frames, interpolation);
-                            o.playGeneric(c2, std::make_pair(std::ref(*ramp), Request{&ramp->buffer[0], volume, length }));
+                    if(auto * ramp_spec = ramp_specs.get_next_ramp_for_build()) {
+                        ramp_spec->set(freq1, freq2, n_frames, 0, interpolation);
+                        if(!xfade_freq) {
+                            // in this mode, we don't try to solve frequency discontinuity
+                            return;
+                        }
+                        if(current) {
+                            // there was a spec before the one we just added...
+                            auto from_inc = current->getToIncrements();
+                            auto to_inc = ramp_spec->getFromIncrements();
+                            auto diff = from_inc - to_inc;
+                            if(diff) {
+                                // ... and the new spec creates a frequency discontinuity
+                                if(auto * ramp_spec2 = ramp_specs.get_next_ramp_for_build()) {
+                                    // so we move the new spec one step later
+                                    *ramp_spec2 = *ramp_spec;
+                                    // and create a transition
+                                    ramp_spec->set_by_increments(from_inc, to_inc, freq_xfade, 0, freq_interpolation);
+                                }
+                                else {
+                                    // just discard it
+                                    ramp_specs.cancel_last_ramp();
+                                }
+                            }
                         }
                     }
-                    return true;
+                    else {
+                        A(0);
+                    }
                 };
                 
                 auto node1 = mc->emplace_([play, this](Move const m, MarkovNode&me, MarkovNode&from_to) {
@@ -244,8 +285,111 @@ namespace imajuscule {
                 return mc;
             }
             
+            template<typename OutputData>
+            bool onAfterCompute(OutputData &out, int max_frame_compute) {
+                if(ramp_specs.done()) {
+                    return true; // channel is already closed or closing
+                }
+
+                static soundBuffer silence{1,0.f}; // allocation is outside the lock scope
+
+                typename OutputData::LOCK l(out.lock());
+
+                auto & channel = out.editChannel(c1);
+                if(!channel.isPlaying()) {
+                    return true;
+                }
+                if(!channel.get_requests().empty()) { // I'm not sure this test is usefull, plus it can make a cache miss...
+                    return true;
+                }
+                
+                bool has_silence = ( articulative_pause_length > 2*channel.get_size_xfade() );
+                
+                if(state_silence) {
+                    // is silence soon over?
+                    if(channel.get_remaining_samples_count() < max_frame_compute + 1 + channel.get_size_half_xfade()) {
+                        // yes
+                        state_silence = false;
+                        return playNextSpec(out);
+                    }
+                }
+                else {
+                    // is spec soon over?
+                    auto & spec = ramp_[last_ramp_index]->algo.spec;
+                    if(ramp_specs.order != (spec.getFromIncrements() < spec.getToIncrements())) {
+                        // bounds were swapped, meaning the halfperiod was met.
+                        if(has_silence) {
+                            state_silence = true;
+                            playSilence(out, silence);
+                            return true;
+                        }
+                        return playNextSpec(out);
+                    }
+                }
+
+                return true; // channel is playing
+            }
+            
+            template<typename OutputData>
+            bool playNextSpec(OutputData & out) {
+                constexpr auto nAudioOut = OutputData::nOuts;
+                using Request = Request<nAudioOut>;
+
+                auto & channel = out.editChannel(c1);
+                auto & spec = ramp_[last_ramp_index]->algo.spec;
+
+                while(auto new_spec = ramp_specs.get_next_ramp_for_run()) {
+                    last_ramp_index = 1-last_ramp_index;
+                    auto new_ramp = get_inactive_ramp();
+                    A(new_ramp); // might be null if length of ramp is too small
+                    ramp_[last_ramp_index] = new_ramp;
+                    new_ramp->algo.spec = *new_spec;
+                    
+                    if(out.playGenericNoLock(c1,
+                                             std::make_pair(std::ref(*new_ramp),
+                                                            Request{
+                                                                &new_ramp->buffer[0],
+                                                                channel.get_current().volumes * (1.f/Request::chan_base_amplitude),
+                                                                std::numeric_limits<int>::max()
+                                                            })
+                                             ))
+                    {
+                        channel.xfade_now();
+                        return true; // channel is playing
+                    }
+                    // cancel the index change
+                    last_ramp_index = 1-last_ramp_index;
+                }
+                return false; // close channel
+            }
+            
+            template<typename OutputData>
+            void playSilence(OutputData & out, soundBuffer & silence) {
+                constexpr auto nAudioOut = OutputData::nOuts;
+                using Request = Request<nAudioOut>;
+
+                auto & channel = out.editChannel(c1);
+                
+                A(articulative_pause_length > 2*channel.get_size_xfade());
+                
+                auto res = out.playGenericNoLock(c1,
+                                                 std::make_pair(std::ref(silence),
+                                                                Request{
+                                                                    &silence,
+                                                                    // to propagate the volume of previous spec to the next spec
+                                                                    channel.get_current().volumes * (1.f/Request::chan_base_amplitude),
+                                                                    articulative_pause_length
+                                                                })
+                                                 );
+                A(res); // because length was checked
+                channel.xfade_now();
+            }
+            
             void set_xfade(int xfade_) {
                 xfade = xfade_;
+            }
+            void set_freq_xfade(int xfade_) {
+                freq_xfade = xfade_;
             }
             void set_base_freq(float freq_) {
                 base_freq = freq_;
@@ -288,6 +432,14 @@ namespace imajuscule {
                 }
                 interpolation = i;
             }
+            
+            void set_freq_interpolation(itp::interpolation i) {
+                if(!itp::intIsReal(i)) {
+                    i=itp::EASE_IN_EXPO;
+                }
+                freq_interpolation = i;
+            }
+
             bool get_active() const {
                 return active;
             }
@@ -305,26 +457,92 @@ namespace imajuscule {
                 StartAfresh
             };
             
-            void initialize_markov(int start_node, int pre_tries, int min_path_length, int additional_tries, InitPolicy ip) {
+            void initialize_markov(int start_node, int pre_tries, int min_path_length, int additional_tries, InitPolicy ip, bool xfade_freq,int articulative_pause_length) {
                 this->start_node = start_node;
                 this->pre_tries = pre_tries;
                 this->min_path_length = min_path_length;
                 this->additional_tries = additional_tries;
+                this->xfade_freq = xfade_freq;
                 init_policy = ip;
+                ramp_specs.reset();
+                this->articulative_pause_length = articulative_pause_length;
+                state_silence = false;
             }
             
         private:
             bool active : 1;
             Mode mode : 2;
             itp::interpolation interpolation : 5;
+            itp::interpolation freq_interpolation : 5;
             std::function<ramp*(void)> get_inactive_ramp;
             float d1, d2, har_att, length, base_freq, freq_scatter, phase_ratio1, phase_ratio2;
             uint8_t c1, c2;
-            int xfade;
+            int xfade, freq_xfade;
+            int articulative_pause_length;
             
             std::unique_ptr<MarkovChain> markov;
             int start_node=0, pre_tries=0, min_path_length=0, additional_tries=3; // default values for script
             InitPolicy init_policy:1;
+            bool xfade_freq:1;
+            
+            std::array<ramp *, 2> ramp_= {};
+            unsigned int last_ramp_index : 1;
+            bool state_silence:1;
+            
+            struct RampSpecs {
+                void reset() {
+                    it = -1;
+                    end = 0;
+                }
+                
+                bool done() const { return it == end; }
+                
+                using Algo = audioelement::FreqRampAlgo<float>;
+                static constexpr auto n_specs = 30;
+                
+                Algo::Spec * get_next_ramp_for_build() {
+                    ++it;
+                    A(it==end);
+                    if(it == n_specs) {
+                        return nullptr;
+                    }
+                    ++end;
+                    return &a[it];
+                }
+                
+                void cancel_last_ramp() {
+                    --it;
+                    --end;
+                }
+                
+                Algo::Spec * get_current() {
+                    if(it >= end) {
+                        return nullptr;
+                    }
+                    return &a[it];
+                }
+                void finalize() {
+                    A(it==end-1);
+                    it=-1;
+                }
+                
+                Algo::Spec * get_next_ramp_for_run() {
+                    A(it != end);
+                    ++it;
+                    if(it == end) {
+                        return nullptr;
+                    }
+                    auto ptr_spec = &a[it];
+                    order = ptr_spec->getFromIncrements() < ptr_spec->getToIncrements();
+                    return ptr_spec;
+                }
+                
+                using Specs = std::array<Algo::Spec, n_specs>;
+                unsigned it : relevantBits(n_specs+1);
+                unsigned end: relevantBits(n_specs+1);
+                Specs a;
+                bool order :1;
+            } ramp_specs;
         };
         
     }

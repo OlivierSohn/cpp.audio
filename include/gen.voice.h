@@ -22,10 +22,15 @@ namespace imajuscule {
                 MARKOV_PRE_TRIES,
                 MARKOV_MIN_PATH_LENGTH,
                 MARKOV_ADDITIONAL_TRIES,
+                MARKOV_ARTICULATIVE_PAUSE_LENGTH,
+                MARKOV_XFADE_FREQ,
+                
+                FREQ_TRANSITION_LENGTH,
+                FREQ_TRANSITION_INTERPOLATION
 
             };
             
-            static constexpr std::array<ImplParams, 10> params_markov
+            static constexpr std::array<ImplParams, 14> params_markov
             {{
                 MARKOV_START_NODE,
                 MARKOV_PRE_TRIES,
@@ -35,7 +40,11 @@ namespace imajuscule {
                 INTERPOLATION,
                 FREQ_SCATTER,
                 LENGTH,
+                MARKOV_ARTICULATIVE_PAUSE_LENGTH,
                 XFADE_LENGTH,
+                MARKOV_XFADE_FREQ,
+                FREQ_TRANSITION_LENGTH,
+                FREQ_TRANSITION_INTERPOLATION,
                 PHASE_RATIO1,
                 PHASE_RATIO2
                 
@@ -62,6 +71,14 @@ namespace imajuscule {
             template<> struct Limits<XFADE_LENGTH> {
                 static constexpr auto m = 3;
                 static constexpr auto M = 2001; };
+            
+            template<> struct Limits<FREQ_TRANSITION_LENGTH> {
+                static constexpr auto m = 1;
+                static constexpr auto M = 20001; };
+            
+            template<> struct Limits<MARKOV_ARTICULATIVE_PAUSE_LENGTH> {
+                static constexpr auto m = 0;
+                static constexpr auto M = 20001; };
             
             template<> struct Limits<FREQ_SCATTER> : public NormalizedParamLimits {};
             template<> struct Limits<PHASE_RATIO1> : public NormalizedParamLimits {};
@@ -120,8 +137,6 @@ namespace imajuscule {
                 using Parent::params;
                 using Parent::half_tone;
                 
-            protected:
-            
             public:
                 static std::vector<ParamSpec> const & getParamSpecs() {
                     
@@ -139,6 +154,10 @@ namespace imajuscule {
                         {"Pre tries", Limits<MARKOV_PRE_TRIES>::m, Limits<MARKOV_PRE_TRIES>::M},
                         {"Minimum path length", Limits<MARKOV_MIN_PATH_LENGTH>::m, Limits<MARKOV_MIN_PATH_LENGTH>::M},
                         {"Additional tries", Limits<MARKOV_ADDITIONAL_TRIES>::m, Limits<MARKOV_ADDITIONAL_TRIES>::M},
+                        {"Articulative pause length", Limits<MARKOV_ARTICULATIVE_PAUSE_LENGTH>::m, Limits<MARKOV_ARTICULATIVE_PAUSE_LENGTH>::M},
+                        {"Xfade freq"},
+                        {"Frequency transition length", static_cast<float>(Limits<FREQ_TRANSITION_LENGTH>::m), static_cast<float>(Limits<FREQ_TRANSITION_LENGTH>::M) },
+                        {"Frequency Interpolation", itp::interpolation_traversal()},
                     };
                     
                     static std::vector<ParamSpec> filtered;
@@ -222,7 +241,11 @@ namespace imajuscule {
                                                   itp::interpolation i,
                                                   float freq_scat,
                                                   float length,
+                                                  int articulative_pause_length,
                                                   int xfade,
+                                                  bool xfade_freq,
+                                                  int freq_xfade,
+                                                  itp::interpolation freq_i,
                                                   float phase_ratio1 = 0.f, float phase_ratio2 = 0.f) {
                     auto a = make_common(i, freq_scat, length, xfade, phase_ratio1, phase_ratio2, 0,0,0);
                     Program::ARRAY result;
@@ -234,22 +257,39 @@ namespace imajuscule {
                         }
                         result[index(e)] = a[idx];
                     }
+                    int freq_itp_index = 0;
+                    auto b = itp::interpolation_traversal().valToRealValueIndex(i, freq_itp_index);
+                    A(b);
+                    result[index(FREQ_TRANSITION_INTERPOLATION)] = static_cast<float>(freq_itp_index);
                     result[index(MARKOV_START_NODE)] = start_node;
                     result[index(MARKOV_PRE_TRIES)] = pre_tries;
                     result[index(MARKOV_MIN_PATH_LENGTH)] = min_path_length;
                     result[index(MARKOV_ADDITIONAL_TRIES)] = additionnal_tries;
+                    result[index(FREQ_TRANSITION_LENGTH)] = normalize<FREQ_TRANSITION_LENGTH>(freq_xfade);
+                    result[index(MARKOV_ARTICULATIVE_PAUSE_LENGTH)] = articulative_pause_length;
+                    result[index(MARKOV_XFADE_FREQ)] = xfade_freq?0.f:1.f; // opposite
                     return result;
                 }
                 
                 static Programs const & getPrograms() {
                     if(MODE==Mode::MARKOV) {
                         static ProgramsI ps {{
-                            {"Cute bird",
-                                make_markov(0, 0, 1, 0, itp::EASE_INOUT_CIRC, 0.f, 93.f, 1301)
+                            {"Standard & Cute bird",
+                                make_markov(0, 0, 1, 0, itp::EASE_INOUT_CIRC, 0.f, 93.f, 1000, 1301, false, 6200, itp::EASE_OUT_EXPO)
+                            },{"Scat bird",
+                                make_markov(0, 0, 3, 17, itp::EASE_INOUT_CIRC, 0.03f, 10.f, 1961, 442, true, 1601, itp::EASE_INOUT_EXPO)
+                            },{"Rhythmic bird",
+                                make_markov(0, 0, 5, 11, itp::EASE_INOUT_CIRC, 0.f, 10.f, 1406, 502, true, 8601, itp::EASE_OUT_EXPO)
                             },{"Slow bird",
-                                make_markov(0, 2, 1, 0, itp::EASE_IN_EXPO, 0.f, 73.7f, 1301)
-                            },{"Many birds",
-                                make_markov(1, 0, 2, 0, itp::EASE_IN_EXPO, 1.f, 78.6f, 1301)
+                                make_markov(0, 2, 1, 0, itp::EASE_IN_EXPO, 0.f, 73.7f, 1000, 1301, false, 6200, itp::EASE_OUT_EXPO)
+                            },{"BiTone bird",
+                                make_markov(1, 0, 2, 0, itp::EASE_IN_EXPO, 1.f, 78.6f, 4302, 1301, false, 6200, itp::EASE_OUT_EXPO)
+                            },{"Happy bird",
+                                make_markov(1, 0, 4, 0, itp::EASE_IN_EXPO, 1.f, 78.6f, 5848, 2001, false, 6200, itp::EASE_OUT_EXPO)
+                            },{"Laughing bird",
+                                make_markov(1, 0, 2, 0, itp::EASE_IN_EXPO, 1.f, 78.6f, 9672, 1301, true, 3201, itp::EASE_OUT_EXPO)
+                            },{"Talkative bird",
+                                make_markov(0, 0, 6, 0, itp::EASE_INOUT_CIRC, 0.25f, 93.3f, 6713, 2201, true, 4401, itp::EASE_OUT_EXPO)
                             }
                         }};
                         return ps.v;
@@ -323,7 +363,7 @@ namespace imajuscule {
                     
                     c.elem.engine.set_active(true);
                     c.elem.engine.set_mode(MODE);
-                    c.elem.engine.set_channels(c.channels[0], c.channels[1]);
+                    c.elem.engine.set_channels(c.channels[0], c.channels[0]);
                     auto interp = static_cast<itp::interpolation>(itp::interpolation_traversal().realValues()[static_cast<int>(.5f + value<INTERPOLATION>())]);
                     
                     c.elem.engine.set_itp(interp);
@@ -333,6 +373,10 @@ namespace imajuscule {
                     
                     c.elem.engine.set_length(denorm<LENGTH>());
                     c.elem.engine.set_xfade(get_xfade_length());
+                    c.elem.engine.set_freq_xfade(denorm<FREQ_TRANSITION_LENGTH>());
+                    auto interp_freq = static_cast<itp::interpolation>(itp::interpolation_traversal().realValues()[static_cast<int>(.5f + value<FREQ_TRANSITION_INTERPOLATION>())]);
+                    c.elem.engine.set_freq_interpolation(interp_freq);
+
                     c.elem.engine.set_freq_scatter(denorm<FREQ_SCATTER>());
                     c.elem.engine.set_phase_ratio1(denorm<PHASE_RATIO1>());
                     c.elem.engine.set_phase_ratio2(denorm<PHASE_RATIO2>());
@@ -348,7 +392,9 @@ namespace imajuscule {
                                                         value<MARKOV_PRE_TRIES>(),
                                                         value<MARKOV_MIN_PATH_LENGTH>(),
                                                         value<MARKOV_ADDITIONAL_TRIES>(),
-                                                        SoundEngine::InitPolicy::StartAfresh);
+                                                        SoundEngine::InitPolicy::StartAfresh,
+                                                        !static_cast<bool>(value<MARKOV_XFADE_FREQ>()),
+                                                        value<MARKOV_ARTICULATIVE_PAUSE_LENGTH>());
                     }
                     
                     c.elem.engine.update(out);
@@ -367,7 +413,7 @@ namespace imajuscule {
                 using audioElt = audioelement::FreqRamp<float>;
                 
                 EngineAndRamps() : engine{[this]()-> audioElt* {
-                    for(auto & r : ramps) {
+                    for(auto & r: ramps) {
                         if(r.isInactive()) {
                             return &r;
                         }
@@ -376,10 +422,10 @@ namespace imajuscule {
                 }} {}
                 
                 SoundEngine engine;
-                std::array<audioElt, 30> ramps;
-                // thats a waste of space : we use the ramps in sequence, but since the scheduling happends before the sound starts,
-                // we need many if we want a long sequence.
-                // todo : allow scheduling (markov steps) to occur while sound is played
+                
+                // 3 because there is 'before', 'current' and the inactive one
+                std::array<audioElt, 3> ramps;
+                
             };
             
             template<
@@ -396,7 +442,7 @@ namespace imajuscule {
             typename Base = ImplBase<MODE, Parameters, ProcessData>,
             
             typename Parent = ImplCRTP < nAudioOut, XfadePolicy::UseXfade,
-            MonoNoteChannel< 2, EngineAndRamps<SoundEngine> >, CloseMode::WHEN_DONE_PLAYING,
+            MonoNoteChannel< 1, EngineAndRamps<SoundEngine> >, false,
             EventIterator, NoteOnEvent, NoteOffEvent, Base >
             
             >
@@ -406,9 +452,11 @@ namespace imajuscule {
                 static_assert(n_frames_interleaved * nAudioOut == size_interleaved, ""); // make sure we don't waste space
                 
                 using Base::interleaved;
+                using Base::get_xfade_length;
                 
                 using Parent::out;
                 using Parent::onEvent;
+                using Parent::channels;
 
             public:
                 
@@ -442,8 +490,8 @@ namespace imajuscule {
                         
                         while(nextEventPosition == currentFrame) {
                             onEvent(it, [](auto & c) -> bool {
-                                for(auto & e : c.elem.ramps) {
-                                    if(!e.isInactive()) {
+                                for(auto const & r : c.elem.ramps) {
+                                    if(!r.isInactive()) {
                                         return false;
                                     }
                                 }
@@ -468,6 +516,12 @@ namespace imajuscule {
                         
                         out.step(&interleaved[0], nFramesToProcess);
                         
+                        for(auto & c : channels) {
+                            if(!c.elem.engine.onAfterCompute(out, n_frames_interleaved)) {
+                                c.close(out, CloseMode::XFADE_ZERO, get_xfade_length());
+                            }
+                        }
+
                         for(auto c = 0; c < nFramesToProcess; ++c) {
                             for(unsigned int i=0; i<nAudioOut; ++i) {
                                 *outs[i] = interleaved[nAudioOut*c + i];
