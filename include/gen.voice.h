@@ -388,7 +388,7 @@ namespace imajuscule {
                     }
                     
                     if(MODE == Mode::MARKOV) {
-                        c.elem.engine.initialize_markov(value<MARKOV_START_NODE>(),
+                        c.elem.engine.initialize_markov(out, value<MARKOV_START_NODE>(),
                                                         value<MARKOV_PRE_TRIES>(),
                                                         value<MARKOV_MIN_PATH_LENGTH>(),
                                                         value<MARKOV_ADDITIONAL_TRIES>(),
@@ -396,8 +396,9 @@ namespace imajuscule {
                                                         !static_cast<bool>(value<MARKOV_XFADE_FREQ>()),
                                                         value<MARKOV_ARTICULATIVE_PAUSE_LENGTH>());
                     }
-                    
-                    c.elem.engine.update(out);
+                    else {
+                        c.elem.engine.update(out);
+                    }
                 }
                 
                 int get_xfade_length() const {

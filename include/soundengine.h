@@ -39,8 +39,7 @@ namespace imajuscule {
             template<typename F>
             SoundEngine(F f) :
             get_inactive_ramp(std::move(f)),
-            active(false),
-            init_policy(InitPolicy::StartAtLastPosition)
+            active(false)
             {
                 getSilence(); // make sure potential dynamic allocation occur not under audio lock
             }
@@ -69,45 +68,7 @@ namespace imajuscule {
                 }
                 
                 if(mode == Mode::MARKOV) {
-                    if(!markov) {
-                        markov = create_markov(o);
-                        initialize_markov();
-                    }
-                    else if(init_policy==InitPolicy::StartAfresh) {
-                        initialize_markov();
-                    }
-                    
-                    for(int i=0; i<min_path_length; ++i) {
-                        markov->step_normalized<true>();
-                    }
-                    
-                    for(int i=0; i<additional_tries; ++i) {
-                        markov->step<true>();
-                    }
-                    
-                    ramp_specs.finalize();
-                    auto const stereo_gain = stereo(std::uniform_real_distribution<float>(-1.f, 1.f)(rng::mersenne()));
-                    auto volume = MakeVolume::run<nAudioOut>(1.f, stereo_gain);
-                    
-                    last_ramp_index = 1-last_ramp_index;
-                    auto & ramp = ramp_[last_ramp_index];
-                    ramp = get_inactive_ramp();
-                    A(ramp);
-                    auto spec = ramp_specs.get_next_ramp_for_run();
-                    if(spec) {
-                        ramp->algo.spec = *spec;
-                        if(o.playGeneric(c1, std::make_pair(std::ref(*ramp), Request{&ramp->buffer[0], volume, std::numeric_limits<int>::max() }))) {
-                            state_silence = false;
-                        }
-                        else {
-                            A(0);
-                        }
-                        
-                        return Status::OK_CHANGED;
-                    }
-                    else {
-                        return Status::OK_STABLE;
-                    }
+                    return Status::OK_STABLE;
                 }
                 
                 if(!force && std::uniform_int_distribution<>{0,2}(rng::mersenne())) {
@@ -192,14 +153,6 @@ namespace imajuscule {
                     }
                 }
                 return Status::OK_CHANGED;
-            }
-            
-            void initialize_markov() {
-                markov->initialize(start_node);
-                
-                for(int i=0; i<pre_tries; ++i) {
-                    markov->step_normalized<false>();
-                }
             }
             
             template<typename OutputData>
@@ -462,16 +415,59 @@ namespace imajuscule {
                 StartAfresh
             };
             
-            void initialize_markov(int start_node, int pre_tries, int min_path_length, int additional_tries, InitPolicy ip, bool xfade_freq,int articulative_pause_length) {
-                this->start_node = start_node;
-                this->pre_tries = pre_tries;
-                this->min_path_length = min_path_length;
-                this->additional_tries = additional_tries;
+            template<typename OutputData>
+            void initialize_markov(OutputData & o,
+                                   int start_node, int pre_tries, int min_path_length, int additional_tries, InitPolicy init_policy,
+                                   bool xfade_freq,int articulative_pause_length) {
+                constexpr auto nAudioOut = OutputData::nOuts;
+                using Request = typename OutputData::Request;
+                
                 this->xfade_freq = xfade_freq;
-                init_policy = ip;
                 ramp_specs.reset();
                 this->articulative_pause_length = articulative_pause_length;
                 state_silence = false;
+                
+                bool initialize = (!markov) || (init_policy==InitPolicy::StartAfresh);
+                if(!markov) {
+                    markov = create_markov(o);
+                }
+                
+                // running the markov chain will populate ramp_specs
+                if(initialize) {
+                    markov->initialize(start_node);
+                    
+                    for(int i=0; i<pre_tries; ++i) {
+                        markov->step_normalized<false>();
+                    }
+                }
+                
+                for(int i=0; i<min_path_length; ++i) {
+                    markov->step_normalized<true>();
+                }
+                
+                for(int i=0; i<additional_tries; ++i) {
+                    markov->step<true>();
+                }
+                
+                ramp_specs.finalize();
+                auto const stereo_gain = stereo(std::uniform_real_distribution<float>(-1.f, 1.f)(rng::mersenne()));
+                auto volume = MakeVolume::run<nAudioOut>(1.f, stereo_gain);
+                
+                last_ramp_index = 1-last_ramp_index;
+                auto & ramp = ramp_[last_ramp_index];
+                ramp = get_inactive_ramp();
+                A(ramp);
+                auto spec = ramp_specs.get_next_ramp_for_run();
+                if(!spec) {
+                    return;
+                }
+                ramp->algo.spec = *spec;
+                if(o.playGeneric(c1, std::make_pair(std::ref(*ramp), Request{&ramp->buffer[0], volume, std::numeric_limits<int>::max() }))) {
+                    state_silence = false;
+                }
+                else {
+                    A(0);
+                }
             }
             
         private:
@@ -486,8 +482,6 @@ namespace imajuscule {
             int articulative_pause_length;
             
             std::unique_ptr<MarkovChain> markov;
-            int start_node=0, pre_tries=0, min_path_length=0, additional_tries=3; // default values for script
-            InitPolicy init_policy:1;
             bool xfade_freq:1;
             
             std::array<ramp *, 2> ramp_= {};
