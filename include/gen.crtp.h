@@ -132,7 +132,7 @@ namespace imajuscule {
             static constexpr auto n_max_simultaneous_notes_per_voice = 2;
             static constexpr auto n_channels = n_channels_per_note * n_max_voices * n_max_simultaneous_notes_per_voice;
             
-            using OutputData = outputDataBase<nAudioOut, xfade_policy, NoOpLock, PostProcess::NONE>;
+            using OutputData = outputDataBase<nAudioOut, xfade_policy, AudioOutPolicy::Slave>;
             
             void allNotesOff() override {
                 MIDI_LG(INFO, "all notes off :");

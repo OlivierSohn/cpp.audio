@@ -41,7 +41,9 @@ namespace imajuscule {
             get_inactive_ramp(std::move(f)),
             active(false),
             init_policy(InitPolicy::StartAtLastPosition)
-            {}
+            {
+                getSilence(); // make sure potential dynamic allocation occur not under audio lock
+            }
             
             template<typename OutputData>
             Status update(OutputData & o)
@@ -285,15 +287,18 @@ namespace imajuscule {
                 return mc;
             }
             
+            auto & getSilence() {
+                static soundBuffer silence{1, 0.f};
+                return silence;
+            }
+            
             template<typename OutputData>
             bool onAfterCompute(OutputData &out, int max_frame_compute) {
                 if(ramp_specs.done()) {
                     return true; // channel is already closed or closing
                 }
 
-                static soundBuffer silence{1,0.f}; // allocation is outside the lock scope
-
-                typename OutputData::LOCK l(out.lock());
+                typename OutputData::Locking l(out.get_lock());
 
                 auto & channel = out.editChannel(c1);
                 if(!channel.isPlaying()) {
@@ -320,7 +325,7 @@ namespace imajuscule {
                         // bounds were swapped, meaning the halfperiod was met.
                         if(has_silence) {
                             state_silence = true;
-                            playSilence(out, silence);
+                            playSilence(out, getSilence());
                             return true;
                         }
                         return playNextSpec(out);

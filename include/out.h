@@ -97,13 +97,8 @@ namespace imajuscule {
         NONE
     };
     
-    struct NoOpLock : public NonCopyable {
-        // no copy
-        NoOpLock() =default;
-        NoOpLock(const NoOpLock &) = delete;
-        NoOpLock & operator=(const NoOpLock&) = delete;
-        
-        NoOpLock(std::atomic_bool const &) {}
+    struct NoOpLock {
+        NoOpLock(bool) {}
     };
     
     enum class ChannelClosingPolicy {
@@ -116,26 +111,93 @@ namespace imajuscule {
     };
     
     
+    enum class AudioOutPolicy {
+        Slave,
+        Master
+    };
+    
+    template<typename T, int nAudioOut, AudioOutPolicy> struct AudioPolicyImpl;
 
+    template<typename T, int nAudioOut>
+    struct AudioPolicyImpl<T, nAudioOut, AudioOutPolicy::Slave> {
+        /////////////////////////////// lock
+        using LOCK = NoOpLock;
+        
+        bool lock() { return false; }
+
+        /////////////////////////////// postprocess
+        void postprocess(T*buffer, int nFrames) const {}
+    };
+    
+    template<typename T, int nAudioOut>
+    struct AudioPolicyImpl<T, nAudioOut, AudioOutPolicy::Master> {
+        
+        /////////////////////////////// lock
+        using LOCK = Sensor::RAIILock;
+        
+        std::atomic_bool & lock() { return used; }
+
+        /////////////////////////////// postprocess
+        using postProcessFunc = std::function<void(float*)>;
+
+        void postprocess(T*buffer, int nFrames) {
+            for(int i=0; i<nFrames; ++i) {
+                for(auto const & f: post_process) {
+                    f(&buffer[i*nAudioOut]); // or call the lambda for the whole buffer at once?
+                }
+            }
+        }
+        
+        private:
+        
+        /////////////////////////////// lock
+        std::atomic_bool used{false};
+
+        /////////////////////////////// postprocess
+        std::vector<postProcessFunc> post_process = {{ [](float v[nAudioOut]) {
+            for(int i=0; i<nAudioOut; ++i) {
+                if(likely(-1.f <= v[i] && v[i] <= 1.f)) {
+                    continue;
+                }
+                
+                if(v[i] > 1.f) {
+                    A(0);
+                    v[i] = 1.f;
+                }
+                else if(v[i] < -1.f) {
+                    A(0);
+                    v[i] = -1.f;
+                }
+                else {
+                    A(0);
+                    v[i] = 0.f; // v[i] is NaN
+                }
+            }
+        }}};
+    };
+    
+    
     template<
     int nAudioOut,
     XfadePolicy XF = XfadePolicy::UseXfade,
-    typename Locking = Sensor::RAIILock,
-    PostProcess Post = PostProcess::HARD_LIMIT
+    AudioOutPolicy policy = AudioOutPolicy::Master
     >
     struct outputDataBase {
+        using T = float;
+        
         using Channel = Channel<nAudioOut, XF>;
         using Request = typename Channel::Request;
         using Volumes = typename Channel::Volumes;
-        using LOCK = Locking;
+        
+        using Impl = AudioPolicyImpl<T, nAudioOut, policy>;
+        using Locking = typename Impl::LOCK;
         
         static constexpr auto nOuts = nAudioOut;
         
-        static constexpr auto initial_n_audioelements_reserve = 4;
-        
         int count_consummed_frames() const { return consummed_frames; }
+        
     private:
-        std::atomic_bool used { false };
+        Impl impl;
         
         //////////////////////////
         /// state of last write:
@@ -151,14 +213,10 @@ namespace imajuscule {
         AvailableIndexes<uint8_t> available_ids;
         std::vector<Channel> channels;
         std::vector<uint8_t> autoclosing_ids;
-
+        
         // this could be replaced by traversing the pool of AudioElements, and
         // computing the ones that are active.
-        using postProcessFunc = std::function<void(float*)>;
-
         std::vector<audioelement::ComputeFunc> audioElements_computes;
-        
-        std::vector<postProcessFunc> post_process;
         
 #if WITH_DELAY
         std::vector< DelayLine > delays;
@@ -173,12 +231,7 @@ namespace imajuscule {
     private:
         template<typename F>
         void registerAudioElementCompute(F f) {
-            // because we are holding the audio lock, we should not do any system calls.
-            // in case cannot know in advance how many will be needed , do 2 step locking:
-            // first lock to know how much is needed
-            // allocate outside the lock
-            // lock : copy existing to new, then swap
-            A(audioElements_computes.capacity() > audioElements_computes.size());
+            A(audioElements_computes.capacity() > audioElements_computes.size()); // we are in the audio thread, we should'nt allocate dynamically
             audioElements_computes.push_back(std::move(f));
             if(isInbetweenTwoAudioElementComputes()) {
                 audioElements_computes.back()(clock_);
@@ -187,7 +240,7 @@ namespace imajuscule {
         
     public:
         
-        std::atomic_bool & lock() { return used; }
+        decltype(std::declval<Impl>().lock()) get_lock() { return impl.lock(); }
         
         bool isInbetweenTwoAudioElementComputes() const {
             A(consummed_frames >= 0);
@@ -206,41 +259,20 @@ namespace imajuscule {
             A(nChannelsMax >= 0);
             A(nChannelsMax <= std::numeric_limits<uint8_t>::max()); // else need to update AUDIO_CHANNEL_NONE
             
-            audioElements_computes.reserve(initial_n_audioelements_reserve);
+            // (almost) worst case scenario : each channel is playing an audiolement crossfading with another audio element
+            // "almost" only because the assumption is that requests vector holds at most one audioelement at any time
+            // if there are multiple audioelements in request vector, we need to be more precise about when audioelements start to be computed...
+            // but it's good practice to not put too many items in the request queue anyway
+            audioElements_computes.reserve(2*nChannelsMax);
             
-            // to avoid reallocations when we hold the lock
-            // we allocate all we need for channel management now:
             channels.reserve(nChannelsMax);
             autoclosing_ids.reserve(nChannelsMax);
             available_ids.reserve(nChannelsMax);
-
-            if(Post == PostProcess::HARD_LIMIT) {
-                post_process.emplace_back([](float v[nAudioOut]) {
-                    for(int i=0; i<nAudioOut; ++i) {
-                        if(likely(-1.f <= v[i] && v[i] <= 1.f)) {
-                            continue;
-                        }
-                        
-                        if(v[i] > 1.f) {
-                            A(0);
-                            v[i] = 1.f;
-                        }
-                        else if(v[i] < -1.f) {
-                            A(0);
-                            v[i] = -1.f;
-                        }
-                        else {
-                            A(0);
-                            v[i] = 0.f; // v[i] is NaN
-                        }
-                    }
-                });
-            }
         }
 
         // called from audio callback
         void step(SAMPLE *outputBuffer, int nFrames) {
-            Locking l(used);
+            Locking l(get_lock());
             
             if(consummed_frames != 0) {
                 // finish consuming previous buffers
@@ -266,7 +298,7 @@ namespace imajuscule {
         bool empty() const { return channels.empty(); }
         
         void setVolume(uint8_t channel_id, float volume, int nSteps = Channel::default_volume_transition_length) {
-            Locking l(used);
+            Locking l(get_lock());
             editChannel(channel_id).toVolume(volume, nSteps);
         }
         
@@ -277,7 +309,7 @@ namespace imajuscule {
             // else we miss some audio frames,
             // or the callback gets unscheduled
             
-            Locking l(used);
+            Locking l(get_lock());
 
             return playGenericNoLock(channel_id, std::forward<Args>(requests)...);
         }
@@ -303,12 +335,12 @@ namespace imajuscule {
         }
         
         void play( uint8_t channel_id, StackVector<Request> && v) {
-            Locking l(used);
+            Locking l(get_lock());
             playNolock(channel_id, std::move(v));
         }
         
         void closeAllChannels(int xfade) {
-            Locking l(used);
+            Locking l(get_lock());
             if(!xfade) {
                 channels.clear();
             }
@@ -332,7 +364,7 @@ namespace imajuscule {
                     {
                         // take the lock in the loop so that at the end of each iteration
                         // the audio thread has a chance to run
-                        Locking l(used);
+                        Locking l(get_lock());
                         if(channels[id].isPlaying()) {
                             id = AUDIO_CHANNEL_NONE;
                             continue;
@@ -379,7 +411,7 @@ namespace imajuscule {
         void closeChannel(uint8_t channel_id, CloseMode mode, int nStepsForXfadeToZeroMode = -1)
         {
             {
-                Locking l(used);
+                Locking l(get_lock());
                 auto & c = editChannel(channel_id);
                 if(mode != CloseMode::NOW && c.isPlaying()) {
                     if(mode == CloseMode::XFADE_ZERO) {
@@ -482,11 +514,7 @@ namespace imajuscule {
                 }
             }
 
-            for(int i=0; i<nFrames; ++i) {
-                for(auto const & f: post_process) {
-                    f(&outputBuffer[i*nAudioOut]); // or call the lambda for the whole buffer at once?
-                }
-            }
+            impl.postprocess(outputBuffer, nFrames);
 
 #if WITH_DELAY
             for( auto & delay : delays ) {
