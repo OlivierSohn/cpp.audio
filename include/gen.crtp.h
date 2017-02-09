@@ -134,11 +134,14 @@ namespace imajuscule {
             
             using OutputData = outputDataBase<nAudioOut, xfade_policy, AudioOutPolicy::Slave>;
             
+            // Note: Logic Audio Express 9 calls this when two projects are opened and
+            // the second project starts playing, so we are not in an "initialized" state.
             void allNotesOff() override {
                 MIDI_LG(INFO, "all notes off :");
-                auto len =  get_xfade_length();
+                
+                static constexpr auto allNotesOff_xfade_len = 1401;
                 for(auto & c : channels) {
-                    if(c.close(out, CloseMode::XFADE_ZERO, len)) {
+                    if(c.close(out, CloseMode::XFADE_ZERO, allNotesOff_xfade_len)) {
                         LG(INFO, " x %d", c.pitch);
                     }
                 }
