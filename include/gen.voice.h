@@ -372,7 +372,8 @@ namespace imajuscule {
                     c.elem.engine.set_base_freq(f);
                     
                     c.elem.engine.set_length(denorm<LENGTH>());
-                    c.elem.engine.set_xfade(get_xfade_length());
+                    
+                    c.elem.engine.set_xfade(get_xfade_length()); // useless in case of Markov (xfade already set in the channel by caller, and this value will not be used)
                     c.elem.engine.set_freq_xfade(denorm<FREQ_TRANSITION_LENGTH>());
                     auto interp_freq = static_cast<itp::interpolation>(itp::interpolation_traversal().realValues()[static_cast<int>(.5f + value<FREQ_TRANSITION_INTERPOLATION>())]);
                     c.elem.engine.set_freq_interpolation(interp_freq);
@@ -388,7 +389,9 @@ namespace imajuscule {
                     }
                     
                     if(MODE == Mode::MARKOV) {
-                        c.elem.engine.initialize_markov(out, value<MARKOV_START_NODE>(),
+                        c.elem.engine.initialize_markov(out,
+                                                        c,
+                                                        value<MARKOV_START_NODE>(),
                                                         value<MARKOV_PRE_TRIES>(),
                                                         value<MARKOV_MIN_PATH_LENGTH>(),
                                                         value<MARKOV_ADDITIONAL_TRIES>(),
@@ -449,6 +452,7 @@ namespace imajuscule {
             >
             struct Impl_ : public Parent
             {
+                static constexpr auto n_max_orchestrator_per_channel = 1;
                 static constexpr auto n_frames_interleaved = size_interleaved / nAudioOut;
                 static_assert(n_frames_interleaved * nAudioOut == size_interleaved, ""); // make sure we don't waste space
                 
@@ -460,7 +464,8 @@ namespace imajuscule {
                 using Parent::channels;
 
             public:
-                
+                Impl_() : Parent(n_max_orchestrator_per_channel) {}
+
                 void doProcessing (ProcessData& data) override
                 {
                     A(data.numSamples);
@@ -517,12 +522,6 @@ namespace imajuscule {
                         
                         out.step(&interleaved[0], nFramesToProcess);
                         
-                        for(auto & c : channels) {
-                            if(!c.elem.engine.onAfterCompute(out, n_frames_interleaved)) {
-                                c.close(out, CloseMode::XFADE_ZERO, get_xfade_length());
-                            }
-                        }
-
                         for(auto c = 0; c < nFramesToProcess; ++c) {
                             for(unsigned int i=0; i<nAudioOut; ++i) {
                                 *outs[i] = interleaved[nAudioOut*c + i];

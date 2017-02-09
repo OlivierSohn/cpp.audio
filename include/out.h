@@ -214,7 +214,14 @@ namespace imajuscule {
         static constexpr auto nOuts = nAudioOut;
 
         int count_consummed_frames() const { return consummed_frames; }
-                
+
+        using OrchestratorFunc = std::function<bool(int)>;
+
+        void add_orchestrator(OrchestratorFunc f) {
+            A(orchestrators.capacity() > orchestrators.size()); // we are in the audio thread, we should'nt allocate dynamically
+            orchestrators.push_back(std::move(f));
+        }
+        
     private:
         Impl impl;
         
@@ -233,6 +240,7 @@ namespace imajuscule {
         std::vector<Channel> channels;
         std::vector<uint8_t> autoclosing_ids;
         
+        std::vector<OrchestratorFunc> orchestrators;
         std::vector<audioelement::ComputeFunc> computes;
 
         public:
@@ -253,7 +261,7 @@ namespace imajuscule {
             return 0 != consummed_frames;
         }
         
-        outputDataBase(int nChannelsMax = std::numeric_limits<uint8_t>::max())
+        outputDataBase(int nChannelsMax = std::numeric_limits<uint8_t>::max(), int nOrchestratorsMaxPerChannel=0)
         :
         clock_(false),
         consummed_frames(0)
@@ -268,6 +276,8 @@ namespace imajuscule {
             // or we need to constrain the implementation to add requests in realtime, like soundengine does, only when needed.
             // but it's good practice to not put too many items in the request queue anyway
             computes.reserve(3*nChannelsMax);
+            
+            orchestrators.reserve(nOrchestratorsMaxPerChannel * nChannelsMax);
             
             channels.reserve(nChannelsMax);
             autoclosing_ids.reserve(nChannelsMax);
@@ -465,9 +475,22 @@ namespace imajuscule {
         void run_computes() {
             A(consummed_frames == 0); // else we skip some unconsummed frames
             clock_ = !clock_; // keep that BEFORE passing clock_ to compute functions (dependency on registerCompute)
-            for(auto it = computes.begin(); it!=computes.end();) {
-                if(!((*it)(clock_))) { // can grow vector
+            
+            
+            for(auto it = orchestrators.begin(), end = orchestrators.end(); it!=end;) {
+                if(!((*it)(audioelement::n_frames_per_buffer))) { // can grow 'computes' vector
+                    it = orchestrators.erase(it);
+                    end = orchestrators.end();
+                }
+                else {
+                    ++it;
+                }
+            }
+            
+            for(auto it = computes.begin(), end = computes.end(); it!=end;) {
+                if(!((*it)(clock_))) {
                     it = computes.erase(it);
+                    end = computes.end();
                 }
                 else {
                     ++it;

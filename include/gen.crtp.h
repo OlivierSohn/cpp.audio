@@ -134,6 +134,10 @@ namespace imajuscule {
             
             using OutputData = outputDataBase<nAudioOut, xfade_policy, AudioOutPolicy::Slave>;
             
+            ImplCRTP(int nOrchestratorsMax) :
+            out{n_channels, nOrchestratorsMax}
+            {}
+            
             // Note: Logic Audio Express 9 calls this when two projects are opened and
             // the second project starts playing, so we are not in an "initialized" state.
             void allNotesOff() override {
@@ -242,7 +246,7 @@ namespace imajuscule {
             
             // members
             std::array<MonoNoteChannel, n_channels> channels;
-            OutputData out = {n_channels};
+            OutputData out;
         };
         
     }

@@ -249,6 +249,7 @@ namespace imajuscule {
             >
             struct Impl_ : public Parent {
                 
+                static constexpr auto n_max_orchestrator_per_channel = 0;
                 static constexpr auto min_cut_period = Base::min_cut_period;
                 static constexpr auto max_length_ramp_ms = Base::max_length_ramp_ms;
                 static constexpr auto size_interleaved = Base::size_interleaved;
@@ -281,6 +282,8 @@ namespace imajuscule {
                 static_assert(cut_period_one_cache_line <= max_cut_period, "");
                 
             public:
+                Impl_() : Parent(n_max_orchestrator_per_channel) {}
+                
                 void doProcessing (ProcessData& data) override
                 {
                     A(data.numSamples);

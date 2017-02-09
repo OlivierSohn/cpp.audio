@@ -245,6 +245,15 @@ namespace imajuscule {
                 return silence;
             }
             
+            template<typename OutputData, typename MonoNoteChannel>
+            bool orchestrate(OutputData &out, MonoNoteChannel & c, int max_frame_compute) {
+                if(onAfterCompute(out, max_frame_compute)) {
+                    return true;
+                }
+                c.close(out, CloseMode::XFADE_ZERO, xfade);
+                return false;
+            }
+            
             template<typename OutputData>
             bool onAfterCompute(OutputData &out, int max_frame_compute) {
                 if(ramp_specs.done()) {
@@ -415,10 +424,11 @@ namespace imajuscule {
                 StartAfresh
             };
             
-            template<typename OutputData>
+            template<typename OutputData, typename MonoNoteChannel>
             void initialize_markov(OutputData & o,
+                                   MonoNoteChannel & c,
                                    int start_node, int pre_tries, int min_path_length, int additional_tries, InitPolicy init_policy,
-                                   bool xfade_freq,int articulative_pause_length) {
+                                   bool xfade_freq, int articulative_pause_length) {
                 constexpr auto nAudioOut = OutputData::nOuts;
                 using Request = typename OutputData::Request;
                 
@@ -461,6 +471,10 @@ namespace imajuscule {
                 if(!spec) {
                     return;
                 }
+                o.add_orchestrator([&o, &c, this](int max_frame_compute){
+                    return orchestrate(o, c, max_frame_compute);
+                });
+                
                 ramp->algo.spec = *spec;
                 if(o.playGeneric(c1, std::make_pair(std::ref(*ramp), Request{&ramp->buffer[0], volume, std::numeric_limits<int>::max() }))) {
                     state_silence = false;
