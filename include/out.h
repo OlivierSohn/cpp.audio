@@ -132,6 +132,12 @@ namespace imajuscule {
     template<typename T, int nAudioOut>
     struct AudioPolicyImpl<T, nAudioOut, AudioOutPolicy::Master> {
         
+        AudioPolicyImpl()
+#if WITH_DELAY
+        : delays{{1000, 0.6f},{4000, 0.2f}, {4300, 0.3f}, {5000, 0.1f}},
+#endif
+        {}
+        
         /////////////////////////////// lock
         using LOCK = Sensor::RAIILock;
         
@@ -141,6 +147,15 @@ namespace imajuscule {
         using postProcessFunc = std::function<void(float*)>;
 
         void postprocess(T*buffer, int nFrames) {
+
+            // run delays before hardlimiting...
+#if WITH_DELAY
+            for( auto & delay : delays ) {
+                // todo low pass filter for more realism
+                delay.step(outputBuffer, nFrames);
+            }
+#endif
+            
             for(int i=0; i<nFrames; ++i) {
                 for(auto const & f: post_process) {
                     f(&buffer[i*nAudioOut]); // or call the lambda for the whole buffer at once?
@@ -174,6 +189,10 @@ namespace imajuscule {
                 }
             }
         }}};
+        
+#if WITH_DELAY
+        std::vector< DelayLine > delays;
+#endif
     };
     
     
@@ -193,9 +212,9 @@ namespace imajuscule {
         using Locking = typename Impl::LOCK;
         
         static constexpr auto nOuts = nAudioOut;
-        
+
         int count_consummed_frames() const { return consummed_frames; }
-        
+                
     private:
         Impl impl;
         
@@ -214,35 +233,21 @@ namespace imajuscule {
         std::vector<Channel> channels;
         std::vector<uint8_t> autoclosing_ids;
         
-        // this could be replaced by traversing the pool of AudioElements, and
-        // computing the ones that are active.
-        std::vector<audioelement::ComputeFunc> audioElements_computes;
-        
-#if WITH_DELAY
-        std::vector< DelayLine > delays;
-#endif
-        
-#if TARGET_OS_IOS
-    public:
-        std::vector<float> outputBuffer;
-    private:
-#endif
-        
-    private:
+        std::vector<audioelement::ComputeFunc> computes;
+
+        public:
         template<typename F>
-        void registerAudioElementCompute(F f) {
-            A(audioElements_computes.capacity() > audioElements_computes.size()); // we are in the audio thread, we should'nt allocate dynamically
-            audioElements_computes.push_back(std::move(f));
-            if(isInbetweenTwoAudioElementComputes()) {
-                audioElements_computes.back()(clock_);
+        void registerCompute(F f) {
+            A(computes.capacity() > computes.size()); // we are in the audio thread, we should'nt allocate dynamically
+            computes.push_back(std::move(f));
+            if(isInbetweenTwoComputes()) {
+                computes.back()(clock_);
             }
         }
         
-    public:
-        
         decltype(std::declval<Impl>().lock()) get_lock() { return impl.lock(); }
         
-        bool isInbetweenTwoAudioElementComputes() const {
+        bool isInbetweenTwoComputes() const {
             A(consummed_frames >= 0);
             A(consummed_frames < audioelement::n_frames_per_buffer);
             return 0 != consummed_frames;
@@ -250,20 +255,19 @@ namespace imajuscule {
         
         outputDataBase(int nChannelsMax = std::numeric_limits<uint8_t>::max())
         :
-#if WITH_DELAY
-        delays{{1000, 0.6f},{4000, 0.2f}, {4300, 0.3f}, {5000, 0.1f}},
-#endif
         clock_(false),
         consummed_frames(0)
         {
             A(nChannelsMax >= 0);
             A(nChannelsMax <= std::numeric_limits<uint8_t>::max()); // else need to update AUDIO_CHANNEL_NONE
             
-            // (almost) worst case scenario : each channel is playing an audiolement crossfading with another audio element
+            // (almost) worst case scenario : each channel is playing an audiolement crossfading with another audio element, and there is a compute lambda
+            // orchestrating everything (aka soundengine)
             // "almost" only because the assumption is that requests vector holds at most one audioelement at any time
             // if there are multiple audioelements in request vector, we need to be more precise about when audioelements start to be computed...
+            // or we need to constrain the implementation to add requests in realtime, like soundengine does, only when needed.
             // but it's good practice to not put too many items in the request queue anyway
-            audioElements_computes.reserve(2*nChannelsMax);
+            computes.reserve(3*nChannelsMax);
             
             channels.reserve(nChannelsMax);
             autoclosing_ids.reserve(nChannelsMax);
@@ -283,7 +287,7 @@ namespace imajuscule {
             
             while(true) {
                 // the previous buffers are consumed, we need to compute them again
-                computeNextAudioElementsBuffers();
+                run_computes();
                 
                 if(!consume_buffers(outputBuffer, nFrames)) {
                     return;
@@ -327,7 +331,7 @@ namespace imajuscule {
             auto buffers = std::make_tuple(std::ref(requests.first)...);
             for_each(buffers, [this](auto &buf) {
                 if(auto f = audioelement::fCompute(buf)) {
-                    this->registerAudioElementCompute(std::move(f));
+                    this->registerCompute(std::move(f));
                 }
             });
             
@@ -458,14 +462,12 @@ namespace imajuscule {
             return res;
         }
 
-        void computeNextAudioElementsBuffers() {
+        void run_computes() {
             A(consummed_frames == 0); // else we skip some unconsummed frames
-            clock_ = !clock_; // keep that BEFORE passing clock_ to compute functions (dependency on registerAudioElementCompute)
-            for(auto it = audioElements_computes.begin(),
-                end = audioElements_computes.end(); it!=end;) {
-                if(!((*it)(clock_))) {
-                    it = audioElements_computes.erase(it);
-                    end = audioElements_computes.end();
+            clock_ = !clock_; // keep that BEFORE passing clock_ to compute functions (dependency on registerCompute)
+            for(auto it = computes.begin(); it!=computes.end();) {
+                if(!((*it)(clock_))) { // can grow vector
+                    it = computes.erase(it);
                 }
                 else {
                     ++it;
@@ -515,13 +517,6 @@ namespace imajuscule {
             }
 
             impl.postprocess(outputBuffer, nFrames);
-
-#if WITH_DELAY
-            for( auto & delay : delays ) {
-                // todo low pass filter for more realism
-                delay.step(outputBuffer, nFrames);
-            }
-#endif
         }
     };
     
