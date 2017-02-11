@@ -47,15 +47,13 @@ namespace imajuscule {
         typename Parameters,
         typename InterleavedBuffer,
         int SizeInterleaved,
-        typename ProcessData
+        typename ProcessData_
         
         >
         struct Impl {
+            using ProcessData = ProcessData_;
+            
             static constexpr auto tune_stretch = 1.f;
-
-            virtual void doProcessing (ProcessData& data) = 0;
-            virtual void allNotesOff() = 0;
-            virtual void allSoundsOff() = 0;
             
             virtual Program const & getProgram(int i) const = 0;
 
@@ -101,7 +99,6 @@ namespace imajuscule {
 
         };
 
-        
         template<
         
         int nAudioOut,
@@ -134,13 +131,9 @@ namespace imajuscule {
             
             using OutputData = outputDataBase<nAudioOut, xfade_policy, AudioOutPolicy::Slave>;
             
-            ImplCRTP(int nOrchestratorsMax) :
-            out{n_channels, nOrchestratorsMax}
-            {}
-            
             // Note: Logic Audio Express 9 calls this when two projects are opened and
             // the second project starts playing, so we are not in an "initialized" state.
-            void allNotesOff() override {
+            void allNotesOff(OutputData & out) {
                 MIDI_LG(INFO, "all notes off :");
                 
                 static constexpr auto allNotesOff_xfade_len = 1401;
@@ -151,7 +144,7 @@ namespace imajuscule {
                 }
             }
             
-            void allSoundsOff() override {
+            void allSoundsOff(OutputData & out) {
                 MIDI_LG(INFO, "all sounds off :");
                 for(auto & c : channels) {
                     if(c.close(out, CloseMode::NOW)) {
@@ -160,8 +153,8 @@ namespace imajuscule {
                 }
             }
             
-            template<typename FILTER_MONO_NOTE_CHANNELS>
-            onEventResult onEvent(EventIterator it, FILTER_MONO_NOTE_CHANNELS filter) {
+            template<typename FILTER_MONO_NOTE_CHANNELS, typename OutputData>
+            onEventResult onEvent(EventIterator it, FILTER_MONO_NOTE_CHANNELS filter, OutputData & out) {
                 Event e;
                 it.dereference(e);
 
@@ -173,22 +166,19 @@ namespace imajuscule {
                     
                     if(auto c = editAudioElementContainer_if(channels, filter))
                     {
-                        return startNote(*c, e.noteOn);
+                        return startNote(*c, e.noteOn, out);
                     }
-                    else {
-                        return onDroppedNote(e.noteOn.pitch);
-                    }
+                    return onDroppedNote(e.noteOn.pitch);
                 }
-                
-                if(e.type == Event::kNoteOffEvent) {
-                    return noteOff(e.noteOff.pitch);
+                else if(e.type == Event::kNoteOffEvent) {
+                    return noteOff(e.noteOff.pitch, out);
                 }
                 return onEventResult::UNHANDLED;
             }
             
             
         private:
-            onEventResult startNote(MonoNoteChannel & c, NoteOnEvent const & e) {
+            onEventResult startNote(MonoNoteChannel & c, NoteOnEvent const & e, OutputData & out) {
                 
                 MIDI_LG(INFO, "on  %d", e.pitch);
                 
@@ -213,7 +203,7 @@ namespace imajuscule {
                 return onEventResult::OK;
             }
             
-            onEventResult noteOff(uint8_t pitch) {
+            onEventResult noteOff(uint8_t pitch, OutputData & out) {
                 MIDI_LG(INFO, "off %d", pitch);
                 if(!close_channel_on_note_off) {
                     // the initial implementation was using CloseMode::WHEN_DONE_PLAYING for that case
@@ -246,8 +236,32 @@ namespace imajuscule {
             
             // members
             std::array<MonoNoteChannel, n_channels> channels;
-            OutputData out;
         };
         
+        template<typename T>
+        struct Wrapper {
+            static constexpr auto n_channels = T::n_channels;
+            using OutputData = typename T::OutputData;
+            using ProcessData = typename T::ProcessData;
+            
+            Wrapper(int nOrchestratorsMax) :
+            out{n_channels, nOrchestratorsMax}
+            {}
+            
+            void doProcessing (ProcessData& data) {
+                return plugin.doProcessing(data, out);
+            }
+            
+            void allNotesOff() {
+                return plugin.allNotesOff(out);
+            }
+            
+            void allSoundsOff() {
+                return plugin.allSoundsOff(out);
+            }
+            
+            OutputData out;
+            T plugin;
+        };
     }
 } // namespaces

@@ -19,20 +19,26 @@ namespace imajuscule {
             FORCE_SOUND_AT_EACH_UPDATE, // "virtual instrument" mode
             UPDATE_CAN_BE_SILENT // "script" mode
         };
-        
+
+        enum SoundEngineMode : unsigned char {
+            BEGIN=0,
+            
+            MARKOV = 0,
+            ROBOTS,
+            BIRDS,
+            
+            END
+        };
+
+        enum SoundEngineInitPolicy : unsigned char {
+            StartAtLastPosition,
+            StartAfresh
+        };
+
         template<typename Logger, UpdateMode U = UpdateMode::UPDATE_CAN_BE_SILENT>
         struct SoundEngine {
             using ramp = audioelement::FreqRamp<float>;
-
-            enum Mode : unsigned char{
-                BEGIN=0,
-                
-                MARKOV = 0,
-                ROBOTS,
-                BIRDS,
-                
-                END
-            };
+            using Mode = SoundEngineMode;
             
             static enumTraversal ModeTraversal;
             
@@ -260,8 +266,6 @@ namespace imajuscule {
                     return true; // channel is already closed or closing
                 }
 
-                typename OutputData::Locking l(out.get_lock());
-
                 auto & channel = out.editChannel(c1);
                 if(!channel.isPlaying()) {
                     return true;
@@ -419,10 +423,7 @@ namespace imajuscule {
                 this->c2 = c2;
             }
             
-            enum InitPolicy : unsigned char {
-                StartAtLastPosition,
-                StartAfresh
-            };
+            using InitPolicy = SoundEngineInitPolicy;
             
             template<typename OutputData, typename MonoNoteChannel>
             void initialize_markov(OutputData & o,
@@ -471,16 +472,29 @@ namespace imajuscule {
                 if(!spec) {
                     return;
                 }
-                o.add_orchestrator([&o, &c, this](int max_frame_compute){
-                    return orchestrate(o, c, max_frame_compute);
-                });
-                
-                ramp->algo.spec = *spec;
-                if(o.playGeneric(c1, std::make_pair(std::ref(*ramp), Request{&ramp->buffer[0], volume, std::numeric_limits<int>::max() }))) {
-                    state_silence = false;
-                }
-                else {
-                    A(0);
+
+                {
+                    typename OutputData::Locking l(o.get_lock());
+                    
+                    // not more than 3 captures else std::function must allocate
+                    o.add_orchestrator([&o, &c, this](int max_frame_compute){
+                        return orchestrate(o, c, max_frame_compute);
+                    });
+                    
+                    ramp->algo.spec = *spec;
+                    if(o.playGenericNoLock(c1,
+                                           std::make_pair(std::ref(*ramp),
+                                                          Request{
+                                                              &ramp->buffer[0],
+                                                              volume,
+                                                              std::numeric_limits<int>::max()
+                                                          })))
+                    {
+                        state_silence = false;
+                    }
+                    else {
+                        A(0);
+                    }
                 }
             }
             

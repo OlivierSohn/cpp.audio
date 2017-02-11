@@ -119,7 +119,7 @@ namespace imajuscule {
             static constexpr auto size_interleaved = size_interleaved_one_cache_line;
 
             using SoundEngine = SoundEngine<imajuscule::Logger, UpdateMode::FORCE_SOUND_AT_EACH_UPDATE>;
-            using Mode = SoundEngine::Mode;
+            using Mode = SoundEngineMode;
 
             template <
             
@@ -134,6 +134,8 @@ namespace imajuscule {
             
             >
             struct ImplBase : public Parent {
+                static constexpr auto n_max_orchestrator_per_channel = 1;
+
                 using Parent::params;
                 using Parent::half_tone;
                 
@@ -445,28 +447,27 @@ namespace imajuscule {
             
             typename Base = ImplBase<MODE, Parameters, ProcessData>,
             
-            typename Parent = ImplCRTP < nAudioOut, XfadePolicy::UseXfade,
+            typename Parent_ = ImplCRTP < nAudioOut, XfadePolicy::UseXfade,
             MonoNoteChannel< 1, EngineAndRamps<SoundEngine> >, false,
             EventIterator, NoteOnEvent, NoteOffEvent, Base >
             
             >
-            struct Impl_ : public Parent
+            struct Impl_ : public Parent_
             {
-                static constexpr auto n_max_orchestrator_per_channel = 1;
+                using Parent = Parent_;
+                
                 static constexpr auto n_frames_interleaved = size_interleaved / nAudioOut;
                 static_assert(n_frames_interleaved * nAudioOut == size_interleaved, ""); // make sure we don't waste space
                 
                 using Base::interleaved;
                 using Base::get_xfade_length;
                 
-                using Parent::out;
                 using Parent::onEvent;
                 using Parent::channels;
 
             public:
-                Impl_() : Parent(n_max_orchestrator_per_channel) {}
-
-                void doProcessing (ProcessData& data) override
+                template<typename OutputData>
+                void doProcessing (ProcessData& data, OutputData & out)
                 {
                     A(data.numSamples);
                     
@@ -507,7 +508,7 @@ namespace imajuscule {
                                 // we should review the way note on/off are detected,
                                 // because it would probably cause bugs)
                                 return c.closed();
-                            });
+                            }, out);
                             ++it;
                             nextEventPosition = getNextEventPosition(it, end);
                         }

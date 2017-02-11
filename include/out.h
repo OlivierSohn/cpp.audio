@@ -10,7 +10,8 @@ namespace imajuscule {
                 while (l.exchange(true)) { }
             }
             ~RAIILock() {
-                l = false;
+                auto prev = l.exchange(false);
+                A(prev); // make sure l was true
             }
         private:
             std::atomic_bool & l;
@@ -240,6 +241,8 @@ namespace imajuscule {
         std::vector<Channel> channels;
         std::vector<uint8_t> autoclosing_ids;
         
+        // orchestrators and computes could be owned by the channels but it is maybe cache-wise more efficient
+        // to group them here (if the lambda owned is small enough to not require dynamic allocation)
         std::vector<OrchestratorFunc> orchestrators;
         std::vector<audioelement::ComputeFunc> computes;
 
@@ -269,13 +272,11 @@ namespace imajuscule {
             A(nChannelsMax >= 0);
             A(nChannelsMax <= std::numeric_limits<uint8_t>::max()); // else need to update AUDIO_CHANNEL_NONE
             
-            // (almost) worst case scenario : each channel is playing an audiolement crossfading with another audio element, and there is a compute lambda
-            // orchestrating everything (aka soundengine)
+            // (almost) worst case scenario : each channel is playing an audiolement crossfading with another audio element
             // "almost" only because the assumption is that requests vector holds at most one audioelement at any time
             // if there are multiple audioelements in request vector, we need to be more precise about when audioelements start to be computed...
-            // or we need to constrain the implementation to add requests in realtime, like soundengine does, only when needed.
-            // but it's good practice to not put too many items in the request queue anyway
-            computes.reserve(3*nChannelsMax);
+            // or we need to constrain the implementation to add requests in realtime, using orchestrators.
+            computes.reserve(2*nChannelsMax);
             
             orchestrators.reserve(nOrchestratorsMaxPerChannel * nChannelsMax);
             

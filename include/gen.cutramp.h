@@ -43,6 +43,7 @@ namespace imajuscule {
             struct ImplBase : public Parent {
                 using Params = ImplParams;
                 static constexpr auto NPARAMS = static_cast<int>(Params::NPARAMS);
+                static constexpr auto n_max_orchestrator_per_channel = 0;
                 static constexpr auto min_cut_period = 1;
                 static constexpr auto min_ramp_start_freq = 50.f;
                 static constexpr auto max_ramp_start_freq = 5000.f;
@@ -249,7 +250,6 @@ namespace imajuscule {
             >
             struct Impl_ : public Parent {
                 
-                static constexpr auto n_max_orchestrator_per_channel = 0;
                 static constexpr auto min_cut_period = Base::min_cut_period;
                 static constexpr auto max_length_ramp_ms = Base::max_length_ramp_ms;
                 static constexpr auto size_interleaved = Base::size_interleaved;
@@ -276,15 +276,13 @@ namespace imajuscule {
 
                 using Parent::channels;
                 using Parent::onEvent;
-                using Parent::out;
+                using OutputData = typename Parent::OutputData;
                 
                 static constexpr auto cut_period_one_cache_line = size_interleaved_one_cache_line / nAudioOut;
                 static_assert(cut_period_one_cache_line <= max_cut_period, "");
                 
-            public:
-                Impl_() : Parent(n_max_orchestrator_per_channel) {}
-                
-                void doProcessing (ProcessData& data) override
+            public:                
+                void doProcessing (ProcessData& data, OutputData & out)
                 {
                     A(data.numSamples);
                     
@@ -359,7 +357,7 @@ namespace imajuscule {
                         // keep this loop after onEndBufferStepParamChanges()/compute_state(),
                         // so that new notes have the correct adjusted frequency
                         while(nextEventPosition == currentFrame) {
-                            onEvent(it, [](auto & c) -> bool { return c.elem.isInactive(); });
+                            onEvent(it, [](auto & c) { return c.elem.isInactive(); }, out);
                             ++it;
                             nextEventPosition = getNextEventPosition(it, end);
                         }
