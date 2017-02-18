@@ -1,4 +1,4 @@
-#define WITH_DELAY 0
+ #define WITH_DELAY 0
 
 namespace imajuscule {
    
@@ -196,6 +196,9 @@ namespace imajuscule {
 #endif
     };
     
+    enum class WithLock {
+        Yes,No
+    };
     
     template<
     int nAudioOut,
@@ -219,7 +222,7 @@ namespace imajuscule {
         using OrchestratorFunc = std::function<bool(int)>;
 
         void add_orchestrator(OrchestratorFunc f) {
-            A(orchestrators.capacity() > orchestrators.size()); // we are in the audio thread, we should'nt allocate dynamically
+            A(orchestrators.capacity() > orchestrators.size()); // we are in the audio thread, we shouldn't allocate dynamically
             orchestrators.push_back(std::move(f));
         }
         
@@ -368,6 +371,7 @@ namespace imajuscule {
             }
         }
 
+        template<WithLock lock>
         uint8_t openChannel(float volume, ChannelClosingPolicy l, int xfade_length = 0) {
             uint8_t id = AUDIO_CHANNEL_NONE;
             if(channels.size() == channels.capacity() && available_ids.size() == 0) {
@@ -376,7 +380,13 @@ namespace imajuscule {
                 for( auto it = autoclosing_ids.begin(), end = autoclosing_ids.end(); it != end; ++it )
                 {
                     id = *it;
-                    {
+                    if(lock==WithLock::No) {
+                        if(channels[id].isPlaying()) {
+                            id = AUDIO_CHANNEL_NONE;
+                            continue;
+                        }
+                    }
+                    else {
                         // take the lock in the loop so that at the end of each iteration
                         // the audio thread has a chance to run
                         Locking l(get_lock());
@@ -423,34 +433,48 @@ namespace imajuscule {
             return id;
         }
         
+        template<WithLock l>
         void closeChannel(uint8_t channel_id, CloseMode mode, int nStepsForXfadeToZeroMode = -1)
         {
-            {
-                Locking l(get_lock());
-                auto & c = editChannel(channel_id);
-                if(mode != CloseMode::NOW && c.isPlaying()) {
-                    if(mode == CloseMode::XFADE_ZERO) {
-                        auto it = std::find(autoclosing_ids.begin(), autoclosing_ids.end(), channel_id);
-                        if(it == autoclosing_ids.end()) {
-                            convert_to_autoclosing(channel_id);
-                        }
-                        c.stopPlayingByXFadeToZero(nStepsForXfadeToZeroMode);
-                    }
-                    else if(mode == CloseMode::WHEN_DONE_PLAYING) {
-#ifndef NDEBUG
-                        auto it = std::find(autoclosing_ids.begin(), autoclosing_ids.end(), channel_id);
-                        A(it == autoclosing_ids.end()); // if channel is already autoclosing, this call is redundant
-#endif
+            if(l==WithLock::No) {
+                closeChannelNoLock(channel_id, mode, nStepsForXfadeToZeroMode);
+            }
+            else {
+                closeChannel(channel_id, mode, nStepsForXfadeToZeroMode);
+            }
+        }
+
+        void closeChannel(uint8_t channel_id, CloseMode mode, int nStepsForXfadeToZeroMode = -1)
+        {
+            Locking l(get_lock());
+            closeChannelNoLock(channel_id, mode, nStepsForXfadeToZeroMode);
+        }
+
+        void closeChannelNoLock(uint8_t channel_id, CloseMode mode, int nStepsForXfadeToZeroMode = -1)
+        {
+            auto & c = editChannel(channel_id);
+            if(mode != CloseMode::NOW && c.isPlaying()) {
+                if(mode == CloseMode::XFADE_ZERO) {
+                    auto it = std::find(autoclosing_ids.begin(), autoclosing_ids.end(), channel_id);
+                    if(it == autoclosing_ids.end()) {
                         convert_to_autoclosing(channel_id);
                     }
-                    return;
+                    c.stopPlayingByXFadeToZero(nStepsForXfadeToZeroMode);
                 }
+                else if(mode == CloseMode::WHEN_DONE_PLAYING) {
 #ifndef NDEBUG
-                auto it = std::find(autoclosing_ids.begin(), autoclosing_ids.end(), channel_id);
-                A(it == autoclosing_ids.end()); // if channel is autoclosing, we should remove it there?
+                    auto it = std::find(autoclosing_ids.begin(), autoclosing_ids.end(), channel_id);
+                    A(it == autoclosing_ids.end()); // if channel is already autoclosing, this call is redundant
 #endif
-                c.reset();
+                    convert_to_autoclosing(channel_id);
+                }
+                return;
             }
+#ifndef NDEBUG
+            auto it = std::find(autoclosing_ids.begin(), autoclosing_ids.end(), channel_id);
+            A(it == autoclosing_ids.end()); // if channel is autoclosing, we should remove it there?
+#endif
+            c.reset();
             available_ids.Return(channel_id);
         }
         

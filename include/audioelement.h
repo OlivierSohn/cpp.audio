@@ -1,7 +1,7 @@
 namespace imajuscule {
     namespace audioelement {
         
-        static constexpr auto n_frames_per_buffer = 16;
+        constexpr auto n_frames_per_buffer = 16;
 
         struct AudioElementBase  {
             AudioElementBase() = default;
@@ -242,6 +242,15 @@ namespace imajuscule {
         template<typename T, eNormalizePolicy NormPolicy = eNormalizePolicy::FAST>
         using Oscillator = FinalAudioElement<OscillatorAlgo<T, NormPolicy>>;
         
+        // 1 : lowest resolution
+        // 0 : highest resolution
+        template<typename T>
+        static constexpr T resolution(range<T> const & r) {
+            A(!r.empty());
+            A(r.getMax() != NumTraits<T>::zero());
+            return r.delta() / r.getMax();
+        }
+
         template<typename T>
         struct FreqRampAlgo;
 
@@ -250,7 +259,18 @@ namespace imajuscule {
             
             template<typename U> friend class FreqRampAlgo;
             
+            enum class AdjustProportionality {
+                UseLUT, No
+            };
+            
             using Tr = NumTraits<T>;
+            using lut = std::array<T, itp::interpolation::INTERPOLATION_UPPER_BOUND>;
+
+            //static lut lut_interpolation_proportionality;
+            
+            // offsets because we use the value at the beginning of the timestep
+            static constexpr auto increasing_integration_offset = 0;
+            static constexpr auto decreasing_integration_offset = 1;
 
             FreqRampAlgoSpec() : cur_sample(Tr::zero()), from{}, to{}, duration_in_samples{}
             {}
@@ -267,6 +287,7 @@ namespace imajuscule {
                                   i);
             }
             
+            template<AdjustProportionality adjust = AdjustProportionality::No>
             void set_by_increments(T from_increments,
                                    T to_increments,
                                    T duration_in_samples_,
@@ -291,8 +312,205 @@ namespace imajuscule {
                 }
                 from = from_increments;
                 to = to_increments;
+                A(from!=to); // so that orchestrator terminates!
                 duration_in_samples = duration_in_samples_;
                 
+                C = get_linear_proportionality_constant();
+                
+                /*
+                if(AdjustProportionality::UseLUT == adjust) {
+                    C *= lut_interpolation_proportionality[i];
+                }
+                 */
+                
+                A(duration_in_samples > 0);
+                interp.setInterpolation(i);
+            }
+            
+            T do_step(T proportionality) {
+                if(cur_sample + .5f > duration_in_samples) {
+                    cur_sample = Tr::zero();
+                    std::swap(from, to);
+                }
+                // we call get_unfiltered_value instead of get_value because we ensure:
+                A(cur_sample <= duration_in_samples);
+                auto f_result = interp.get_unfiltered_value(cur_sample, duration_in_samples, from, to);
+                // Taking the value at cur_sample means taking the value at the beginning of the step.
+                // The width of the step depends on that value so if we had taken the value in the middle or at the end of the step,
+                // not only would the value be different, but also the step width!
+                
+                // we could take the value in the middle and adjust "value + step width" accordingly
+                
+                // linear interpolation for parameter
+                auto f = from + (to-from) * (cur_sample + .5f) / duration_in_samples;
+                
+                
+                cur_sample += proportionality * f;
+                return f_result;
+            }
+
+            T step() {
+                return do_step(C);
+            }
+            
+            T step_calibrate(T proportionality) {
+                return do_step(proportionality * C);
+            }
+            
+            T getFromIncrements() const { return from; }
+            T getToIncrements() const { return to; }
+
+            T get_duration_in_samples() const { return duration_in_samples; }
+            
+            static lut compute_lut() {
+                lut l;
+                for(auto i=0; i<itp::interpolation::INTERPOLATION_UPPER_BOUND; ++i) {
+                    auto val = safe_cast<itp::interpolation>(i);
+                    if(itp::intIsReal(val)) {
+                        l[i] = calibrate_constant(val);
+                    }
+                    else {
+                        l[i] = 0;
+                    }
+                }
+                return l;
+            }
+            
+            static constexpr T calibrate_constant(itp::interpolation const i) {
+                LG(INFO, "-------------------");
+                LG(INFO, "%s", itp::interpolationInfo(i));
+                LG(INFO, "-------------------");
+                
+                // no more than 3 captures else dynamic allocation occurs!
+                auto f = [i](T const proportionality, T const duration) -> int {
+                    // avoid 0 in the ramp range (for interpolations that are exponential)
+                    constexpr auto fLow = NumTraits<T>::one();
+                    constexpr auto fHigh = NumTraits<T>::two();
+                    
+                    FreqRampAlgoSpec<T> spec;
+                    spec.set_by_increments<AdjustProportionality::No>(fLow,
+                                                                      fHigh,
+                                                                      duration,
+                                                                      NumTraits<T>::zero(),
+                                                                      i);
+
+                    // assuming an ascending ramp (else we need to substract integration_offset)
+                    A(fLow < fHigh);
+                    return steps_to_swap(spec, proportionality);
+                };
+
+                enum TestNature {
+                    NotStrict,
+                    Strict
+                };
+                
+                std::array<TestNature, 2> a_tests {{ Strict, NotStrict }};
+                std::array<range<T>, 2> ranges;
+                
+                range<T> r {
+                    NumTraits<T>::zero(),
+                    NumTraits<T>::two()
+                };
+
+                int idx = -1;
+                for(auto test_nature : a_tests) {
+                    ++idx;
+
+                    auto test = [test_nature](T const proportionality, T const duration, auto f) {
+                        auto n_steps = f(proportionality, duration);
+                        return (n_steps > duration) || ((test_nature == TestNature::NotStrict) && n_steps == duration);
+                    };
+                    
+
+                    // 16 corresponds to one second of sound
+                    // and tests for linear interpolation showed that 17 is the first exponent where numerical errors
+                    // become a problem
+                    constexpr auto n_max_exp = 16;
+                    unsigned int exp = 1;
+                    
+                    A(!r.empty());
+                    
+                    logRange(r);
+                    
+                    while(exp <= n_max_exp) {
+                        auto const duration = static_cast<T>(pow2(exp));
+                        LG(INFO, "-------- %2d --------", exp);
+                        
+                        // when range doesn't contain the wanted value
+                        // we translate and double the delta
+                        {
+                            bool done = false;
+                            while(r.getMin() && !test(r.getMin(), duration, f)) {
+                                // range is too high
+                                r = {
+                                    r.getMin() - 2 * r.delta(),
+                                    r.getMin()
+                                };
+                                if(r.getMin() < 0) {
+                                    r.setMin(0);
+                                }
+                                LG(INFO, "<<<");
+                                logRange(r);
+                                done = true;
+                            }
+                            if(!done) {
+                                while(test(r.getMax(), duration, f)) {
+                                    // range is too low
+                                    r = {
+                                        r.getMax(),
+                                        r.getMax() + 2 * r.delta()
+                                    };
+                                    LG(INFO, "                >>>");
+                                    logRange(r);
+                                }
+                            }
+                        }
+                        
+                        // now range contains the wanted value
+                        
+                        // for the last exponent, we continue even if the resolution is smaller than
+                        // the estimated error
+                        while(
+                              (exp == n_max_exp) ||
+                              resolution(r) > NumTraits<T>::one() / duration
+                              )
+                        {
+                            auto center = r.getCenter();
+                            if(center == r.getMin()) {
+                                break;
+                            }
+                            
+                            if(test(center, duration, f)) {
+                                LG(INFO, "                  >");
+                                r = {center, r.getMax()};
+                            }
+                            else {
+                                LG(INFO, "<");
+                                r = {r.getMin(), center};
+                            }
+                            logRange(r);
+                        }
+                        
+                        ++exp;
+                    }
+                    
+                    ranges[idx] = r;
+                }
+
+                logRange(ranges[0]);
+                logRange(ranges[1]);
+               
+                return (ranges[1].getMin() + ranges[0].getMax()) / 2;
+            }
+            
+        private:
+            NormalizedInterpolation<T> interp;
+            T from, to, cur_sample;
+            T duration_in_samples;
+            T C;
+            
+            // do not make it public : if bounds are swapped afterwards, using this value can lead to bugs
+            T get_linear_proportionality_constant() const {
                 // we want to achieve the same effect as PROPORTIONAL_VALUE_DERIVATIVE
                 // but without paying the cost of one 'expf' call per audio frame :
                 // to achieve the same effect we add to cur_sample a value proportionnal to
@@ -300,36 +518,26 @@ namespace imajuscule {
                 // the wanted duration_in_samples
                 A(from > 0);
                 A(to > 0);
-                // else C computation cannot be done
+                // else computation cannot be done
                 
-                C = (to==from) ? 1.f : -std::log(from/to) / (to-from);
-                
-                A(duration_in_samples > 0);
-                interp.setInterpolation(i);
+                return (to==from) ? 1.f : -std::log(from/to) / (to-from);
             }
-            
-            T step() {
-                if(cur_sample > duration_in_samples) {
-                    cur_sample = Tr::zero();
-                    std::swap(from, to);
-                }
-                // we call get_unfiltered_value instead of get_value because we ensure:
-                A(cur_sample <= duration_in_samples);
-                auto f = interp.get_unfiltered_value(cur_sample, duration_in_samples, from, to);
-                cur_sample += C * f;
-                return f;
-            }
-            
-            T getFromIncrements() const { return from; }
-            T getToIncrements() const { return to; }
-
-        private:
-            NormalizedInterpolation<T> interp;
-            T from, to, cur_sample;
-            T duration_in_samples;
-            T C;
         };
         
+        template<typename T>
+        static int steps_to_swap(FreqRampAlgoSpec<T> & spec, T proportionality = 1.f) {
+            bool order = spec.getToIncrements() < spec.getFromIncrements();
+            
+            int count = 0;
+            while(order == spec.getToIncrements() < spec.getFromIncrements()) {
+                spec.step_calibrate( proportionality );
+                ++count;
+            }
+            --count; // because swap occurs at the beginning of step method, before current step is modified
+            return count;
+        }
+
+
         template<typename T>
         struct FreqRampAlgo {
             using Spec = FreqRampAlgoSpec<T>;

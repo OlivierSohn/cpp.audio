@@ -102,7 +102,7 @@ namespace imajuscule {
     template<typename T, int nBits>
     using Smoothed = SmoothedImpl<SmoothedIntegralPolicy<T, nBits>>;
     
-    static constexpr float step_1 = .001f; // works well for normalized parameters
+    constexpr float step_1 = .001f; // works well for normalized parameters
     
     template<const float * const T>
     using SmoothedFloat = SmoothedImpl<SmoothedFloatPolicy<T>>;

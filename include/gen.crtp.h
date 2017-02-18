@@ -101,8 +101,8 @@ namespace imajuscule {
 
         template<
         
-        int nAudioOut,
-        XfadePolicy xfade_policy,
+        int nOuts,
+        XfadePolicy xfade_policy_,
         typename MNC,
         bool close_channel_on_note_off,
         typename EventIterator,
@@ -112,6 +112,9 @@ namespace imajuscule {
         
         >
         struct ImplCRTP : public Base {
+            
+            static constexpr auto nAudioOut = nOuts;
+            static constexpr auto xfade_policy = xfade_policy_;
             
             using MonoNoteChannel = MNC;
             
@@ -129,31 +132,31 @@ namespace imajuscule {
             static constexpr auto n_max_simultaneous_notes_per_voice = 2;
             static constexpr auto n_channels = n_channels_per_note * n_max_voices * n_max_simultaneous_notes_per_voice;
             
-            using OutputData = outputDataBase<nAudioOut, xfade_policy, AudioOutPolicy::Slave>;
-            
             // Note: Logic Audio Express 9 calls this when two projects are opened and
             // the second project starts playing, so we are not in an "initialized" state.
+            template<WithLock l, typename OutputData>
             void allNotesOff(OutputData & out) {
                 MIDI_LG(INFO, "all notes off :");
                 
-                static constexpr auto allNotesOff_xfade_len = 1401;
+                constexpr auto allNotesOff_xfade_len = 1401;
                 for(auto & c : channels) {
-                    if(c.close(out, CloseMode::XFADE_ZERO, allNotesOff_xfade_len)) {
+                    if(c.template close<l>(out, CloseMode::XFADE_ZERO, allNotesOff_xfade_len)) {
                         LG(INFO, " x %d", c.pitch);
                     }
                 }
             }
             
+            template<WithLock l, typename OutputData>
             void allSoundsOff(OutputData & out) {
                 MIDI_LG(INFO, "all sounds off :");
                 for(auto & c : channels) {
-                    if(c.close(out, CloseMode::NOW)) {
+                    if(c.template close<l>(out, CloseMode::NOW)) {
                         LG(INFO, " x %d", c.pitch);
                     }
                 }
             }
             
-            template<typename FILTER_MONO_NOTE_CHANNELS, typename OutputData>
+            template<WithLock l, typename FILTER_MONO_NOTE_CHANNELS, typename OutputData>
             onEventResult onEvent(EventIterator it, FILTER_MONO_NOTE_CHANNELS filter, OutputData & out) {
                 Event e;
                 it.dereference(e);
@@ -166,18 +169,19 @@ namespace imajuscule {
                     
                     if(auto c = editAudioElementContainer_if(channels, filter))
                     {
-                        return startNote(*c, e.noteOn, out);
+                        return this->template startNote<l>(*c, e.noteOn, out);
                     }
                     return onDroppedNote(e.noteOn.pitch);
                 }
                 else if(e.type == Event::kNoteOffEvent) {
-                    return noteOff(e.noteOff.pitch, out);
+                    return noteOff<l>(e.noteOff.pitch, out);
                 }
                 return onEventResult::UNHANDLED;
             }
             
             
         private:
+            template<WithLock l, typename OutputData>
             onEventResult startNote(MonoNoteChannel & c, NoteOnEvent const & e, OutputData & out) {
                 
                 MIDI_LG(INFO, "on  %d", e.pitch);
@@ -193,7 +197,7 @@ namespace imajuscule {
                     xf_len = get_xfade_length();
                 }
                 
-                if(!c.open(out, initial_volume, xf_len)) {
+                if(!c.template open<l>(out, initial_volume, xf_len)) {
                     return onDroppedNote(e.pitch);
                 }
                 c.pitch = e.pitch;
@@ -203,6 +207,7 @@ namespace imajuscule {
                 return onEventResult::OK;
             }
             
+            template<WithLock l, typename OutputData>
             onEventResult noteOff(uint8_t pitch, OutputData & out) {
                 MIDI_LG(INFO, "off %d", pitch);
                 if(!close_channel_on_note_off) {
@@ -216,7 +221,7 @@ namespace imajuscule {
                     if(c.pitch != pitch) {
                         continue;
                     }
-                    if(!c.close(out, CloseMode::XFADE_ZERO, len)) {
+                    if(!c.template close<l>(out, CloseMode::XFADE_ZERO, len)) {
                         continue;
                     }
                     // the oscillator is still used for the crossfade,
@@ -241,9 +246,12 @@ namespace imajuscule {
         template<typename T>
         struct Wrapper {
             static constexpr auto n_channels = T::n_channels;
-            using OutputData = typename T::OutputData;
-            using ProcessData = typename T::ProcessData;
+            static constexpr auto with_lock = imajuscule::WithLock::No;
             
+            using ProcessData = typename T::ProcessData;
+
+            using OutputData = outputDataBase<T::nAudioOut, T::xfade_policy, AudioOutPolicy::Slave>;
+
             Wrapper(int nOrchestratorsMax) :
             out{n_channels, nOrchestratorsMax}
             {}
@@ -253,11 +261,11 @@ namespace imajuscule {
             }
             
             void allNotesOff() {
-                return plugin.allNotesOff(out);
+                return plugin.template allNotesOff<with_lock>(out);
             }
-            
+
             void allSoundsOff() {
-                return plugin.allSoundsOff(out);
+                return plugin.template allSoundsOff<with_lock>(out);
             }
             
             OutputData out;

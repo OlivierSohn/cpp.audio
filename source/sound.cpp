@@ -21,7 +21,7 @@ static float saw_( float angle_radians ) {
     A(angle_radians >= 0.f);
     A(angle_radians <= 2.f * (float)M_PI);
     
-    static constexpr float inv_pi = 1.f / (float)M_PI;
+    constexpr float inv_pi = 1.f / (float)M_PI;
     
     angle_radians *= inv_pi;
     if( angle_radians <= 1.f ) {        // 0 .. 1   ->  0 .. 1

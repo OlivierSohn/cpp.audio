@@ -31,8 +31,8 @@ namespace imajuscule {
                 return ((p+1)-g)/2;
             }
 
-            static constexpr auto max_cut_period = 64;
-            static constexpr auto size_interleaved = 8 * max_cut_period;
+            constexpr auto max_cut_period = 64;
+            constexpr auto size_interleaved = 8 * max_cut_period;
 
             template<
             typename Parameters,
@@ -276,12 +276,12 @@ namespace imajuscule {
 
                 using Parent::channels;
                 using Parent::onEvent;
-                using OutputData = typename Parent::OutputData;
                 
                 static constexpr auto cut_period_one_cache_line = size_interleaved_one_cache_line / nAudioOut;
                 static_assert(cut_period_one_cache_line <= max_cut_period, "");
                 
-            public:                
+            public:
+                template<typename OutputData>
                 void doProcessing (ProcessData& data, OutputData & out)
                 {
                     A(data.numSamples);
@@ -357,7 +357,7 @@ namespace imajuscule {
                         // keep this loop after onEndBufferStepParamChanges()/compute_state(),
                         // so that new notes have the correct adjusted frequency
                         while(nextEventPosition == currentFrame) {
-                            onEvent(it, [](auto & c) { return c.elem.isInactive(); }, out);
+                            this->template onEvent<WithLock::No>(it, [](auto & c) { return c.elem.isInactive(); }, out);
                             ++it;
                             nextEventPosition = getNextEventPosition(it, end);
                         }

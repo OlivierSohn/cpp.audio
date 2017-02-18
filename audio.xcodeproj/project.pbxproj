@@ -29,6 +29,7 @@
 		091E76EA1E46C02F009CFBA5 /* normalization.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = normalization.cpp; path = source/normalization.cpp; sourceTree = "<group>"; };
 		091E76EB1E46C08F009CFBA5 /* pernamespace.implparams.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = pernamespace.implparams.h; path = include/pernamespace.implparams.h; sourceTree = "<group>"; };
 		091E76EC1E46D03B009CFBA5 /* gen.crtp.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = gen.crtp.h; path = include/gen.crtp.h; sourceTree = "<group>"; };
+		092412A01E56F04500A848A8 /* audioelement.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = audioelement.cpp; path = source/audioelement.cpp; sourceTree = "<group>"; };
 		094562341E43E475006E7076 /* gen.cutramp.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = gen.cutramp.h; path = include/gen.cutramp.h; sourceTree = "<group>"; };
 		09529DF81E439D8D00705B99 /* gen.voice.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = gen.voice.h; path = include/gen.voice.h; sourceTree = "<group>"; };
 		09529DF91E439D8D00705B99 /* mononotechannel.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = mononotechannel.h; path = include/mononotechannel.h; sourceTree = "<group>"; };
@@ -88,6 +89,7 @@
 		099E06E21E36EC7F0012348E /* source */ = {
 			isa = PBXGroup;
 			children = (
+				092412A01E56F04500A848A8 /* audioelement.cpp */,
 				0966EA6E1E45C62B00A86E7C /* gen.voice.cpp */,
 				091E76EA1E46C02F009CFBA5 /* normalization.cpp */,
 				099E06DC1E36EC6D0012348E /* parse.music.cpp */,

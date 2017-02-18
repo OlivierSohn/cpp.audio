@@ -1,7 +1,39 @@
 
 namespace imajuscule {
     namespace audio {
-        
+        enum class FreqXfade : unsigned char {
+            BEGIN,
+            
+            No=BEGIN,
+            NonTrivial,
+            All,
+            
+            END
+            };
+            
+            
+            static enumTraversal const & xfade_freq_traversal() {
+                static enumTraversal et(
+                                        static_cast<unsigned int>(FreqXfade::BEGIN),
+                                        static_cast<unsigned int>(FreqXfade::END),
+                                        [](int val)->const char* {
+                                            auto v = static_cast<FreqXfade>(val);
+                                            switch(v) {
+                                                case FreqXfade::No:
+                                                    return "None";
+                                                    break;
+                                                case FreqXfade::NonTrivial:
+                                                    return "Non Trivial";
+                                                    break;
+                                                case FreqXfade::All:
+                                                    return "All";
+                                                    break;
+                                            }
+                                            return "?";
+                                        });
+                return et;
+            }
+            
         static inline float clamp_phase_ratio(float v) {
             if(v > 1.f) {
                 LG(WARN, "clamp phase_ratio '%.1f' to 1.f", v);
@@ -82,19 +114,24 @@ namespace imajuscule {
                 }
                 
                 static float ht = compute_half_tone(1.f);
-                
+
+                // random volume
                 auto vol1 = std::uniform_real_distribution<float>{0.5f,1.5f}(rng::mersenne());
                 auto vol2 = vol1;
                 
-                auto freq1 = std::uniform_real_distribution<float>{base_freq, (1+freq_scatter) * base_freq}(rng::mersenne());
+                auto scatter = 1.f + freq_scatter;
+                auto freq1 = std::uniform_real_distribution<float>{base_freq / scatter, base_freq * scatter}(rng::mersenne());
                 auto freq2 = std::uniform_real_distribution<float>{freq1*0.97f, freq1/0.97f}(rng::mersenne());
+                // f2 slightly out of tune
                 
-                if((force && !std::uniform_int_distribution<>{0,5}(rng::mersenne())) ||
+                if((force && !std::uniform_int_distribution<>{0,1}(rng::mersenne())) ||
                    (!force && !std::uniform_int_distribution<>{0,5}(rng::mersenne()))) {
+                    // f1 is shifted up by d1
                     freq1 = transpose_frequency(freq1, ht, d1);
                     vol1 *= expt(har_att, d1);
                 }
                 else if(force || !std::uniform_int_distribution<>{0,5}(rng::mersenne())) {
+                    // f2 is shifted up by d2
                     freq2 = transpose_frequency(freq2, ht, d2);
                     vol2 *= expt(har_att, d2);
                 }
@@ -102,6 +139,7 @@ namespace imajuscule {
                     return Status::OK_STABLE;
                 }
                 
+                // random pan
                 auto const stereo_gain = stereo(std::uniform_real_distribution<float>(-1.f, 1.f)(rng::mersenne()));
                 auto volume = MakeVolume::run<nAudioOut>(1.f, stereo_gain);
                 
@@ -126,18 +164,36 @@ namespace imajuscule {
                     }
                 }
                 else {
+                    // todo try to replace xfades by articulative pause
+                    
+                    // markov chain :
+                    
+                    // start at 0
+                    
+                    // 0->1 = 1
+                    // 1->2 = 0.1
+                    // 2->3 = 0.1 or 2->1 = 1
+                    // 1->3 = 0.1
+                    
                     if(auto * ramp = get_inactive_ramp()) {
+                        // markov_node 0 : f1
                         ramp->algo.set(freq1, freq1, n_frames, phase_ratio1 * n_frames, interpolation);
                         o.playGeneric(c1, std::make_pair(std::ref(*ramp), Request{&ramp->buffer[0], volume*vol1, length }));
                     }
                     if(auto * ramp = get_inactive_ramp()) {
+                        // markov_node 1 : f2
                         ramp->algo.set(freq2, freq2, n_frames, phase_ratio1 * n_frames, interpolation);
                         o.playGeneric(c1, std::make_pair(std::ref(*ramp), Request{&ramp->buffer[0], volume*vol2, length }));
                     }
+
                     
                     if(!std::uniform_int_distribution<>{0,10}(rng::mersenne())) {
+                        // markov node 2
+                        
                         if(auto * ramp = get_inactive_ramp()) {
+                            // repeat f2...
                             auto i = std::uniform_int_distribution<>{0,3}(rng::mersenne());
+                            // ... at same or twice or half freq
                             if(i==0) {
                                 freq2 *= 2.f;
                             }
@@ -146,12 +202,11 @@ namespace imajuscule {
                             }
                             ramp->algo.set(freq2, freq2, n_frames, phase_ratio1 * n_frames, interpolation);
                             
-                            // make a helper for that!! if the first term of the pair is wrong, we got +Inf in the signal...
-                            // if the first parameter of the request is buffer instead of &buffer[0], it is wrong...
                             o.playGeneric(c1, std::make_pair(std::ref(*ramp), Request{&ramp->buffer[0], volume*vol2, length }));
                         }
                     }
                     if(!std::uniform_int_distribution<>{0,10}(rng::mersenne())) {
+                        // f2->f1
                         if(auto * ramp = get_inactive_ramp()) {
                             ramp->algo.set(freq2, freq1, n_frames, interpolation);
                             o.playGeneric(c1, std::make_pair(std::ref(*ramp), Request{&ramp->buffer[0], volume*vol2, length }));
@@ -171,25 +226,30 @@ namespace imajuscule {
                                        float phase_ratio1, float phase_ratio2,
                                        float freq_scatter) {
                     length *= powf(2.f,
-                                   std::uniform_real_distribution<float>{1.f, 3.f}(rng::mersenne()));
+                                   std::uniform_real_distribution<float>{min_exp, max_exp}(rng::mersenne()));
                     auto n_frames = static_cast<float>(ms_to_frames(length));
                     if(n_frames <= 0) {
                         Logger::err("zero length");
                         return;
                     }
-                    
-                    if(freq_scatter) {
-                        auto factor = 1.f + std::uniform_real_distribution<float>{0.f,freq_scatter}(rng::mersenne());
-                        freq1 *= factor;
-                        freq2 *= factor;
-                    }
-                    
+
                     auto * current = ramp_specs.get_current();
-                    
+
                     if(auto * ramp_spec = ramp_specs.get_next_ramp_for_build()) {
+                        if(state_freq == freq1) {
+                            // use previous scatter when the markov transitions specify the same base value
+                        }
+                        else {
+                            auto scatter = 1.f + freq_scatter;
+                            state_factor = std::uniform_real_distribution<float>{1.f / scatter, scatter}(rng::mersenne());
+                        }
+                        state_freq = freq2;
+                        freq1 *= state_factor;
+                        freq2 *= state_factor;
+                        
                         ramp_spec->set(freq1, freq2, n_frames, 0, interpolation);
-                        if(!xfade_freq) {
-                            // in this mode, we don't try to solve frequency discontinuity
+                        if(xfade_freq==FreqXfade::No) {
+                            // don't try to solve frequency discontinuity
                             return;
                         }
                         if(current) {
@@ -197,12 +257,15 @@ namespace imajuscule {
                             auto from_inc = current->getToIncrements();
                             auto to_inc = ramp_spec->getFromIncrements();
                             auto diff = from_inc - to_inc;
-                            if(diff) {
+                            if(xfade_freq==FreqXfade::All || diff) {
                                 // ... and the new spec creates a frequency discontinuity
                                 if(auto * ramp_spec2 = ramp_specs.get_next_ramp_for_build()) {
                                     // so we move the new spec one step later
                                     *ramp_spec2 = *ramp_spec;
                                     // and create a transition
+                                    if(from_inc == to_inc) {
+                                        from_inc *= 1.00001f; // make sure ramp is non trivial else we cannot detect when it's done
+                                    }
                                     ramp_spec->set_by_increments(from_inc, to_inc, freq_xfade, 0, freq_interpolation);
                                 }
                                 else {
@@ -253,15 +316,18 @@ namespace imajuscule {
             
             template<typename OutputData, typename MonoNoteChannel>
             bool orchestrate(OutputData &out, MonoNoteChannel & c, int max_frame_compute) {
-                if(onAfterCompute(out, max_frame_compute)) {
-                    return true;
+                bool done = false;
+                if(onAfterCompute(out, max_frame_compute, done)) {
+                    return !done;
                 }
-                c.close(out, CloseMode::XFADE_ZERO, xfade);
+                c.template close<WithLock::No>(out, CloseMode::XFADE_ZERO, xfade);
                 return false;
             }
             
+            // returns false if channel needs to be closed
             template<typename OutputData>
-            bool onAfterCompute(OutputData &out, int max_frame_compute) {
+            bool onAfterCompute(OutputData &out, int max_frame_compute, bool & done) {
+                done = true;
                 if(ramp_specs.done()) {
                     return true; // channel is already closed or closing
                 }
@@ -270,44 +336,38 @@ namespace imajuscule {
                 if(!channel.isPlaying()) {
                     return true;
                 }
-                if(!channel.get_requests().empty()) { // I'm not sure this test is usefull, plus it can make a cache miss...
+                done = false;
+                if(!channel.get_requests().empty()) {
                     return true;
                 }
                 
-                bool has_silence = ( articulative_pause_length > 2*channel.get_size_xfade() );
-                
-                if(state_silence) {
-                    // is silence soon over?
-                    if(channel.get_remaining_samples_count() < max_frame_compute + 1 + channel.get_size_half_xfade()) {
-                        // yes
+                // is current request soon xfading?
+                if(channel.get_remaining_samples_count() < max_frame_compute + 1 + channel.get_size_half_xfade())
+                {
+                    if(state_silence) {
                         state_silence = false;
-                        return playNextSpec(out);
+                        done = !playNextSpec(out);
                     }
-                }
-                else {
-                    // is spec soon over?
-                    auto & spec = ramp_[last_ramp_index]->algo.spec;
-                    if(ramp_specs.order != (spec.getFromIncrements() < spec.getToIncrements())) {
-                        // bounds were swapped, meaning the halfperiod was met.
+                    else {
+                        bool const has_silence = articulative_pause_length > 2*channel.get_size_xfade();
                         if(has_silence) {
                             state_silence = true;
                             playSilence(out, getSilence());
                             return true;
                         }
-                        return playNextSpec(out);
+                        done = !playNextSpec(out);
                     }
                 }
 
-                return true; // channel is playing
+                return !done;
             }
             
             template<typename OutputData>
-            bool playNextSpec(OutputData & out) {
+            bool playNextSpec(OutputData & out, Volumes<OutputData::nOuts> * vol = nullptr) {
                 constexpr auto nAudioOut = OutputData::nOuts;
                 using Request = Request<nAudioOut>;
 
                 auto & channel = out.editChannel(c1);
-                auto & spec = ramp_[last_ramp_index]->algo.spec;
 
                 while(auto new_spec = ramp_specs.get_next_ramp_for_run()) {
                     last_ramp_index = 1-last_ramp_index;
@@ -320,12 +380,11 @@ namespace imajuscule {
                                              std::make_pair(std::ref(*new_ramp),
                                                             Request{
                                                                 &new_ramp->buffer[0],
-                                                                channel.get_current().volumes * (1.f/Request::chan_base_amplitude),
-                                                                std::numeric_limits<int>::max()
+                                                                vol? *vol : channel.get_current().volumes * (1.f/Request::chan_base_amplitude),
+                                                                static_cast<int>(.5f + new_ramp->algo.spec.get_duration_in_samples())
                                                             })
                                              ))
                     {
-                        channel.xfade_now();
                         return true; // channel is playing
                     }
                     // cancel the index change
@@ -353,7 +412,6 @@ namespace imajuscule {
                                                                 })
                                                  );
                 A(res); // because length was checked
-                channel.xfade_now();
             }
             
             void set_xfade(int xfade_) {
@@ -411,6 +469,11 @@ namespace imajuscule {
                 freq_interpolation = i;
             }
 
+            void set_length_exp(float min_, float max_) {
+                min_exp = min_;
+                max_exp = max_;
+            }
+            
             bool get_active() const {
                 return active;
             }
@@ -429,9 +492,12 @@ namespace imajuscule {
             void initialize_markov(OutputData & o,
                                    MonoNoteChannel & c,
                                    int start_node, int pre_tries, int min_path_length, int additional_tries, InitPolicy init_policy,
-                                   bool xfade_freq, int articulative_pause_length) {
+                                   FreqXfade xfade_freq, int articulative_pause_length) {
                 constexpr auto nAudioOut = OutputData::nOuts;
                 using Request = typename OutputData::Request;
+                
+                this->state_freq = 0.f;
+                this->state_factor = 0.f;
                 
                 this->xfade_freq = xfade_freq;
                 ramp_specs.reset();
@@ -464,38 +530,11 @@ namespace imajuscule {
                 auto const stereo_gain = stereo(std::uniform_real_distribution<float>(-1.f, 1.f)(rng::mersenne()));
                 auto volume = MakeVolume::run<nAudioOut>(1.f, stereo_gain);
                 
-                last_ramp_index = 1-last_ramp_index;
-                auto & ramp = ramp_[last_ramp_index];
-                ramp = get_inactive_ramp();
-                A(ramp);
-                auto spec = ramp_specs.get_next_ramp_for_run();
-                if(!spec) {
-                    return;
-                }
-
-                {
-                    typename OutputData::Locking l(o.get_lock());
-                    
-                    // not more than 3 captures else std::function must allocate
-                    o.add_orchestrator([&o, &c, this](int max_frame_compute){
-                        return orchestrate(o, c, max_frame_compute);
-                    });
-                    
-                    ramp->algo.spec = *spec;
-                    if(o.playGenericNoLock(c1,
-                                           std::make_pair(std::ref(*ramp),
-                                                          Request{
-                                                              &ramp->buffer[0],
-                                                              volume,
-                                                              std::numeric_limits<int>::max()
-                                                          })))
-                    {
-                        state_silence = false;
-                    }
-                    else {
-                        A(0);
-                    }
-                }
+                o.add_orchestrator([&o, &c, this](int max_frame_compute){
+                    return orchestrate(o, c, max_frame_compute);
+                });
+                
+                playNextSpec(o, &volume);
             }
             
         private:
@@ -505,18 +544,28 @@ namespace imajuscule {
             itp::interpolation freq_interpolation : 5;
             std::function<ramp*(void)> get_inactive_ramp;
             float d1, d2, har_att, length, base_freq, freq_scatter, phase_ratio1, phase_ratio2;
+            float min_exp;
+            float max_exp;
+            
+            float state_freq = 0.f;
+            float state_factor = 0.f;
+
             uint8_t c1, c2;
             int xfade, freq_xfade;
             int articulative_pause_length;
             
             std::unique_ptr<MarkovChain> markov;
-            bool xfade_freq:1;
+            FreqXfade xfade_freq:2;
             
             std::array<ramp *, 2> ramp_= {};
             unsigned int last_ramp_index : 1;
             bool state_silence:1;
             
             struct RampSpecs {
+                static constexpr auto n_specs = 30;
+                static constexpr auto n_bits_iter = relevantBits(n_specs+1);
+                static constexpr auto iter_cycle_length = pow2(n_bits_iter);
+                
                 void reset() {
                     it = -1;
                     end = 0;
@@ -525,7 +574,6 @@ namespace imajuscule {
                 bool done() const { return it == end; }
                 
                 using Algo = audioelement::FreqRampAlgo<float>;
-                static constexpr auto n_specs = 30;
                 
                 Algo::Spec * get_next_ramp_for_build() {
                     ++it;
@@ -549,7 +597,7 @@ namespace imajuscule {
                     return &a[it];
                 }
                 void finalize() {
-                    A(it==end-1);
+                    A(0 == (it+1-end) % iter_cycle_length);
                     it=-1;
                 }
                 
@@ -565,7 +613,7 @@ namespace imajuscule {
                 }
                 
                 using Specs = std::array<Algo::Spec, n_specs>;
-                unsigned it : relevantBits(n_specs+1);
+                unsigned it : n_bits_iter;
                 unsigned end: relevantBits(n_specs+1);
                 Specs a;
                 bool order :1;

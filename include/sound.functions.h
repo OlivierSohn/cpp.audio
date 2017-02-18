@@ -2,7 +2,11 @@
 namespace imajuscule {
     
     constexpr int ms_to_frames(float duration_ms) {
-        return static_cast<int>( SAMPLE_RATE * 0.001f * duration_ms );
+        A(duration_ms >= 0.f);
+        auto fval = SAMPLE_RATE * 0.001f * duration_ms;
+        A(fval >= 0.f);
+        A(fval < static_cast<float>(std::numeric_limits<int>::max()));
+        return static_cast<int>( fval );
     }
     
     constexpr float frames_to_ms(float duration_frames) {

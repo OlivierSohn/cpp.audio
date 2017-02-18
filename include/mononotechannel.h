@@ -26,19 +26,19 @@ namespace imajuscule {
             
             bool closed() const { return !opened(); }
             
-            template<typename OutputData>
+            template<WithLock lock_policy, typename OutputData>
             bool open(OutputData & out, float inital_volume, int xfade_len) {
                 
                 // "all or nothing" strategy
                 
                 for(auto & c : channels) {
-                    c = out.openChannel({inital_volume},  ChannelClosingPolicy::ExplicitClose, xfade_len);
+                    c = out.template openChannel<lock_policy>({inital_volume},  ChannelClosingPolicy::ExplicitClose, xfade_len);
                     if(c == AUDIO_CHANNEL_NONE) {
                         for(auto & c : channels) {
                             if(c == AUDIO_CHANNEL_NONE) {
                                 continue;
                             }
-                            out.closeChannel(c, CloseMode::NOW, 0);
+                            out.template closeChannel<lock_policy>(c, CloseMode::NOW, 0);
                             c = AUDIO_CHANNEL_NONE;
                         }
                         return false;
@@ -47,18 +47,18 @@ namespace imajuscule {
                 return true;
             }
             
-            template<typename OutputData>
+            template<WithLock lock_policy, typename OutputData>
             bool close(OutputData & out, CloseMode m, int xfade_len = 0) {
 
                 // "all or nothing" strategy
                 
                 for(auto & c : channels) {
                     if(c == AUDIO_CHANNEL_NONE) {
-                        return false;;
+                        return false;
                     }
                 }
                 for(auto & c : channels) {
-                    out.closeChannel(c, m, xfade_len);
+                    out.template closeChannel<lock_policy>(c, m, xfade_len);
                     c = AUDIO_CHANNEL_NONE;
                 }
                 return true;
