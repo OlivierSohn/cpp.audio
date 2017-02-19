@@ -206,7 +206,7 @@ namespace imajuscule {
                         }
                     }
                     if(!std::uniform_int_distribution<>{0,10}(rng::mersenne())) {
-                        // f2->f1
+                        // markov node 3: f2->f1
                         if(auto * ramp = get_inactive_ramp()) {
                             ramp->algo.set(freq2, freq1, n_frames, interpolation);
                             o.playGeneric(c1, std::make_pair(std::ref(*ramp), Request{&ramp->buffer[0], volume*vol2, length }));
