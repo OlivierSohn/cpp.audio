@@ -312,17 +312,10 @@ namespace imajuscule {
                 }
                 from = from_increments;
                 to = to_increments;
-                A(from!=to); // so that orchestrator terminates!
                 duration_in_samples = duration_in_samples_;
                 
                 C = get_linear_proportionality_constant();
-                
-                /*
-                if(AdjustProportionality::UseLUT == adjust) {
-                    C *= lut_interpolation_proportionality[i];
-                }
-                 */
-                
+                                
                 A(duration_in_samples > 0);
                 interp.setInterpolation(i);
             }

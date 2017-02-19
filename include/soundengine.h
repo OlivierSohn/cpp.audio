@@ -77,7 +77,8 @@ namespace imajuscule {
             template<typename F>
             SoundEngine(F f) :
             get_inactive_ramp(std::move(f)),
-            active(false)
+            active(false),
+            xfade_freq(FreqXfade::No)
             {
                 getSilence(); // make sure potential dynamic allocation occur not under audio lock
             }
@@ -94,126 +95,68 @@ namespace imajuscule {
                 if(!this->active) {
                     return Status::OK_STABLE;
                 }
+                
+                return Status::OK_STABLE;
+            }
+            
+            template<typename OutputData>
+            void play(OutputData & o,
+                      float length, float freq1, float freq2,
+                      float phase_ratio1, float phase_ratio2,
+                      float freq_scatter) {
+                length *= powf(2.f,
+                               std::uniform_real_distribution<float>{min_exp, max_exp}(rng::mersenne()));
                 auto n_frames = static_cast<float>(ms_to_frames(length));
                 if(n_frames <= 0) {
-                    Logger::err("length '%f' is too small", length);
-                    return Status::ERROR;
+                    Logger::err("zero length");
+                    return;
                 }
                 
-                if(base_freq <= 0.f) {
-                    Logger::err("frequency '%d' should be sctrictly positive", base_freq);
-                    return Status::ERROR;
-                }
+                auto * current = ramp_specs.get_current();
                 
-                if(mode == Mode::MARKOV) {
-                    return Status::OK_STABLE;
-                }
-                
-                if(!force && std::uniform_int_distribution<>{0,2}(rng::mersenne())) {
-                    return Status::OK_STABLE;
-                }
-                
-                static float ht = compute_half_tone(1.f);
-
-                // random volume
-                auto vol1 = std::uniform_real_distribution<float>{0.5f,1.5f}(rng::mersenne());
-                auto vol2 = vol1;
-                
-                auto scatter = 1.f + freq_scatter;
-                auto freq1 = std::uniform_real_distribution<float>{base_freq / scatter, base_freq * scatter}(rng::mersenne());
-                auto freq2 = std::uniform_real_distribution<float>{freq1*0.97f, freq1/0.97f}(rng::mersenne());
-                // f2 slightly out of tune
-                
-                if((force && !std::uniform_int_distribution<>{0,1}(rng::mersenne())) ||
-                   (!force && !std::uniform_int_distribution<>{0,5}(rng::mersenne()))) {
-                    // f1 is shifted up by d1
-                    freq1 = transpose_frequency(freq1, ht, d1);
-                    vol1 *= expt(har_att, d1);
-                }
-                else if(force || !std::uniform_int_distribution<>{0,5}(rng::mersenne())) {
-                    // f2 is shifted up by d2
-                    freq2 = transpose_frequency(freq2, ht, d2);
-                    vol2 *= expt(har_att, d2);
-                }
-                else {
-                    return Status::OK_STABLE;
-                }
-                
-                // random pan
-                auto const stereo_gain = stereo(std::uniform_real_distribution<float>(-1.f, 1.f)(rng::mersenne()));
-                auto volume = MakeVolume::run<nAudioOut>(1.f, stereo_gain);
-                
-                for(int i=0; i<2; ++i) {
-                    auto & ch = o.editChannel(i?c2:c1);
-                    A(!ch.isPlaying());
-                    ch.set_xfade(xfade);
-                }
-                
-                if(Mode::BIRDS==mode) {
-                    for(int i=0; i<1; ++i) {
-                        if(auto * ramp = get_inactive_ramp()) {
-                            ramp->algo.set(freq2, freq1, n_frames, phase_ratio1 * n_frames, interpolation);
-                            o.playGeneric(c1, std::make_pair(std::ref(*ramp), Request{&ramp->buffer[0], volume*vol2, length }));
-                        }
-                        if(auto * ramp = get_inactive_ramp()) {
-                            A(c2 != c1);
-                            ramp->algo.set(freq2, freq1, n_frames, phase_ratio2 * n_frames, interpolation);
-                            // replace c2 by c to have a trill
-                            o.playGeneric(c2, std::make_pair(std::ref(*ramp), Request{&ramp->buffer[0], volume*vol2, length }));
+                if(auto * ramp_spec = ramp_specs.get_next_ramp_for_build()) {
+                    if(state_freq == freq1) {
+                        // use previous scatter when the markov transitions specify the same base value
+                    }
+                    else {
+                        auto scatter = 1.f + freq_scatter;
+                        state_factor = std::uniform_real_distribution<float>{1.f / scatter, scatter}(rng::mersenne());
+                    }
+                    state_freq = freq2;
+                    freq1 *= state_factor;
+                    freq2 *= state_factor;
+                    
+                    ramp_spec->set(freq1, freq2, n_frames, 0, interpolation);
+                    if(xfade_freq==FreqXfade::No) {
+                        // don't try to solve frequency discontinuity
+                        return;
+                    }
+                    if(current) {
+                        // there was a spec before the one we just added...
+                        auto from_inc = current->getToIncrements();
+                        auto to_inc = ramp_spec->getFromIncrements();
+                        auto diff = from_inc - to_inc;
+                        if(xfade_freq==FreqXfade::All || diff) {
+                            // ... and the new spec creates a frequency discontinuity
+                            if(auto * ramp_spec2 = ramp_specs.get_next_ramp_for_build()) {
+                                // so we move the new spec one step later
+                                *ramp_spec2 = *ramp_spec;
+                                // and create a transition
+                                if(from_inc == to_inc) {
+                                    from_inc *= 1.00001f; // make sure ramp is non trivial else we cannot detect when it's done
+                                }
+                                ramp_spec->set_by_increments(from_inc, to_inc, freq_xfade, 0, freq_interpolation);
+                            }
+                            else {
+                                // just discard it
+                                ramp_specs.cancel_last_ramp();
+                            }
                         }
                     }
                 }
                 else {
-                    // todo try to replace xfades by articulative pause
-                    
-                    // markov chain :
-                    
-                    // start at 0
-                    
-                    // 0->1 = 1
-                    // 1->2 = 0.1
-                    // 2->3 = 0.1 or 2->1 = 1
-                    // 1->3 = 0.1
-                    
-                    if(auto * ramp = get_inactive_ramp()) {
-                        // markov_node 0 : f1
-                        ramp->algo.set(freq1, freq1, n_frames, phase_ratio1 * n_frames, interpolation);
-                        o.playGeneric(c1, std::make_pair(std::ref(*ramp), Request{&ramp->buffer[0], volume*vol1, length }));
-                    }
-                    if(auto * ramp = get_inactive_ramp()) {
-                        // markov_node 1 : f2
-                        ramp->algo.set(freq2, freq2, n_frames, phase_ratio1 * n_frames, interpolation);
-                        o.playGeneric(c1, std::make_pair(std::ref(*ramp), Request{&ramp->buffer[0], volume*vol2, length }));
-                    }
-
-                    
-                    if(!std::uniform_int_distribution<>{0,10}(rng::mersenne())) {
-                        // markov node 2
-                        
-                        if(auto * ramp = get_inactive_ramp()) {
-                            // repeat f2...
-                            auto i = std::uniform_int_distribution<>{0,3}(rng::mersenne());
-                            // ... at same or twice or half freq
-                            if(i==0) {
-                                freq2 *= 2.f;
-                            }
-                            else if(i==2) {
-                                freq2 *= 0.5f;
-                            }
-                            ramp->algo.set(freq2, freq2, n_frames, phase_ratio1 * n_frames, interpolation);
-                            
-                            o.playGeneric(c1, std::make_pair(std::ref(*ramp), Request{&ramp->buffer[0], volume*vol2, length }));
-                        }
-                    }
-                    if(!std::uniform_int_distribution<>{0,10}(rng::mersenne())) {
-                        // markov node 3: f2->f1
-                        if(auto * ramp = get_inactive_ramp()) {
-                            ramp->algo.set(freq2, freq1, n_frames, interpolation);
-                            o.playGeneric(c1, std::make_pair(std::ref(*ramp), Request{&ramp->buffer[0], volume*vol2, length }));
-                        }
-                    }
+                    A(0);
                 }
-                return Status::OK_CHANGED;
             }
             
             template<typename OutputData>
@@ -222,77 +165,19 @@ namespace imajuscule {
                 using Request = Request<nAudioOut>;
                 auto mc = std::make_unique<MarkovChain>();
                 
-                auto play = [this, &o](float length, float freq1, float freq2,
-                                       float phase_ratio1, float phase_ratio2,
-                                       float freq_scatter) {
-                    length *= powf(2.f,
-                                   std::uniform_real_distribution<float>{min_exp, max_exp}(rng::mersenne()));
-                    auto n_frames = static_cast<float>(ms_to_frames(length));
-                    if(n_frames <= 0) {
-                        Logger::err("zero length");
-                        return;
-                    }
-
-                    auto * current = ramp_specs.get_current();
-
-                    if(auto * ramp_spec = ramp_specs.get_next_ramp_for_build()) {
-                        if(state_freq == freq1) {
-                            // use previous scatter when the markov transitions specify the same base value
-                        }
-                        else {
-                            auto scatter = 1.f + freq_scatter;
-                            state_factor = std::uniform_real_distribution<float>{1.f / scatter, scatter}(rng::mersenne());
-                        }
-                        state_freq = freq2;
-                        freq1 *= state_factor;
-                        freq2 *= state_factor;
-                        
-                        ramp_spec->set(freq1, freq2, n_frames, 0, interpolation);
-                        if(xfade_freq==FreqXfade::No) {
-                            // don't try to solve frequency discontinuity
-                            return;
-                        }
-                        if(current) {
-                            // there was a spec before the one we just added...
-                            auto from_inc = current->getToIncrements();
-                            auto to_inc = ramp_spec->getFromIncrements();
-                            auto diff = from_inc - to_inc;
-                            if(xfade_freq==FreqXfade::All || diff) {
-                                // ... and the new spec creates a frequency discontinuity
-                                if(auto * ramp_spec2 = ramp_specs.get_next_ramp_for_build()) {
-                                    // so we move the new spec one step later
-                                    *ramp_spec2 = *ramp_spec;
-                                    // and create a transition
-                                    if(from_inc == to_inc) {
-                                        from_inc *= 1.00001f; // make sure ramp is non trivial else we cannot detect when it's done
-                                    }
-                                    ramp_spec->set_by_increments(from_inc, to_inc, freq_xfade, 0, freq_interpolation);
-                                }
-                                else {
-                                    // just discard it
-                                    ramp_specs.cancel_last_ramp();
-                                }
-                            }
-                        }
+                auto node1 = mc->emplace_([](Move const m, MarkovNode&me, MarkovNode&from_to) {
+                });
+                auto node2 = mc->emplace_([&o, this](Move const m, MarkovNode&me, MarkovNode&from_to) {
+                    if(m==Move::ENTER) {
+                        play(o, length, base_freq*4, base_freq*3, phase_ratio1, phase_ratio2, freq_scatter);
                     }
                     else {
-                        A(0);
-                    }
-                };
-                
-                auto node1 = mc->emplace_([play, this](Move const m, MarkovNode&me, MarkovNode&from_to) {
-                });
-                auto node2 = mc->emplace_([play, this](Move const m, MarkovNode&me, MarkovNode&from_to) {
-                    if(m==Move::ENTER) {
-                        play(length, base_freq*4, base_freq*3, phase_ratio1, phase_ratio2, freq_scatter);
-                    }
-                    else {
-                        play(length, base_freq*2, base_freq*4, phase_ratio1, phase_ratio2, freq_scatter);
+                        play(o, length, base_freq*2, base_freq*4, phase_ratio1, phase_ratio2, freq_scatter);
                     }
                 });
-                auto node3 = mc->emplace_([play, this](Move const m, MarkovNode&me, MarkovNode&from_to) {
+                auto node3 = mc->emplace_([&o, this](Move const m, MarkovNode&me, MarkovNode&from_to) {
                     if(m==Move::ENTER) {
-                        play(length, base_freq*4, base_freq*3, phase_ratio1, phase_ratio2, freq_scatter);
+                        play(o, length, base_freq*4, base_freq*3, phase_ratio1, phase_ratio2, freq_scatter);
                     }
                 });
                 
@@ -305,6 +190,91 @@ namespace imajuscule {
                 def_markov_transition(node1, node3, 0.5f);
                 def_markov_transition(node3, node1, 0.015f);
                 def_markov_transition(node3, node2, 0.885f);
+                
+                return mc;
+            }
+            
+            template<typename OutputData>
+            auto create_robot(OutputData & o) {
+                constexpr auto nAudioOut = OutputData::nOuts;
+                using Request = Request<nAudioOut>;
+                auto mc = std::make_unique<MarkovChain>();
+                
+                auto node0 = mc->emplace_([this, &o](Move const m, MarkovNode&me, MarkovNode&from_to) {
+                    if(m == Move::LEAVE) {
+                        auto length = this->length;
+                        length *= powf(2.f,
+                                       std::uniform_real_distribution<float>{min_exp, max_exp}(rng::mersenne()));
+                        auto n_frames = static_cast<float>(ms_to_frames(length));
+                        auto const stereo_gain = stereo(std::uniform_real_distribution<float>(-1.f, 1.f)(rng::mersenne()));
+                        auto volume = MakeVolume::run<nAudioOut>(1.f, stereo_gain);
+                        if(auto * ramp_spec = ramp_specs.get_next_ramp_for_build()) {
+                            ramp_spec->set(freq1_robot, freq1_robot, n_frames, phase_ratio1 * n_frames, interpolation);
+                        }
+                        if(auto * ramp_spec = ramp_specs.get_next_ramp_for_build()) {
+                            ramp_spec->set(freq2_robot, freq2_robot, n_frames, phase_ratio1 * n_frames, interpolation);
+                        }
+                    }
+                });
+                auto node1 = mc->emplace_([](Move const m, MarkovNode&me, MarkovNode&from_to) {
+                });
+                auto node2 = mc->emplace_([&o, this](Move const m, MarkovNode&me, MarkovNode&from_to) {
+                    if(m==Move::ENTER) {
+                        auto length = this->length;
+                        length *= powf(2.f,
+                                       std::uniform_real_distribution<float>{min_exp, max_exp}(rng::mersenne()));
+                        auto n_frames = static_cast<float>(ms_to_frames(length));
+                        if(auto * ramp_spec = ramp_specs.get_next_ramp_for_build()) {
+                            // repeat f2...
+                            auto i = std::uniform_int_distribution<>{0,3}(rng::mersenne());
+                            // ... at same or twice or half freq
+                            auto freq2 = freq2_robot;
+                            if(i==0) {
+                                freq2 *= 2.f;
+                            }
+                            else if(i==2) {
+                                freq2 *= 0.5f;
+                            }
+                            ramp_spec->set(freq2, freq2, n_frames, phase_ratio1 * n_frames, interpolation);
+                        }
+                    }
+                });
+                auto node3 = mc->emplace_([&o, this](Move const m, MarkovNode&me, MarkovNode&from_to) {
+                    if(m==Move::ENTER) {
+                        auto length = this->length;
+                        length *= powf(2.f,
+                                       std::uniform_real_distribution<float>{min_exp, max_exp}(rng::mersenne()));
+                        auto n_frames = static_cast<float>(ms_to_frames(length));
+                        if(auto * ramp_spec = ramp_specs.get_next_ramp_for_build()) {
+                            ramp_spec->set(freq2_robot, freq1_robot, n_frames, interpolation);
+                        }
+                    }
+                });
+            
+                // 0->1 = 1
+                // 1->2 = 0.1
+                // 2->3 = 0.1 or 2->1 = 1
+                // 1->3 = 0.1
+                
+                //                  3
+                //                  |
+                //                  ^
+                //                 0.1
+                //                  ^
+                //                  |
+                // 0 --- > 1 > ---- 1---\
+                //                  |   |
+                //                  v   ^
+                //                 0.1  1
+                //                  v   ^
+                //                  |   |
+                //                  2---/
+                
+                def_markov_transition(node0, node1, 1.f);
+                def_markov_transition(node1, node2, 0.1f);
+                def_markov_transition(node2, node1, 1.f);
+                def_markov_transition(node1, node3, 0.1f);
+                def_markov_transition(node3, node1, 1.f);
                 
                 return mc;
             }
@@ -493,21 +463,83 @@ namespace imajuscule {
                                    MonoNoteChannel & c,
                                    int start_node, int pre_tries, int min_path_length, int additional_tries, InitPolicy init_policy,
                                    FreqXfade xfade_freq, int articulative_pause_length) {
-                constexpr auto nAudioOut = OutputData::nOuts;
-                using Request = typename OutputData::Request;
-                
-                this->state_freq = 0.f;
-                this->state_factor = 0.f;
-                
                 this->xfade_freq = xfade_freq;
-                ramp_specs.reset();
-                this->articulative_pause_length = articulative_pause_length;
-                state_silence = false;
                 
                 bool initialize = (!markov) || (init_policy==InitPolicy::StartAfresh);
                 if(!markov) {
                     markov = create_markov(o);
+                    if(!markov) {
+                        return;
+                    }
                 }
+                
+                do_initialize(o, c, initialize, start_node, pre_tries, min_path_length, additional_tries, articulative_pause_length);
+            }
+            
+            template<typename OutputData, typename MonoNoteChannel>
+            void initialize_robot(OutputData & o,
+                                  MonoNoteChannel & c,
+                                  int start_node, int pre_tries, int min_path_length, int additional_tries, InitPolicy init_policy,
+                                  int articulative_pause_length) {
+                auto scatter = 1.f + freq_scatter;
+                freq1_robot = std::uniform_real_distribution<float>{base_freq / scatter, base_freq * scatter}(rng::mersenne());
+                freq2_robot = std::uniform_real_distribution<float>{freq1_robot*0.97f, freq1_robot/0.97f}(rng::mersenne());
+                
+                auto ht = compute_half_tone(1.f);
+                
+                if(!std::uniform_int_distribution<>{0,1}(rng::mersenne())) {
+                    // f1 is shifted up by d1
+                    freq1_robot = transpose_frequency(freq1_robot, ht, d1);
+                }
+                else {
+                    // f2 is shifted up by d2
+                    freq2_robot = transpose_frequency(freq2_robot, ht, d2);
+                }
+                
+                auto n_frames = static_cast<float>(ms_to_frames(length));
+                if(n_frames <= 0) {
+                    Logger::err("length '%f' is too small", length);
+                    return;
+                }
+                
+                bool initialize = (!markov) || (init_policy==InitPolicy::StartAfresh);
+                if(!markov) {
+                    markov = create_robot(o);
+                    if(!markov) {
+                        return;
+                    }
+                }
+                
+                do_initialize(o, c, initialize, start_node, pre_tries, min_path_length, additional_tries, articulative_pause_length);
+            }
+            
+            template<typename OutputData, typename MonoNoteChannel>
+            void do_initialize(OutputData & o,
+                               MonoNoteChannel & c,
+                               bool initialize,
+                               int start_node, int pre_tries, int min_path_length, int additional_tries,
+                               int articulative_pause_length)
+            {
+                constexpr auto nAudioOut = OutputData::nOuts;
+                using Request = typename OutputData::Request;
+
+                auto n_frames = static_cast<float>(ms_to_frames(length));
+                if(n_frames <= 0) {
+                    Logger::err("length '%f' is too small", length);
+                    return;
+                }
+                
+                if(base_freq <= 0.f) {
+                    Logger::err("frequency '%d' should be sctrictly positive", base_freq);
+                    return;
+                }
+
+                this->state_freq = 0.f;
+                this->state_factor = 0.f;
+                
+                ramp_specs.reset();
+                this->articulative_pause_length = articulative_pause_length;
+                state_silence = false;
                 
                 // running the markov chain will populate ramp_specs
                 if(initialize) {
@@ -527,6 +559,7 @@ namespace imajuscule {
                 }
                 
                 ramp_specs.finalize();
+                
                 auto const stereo_gain = stereo(std::uniform_real_distribution<float>(-1.f, 1.f)(rng::mersenne()));
                 auto volume = MakeVolume::run<nAudioOut>(1.f, stereo_gain);
                 
@@ -549,6 +582,8 @@ namespace imajuscule {
             
             float state_freq = 0.f;
             float state_factor = 0.f;
+            
+            float freq1_robot, freq2_robot;
 
             uint8_t c1, c2;
             int xfade, freq_xfade;

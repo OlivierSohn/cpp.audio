@@ -252,7 +252,7 @@ namespace imajuscule {
         public:
         template<typename F>
         void registerCompute(F f) {
-            A(computes.capacity() > computes.size()); // we are in the audio thread, we should'nt allocate dynamically
+            A(computes.capacity() > computes.size()); // we are in the audio thread, we shouldn't allocate dynamically
             computes.push_back(std::move(f));
             if(isInbetweenTwoComputes()) {
                 computes.back()(clock_);
