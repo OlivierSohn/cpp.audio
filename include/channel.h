@@ -242,27 +242,24 @@ namespace imajuscule {
             }
 
             auto current_next_sample_index_backup = current_next_sample_index;
+            previous = std::move(current);
+            A(!current.buffer); // the move constructor has reset it
             if (requests.empty()) {
                 A(!next); // because we have started the crossfade and have detected that there is no more requests to process
-                if(!current.buffer) {
-                    previous = std::move(current);
+                if(!previous.buffer) {
                     return false;
                 }
-                previous = std::move(current);
-                A(!current.buffer); // the move constructor has reset it
                 // emulate a right xfade 'to zero'
                 current.duration_in_frames = get_size_xfade()-1; // to do the right xfade
                 remaining_samples_count = size_half_xfade;  // to do the right xfade
                 current_next_sample_index = 0;
             }
             else if(!next && !current.buffer) {
-                previous = std::move(current);
                 // emulate a left xfade 'from zero'
                 current.duration_in_frames = 2 * get_size_xfade(); // to skip the right xfade
                 remaining_samples_count = size_half_xfade + 1; // to skip the normal writes and begin the left xfade
             }
             else {
-                previous = std::move(current);
                 current = std::move(requests.front());
                 requests.pop();
                 
@@ -277,6 +274,9 @@ namespace imajuscule {
         bool done(int n_writes_remaining) {
             if(shouldReset()) {
                 // to avoid residual noise due to very low volume
+                requests = {};
+                current = {};
+                previous = {};
                 return true;
             }
             return remaining_samples_count == 0 && !consume(n_writes_remaining);
@@ -669,8 +669,28 @@ namespace imajuscule {
             }
         }
         
+        bool duringRightXfade(int xfade_remaining, int max_xfade_writes, SAMPLE *& outputBuffer, int & n_max_writes)
+        {
+            {
+                auto xfade_written = std::min(xfade_remaining, max_xfade_writes);
+                {
+                    auto xfade_ratio = (float)(xfade_remaining-1) / (float)(2 * size_half_xfade);
+                    write_right_xfade( outputBuffer, xfade_ratio, xfade_written );
+                }
+                outputBuffer += xfade_written * nAudioOut;
+                remaining_samples_count -= xfade_written;
+                n_max_writes -= xfade_written;
+                if(xfade_remaining == xfade_written) {
+                    // this is the end of the right xfade, we release the previous request
+                    // to avoid unnecessary audioelement computations
+                    previous = {};
+                }
+            }
+            return done(n_max_writes);
+        }
+        
         bool handleToZero(SAMPLE *& outputBuffer, int & n_max_writes);
-            
+        
     };
     
     template<int nAudioOut, XfadePolicy XF>
@@ -711,18 +731,12 @@ namespace imajuscule {
             {
                 if(XF==XfadePolicy::UseXfade)
                 {
-                    auto xfade_written = crossfading_from_zero_remaining();
-                    if(xfade_written > 0) {
-                        auto xfade_ratio = (float)(xfade_written-1) / (float)(2 * size_half_xfade);
-                        xfade_written = std::min(xfade_written, remaining_samples_count);
-                        write_right_xfade( outputBuffer, xfade_ratio, xfade_written );
-                        remaining_samples_count -= xfade_written;
-                        n_max_writes -= xfade_written;
-                        if(done(n_max_writes)) {
+                    auto xfade_remaining = crossfading_from_zero_remaining();
+                    if(xfade_remaining > 0) {
+                        if(duringRightXfade(xfade_remaining, remaining_samples_count, outputBuffer, n_max_writes)) {
                             return;
                         }
                         A(n_max_writes > 0);
-                        outputBuffer += xfade_written * nAudioOut;
                         A(crossfading_from_zero_remaining() <= 0);
                     }
                 }
@@ -763,20 +777,15 @@ namespace imajuscule {
             
             if(XF==XfadePolicy::UseXfade)
             {
-                auto xfade_written = crossfading_from_zero_remaining();
-                if(xfade_written > 0) {
-                    auto xfade_ratio = (float)(xfade_written-1) / (float)(2 * size_half_xfade);
-                    xfade_written = std::min(xfade_written, n_max_writes);
-                    write_right_xfade( outputBuffer, xfade_ratio, xfade_written );
-                    remaining_samples_count -= xfade_written;
-                    n_max_writes -= xfade_written;
-                    if(done(n_max_writes)) {
+                auto xfade_remaining = crossfading_from_zero_remaining();
+                if(xfade_remaining > 0) {
+                    if(duringRightXfade(xfade_remaining, n_max_writes, outputBuffer, n_max_writes)) {
                         return;
                     }
-                    if(n_max_writes <= 0) {
+                    A(n_max_writes >= 0);
+                    if(0 == n_max_writes) {
                         return;
                     }
-                    outputBuffer += xfade_written * nAudioOut;
                     A(crossfading_from_zero_remaining() <= 0); // we are sure the xfade is finished
                     
                     if(remaining_samples_count < n_max_writes) {
