@@ -259,10 +259,6 @@ namespace imajuscule {
             
             template<typename U> friend class FreqRampAlgo;
             
-            enum class AdjustProportionality {
-                UseLUT, No
-            };
-            
             using Tr = NumTraits<T>;
             using lut = std::array<T, itp::interpolation::INTERPOLATION_UPPER_BOUND>;
 
@@ -287,7 +283,6 @@ namespace imajuscule {
                                   i);
             }
             
-            template<AdjustProportionality adjust = AdjustProportionality::No>
             void set_by_increments(T from_increments,
                                    T to_increments,
                                    T duration_in_samples_,
@@ -355,6 +350,7 @@ namespace imajuscule {
 
             T get_duration_in_samples() const { return duration_in_samples; }
             
+            /*
             static lut compute_lut() {
                 lut l;
                 for(auto i=0; i<itp::interpolation::INTERPOLATION_UPPER_BOUND; ++i) {
@@ -494,7 +490,7 @@ namespace imajuscule {
                 logRange(ranges[1]);
                
                 return (ranges[1].getMin() + ranges[0].getMax()) / 2;
-            }
+            }*/
             
         private:
             NormalizedInterpolation<T> interp;
@@ -530,6 +526,9 @@ namespace imajuscule {
             return count;
         }
 
+        static float freq_to_volume(float f) {
+            return loudness::equal_loudness_volume(f);
+        }
 
         template<typename T>
         struct FreqRampAlgo {
@@ -549,17 +548,20 @@ namespace imajuscule {
             
             void step() {
                 auto current_freq = spec.step();
+                current_volume = freq_to_volume(angle_increment_to_freq(current_freq));
+                
                 osc.setAngleIncrements(current_freq);
                 osc.step(); // we must step osc because we own it
             }
             
             T angleIncrements() const { return osc.angleIncrements(); }
             
-            T real() const { return osc.real(); }
-            T imag() const { return osc.imag(); }
+            T real() const { return current_volume * osc.real(); }
+            T imag() const { return current_volume * osc.imag(); }
             
             Spec spec;
         private:
+            float current_volume;
             OscillatorAlgo<T> osc;
         };
         

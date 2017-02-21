@@ -1,7 +1,6 @@
 namespace imajuscule {
     namespace audio {
 
-            
             namespace voice {
 
             enum ImplParams {
@@ -49,9 +48,11 @@ namespace imajuscule {
                 LENGTH_EXPONENT,
                 LENGTH_EXPONENT_SCATTER,
                 XFADE_LENGTH,
+                
                 MARKOV_XFADE_FREQ,
                 FREQ_TRANSITION_LENGTH,
                 FREQ_TRANSITION_INTERPOLATION,
+                
                 PHASE_RATIO1,
                 PHASE_RATIO2
                 
@@ -75,6 +76,7 @@ namespace imajuscule {
                 LENGTH_EXPONENT,
                 LENGTH_EXPONENT_SCATTER,
                 XFADE_LENGTH,
+                
                 PHASE_RATIO1,
                 PHASE_RATIO2
             }};

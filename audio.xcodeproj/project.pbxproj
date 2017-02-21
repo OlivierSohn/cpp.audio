@@ -24,6 +24,7 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		091177B41E5B2F9100343D54 /* loudness.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = loudness.h; path = include/loudness.h; sourceTree = "<group>"; };
 		091E76E81E46B4FE009CFBA5 /* soundengine.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = soundengine.h; path = include/soundengine.h; sourceTree = "<group>"; };
 		091E76E91E46BE78009CFBA5 /* normalization.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = normalization.h; path = include/normalization.h; sourceTree = "<group>"; };
 		091E76EA1E46C02F009CFBA5 /* normalization.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = normalization.cpp; path = source/normalization.cpp; sourceTree = "<group>"; };
@@ -110,6 +111,7 @@
 				091E76EC1E46D03B009CFBA5 /* gen.crtp.h */,
 				094562341E43E475006E7076 /* gen.cutramp.h */,
 				09529DF81E439D8D00705B99 /* gen.voice.h */,
+				091177B41E5B2F9100343D54 /* loudness.h */,
 				09529DFE1E439FD800705B99 /* midi.h */,
 				09529DF91E439D8D00705B99 /* mononotechannel.h */,
 				091E76E91E46BE78009CFBA5 /* normalization.h */,
