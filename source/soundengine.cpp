@@ -11,8 +11,8 @@ namespace imajuscule {
                                                                     case Mode::ROBOTS:
                                                                         return "Robots";
                                                                         break;
-                                                                    case Mode::BIRDS:
-                                                                        return "Birds";
+                                                                    case Mode::SWEEP:
+                                                                        return "Sweep";
                                                                         break;
                                                                     case Mode::MARKOV:
                                                                         return "Markov Birds";

@@ -519,10 +519,6 @@ namespace imajuscule {
             }
         };
         
-        static float freq_to_volume(float f) {
-            return loudness::equal_loudness_volume(f);
-        }
-
         template<typename ALGO>
         struct VolumeAdjusted {
             using T = typename ALGO::FPT;
@@ -532,13 +528,28 @@ namespace imajuscule {
 
             T angleIncrements() const { return osc.angleIncrements(); }
 
+            VolumeAdjusted() : log_ratio_(1.f), low_index_(0) {}
+            
             void setAngleIncrements(float ai) {
-                volume = freq_to_volume(angle_increment_to_freq(ai));
+                volume = loudness::equal_loudness_volume(angle_increment_to_freq(ai),
+                                                         low_index_,
+                                                         log_ratio_);
                 osc.setAngleIncrements(ai);
             }
 
+            void setLoudnessParams(int low_index, float log_ratio) {
+                A(low_index >= 0);
+                A(low_index < 16);
+                low_index_ = low_index;
+                A(log_ratio >= 0.f);
+                A(log_ratio <= 1.f);
+                log_ratio_ = log_ratio;
+            }
+            
             void step() { osc.step(); }
         private:
+            unsigned int low_index_ : 4;
+            float log_ratio_;
             float volume;
             ALGO osc;
         };
@@ -599,6 +610,8 @@ namespace imajuscule {
             
             T real() const { return osc.real(); }
             T imag() const { return osc.imag(); }
+            
+            auto & getOsc() { return osc; }
             
             Spec spec;
         private:

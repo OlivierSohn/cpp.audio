@@ -183,25 +183,41 @@ namespace imajuscule {
             return Lp;
         }
         
+        static auto compute_elv() {
+            std::array<float, n_freq> v;
+            int i=0;
+            for(auto & e : v) {
+                e = equal_loudness_volume(i);
+                ++i;
+            }
+            return v;
+            
+        }
+        static const auto elv = compute_elv();
+
         static float equal_loudness_volume_db(float freq) {
             float ratio;
             
             auto i = closest_freq(freq, ratio);
             if(ratio == 1.f) {
-                return equal_loudness_volume(i);
+                return elv[i];
             }
             A(ratio < 1.f);
             A(ratio >= 0.f);
-            return ratio * equal_loudness_volume(i) + (1.f-ratio) * equal_loudness_volume(i-1);
+            return ratio * elv[i] + (1.f-ratio) * elv[i-1];
         }
 
-        static float equal_loudness_volume(float freq) {
-            static auto max_db = equal_loudness_volume_db(freqs[0]);
+        static float equal_loudness_volume(float freq, int index_freq_ref = 0, float log_ratio = 1.f) {
+            auto max_db = elv[index_freq_ref];
             
             auto db = equal_loudness_volume_db(freq);
-            A(db <= max_db);
+            if(db > max_db) {
+                return 1.f;
+                // is equivalent to:
+                // db = max_db;
+            }
             
-            return powf(10.f, (db-max_db)/20.f);
+            return powf(10.f, log_ratio * (db-max_db)/20.f);
         }
 }
 } // NS imajuscule
