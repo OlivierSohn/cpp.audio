@@ -2,6 +2,12 @@
 namespace imajuscule {
     namespace audio {
         namespace voice {
+            const float Limits<GAIN>::m = 0.f;
+            const float Limits<GAIN>::M = 60.f;
+
+            const float Limits<LOUDNESS_LEVEL>::m = 20.f;
+            const float Limits<LOUDNESS_LEVEL>::M = 100.f;
+
             const float Limits<HARMONIC_ATTENUATION>::m = 0.f;
             const float Limits<HARMONIC_ATTENUATION>::M = 0.98f;
             

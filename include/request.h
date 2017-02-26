@@ -238,7 +238,8 @@ namespace imajuscule {
         }
         
         bool is_valid() const {
-            for(auto const v : volumes) {
+            // commented out : for virtual instruments we need to output more than 1.f
+/*            for(auto const v : volumes) {
                 if(v<-1.f) {
                     return false;
                 }
@@ -246,6 +247,7 @@ namespace imajuscule {
                     return false;
                 }
             }
+ */
             return true;
         }
         

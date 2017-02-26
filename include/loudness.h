@@ -169,10 +169,8 @@ namespace imajuscule {
             return max_;
         }
 
-        static float equal_loudness_volume(int i)
+        static float equal_loudness_volume(int i, float LN)
         {
-            constexpr auto LN = 40.f; // unit : phons
-
             auto alpha_f = alpha_f_[i];
             auto Lu = Lu_[i];
             auto Tf = Tf_[i];
@@ -183,21 +181,32 @@ namespace imajuscule {
             return Lp;
         }
         
-        static auto compute_elv() {
+        static auto compute_elv(float level) {
             std::array<float, n_freq> v;
             int i=0;
             for(auto & e : v) {
-                e = equal_loudness_volume(i);
+                e = equal_loudness_volume(i, level);
                 ++i;
             }
             return v;
-            
         }
-        static const auto elv = compute_elv();
 
-        static float equal_loudness_volume_db(float freq) {
+        static auto compute_elvs() {
+            std::array<std::array<float, n_freq>, 9> elvs;
+            int l = 0;
+            for(auto & a : elvs) {
+                a = compute_elv((l+2)*10.f);
+                ++l;
+            }
+            return elvs;
+        }
+        
+        static auto elvs = compute_elvs();
+        
+        static float equal_loudness_volume_db(float freq, int level) {
             float ratio;
             
+            auto & elv = elvs[level];
             auto i = closest_freq(freq, ratio);
             if(ratio == 1.f) {
                 return elv[i];
@@ -207,13 +216,20 @@ namespace imajuscule {
             return ratio * elv[i] + (1.f-ratio) * elv[i-1];
         }
 
-        static float equal_loudness_volume(float freq, int index_freq_ref = 0, float log_ratio = 1.f) {
-            auto max_db = elv[index_freq_ref];
+        constexpr auto LN_default = 40.f; // unit : phons
+
+        static float equal_loudness_volume(float freq, int index_freq_ref = 0, float log_ratio = 1.f, float level = LN_default) {
+            // 20 .. 100 -> 0 .. 8;
+            int i = static_cast<int>(level * .1f) - 2;
+            i = std::max(0, i);
+            i = std::min(static_cast<int>(elvs.size()) - 1, i);
+
+            auto max_db = elvs[i][index_freq_ref];
             
-            auto db = equal_loudness_volume_db(freq);
+            auto db = equal_loudness_volume_db(freq, i);
             if(db > max_db) {
                 return 1.f;
-                // is equivalent to:
+                // equivalent to:
                 // db = max_db;
             }
             

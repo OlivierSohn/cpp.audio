@@ -533,22 +533,25 @@ namespace imajuscule {
             void setAngleIncrements(float ai) {
                 volume = loudness::equal_loudness_volume(angle_increment_to_freq(ai),
                                                          low_index_,
-                                                         log_ratio_);
+                                                         log_ratio_,
+                                                         loudness_level);
                 osc.setAngleIncrements(ai);
             }
 
-            void setLoudnessParams(int low_index, float log_ratio) {
+            void setLoudnessParams(int low_index, float log_ratio, float loudness_level) {
                 A(low_index >= 0);
                 A(low_index < 16);
                 low_index_ = low_index;
                 A(log_ratio >= 0.f);
                 A(log_ratio <= 1.f);
                 log_ratio_ = log_ratio;
+                this->loudness_level = loudness_level;
             }
             
             void step() { osc.step(); }
         private:
             unsigned int low_index_ : 4;
+            float loudness_level;
             float log_ratio_;
             float volume;
             ALGO osc;
