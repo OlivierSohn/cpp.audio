@@ -149,9 +149,9 @@ namespace imajuscule {
                 using Request = Request<nAudioOut>;
                 auto mc = std::make_unique<MarkovChain>();
                 
-                auto node1 = mc->emplace_([](Move const m, MarkovNode&me, MarkovNode&from_to) {
+                auto node1 = mc->emplace([](Move const m, MarkovNode&me, MarkovNode&from_to) {
                 });
-                auto node2 = mc->emplace_([&o, this](Move const m, MarkovNode&me, MarkovNode&from_to) {
+                auto node2 = mc->emplace([&o, this](Move const m, MarkovNode&me, MarkovNode&from_to) {
                     if(m==Move::ENTER) {
                         play(o, length, base_freq*4, base_freq*3, phase_ratio1, phase_ratio2, freq_scatter);
                     }
@@ -159,7 +159,7 @@ namespace imajuscule {
                         play(o, length, base_freq*2, base_freq*4, phase_ratio1, phase_ratio2, freq_scatter);
                     }
                 });
-                auto node3 = mc->emplace_([&o, this](Move const m, MarkovNode&me, MarkovNode&from_to) {
+                auto node3 = mc->emplace([&o, this](Move const m, MarkovNode&me, MarkovNode&from_to) {
                     if(m==Move::ENTER) {
                         play(o, length, base_freq*4, base_freq*3, phase_ratio1, phase_ratio2, freq_scatter);
                     }
@@ -184,7 +184,7 @@ namespace imajuscule {
                 using Request = Request<nAudioOut>;
                 auto mc = std::make_unique<MarkovChain>();
                 
-                auto node0 = mc->emplace_([this, &o](Move const m, MarkovNode&me, MarkovNode&from_to) {
+                auto node0 = mc->emplace([this, &o](Move const m, MarkovNode&me, MarkovNode&from_to) {
                     if(m == Move::LEAVE) {
                         auto length = this->length;
                         length *= powf(2.f,
@@ -198,9 +198,9 @@ namespace imajuscule {
                         }
                     }
                 });
-                auto node1 = mc->emplace_([](Move const m, MarkovNode&me, MarkovNode&from_to) {
+                auto node1 = mc->emplace([](Move const m, MarkovNode&me, MarkovNode&from_to) {
                 });
-                auto node2 = mc->emplace_([&o, this](Move const m, MarkovNode&me, MarkovNode&from_to) {
+                auto node2 = mc->emplace([&o, this](Move const m, MarkovNode&me, MarkovNode&from_to) {
                     if(m==Move::ENTER) {
                         auto length = this->length;
                         length *= powf(2.f,
@@ -221,7 +221,7 @@ namespace imajuscule {
                         }
                     }
                 });
-                auto node3 = mc->emplace_([&o, this](Move const m, MarkovNode&me, MarkovNode&from_to) {
+                auto node3 = mc->emplace([&o, this](Move const m, MarkovNode&me, MarkovNode&from_to) {
                     if(m==Move::ENTER) {
                         auto length = this->length;
                         length *= powf(2.f,
@@ -267,7 +267,7 @@ namespace imajuscule {
                 using Request = Request<nAudioOut>;
                 auto mc = std::make_unique<MarkovChain>();
                 
-                auto node0 = mc->emplace_([this, &o](Move const m, MarkovNode&me, MarkovNode&from_to) {
+                auto node0 = mc->emplace([this, &o](Move const m, MarkovNode&me, MarkovNode&from_to) {
                     if(m == Move::LEAVE) {
                         auto length = this->length;
                         length *= powf(2.f,
@@ -278,7 +278,7 @@ namespace imajuscule {
                         }
                     }
                 });
-                auto node1 = mc->emplace_([](Move const m, MarkovNode&me, MarkovNode&from_to) {
+                auto node1 = mc->emplace([](Move const m, MarkovNode&me, MarkovNode&from_to) {
                 });
                 
                 def_markov_transition(node0, node1, 1.f);
