@@ -4,7 +4,10 @@ namespace imajuscule {
         namespace voice {
             const float Limits<GAIN>::m = 0.f;
             const float Limits<GAIN>::M = 60.f;
-
+            
+            const float Limits<PAN>::m = -1.f;
+            const float Limits<PAN>::M = 1.f;
+            
             const float Limits<LOUDNESS_LEVEL>::m = 20.f;
             const float Limits<LOUDNESS_LEVEL>::M = 100.f;
 

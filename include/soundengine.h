@@ -490,7 +490,7 @@ namespace imajuscule {
             void initialize_markov(OutputData & o,
                                    MonoNoteChannel & c,
                                    int start_node, int pre_tries, int min_path_length, int additional_tries, InitPolicy init_policy,
-                                   FreqXfade xfade_freq, int articulative_pause_length, float gain) {
+                                   FreqXfade xfade_freq, int articulative_pause_length, float gain, float pan) {
                 this->xfade_freq = xfade_freq;
                 
                 bool initialize = (!markov) || (init_policy==InitPolicy::StartAfresh);
@@ -501,7 +501,7 @@ namespace imajuscule {
                     }
                 }
                 
-                auto const stereo_gain = stereo(std::uniform_real_distribution<float>(-1.f, 1.f)(rng::mersenne()));
+                auto const stereo_gain = stereo(pan);
                 auto volume = MakeVolume::run<OutputData::nOuts>(gain, stereo_gain);
 
                 do_initialize(o, c, initialize, start_node, pre_tries, min_path_length, additional_tries, articulative_pause_length, volume);
@@ -511,7 +511,7 @@ namespace imajuscule {
             void initialize_robot(OutputData & o,
                                   MonoNoteChannel & c,
                                   int start_node, int pre_tries, int min_path_length, int additional_tries, InitPolicy init_policy,
-                                  int articulative_pause_length, float gain) {
+                                  int articulative_pause_length, float gain, float pan) {
                 auto scatter = 1.f + freq_scatter;
                 freq1_robot = std::uniform_real_distribution<float>{base_freq / scatter, base_freq * scatter}(rng::mersenne());
                 freq2_robot = std::uniform_real_distribution<float>{freq1_robot*0.97f, freq1_robot/0.97f}(rng::mersenne());
@@ -541,7 +541,7 @@ namespace imajuscule {
                     }
                 }
                 
-                auto const stereo_gain = stereo(std::uniform_real_distribution<float>(-1.f, 1.f)(rng::mersenne()));
+                auto const stereo_gain = stereo(pan);
                 auto volume = MakeVolume::run<OutputData::nOuts>(gain, stereo_gain);
 
                 do_initialize(o, c, initialize, start_node, pre_tries, min_path_length, additional_tries, articulative_pause_length, volume);

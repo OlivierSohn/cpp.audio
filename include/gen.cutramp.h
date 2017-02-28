@@ -357,7 +357,7 @@ namespace imajuscule {
                         // keep this loop after onEndBufferStepParamChanges()/compute_state(),
                         // so that new notes have the correct adjusted frequency
                         while(nextEventPosition == currentFrame) {
-                            this->template onEvent<WithLock::No>(it, [](auto & c) { return c.elem.isInactive(); }, out);
+                            this->onEvent(it, [](auto & c) { return c.elem.isInactive(); }, out);
                             ++it;
                             nextEventPosition = getNextEventPosition(it, end);
                         }

@@ -212,6 +212,8 @@ namespace imajuscule {
         using Request = typename Channel::Request;
         using Volumes = typename Channel::Volumes;
         
+        static constexpr auto Policy = policy;
+        static constexpr auto DefLock = (policy==AudioOutPolicy::Slave) ? WithLock::No : WithLock::Yes;
         using Impl = AudioPolicyImpl<T, nAudioOut, policy>;
         using Locking = typename Impl::LOCK;
         

@@ -79,7 +79,7 @@ namespace imajuscule {
                 A(params.size() == NPARAMS);
             }
             
-            void setParameter(int index, float value, int sampleOffset /* not supported yet */) {
+            void setParameter(int index, float value, int sampleOffset = 0 /* not supported yet */) {
                 A(index < params.size());
                 params[index] = value;
             }
@@ -156,32 +156,41 @@ namespace imajuscule {
                 }
             }
             
-            template<WithLock l, typename FILTER_MONO_NOTE_CHANNELS, typename OutputData>
+            template<typename FILTER_MONO_NOTE_CHANNELS, typename OutputData>
             onEventResult onEvent(EventIterator it, FILTER_MONO_NOTE_CHANNELS filter, OutputData & out) {
                 Event e;
                 it.dereference(e);
 
                 if(e.type == Event::kNoteOnEvent) {
-                    // this case is handled by the wrapper...
+                    // this case is handled by the wrapper... else we need to do a noteOff
                     A(e.noteOn.velocity > 0.f );
-                    // ... in case it were not handled by the wrapper we would need to do:
-                    // return noteOff(e.noteOn.pitch);
-                    
-                    if(auto c = editAudioElementContainer_if(channels, filter))
                     {
-                        return this->template startNote<l>(*c, e.noteOn, out);
+                        typename OutputData::Locking L(out.get_lock());
+                        
+                        if(auto c = editAudioElementContainer_if(channels, filter))
+                        {
+                            return this->template startNote(*c, e.noteOn, out);
+                        }
                     }
                     return onDroppedNote(e.noteOn.pitch);
                 }
                 else if(e.type == Event::kNoteOffEvent) {
-                    return noteOff<l>(e.noteOff.pitch, out);
+                    return noteOff(e.noteOff.pitch, out);
                 }
                 return onEventResult::UNHANDLED;
             }
             
-            
+            bool opened() const {
+                for(auto const & c : channels) {
+                    if(c.opened()) {
+                        return true;
+                    }
+                }
+                return false;
+            }
         private:
-            template<WithLock l, typename OutputData>
+            // precondition : if needed the lock of out was taken by a caller
+            template<typename OutputData>
             onEventResult startNote(MonoNoteChannel & c, NoteOnEvent const & e, OutputData & out) {
                 
                 MIDI_LG(INFO, "on  %d", e.pitch);
@@ -197,7 +206,7 @@ namespace imajuscule {
                     xf_len = get_xfade_length();
                 }
                 
-                if(!c.template open<l>(out, initial_volume, xf_len)) {
+                if(!c.template open<WithLock::No>(out, initial_volume, xf_len)) {
                     return onDroppedNote(e.pitch);
                 }
                 c.pitch = e.pitch;
@@ -207,7 +216,7 @@ namespace imajuscule {
                 return onEventResult::OK;
             }
             
-            template<WithLock l, typename OutputData>
+            template<typename OutputData>
             onEventResult noteOff(uint8_t pitch, OutputData & out) {
                 MIDI_LG(INFO, "off %d", pitch);
                 if(!close_channel_on_note_off) {
@@ -221,7 +230,7 @@ namespace imajuscule {
                     if(c.pitch != pitch) {
                         continue;
                     }
-                    if(!c.template close<l>(out, CloseMode::XFADE_ZERO, len)) {
+                    if(!c.template close<OutputData::DefLock>(out, CloseMode::XFADE_ZERO, len)) {
                         continue;
                     }
                     // the oscillator is still used for the crossfade,

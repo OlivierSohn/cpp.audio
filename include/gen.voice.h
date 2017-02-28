@@ -7,6 +7,8 @@ namespace imajuscule {
 
                 // Common
                 SEED,
+                RANDOM_PAN,
+                PAN,
                 GAIN,
                 LOUDNESS_LEVEL,
                 LOUDNESS_COMPENSATION_AMOUNT,
@@ -44,9 +46,13 @@ namespace imajuscule {
 
             };
             
-            constexpr std::array<ImplParams, 21> params_markov
+            constexpr std::array<ImplParams, 23> params_markov
             {{
                 SEED,
+
+                RANDOM_PAN,
+                PAN,
+                
                 GAIN,
                 LOUDNESS_LEVEL,
                 LOUDNESS_COMPENSATION_AMOUNT,
@@ -74,9 +80,13 @@ namespace imajuscule {
                 
             }};
                 
-                constexpr std::array<ImplParams, 21> params_robots
+                constexpr std::array<ImplParams, 23> params_robots
                 {{
                     SEED,
+
+                    RANDOM_PAN,
+                    PAN,
+                    
                     GAIN,
                     LOUDNESS_LEVEL,
                     LOUDNESS_COMPENSATION_AMOUNT,
@@ -104,8 +114,11 @@ namespace imajuscule {
                 }};
                 
                 
-                constexpr std::array<ImplParams, 10> params_sweep
+                constexpr std::array<ImplParams, 12> params_sweep
                 {{
+                    RANDOM_PAN,
+                    PAN,
+
                     GAIN,
                     LOUDNESS_LEVEL,
                     LOUDNESS_COMPENSATION_AMOUNT,
@@ -155,7 +168,7 @@ namespace imajuscule {
                 static constexpr auto m = 0;
                 static constexpr auto M = 20001; };
             
-            template<> struct Limits<FREQ_SCATTER> : public NormalizedParamLimits {};
+                template<> struct Limits<FREQ_SCATTER> : public NormalizedParamLimits {};
             template<> struct Limits<PHASE_RATIO1> : public NormalizedParamLimits {};
             template<> struct Limits<PHASE_RATIO2> : public NormalizedParamLimits {};
             template<> struct Limits<LENGTH_EXPONENT_SCATTER> : public NormalizedParamLimits {};
@@ -171,7 +184,12 @@ namespace imajuscule {
                 static const float m;
                 static const float M; };
             
-            template<> struct Limits<LENGTH> {
+                
+                template<> struct Limits<PAN> {
+                    static const float m;
+                    static const float M; };
+                
+                template<> struct Limits<LENGTH> {
                 static const float m;
                 static const float M; };
             
@@ -232,6 +250,8 @@ namespace imajuscule {
                     
                     static std::vector<ParamSpec> params_spec = {
                         {"Seed", Limits<SEED>::m, Limits<SEED>::M},
+                        {"Random pan"},
+                        {"Pan", Limits<PAN>::m, Limits<PAN>::M},
                         {"Gain", Limits<GAIN>::m, Limits<GAIN>::M},
                         {"[Loudness] Level", Limits<LOUDNESS_LEVEL>::m, Limits<LOUDNESS_LEVEL>::M},
                         {"[Loudness] Compensation", Limits<LOUDNESS_COMPENSATION_AMOUNT>::m, Limits<LOUDNESS_COMPENSATION_AMOUNT>::M},
@@ -269,7 +289,7 @@ namespace imajuscule {
                     return filtered;
                 }
                 
-                static std::array<float,21> make_common(int start_node,
+                static std::array<float,23> make_common(int start_node,
                                                         int pre_tries,
                                                         int min_path_length,
                                                         int additionnal_tries,
@@ -289,6 +309,8 @@ namespace imajuscule {
 
                     return {{
                         0,
+                        static_cast<float>(!true),
+                        normalize<PAN>(0.f),
                         normalize<GAIN>(2.f),
                         normalize<LOUDNESS_LEVEL>(30.f),
                         /*normalize<LOUDNESS_COMPENSATION_AMOUNT>*/1.f,
@@ -550,12 +572,30 @@ namespace imajuscule {
                                              value<LOUDNESS_COMPENSATION_AMOUNT>(),
                                              denorm<LOUDNESS_LEVEL>());
 
+                    if(MODE == Mode::SWEEP) {
+                        c.elem.engine.initialize_sweep(out,
+                                                       c,
+                                                       denorm<LOW_FREQ>(),
+                                                       denorm<HIGH_FREQ>(),
+                                                       denorm<GAIN>());
+                        return;
+                    }
+                    
+                    auto rnd_pan = params[RANDOM_PAN] ? false : true;
+                    float pan;
+                    if(rnd_pan) {
+                        pan = std::uniform_real_distribution<float>(-1.f, 1.f)(rng::mersenne());
+                    }
+                    else {
+                        pan = denorm<PAN>();
+                    }
+                    
                     if(MODE == Mode::MARKOV) {
                         c.elem.engine.set_freq_xfade(denorm<FREQ_TRANSITION_LENGTH>());
                         auto interp_freq = static_cast<itp::interpolation>(itp::interpolation_traversal().realValues()[static_cast<int>(.5f + value<FREQ_TRANSITION_INTERPOLATION>())]);
                         c.elem.engine.set_freq_interpolation(interp_freq);
                         auto xfade_freq = static_cast<FreqXfade>(xfade_freq_traversal().realValues()[static_cast<int>(.5f + value<MARKOV_XFADE_FREQ>())]);
-
+                        
                         c.elem.engine.initialize_markov(out,
                                                         c,
                                                         value<MARKOV_START_NODE>(),
@@ -565,7 +605,8 @@ namespace imajuscule {
                                                         SoundEngine::InitPolicy::StartAfresh,
                                                         xfade_freq,
                                                         value<MARKOV_ARTICULATIVE_PAUSE_LENGTH>(),
-                                                        denorm<GAIN>());
+                                                        denorm<GAIN>(),
+                                                        pan);
                     }
                     else if(MODE == Mode::ROBOTS) {
                         c.elem.engine.set_d1(/*denorm<D1>()*/value<D1>());
@@ -579,14 +620,8 @@ namespace imajuscule {
                                                        value<MARKOV_ADDITIONAL_TRIES>(),
                                                        SoundEngine::InitPolicy::StartAfresh,
                                                        value<MARKOV_ARTICULATIVE_PAUSE_LENGTH>(),
-                                                       denorm<GAIN>());
-                    }
-                    else if(MODE == Mode::SWEEP) {
-                        c.elem.engine.initialize_sweep(out,
-                                                       c,
-                                                       denorm<LOW_FREQ>(),
-                                                       denorm<HIGH_FREQ>(),
-                                                       denorm<GAIN>());
+                                                       denorm<GAIN>(),
+                                                       pan);
                     }
                 }
                 
@@ -656,6 +691,25 @@ namespace imajuscule {
                 using Parent::channels;
 
             public:
+                
+                template<typename OutputData>
+                onEventResult onEvent(EventIterator it, OutputData & out)
+                {
+                    return onEvent(it, [](auto & c) -> bool {
+                        for(auto const & r : c.elem.ramps) {
+                            if(!r.isInactive()) {
+                                return false;
+                            }
+                        }
+                        // here we know that all elements are inactive
+                        // but if the channel has not been closed yet
+                        // we cannot use it (if we want to enable that,
+                        // we should review the way note on/off are detected,
+                        // because it would probably cause bugs)
+                        return c.closed();
+                    }, out);
+                }
+                
                 template<typename OutputData>
                 void doProcessing (ProcessData& data, OutputData & out)
                 {
@@ -686,19 +740,7 @@ namespace imajuscule {
                         A(nRemainingFrames > 0);
                         
                         while(nextEventPosition == currentFrame) {
-                            this-> template onEvent<WithLock::No>(it, [](auto & c) -> bool {
-                                for(auto const & r : c.elem.ramps) {
-                                    if(!r.isInactive()) {
-                                        return false;
-                                    }
-                                }
-                                // here we know that all elements are inactive
-                                // but if the channel has not been closed yet
-                                // we cannot use it (if we want to enable that,
-                                // we should review the way note on/off are detected,
-                                // because it would probably cause bugs)
-                                return c.closed();
-                            }, out);
+                            onEvent(it, out);
                             ++it;
                             nextEventPosition = getNextEventPosition(it, end);
                         }
