@@ -257,13 +257,13 @@ namespace imajuscule {
             No
         };
         
-        template<typename T, VolumeAdjust>
+        template<typename>
         struct FreqRampAlgo_;
 
         template<typename T>
         struct FreqRampAlgoSpec {
             
-            template<typename U, VolumeAdjust> friend class FreqRampAlgo_;
+            template<typename> friend class FreqRampAlgo_;
             
             using Tr = NumTraits<T>;
             using lut = std::array<T, itp::interpolation::INTERPOLATION_UPPER_BOUND>;
@@ -522,6 +522,7 @@ namespace imajuscule {
         template<typename ALGO>
         struct VolumeAdjusted {
             using T = typename ALGO::FPT;
+            using FPT = T;
             
             T real() const { return volume * osc.real(); }
             T imag() const { return volume * osc.imag(); }
@@ -530,7 +531,7 @@ namespace imajuscule {
 
             VolumeAdjusted() : log_ratio_(1.f), low_index_(0) {}
             
-            void setAngleIncrements(float ai) {
+            void setAngleIncrements(T ai) {
                 volume = loudness::equal_loudness_volume(angle_increment_to_freq(ai),
                                                          low_index_,
                                                          log_ratio_,
@@ -586,8 +587,9 @@ namespace imajuscule {
             return count;
         }
 
-        template<typename T, VolumeAdjust V>
+        template<typename ALGO>
         struct FreqRampAlgo_ {
+            using T = typename ALGO::FPT;
             using Spec = FreqRampAlgoSpec<T>;
             using Tr = NumTraits<T>;
 
@@ -609,8 +611,6 @@ namespace imajuscule {
                 osc.step();
             }
             
-            T angleIncrements() const { return osc.angleIncrements(); }
-            
             T real() const { return osc.real(); }
             T imag() const { return osc.imag(); }
             
@@ -618,11 +618,15 @@ namespace imajuscule {
             
             Spec spec;
         private:
-            AdjustableVolumeOscillatorAlgo<V,T> osc;
+            ALGO osc;
         };
+        
+        template<typename T, VolumeAdjust V>
+        using FreqRampOscillatorAlgo_ = FreqRampAlgo_<AdjustableVolumeOscillatorAlgo<V,T>>;
+        
 
         template<typename T>
-        using FreqRampAlgo = FreqRampAlgo_<T, VolumeAdjust::Yes>;
+        using FreqRampAlgo = FreqRampOscillatorAlgo_<T, VolumeAdjust::Yes>;
         
         template<typename T>
         using FreqRamp = FinalAudioElement<FreqRampAlgo<T>>;
