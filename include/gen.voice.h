@@ -1,10 +1,10 @@
 namespace imajuscule {
     namespace audio {
-
-            namespace voice {
-
+        
+        namespace voice {
+            
             enum ImplParams {
-
+                
                 // Common
                 SEED,
                 RANDOM_PAN,
@@ -19,7 +19,7 @@ namespace imajuscule {
                 MARKOV_MIN_PATH_LENGTH,
                 MARKOV_ADDITIONAL_TRIES,
                 MARKOV_ARTICULATIVE_PAUSE_LENGTH,
-
+                
                 INTERPOLATION,
                 FREQ_SCATTER,
                 LENGTH,
@@ -43,13 +43,13 @@ namespace imajuscule {
                 // Sweep
                 LOW_FREQ,
                 HIGH_FREQ
-
+                
             };
             
             constexpr std::array<ImplParams, 23> params_markov
             {{
                 SEED,
-
+                
                 RANDOM_PAN,
                 PAN,
                 
@@ -63,7 +63,7 @@ namespace imajuscule {
                 MARKOV_MIN_PATH_LENGTH,
                 MARKOV_ADDITIONAL_TRIES,
                 MARKOV_ARTICULATIVE_PAUSE_LENGTH,
-
+                
                 INTERPOLATION,
                 FREQ_SCATTER,
                 LENGTH,
@@ -79,83 +79,83 @@ namespace imajuscule {
                 PHASE_RATIO2
                 
             }};
+            
+            constexpr std::array<ImplParams, 23> params_robots
+            {{
+                SEED,
                 
-                constexpr std::array<ImplParams, 23> params_robots
-                {{
-                    SEED,
-
-                    RANDOM_PAN,
-                    PAN,
-                    
-                    GAIN,
-                    LOUDNESS_LEVEL,
-                    LOUDNESS_COMPENSATION_AMOUNT,
-                    LOUDNESS_REF_FREQ_INDEX,
-                    
-                    MARKOV_START_NODE,
-                    MARKOV_PRE_TRIES,
-                    MARKOV_MIN_PATH_LENGTH,
-                    MARKOV_ADDITIONAL_TRIES,
-                    MARKOV_ARTICULATIVE_PAUSE_LENGTH,
-                    
-                    D1,
-                    D2,
-                    HARMONIC_ATTENUATION,
-                    
-                    INTERPOLATION,
-                    FREQ_SCATTER,
-                    LENGTH,
-                    LENGTH_EXPONENT,
-                    LENGTH_EXPONENT_SCATTER,
-                    XFADE_LENGTH,
-                    
-                    PHASE_RATIO1,
-                    PHASE_RATIO2
-                }};
+                RANDOM_PAN,
+                PAN,
                 
+                GAIN,
+                LOUDNESS_LEVEL,
+                LOUDNESS_COMPENSATION_AMOUNT,
+                LOUDNESS_REF_FREQ_INDEX,
                 
-                constexpr std::array<ImplParams, 12> params_sweep
-                {{
-                    RANDOM_PAN,
-                    PAN,
-
-                    GAIN,
-                    LOUDNESS_LEVEL,
-                    LOUDNESS_COMPENSATION_AMOUNT,
-                    LOUDNESS_REF_FREQ_INDEX,
-                    
-                    INTERPOLATION,
-                    
-                    LENGTH,
-                    LENGTH_EXPONENT,
-                    XFADE_LENGTH,
-                    
-                    LOW_FREQ,
-                    HIGH_FREQ
-                }};
+                MARKOV_START_NODE,
+                MARKOV_PRE_TRIES,
+                MARKOV_MIN_PATH_LENGTH,
+                MARKOV_ADDITIONAL_TRIES,
+                MARKOV_ARTICULATIVE_PAUSE_LENGTH,
                 
+                D1,
+                D2,
+                HARMONIC_ATTENUATION,
+                
+                INTERPOLATION,
+                FREQ_SCATTER,
+                LENGTH,
+                LENGTH_EXPONENT,
+                LENGTH_EXPONENT_SCATTER,
+                XFADE_LENGTH,
+                
+                PHASE_RATIO1,
+                PHASE_RATIO2
+            }};
+            
+            
+            constexpr std::array<ImplParams, 12> params_sweep
+            {{
+                RANDOM_PAN,
+                PAN,
+                
+                GAIN,
+                LOUDNESS_LEVEL,
+                LOUDNESS_COMPENSATION_AMOUNT,
+                LOUDNESS_REF_FREQ_INDEX,
+                
+                INTERPOLATION,
+                
+                LENGTH,
+                LENGTH_EXPONENT,
+                XFADE_LENGTH,
+                
+                LOW_FREQ,
+                HIGH_FREQ
+            }};
+            
             constexpr auto params_all = make_tuple(params_markov, params_robots, params_sweep);
             
 #include "pernamespace.implparams.h"
-                
-                template<> struct Limits<SEED> {
-                    static constexpr auto m = 0;
-                    static constexpr auto M = 257; };
-                
-                template<> struct Limits<GAIN> {
-                    static const float m;
-                    static const float M; };
-                
-                template<> struct Limits<LOUDNESS_LEVEL> {
-                    static const float m;
-                    static const float M; };
-                
-                template<> struct Limits<LOUDNESS_REF_FREQ_INDEX> {
-                    static constexpr auto m = 0;
-                    static constexpr auto M = 10; };
-
-                template<> struct Limits<LOUDNESS_COMPENSATION_AMOUNT> : public NormalizedParamLimits {};
-
+            
+            template<> struct Limits<SEED> {
+                static constexpr auto m = 0;
+                static constexpr auto M = 257; };
+            
+            template<> struct Limits<GAIN> {
+                static const float m;
+                static const float M; };
+            
+            template<> struct Limits<LOUDNESS_LEVEL> {
+                static const float m;
+                static const float M; };
+            
+            template<> struct Limits<LOUDNESS_REF_FREQ_INDEX> {
+                static constexpr auto m = 0;
+                static constexpr auto M = 10; };
+            
+            template<> struct Limits<LOUDNESS_COMPENSATION_AMOUNT> : public NormalizedParamLimits {};
+            
             template<> struct Limits<XFADE_LENGTH> {
                 static constexpr auto m = 101;
                 static constexpr auto M = 2001; };
@@ -168,14 +168,14 @@ namespace imajuscule {
                 static constexpr auto m = 0;
                 static constexpr auto M = 20001; };
             
-                template<> struct Limits<FREQ_SCATTER> : public NormalizedParamLimits {};
+            template<> struct Limits<FREQ_SCATTER> : public NormalizedParamLimits {};
             template<> struct Limits<PHASE_RATIO1> : public NormalizedParamLimits {};
             template<> struct Limits<PHASE_RATIO2> : public NormalizedParamLimits {};
             template<> struct Limits<LENGTH_EXPONENT_SCATTER> : public NormalizedParamLimits {};
-
-                template<> struct Limits<D1> {
-                    static constexpr auto m = 0;
-                    static constexpr auto M = 47; };
+            
+            template<> struct Limits<D1> {
+                static constexpr auto m = 0;
+                static constexpr auto M = 47; };
             template<> struct Limits<D2> {
                 static constexpr auto m = 0;
                 static constexpr auto M = 47; };
@@ -184,12 +184,12 @@ namespace imajuscule {
                 static const float m;
                 static const float M; };
             
-                
-                template<> struct Limits<PAN> {
-                    static const float m;
-                    static const float M; };
-                
-                template<> struct Limits<LENGTH> {
+            
+            template<> struct Limits<PAN> {
+                static const float m;
+                static const float M; };
+            
+            template<> struct Limits<LENGTH> {
                 static const float m;
                 static const float M; };
             
@@ -212,21 +212,21 @@ namespace imajuscule {
             template<> struct Limits<MARKOV_ADDITIONAL_TRIES> {
                 static constexpr auto m = 0;
                 static constexpr auto M = 20; };
-                
-                template<> struct Limits<LOW_FREQ> {
-                    static constexpr auto m = 10;
-                    static constexpr auto M = 10000; };
-                
-                template<> struct Limits<HIGH_FREQ> {
-                    static constexpr auto m = 20;
-                    static constexpr auto M = 40000; };
-                
+            
+            template<> struct Limits<LOW_FREQ> {
+                static constexpr auto m = 10;
+                static constexpr auto M = 10000; };
+            
+            template<> struct Limits<HIGH_FREQ> {
+                static constexpr auto m = 20;
+                static constexpr auto M = 40000; };
+            
             constexpr auto size_interleaved_one_cache_line = cache_line_n_bytes / sizeof(interleaved_buf_t::value_type);
             constexpr auto size_interleaved = size_interleaved_one_cache_line;
-
+            
             using SoundEngine = SoundEngine<imajuscule::Logger, UpdateMode::FORCE_SOUND_AT_EACH_UPDATE>;
             using Mode = SoundEngineMode;
-
+            
             template <
             
             Mode MODE,
@@ -241,7 +241,7 @@ namespace imajuscule {
             >
             struct ImplBase : public Parent {
                 static constexpr auto n_max_orchestrator_per_channel = 1;
-
+                
                 using Parent::params;
                 using Parent::half_tone;
                 
@@ -261,7 +261,7 @@ namespace imajuscule {
                         {"[Markov] Min path length", Limits<MARKOV_MIN_PATH_LENGTH>::m, Limits<MARKOV_MIN_PATH_LENGTH>::M},
                         {"[Markov] Num. post tries", Limits<MARKOV_ADDITIONAL_TRIES>::m, Limits<MARKOV_ADDITIONAL_TRIES>::M},
                         {"Articulative pause length", Limits<MARKOV_ARTICULATIVE_PAUSE_LENGTH>::m, Limits<MARKOV_ARTICULATIVE_PAUSE_LENGTH>::M},
-                         {"Interpolation", itp::interpolation_traversal()},
+                        {"Interpolation", itp::interpolation_traversal()},
                         {"Frequency scatter", Limits<FREQ_SCATTER>::m, Limits<FREQ_SCATTER>::M },
                         {"Length", Limits<LENGTH>::m, Limits<LENGTH>::M},
                         {"Length Exponent", Limits<LENGTH_EXPONENT>::m, Limits<LENGTH_EXPONENT>::M},
@@ -306,7 +306,7 @@ namespace imajuscule {
                     int itp_index = 0;
                     auto b = itp::interpolation_traversal().valToRealValueIndex(i, itp_index);
                     A(b);
-
+                    
                     return {{
                         0,
                         static_cast<float>(!true),
@@ -362,17 +362,17 @@ namespace imajuscule {
                 }
                 
                 static Program::ARRAY make_sweep(itp::interpolation i,
-                                                float length,
-                                                float length_med_exp,
-                                                int xfade,
+                                                 float length,
+                                                 float length_med_exp,
+                                                 int xfade,
                                                  float low, float high) {
                     Program::ARRAY result;
                     result.resize(std::get<Mode::SWEEP>(params_all).size());
-
+                    
                     int itp_index = 0;
                     auto b = itp::interpolation_traversal().valToRealValueIndex(i, itp_index);
                     A(b);
-
+                    
                     result[index(GAIN)] = normalize<GAIN>(20.f);
                     result[index(LOUDNESS_LEVEL)] = normalize<LOUDNESS_LEVEL>(30.f);
                     result[index(LOUDNESS_REF_FREQ_INDEX)] = static_cast<float>(5);
@@ -522,11 +522,11 @@ namespace imajuscule {
                     c.elem.engine.set_active(true);
                     c.elem.engine.set_mode(MODE);
                     c.elem.engine.set_channels(c.channels[0], c.channels[0]);
-
+                    
                     auto interp = static_cast<itp::interpolation>(itp::interpolation_traversal().realValues()[static_cast<int>(.5f + value<INTERPOLATION>())]);
                     
                     c.elem.engine.set_itp(interp);
-
+                    
                     auto ex = denorm<LENGTH_EXPONENT>();
                     A(ex >= 0.f);
                     if(MODE != Mode::SWEEP) {
@@ -538,7 +538,7 @@ namespace imajuscule {
                         c.elem.engine.set_freq_scatter(denorm<FREQ_SCATTER>());
                         c.elem.engine.set_phase_ratio1(denorm<PHASE_RATIO1>());
                         c.elem.engine.set_phase_ratio2(denorm<PHASE_RATIO2>());
-
+                        
                         thread_local int seed = 0;
                         if(int i_seed = static_cast<int>(value<SEED>() + .5f)) {
                             seed = i_seed;
@@ -567,11 +567,11 @@ namespace imajuscule {
                     c.elem.engine.set_length(denorm<LENGTH>());
                     
                     c.elem.engine.set_xfade(get_xfade_length()); // useless in case of Markov (xfade already set in the channel by caller, and this value will not be used)
-
+                    
                     c.elem.setLoudnessParams(value<LOUDNESS_REF_FREQ_INDEX>(),
                                              value<LOUDNESS_COMPENSATION_AMOUNT>(),
                                              denorm<LOUDNESS_LEVEL>());
-
+                    
                     if(MODE == Mode::SWEEP) {
                         c.elem.engine.initialize_sweep(out,
                                                        c,
@@ -630,7 +630,7 @@ namespace imajuscule {
                     // make it odd
                     return 1 + (static_cast<int>(.5f+d)/2)*2;
                 }
-
+                
             };
             
             template<typename SoundEngine>
@@ -689,7 +689,7 @@ namespace imajuscule {
                 
                 using Parent::onEvent;
                 using Parent::channels;
-
+                
             public:
                 
                 template<typename OutputData>
