@@ -66,9 +66,10 @@ namespace imajuscule {
             constexpr bool isActive() const { return getState() != inactive(); }
         };
         
-        template<typename ALGO, typename T = decltype(ALGO().imag())>
-        struct FinalAudioElement : public AudioElement<T>{
-            using FPT = T;
+        template<typename ALGO>
+        struct FinalAudioElement : public AudioElement<typename ALGO::FPT>{
+            using FPT = typename ALGO::FPT;
+            
             template <class... Args>
             FinalAudioElement(Args&&... args) : algo(std::forward<Args>(args)...) {}
             
@@ -77,6 +78,7 @@ namespace imajuscule {
         
         template<typename T>
         struct Phased {
+            using FPT = T;
             using Tr = NumTraits<T>;
             
             Phased() = default;
@@ -141,6 +143,7 @@ namespace imajuscule {
          */
         template<typename T>
         struct PulseTrainAlgo : public Phased<T> {
+            
             using Tr = NumTraits<T>;
             using Phased<T>::angle_;
             
@@ -165,8 +168,11 @@ namespace imajuscule {
         template<typename T>
         using PulseTrain = FinalAudioElement<PulseTrainAlgo<T>>;
 
-        template<typename AEAlgo, typename T = decltype(AEAlgo().imag())>
+        template<typename AEAlgo>
         struct LowPassAlgo {
+            using T = typename AEAlgo::FPT;
+            using FPT = T;
+            
         private:
             AEAlgo audio_element;
             Filter<T, 1, FilterType::LOW_PASS> low_pass;
@@ -175,6 +181,11 @@ namespace imajuscule {
                 audio_element.step();
                 auto val = audio_element.imag();
                 low_pass.feed(&val);
+            }
+
+            // sets the filter frequency
+            void setAngleIncrements(T v) {
+                low_pass.initWithSampleRate(SAMPLE_RATE, angle_increment_to_freq(v));
             }
             
             T imag() const {
@@ -590,6 +601,8 @@ namespace imajuscule {
         template<typename ALGO>
         struct FreqRampAlgo_ {
             using T = typename ALGO::FPT;
+            using FPT = T;
+            
             using Spec = FreqRampAlgoSpec<T>;
             using Tr = NumTraits<T>;
 
@@ -633,7 +646,11 @@ namespace imajuscule {
         
         template<typename A1, typename A2>
         struct RingModulationAlgo {
-            using T = decltype(A1().imag());
+            using T = typename A1::FPT;
+            using FPT = T;
+            
+            static_assert(std::is_same<typename A1::FPT, typename A2::FPT>::value, ""); // else choice for T is arbitrary
+            
             using Tr = NumTraits<T>;
             
             RingModulationAlgo() = default;
