@@ -24,6 +24,7 @@ namespace imajuscule {
         return static_cast<int>(SAMPLE_RATE / freq_hz);
     }
 
+    // angle increment unit is "rad / pi"
     template<typename T>
     constexpr T freq_to_angle_increment(T freq) {
         static_assert(std::is_floating_point<T>::value, "");

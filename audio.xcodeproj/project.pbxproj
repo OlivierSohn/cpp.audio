@@ -40,6 +40,8 @@
 		09529DFD1E439F2700705B99 /* smoothparam.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = smoothparam.h; path = include/smoothparam.h; sourceTree = "<group>"; };
 		09529DFE1E439FD800705B99 /* midi.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = midi.h; path = include/midi.h; sourceTree = "<group>"; };
 		0966EA6E1E45C62B00A86E7C /* gen.voice.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = gen.voice.cpp; path = source/gen.voice.cpp; sourceTree = "<group>"; };
+		098EFCC21E677FBD000ADD0D /* sounds.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = sounds.h; path = include/sounds.h; sourceTree = "<group>"; };
+		098EFCCA1E6C5E50000ADD0D /* noise.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = noise.h; path = include/noise.h; sourceTree = "<group>"; };
 		099E06DC1E36EC6D0012348E /* parse.music.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = parse.music.cpp; path = source/parse.music.cpp; sourceTree = "<group>"; };
 		099E06DD1E36EC6D0012348E /* private.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = private.h; path = source/private.h; sourceTree = "<group>"; };
 		099E06DF1E36EC6D0012348E /* sound.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = sound.cpp; path = source/sound.cpp; sourceTree = "<group>"; };
@@ -114,6 +116,7 @@
 				091177B41E5B2F9100343D54 /* loudness.h */,
 				09529DFE1E439FD800705B99 /* midi.h */,
 				09529DF91E439D8D00705B99 /* mononotechannel.h */,
+				098EFCCA1E6C5E50000ADD0D /* noise.h */,
 				091E76E91E46BE78009CFBA5 /* normalization.h */,
 				099E06E51E36EC920012348E /* note.h */,
 				099E06E71E36EC920012348E /* out.h */,
@@ -128,6 +131,7 @@
 				099E06EC1E36EC920012348E /* sound.functions.h */,
 				099E06ED1E36EC920012348E /* sound.h */,
 				091E76E81E46B4FE009CFBA5 /* soundengine.h */,
+				098EFCC21E677FBD000ADD0D /* sounds.h */,
 				099E06EE1E36EC920012348E /* stereo.h */,
 			);
 			name = include;

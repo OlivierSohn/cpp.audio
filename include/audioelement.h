@@ -52,6 +52,7 @@ namespace imajuscule {
             // depend on another
             
             using FPT = T;
+            static_assert(std::is_floating_point<FPT>::value, "");
             using Tr = NumTraits<T>;
             
             AudioElement() {
@@ -69,6 +70,7 @@ namespace imajuscule {
         template<typename ALGO>
         struct FinalAudioElement : public AudioElement<typename ALGO::FPT>{
             using FPT = typename ALGO::FPT;
+            static_assert(std::is_floating_point<FPT>::value, "");
             
             template <class... Args>
             FinalAudioElement(Args&&... args) : algo(std::forward<Args>(args)...) {}
@@ -76,9 +78,58 @@ namespace imajuscule {
             ALGO algo;
         };
         
+        static inline auto & whiteNoise() {
+            static soundBuffer white_noise(soundId{Sound::PINK_NOISE, .1f});
+            return white_noise;
+        }
+        
+        
+        template<typename ALGO>
+        struct VolumeAdjusted {
+            using T = typename ALGO::FPT;
+            using FPT = T;
+            static_assert(std::is_floating_point<FPT>::value, "");
+            
+            T real() const { return volume * osc.real(); }
+            T imag() const { return volume * osc.imag(); }
+            
+            T angleIncrements() const { return osc.angleIncrements(); }
+            
+            VolumeAdjusted() : log_ratio_(1.f), low_index_(0) {}
+            
+            void setAngleIncrements(T ai) {
+                volume = loudness::equal_loudness_volume(angle_increment_to_freq(ai),
+                                                         low_index_,
+                                                         log_ratio_,
+                                                         loudness_level);
+                osc.setAngleIncrements(ai);
+            }
+            
+            void setLoudnessParams(int low_index, float log_ratio, float loudness_level) {
+                A(low_index >= 0);
+                A(low_index < 16);
+                low_index_ = low_index;
+                A(log_ratio >= 0.f);
+                A(log_ratio <= 1.f);
+                log_ratio_ = log_ratio;
+                this->loudness_level = loudness_level;
+            }
+            
+            void step() { osc.step(); }
+        private:
+            unsigned int low_index_ : 4;
+            float loudness_level;
+            float log_ratio_;
+            float volume;
+            ALGO osc;
+        };
+        
+        // the unit of angle increments is "radian / pi"
+        
         template<typename T>
         struct Phased {
             using FPT = T;
+            static_assert(std::is_floating_point<FPT>::value, "");
             using Tr = NumTraits<T>;
             
             Phased() = default;
@@ -124,6 +175,36 @@ namespace imajuscule {
         
         template<typename T>
         using PCOscillator = FinalAudioElement<PCOscillatorAlgo<T>>;
+  
+        template<typename T>
+        struct soundBufferWrapperAlgo {            
+            using FPT = T;
+            static_assert(std::is_floating_point<FPT>::value, "");
+
+            soundBufferWrapperAlgo(soundBuffer const & sb) : sb(sb) {}
+
+            T imag() const { return sb[index]; }
+            
+            void step() {
+                ++index;
+                if(index == sb.size()) {
+                    index = 0;
+                }
+            }
+            
+            int index = -1;
+            soundBuffer const & sb;
+        };
+        
+        template<typename T>
+        struct WhiteNoiseAlgo : public soundBufferWrapperAlgo<T> {
+            using FPT = typename soundBufferWrapperAlgo<T>::FPT;
+            static_assert(std::is_floating_point<FPT>::value, "");
+            WhiteNoiseAlgo() : soundBufferWrapperAlgo<T>(whiteNoise()) {}
+        };
+        
+        template<typename T>
+        using WhiteNoise = FinalAudioElement< WhiteNoiseAlgo<T> >;
         
         template<typename T>
         struct SquareAlgo : public Phased<T> {
@@ -167,11 +248,62 @@ namespace imajuscule {
         
         template<typename T>
         using PulseTrain = FinalAudioElement<PulseTrainAlgo<T>>;
-
+        
+        
+        template<class...AEs>
+        struct Mix {
+            using T = typename NthTypeOf<0, AEs...>::FPT;
+            using FPT = T;
+            static_assert(std::is_floating_point<FPT>::value, "");
+            
+        private:
+            std::tuple<AEs...> aes;
+            std::array<float, sizeof...(AEs)> gains;
+            
+        public:
+            Mix() {
+                for(auto & a : gains) {
+                    a= 1.f;
+                }
+            }
+            
+            void setGains(decltype(gains) g) { gains = g; }
+            
+            void step() {
+                for_each(aes, [](auto & ae) {
+                    ae.step();
+                });
+            }
+            
+            void setAngleIncrements(T v) {
+                for_each(aes, [v](auto & ae) {
+                    ae.setAngleIncrements(v);
+                });
+            }
+            
+            T imag() const {
+                T sum = 0.f;
+                int index = 0;
+                // not more than 3 captures to avoid dynamic allocation!
+                for_each(aes, [&sum, &index, this] (auto const & ae) {
+                    sum += gains[index] * ae.imag();
+                    ++index;
+                });
+                return sum;
+            }
+            
+            void setLoudnessParams(int low_index, float log_ratio, float loudness_level) {
+                for_each(aes, [=](auto & ae) {
+                    ae.setLoudnessParams(low_index, log_ratio, loudness_level);
+                });
+            }
+        };
+        
         template<typename AEAlgo>
         struct LowPassAlgo {
             using T = typename AEAlgo::FPT;
             using FPT = T;
+            static_assert(std::is_floating_point<FPT>::value, "");
             
         private:
             AEAlgo audio_element;
@@ -182,7 +314,7 @@ namespace imajuscule {
                 auto val = audio_element.imag();
                 low_pass.feed(&val);
             }
-
+            
             // sets the filter frequency
             void setAngleIncrements(T v) {
                 low_pass.initWithSampleRate(SAMPLE_RATE, angle_increment_to_freq(v));
@@ -194,8 +326,23 @@ namespace imajuscule {
             
             auto & get_element() { return audio_element; }
             auto & filter() { return low_pass; }
+            
+            // fake osc
+            auto & getOsc() {
+                static VolumeAdjusted<PCOscillator<FPT>> r;
+                return r;
+            }
+            
+            // fake
+            void setLoudnessParams(int low_index, float log_ratio, float loudness_level) {
+            }
         };
         
+        template<typename T>
+        using LPWhiteNoiseAlgo = LowPassAlgo<WhiteNoiseAlgo<T>>;
+        
+        template<typename T>
+        using LPWhiteNoise = FinalAudioElement<LPWhiteNoiseAlgo<T>>;
         
         template<typename AEAlgo>
         using LowPass = FinalAudioElement<LowPassAlgo<AEAlgo>>;
@@ -530,45 +677,6 @@ namespace imajuscule {
             }
         };
         
-        template<typename ALGO>
-        struct VolumeAdjusted {
-            using T = typename ALGO::FPT;
-            using FPT = T;
-            
-            T real() const { return volume * osc.real(); }
-            T imag() const { return volume * osc.imag(); }
-
-            T angleIncrements() const { return osc.angleIncrements(); }
-
-            VolumeAdjusted() : log_ratio_(1.f), low_index_(0) {}
-            
-            void setAngleIncrements(T ai) {
-                volume = loudness::equal_loudness_volume(angle_increment_to_freq(ai),
-                                                         low_index_,
-                                                         log_ratio_,
-                                                         loudness_level);
-                osc.setAngleIncrements(ai);
-            }
-
-            void setLoudnessParams(int low_index, float log_ratio, float loudness_level) {
-                A(low_index >= 0);
-                A(low_index < 16);
-                low_index_ = low_index;
-                A(log_ratio >= 0.f);
-                A(log_ratio <= 1.f);
-                log_ratio_ = log_ratio;
-                this->loudness_level = loudness_level;
-            }
-            
-            void step() { osc.step(); }
-        private:
-            unsigned int low_index_ : 4;
-            float loudness_level;
-            float log_ratio_;
-            float volume;
-            ALGO osc;
-        };
-        
         template<VolumeAdjust V, typename T>
         struct OscillatorAlgo_;
         
@@ -637,13 +745,19 @@ namespace imajuscule {
         template<typename T, VolumeAdjust V>
         using FreqRampOscillatorAlgo_ = FreqRampAlgo_<AdjustableVolumeOscillatorAlgo<V,T>>;
         
-
         template<typename T>
         using FreqRampAlgo = FreqRampOscillatorAlgo_<T, VolumeAdjust::Yes>;
         
         template<typename T>
         using FreqRamp = FinalAudioElement<FreqRampAlgo<T>>;
         
+
+        template<typename T>
+        using FreqRampLPWhiteNoiseAlgo_ = FreqRampAlgo_<LPWhiteNoiseAlgo<T>>;
+        
+        template<typename T>
+        using FreqRampLPWhiteNoise = FinalAudioElement<FreqRampAlgo_<LPWhiteNoiseAlgo<T>>>;
+
         template<typename A1, typename A2>
         struct RingModulationAlgo {
             using T = typename A1::FPT;

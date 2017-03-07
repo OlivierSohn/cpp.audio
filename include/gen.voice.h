@@ -6,6 +6,8 @@ namespace imajuscule {
             enum ImplParams {
                 
                 // Common
+                GAIN_PINK_NOISE,
+                GAIN_SINE,
                 SEED,
                 RANDOM_PAN,
                 PAN,
@@ -46,8 +48,11 @@ namespace imajuscule {
                 
             };
             
-            constexpr std::array<ImplParams, 23> params_markov
+            constexpr std::array<ImplParams, 25> params_markov
             {{
+                GAIN_PINK_NOISE,
+                GAIN_SINE,
+
                 SEED,
                 
                 RANDOM_PAN,
@@ -80,8 +85,11 @@ namespace imajuscule {
                 
             }};
             
-            constexpr std::array<ImplParams, 23> params_robots
+            constexpr std::array<ImplParams, 25> params_robots
             {{
+                GAIN_PINK_NOISE,
+                GAIN_SINE,
+
                 SEED,
                 
                 RANDOM_PAN,
@@ -114,8 +122,11 @@ namespace imajuscule {
             }};
             
             
-            constexpr std::array<ImplParams, 12> params_sweep
+            constexpr std::array<ImplParams, 14> params_sweep
             {{
+                GAIN_PINK_NOISE,
+                GAIN_SINE,
+
                 RANDOM_PAN,
                 PAN,
                 
@@ -167,11 +178,13 @@ namespace imajuscule {
             template<> struct Limits<MARKOV_ARTICULATIVE_PAUSE_LENGTH> {
                 static constexpr auto m = 0;
                 static constexpr auto M = 20001; };
-            
+
+            template<> struct Limits<LENGTH_EXPONENT_SCATTER> : public NormalizedParamLimits {};
+            template<> struct Limits<GAIN_PINK_NOISE> : public NormalizedParamLimits {};
             template<> struct Limits<FREQ_SCATTER> : public NormalizedParamLimits {};
             template<> struct Limits<PHASE_RATIO1> : public NormalizedParamLimits {};
             template<> struct Limits<PHASE_RATIO2> : public NormalizedParamLimits {};
-            template<> struct Limits<LENGTH_EXPONENT_SCATTER> : public NormalizedParamLimits {};
+            template<> struct Limits<GAIN_SINE> : public NormalizedParamLimits {};
             
             template<> struct Limits<D1> {
                 static constexpr auto m = 0;
@@ -249,6 +262,8 @@ namespace imajuscule {
                 static std::vector<ParamSpec> const & getParamSpecs() {
                     
                     static std::vector<ParamSpec> params_spec = {
+                        {"[Source] Pink Noise", Limits<GAIN_PINK_NOISE>::m, Limits<GAIN_PINK_NOISE>::M},
+                        {"[Source] Sine", Limits<GAIN_SINE>::m, Limits<GAIN_SINE>::M},
                         {"Seed", Limits<SEED>::m, Limits<SEED>::M},
                         {"Random pan"},
                         {"Pan", Limits<PAN>::m, Limits<PAN>::M},
@@ -289,7 +304,7 @@ namespace imajuscule {
                     return filtered;
                 }
                 
-                static std::array<float,23> make_common(int start_node,
+                static std::array<float,25> make_common(int start_node,
                                                         int pre_tries,
                                                         int min_path_length,
                                                         int additionnal_tries,
@@ -302,16 +317,19 @@ namespace imajuscule {
                                                         int xfade,
                                                         float phase_ratio1, float phase_ratio2,
                                                         float d1, float d2,
-                                                        float harmonic_attenuation) {
+                                                        float harmonic_attenuation,
+                                                        float gain = 2.f) {
                     int itp_index = 0;
                     auto b = itp::interpolation_traversal().valToRealValueIndex(i, itp_index);
                     A(b);
                     
                     return {{
+                        0.f,
+                        1.f,
                         0,
                         static_cast<float>(!true),
                         normalize<PAN>(0.f),
-                        normalize<GAIN>(2.f),
+                        normalize<GAIN>(gain),
                         normalize<LOUDNESS_LEVEL>(30.f),
                         /*normalize<LOUDNESS_COMPENSATION_AMOUNT>*/1.f,
                         /*normalize<LOUDNESS_REF_FREQ_INDEX>*/5,
@@ -366,21 +384,17 @@ namespace imajuscule {
                                                  float length_med_exp,
                                                  int xfade,
                                                  float low, float high) {
+                    auto a = make_common(0, 0, 0, 0, 0.f, i, 0.f, length, length_med_exp, 0.f, xfade, 0.f, 0.f, 0, 0, 0.f, 20.f);
                     Program::ARRAY result;
                     result.resize(std::get<Mode::SWEEP>(params_all).size());
+                    for(int idx = 0; idx<a.size(); ++idx) {
+                        auto e = static_cast<ImplParams>(idx);
+                        if(!has(e)) {
+                            continue;
+                        }
+                        result[index(e)] = a[idx];
+                    }
                     
-                    int itp_index = 0;
-                    auto b = itp::interpolation_traversal().valToRealValueIndex(i, itp_index);
-                    A(b);
-                    
-                    result[index(GAIN)] = normalize<GAIN>(20.f);
-                    result[index(LOUDNESS_LEVEL)] = normalize<LOUDNESS_LEVEL>(30.f);
-                    result[index(LOUDNESS_REF_FREQ_INDEX)] = static_cast<float>(5);
-                    result[index(LOUDNESS_COMPENSATION_AMOUNT)] = .8f;
-                    result[index(INTERPOLATION)] = static_cast<float>(itp_index);
-                    result[index(LENGTH)] = normalize<LENGTH>(length);
-                    result[index(LENGTH_EXPONENT)] = normalize<LENGTH_EXPONENT>(length_med_exp);
-                    result[index(XFADE_LENGTH)] = normalize<XFADE_LENGTH>(xfade);
                     result[index(LOW_FREQ)] = normalize<LOW_FREQ>(low);
                     result[index(HIGH_FREQ)] = normalize<HIGH_FREQ>(high);
                     
@@ -465,6 +479,8 @@ namespace imajuscule {
                         static ProgramsI ps {{
                             {"Sweep 1",
                                 make_sweep(itp::LINEAR, 500.f, 5.f, 481, 40.f, 20000.f)
+                            },{"Fullrange",
+                                make_sweep(itp::LINEAR, 500.f, 5.f, 481, 10.f, 20000.f)
                             },
                         }};
                         return ps.v;
@@ -572,25 +588,29 @@ namespace imajuscule {
                                              value<LOUDNESS_COMPENSATION_AMOUNT>(),
                                              denorm<LOUDNESS_LEVEL>());
                     
-                    if(MODE == Mode::SWEEP) {
-                        c.elem.engine.initialize_sweep(out,
-                                                       c,
-                                                       denorm<LOW_FREQ>(),
-                                                       denorm<HIGH_FREQ>(),
-                                                       denorm<GAIN>());
-                        return;
-                    }
-                    
-                    auto rnd_pan = params[RANDOM_PAN] ? false : true;
+                    auto rnd_pan = value<RANDOM_PAN>() ? false : true;
                     float pan;
                     if(rnd_pan) {
-                        pan = std::uniform_real_distribution<float>(-1.f, 1.f)(rng::mersenne());
+                        pan = std::uniform_real_distribution<float>{-1.f, 1.f}(rng::mersenne());
                     }
                     else {
                         pan = denorm<PAN>();
                     }
                     
-                    if(MODE == Mode::MARKOV) {
+                    c.elem.setGains(std::array<float,2>{{
+                        denorm<GAIN_PINK_NOISE>(),
+                        denorm<GAIN_SINE>()
+                    }});
+                    
+                    if(MODE == Mode::SWEEP) {
+                        c.elem.engine.initialize_sweep(out,
+                                                       c,
+                                                       denorm<LOW_FREQ>(),
+                                                       denorm<HIGH_FREQ>(),
+                                                       denorm<GAIN>(),
+                                                       pan);
+                    }
+                    else if(MODE == Mode::MARKOV) {
                         c.elem.engine.set_freq_xfade(denorm<FREQ_TRANSITION_LENGTH>());
                         auto interp_freq = static_cast<itp::interpolation>(itp::interpolation_traversal().realValues()[static_cast<int>(.5f + value<FREQ_TRANSITION_INTERPOLATION>())]);
                         c.elem.engine.set_freq_interpolation(interp_freq);
@@ -628,15 +648,15 @@ namespace imajuscule {
                 int get_xfade_length() const {
                     auto d = denorm<XFADE_LENGTH>();
                     // make it odd
-                    return 1 + (static_cast<int>(.5f+d)/2)*2;
+                    return 1 + ( static_cast<int>( .5f + d ) / 2 ) * 2;
                 }
                 
             };
             
             template<typename SoundEngine>
             struct EngineAndRamps {
-                using audioElt = audioelement::FreqRamp<float>;
-                
+                using audioElt = typename SoundEngine::audioElt;
+
                 EngineAndRamps() : engine{[this]()-> audioElt* {
                     for(auto & r: ramps) {
                         if(r.isInactive()) {
@@ -652,10 +672,21 @@ namespace imajuscule {
                     }
                 }
                 
+                template<typename T>
+                void setGains(T&& gains) {
+                    for(auto & r : ramps) {
+                        r.algo.getOsc().setGains(std::forward<T>(gains));
+                    }
+                }
+                
                 SoundEngine engine;
                 
+            private:
                 // 3 because there is 'before', 'current' and the inactive one
                 std::array<audioElt, 3> ramps;
+                
+            public:
+                auto const & getRamps() const { return ramps; }
                 
             };
             
@@ -696,7 +727,7 @@ namespace imajuscule {
                 onEventResult onEvent(EventIterator it, OutputData & out)
                 {
                     return onEvent(it, [](auto & c) -> bool {
-                        for(auto const & r : c.elem.ramps) {
+                        for(auto const & r : c.elem.getRamps()) {
                             if(!r.isInactive()) {
                                 return false;
                             }

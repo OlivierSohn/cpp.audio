@@ -3,11 +3,16 @@ namespace imajuscule {
 
     struct Sound {
         enum Type : unsigned char {
-            SINE,
+            NOISE, // white, gaussian
+            ATOM_NOISE, // white, -1 or 1
+            PINK_NOISE,
+            
+            END_NOISE,
+            
+            SINE = END_NOISE,
             TRIANGLE,
             SAW,
             SQUARE,
-            NOISE,
             SILENCE,
             ONE
         } type : 3;
@@ -31,6 +36,10 @@ namespace imajuscule {
                 case SAW:
                     return 3; // 2 would give the same result as a triangle
                 case NOISE:
+                    return 1;
+                case ATOM_NOISE:
+                    return 1;
+                case PINK_NOISE:
                     return 1;
                 case SILENCE:
                     return 0;
@@ -126,59 +135,5 @@ namespace imajuscule {
                                });
         return (it == container.end()) ? nullptr : &*it;
     }
-    
-
-    class Sounds {
-        std::map< soundId, soundBuffer > sounds;
-        std::array<audioelement::Square<float>, 8> squares;
-        std::array<audioelement::Oscillator<float>, 8> oscillators;
-        std::array<audioelement::FreqRamp<float>, 6> ramps;
- 
-        std::array<audioelement::RingModulation<
-        audioelement::LowPassAlgo<audioelement::PulseTrainAlgo<float>>,
-        audioelement::OscillatorAlgo<float>
-        >, 6> ringmods;
-        
-        std::array<audioelement::LowPass<audioelement::PulseTrainAlgo<float>>, 6> lptrains;
-    public:
-        soundBuffer & get( soundId );
-        
-        audioelement::Oscillator<float> * getInactiveOscillator() {
-            return editInactiveAudioElement(oscillators);
-        }
-        
-        audioelement::Square<float> * getInactiveSquare() {
-            return editInactiveAudioElement(squares);
-        }
-        
-        audioelement::FreqRamp<float> * getInactiveFreqRamp() {
-            return editInactiveAudioElement(ramps);
-        }
-        
-        auto * getInactiveRingMod() {
-            return editInactiveAudioElement(ringmods);
-        }
-        
-        audioelement::LowPass<audioelement::PulseTrainAlgo<float>> * getInactiveLPTrain() {
-            return editInactiveAudioElement(lptrains);
-        }
-
-        
-        size_t countActiveOscillators() {
-            return countActiveAudioElements(oscillators);
-        }
-        size_t countActiveSquares() {
-            return countActiveAudioElements(squares);
-        }
-        size_t countActiveFreqRamps() {
-            return countActiveAudioElements(ramps);
-        }
-        size_t countActiveRingMods() {
-            return countActiveAudioElements(ringmods);
-        }
-        size_t countActiveLPTrains() {
-            return countActiveAudioElements(lptrains);
-        }
-    };
     
 }

@@ -69,7 +69,18 @@ namespace imajuscule {
 
         template<typename Logger, UpdateMode U = UpdateMode::UPDATE_CAN_BE_SILENT>
         struct SoundEngine {
-            using ramp = audioelement::FreqRamp<float>;
+            using audioElt =
+            audioelement::FinalAudioElement <
+            audioelement::FreqRampAlgo_ <
+            audioelement::Mix <
+            
+            audioelement::LowPassAlgo<audioelement::WhiteNoiseAlgo<float>>,
+            audioelement::AdjustableVolumeOscillatorAlgo<audioelement::VolumeAdjust::Yes,float>
+            
+            >
+            >
+            >;
+            
             using Mode = SoundEngineMode;
             
             static enumTraversal ModeTraversal;
@@ -468,7 +479,7 @@ namespace imajuscule {
             template<typename OutputData, typename MonoNoteChannel>
             void initialize_sweep(OutputData & o,
                                   MonoNoteChannel & c,
-                                  float low, float high, float gain) {
+                                  float low, float high, float gain, float pan) {
                 bool initialize = true;
                 if(!markov) {
                     markov = create_sweep(o);
@@ -480,8 +491,7 @@ namespace imajuscule {
                 freq1_robot = low;
                 freq2_robot = high;
                 
-                auto const stereo_ = stereo(0.f);
-                auto volume = MakeVolume::run<OutputData::nOuts>(gain, stereo_);
+                auto volume = MakeVolume::run<OutputData::nOuts>(gain, stereo(pan));
                 
                 do_initialize(o, c, initialize, 0, 0, 1, 0, articulative_pause_length, volume);
             }
@@ -501,8 +511,7 @@ namespace imajuscule {
                     }
                 }
                 
-                auto const stereo_gain = stereo(pan);
-                auto volume = MakeVolume::run<OutputData::nOuts>(gain, stereo_gain);
+                auto volume = MakeVolume::run<OutputData::nOuts>(gain, stereo(pan));
 
                 do_initialize(o, c, initialize, start_node, pre_tries, min_path_length, additional_tries, articulative_pause_length, volume);
             }
@@ -541,8 +550,7 @@ namespace imajuscule {
                     }
                 }
                 
-                auto const stereo_gain = stereo(pan);
-                auto volume = MakeVolume::run<OutputData::nOuts>(gain, stereo_gain);
+                auto volume = MakeVolume::run<OutputData::nOuts>(gain, stereo(pan));
 
                 do_initialize(o, c, initialize, start_node, pre_tries, min_path_length, additional_tries, articulative_pause_length, volume);
             }
@@ -606,7 +614,7 @@ namespace imajuscule {
             Mode mode : 2;
             itp::interpolation interpolation : 5;
             itp::interpolation freq_interpolation : 5;
-            std::function<ramp*(void)> get_inactive_ramp;
+            std::function<audioElt*(void)> get_inactive_ramp;
             float d1, d2, har_att, length, base_freq, freq_scatter, phase_ratio1=0.f, phase_ratio2=0.f;
             float min_exp;
             float max_exp;
@@ -623,7 +631,7 @@ namespace imajuscule {
             std::unique_ptr<MarkovChain> markov;
             FreqXfade xfade_freq:2;
             
-            std::array<ramp *, 2> ramp_= {};
+            std::array<audioElt *, 2> ramp_= {};
             unsigned int last_ramp_index : 1;
             bool state_silence:1;
             
@@ -645,6 +653,7 @@ namespace imajuscule {
                     ++it;
                     A(it==end);
                     if(it == n_specs) {
+                        --it;
                         return nullptr;
                     }
                     ++end;

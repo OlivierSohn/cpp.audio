@@ -2,7 +2,7 @@
 namespace imajuscule {
     namespace audio {
         namespace voice {
-            const float Limits<GAIN>::m = 0.f;
+            const float Limits<GAIN>::m = 1.f; // gain is multiplicative
             const float Limits<GAIN>::M = 60.f;
             
             const float Limits<PAN>::m = -1.f;

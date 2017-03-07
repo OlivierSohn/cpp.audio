@@ -43,8 +43,10 @@ static float square_( float angle_radians ) {
     return square(angle_radians);
 }
 
-static float my_rand(float) {
-    return std::uniform_real_distribution<float>{-1.f, 1.f}(rng::mersenne());
+
+static float pink_noise(float) {
+    static GaussianPinkNoiseAlgo a;
+    return a.step();
 }
 
 template < typename F >
@@ -67,41 +69,47 @@ void soundBuffer::generate( int period, F f ) {
 soundBuffer::soundBuffer( soundId const & id ) {
     values.reserve( id.period_length );
 
-    switch (id.sound.type) {
-        case Sound::NOISE:
-        {
-            generate( id.period_length, my_rand );
-            if( id.period_length < 20 ) {
-                // fix for small number of random values
-                {
-                    // center around zero
-                    
-                    auto avg(0.f);
-                    for( auto const & v : values ) {
-                        avg += v;
-                    }
-                    avg /= (float)values.size();
-                    for( auto & v : values ) {
-                        v -= avg;
-                    }
+    if(id.sound.type < Sound::END_NOISE) {
+        switch (id.sound.type) {
+            case Sound::NOISE:
+                generate( id.period_length, white_gaussian_noise );
+                break;
+            case Sound::ATOM_NOISE:
+                generate( id.period_length, white_atom_noise );
+                break;
+            case Sound::PINK_NOISE:
+                generate( id.period_length, pink_noise );
+                break;
+        }
+        if( id.period_length < 20 ) {
+            {
+                // center
+                auto avg(0.f);
+                for( auto const & v : values ) {
+                    avg += v;
                 }
-                {
-                    // maximize
-                    
-                    auto M(0.f);
-                    for (auto const & v : values) {
-                        M = std::max( M, std::abs( v ) );
-                    }
-                    if( M < 0.5 ) {
-                        auto fact = 0.7f/M;
-                        for( auto & v : values ) {
-                            v *= fact;
-                        }
+                avg /= (float)values.size();
+                for( auto & v : values ) {
+                    v -= avg;
+                }
+            }
+            {
+                // maximize
+                auto M(0.f);
+                for (auto const & v : values) {
+                    M = std::max( M, std::abs( v ) );
+                }
+                if( M < 0.5f ) {
+                    auto fact = 0.7f/M;
+                    for( auto & v : values ) {
+                        v *= fact;
                     }
                 }
             }
-            break;
         }
+        return;
+    }
+    switch (id.sound.type) {
 
         case Sound::SINE:
             generate( id.period_length, sinf ); // todo measure if it is faster to use a temporary oscillator to generate the values
