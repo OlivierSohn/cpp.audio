@@ -79,8 +79,13 @@ namespace imajuscule {
         };
         
         static inline auto & whiteNoise() {
-            static soundBuffer white_noise(soundId{Sound::PINK_NOISE, .1f});
-            return white_noise;
+            static soundBuffer n(soundId{Sound::NOISE, .1f});
+            return n;
+        }
+        
+        static inline auto & pinkNoise() {
+            static soundBuffer n(soundId{Sound::PINK_NOISE, .1f});
+            return n;
         }
         
         
@@ -204,6 +209,13 @@ namespace imajuscule {
         };
         
         template<typename T>
+        struct PinkNoiseAlgo : public soundBufferWrapperAlgo<T> {
+            using FPT = typename soundBufferWrapperAlgo<T>::FPT;
+            static_assert(std::is_floating_point<FPT>::value, "");
+            PinkNoiseAlgo() : soundBufferWrapperAlgo<T>(pinkNoise()) {}
+        };
+        
+        template<typename T>
         using WhiteNoise = FinalAudioElement< WhiteNoiseAlgo<T> >;
         
         template<typename T>
@@ -261,11 +273,7 @@ namespace imajuscule {
             std::array<float, sizeof...(AEs)> gains;
             
         public:
-            Mix() {
-                for(auto & a : gains) {
-                    a= 1.f;
-                }
-            }
+            Mix() { gains.fill( 1.f ); }
             
             void setGains(decltype(gains) g) { gains = g; }
             
@@ -299,43 +307,73 @@ namespace imajuscule {
             }
         };
         
-        template<typename AEAlgo>
-        struct LowPassAlgo {
+        template<class...AEs>
+        struct Chain {
+            using T = typename NthTypeOf<0, AEs...>::FPT;
+            using FPT = T;
+            static_assert(std::is_floating_point<FPT>::value, "");
+            
+        private:
+            std::tuple<AEs...> aes;
+        };
+        
+        template<typename AEAlgo, FilterType KIND>
+        struct FilterAlgo {
             using T = typename AEAlgo::FPT;
             using FPT = T;
             static_assert(std::is_floating_point<FPT>::value, "");
             
         private:
             AEAlgo audio_element;
-            Filter<T, 1, FilterType::LOW_PASS> low_pass;
+            Filter<T, 1, KIND> filter_;
         public:
             void step() {
                 audio_element.step();
                 auto val = audio_element.imag();
-                low_pass.feed(&val);
+                filter_.feed(&val);
             }
             
             // sets the filter frequency
             void setAngleIncrements(T v) {
-                low_pass.initWithSampleRate(SAMPLE_RATE, angle_increment_to_freq(v));
+                filter_.initWithSampleRate(SAMPLE_RATE, angle_increment_to_freq(v));
             }
             
             T imag() const {
-                return *low_pass.filtered();
+                return *filter_.filtered();
             }
             
             auto & get_element() { return audio_element; }
-            auto & filter() { return low_pass; }
+            auto & filter() { return filter_; }
             
-            // fake osc
-            auto & getOsc() {
-                static VolumeAdjusted<PCOscillator<FPT>> r;
-                return r;
-            }
+            void setLoudnessParams(int low_index, float log_ratio, float loudness_level) {}
+        };
+        
+        template<typename T>
+        using LowPassAlgo = FilterAlgo<T, FilterType::LOW_PASS>;
+        
+        template<typename T>
+        using HighPassAlgo = FilterAlgo<T, FilterType::HIGH_PASS>;
+        
+        template<typename AEAlgo>
+        struct BandPassAlgo {
+            using FPT = typename AEAlgo::FPT;
+            using T = FPT;
             
-            // fake
-            void setLoudnessParams(int low_index, float log_ratio, float loudness_level) {
+            void setAngleIncrements(float inc) {
+                getHP().setAngleIncrements(inc);
+                getLP().setAngleIncrements(inc);
             }
+
+            void step() { cascade.step(); }
+            
+            T imag() const { return cascade.imag(); }
+            
+            void setLoudnessParams(int low_index, float log_ratio, float loudness_level) {}
+        private:
+            HighPassAlgo<LowPassAlgo<AEAlgo>> cascade;
+            
+            auto & getHP() { return cascade; }
+            auto & getLP() { return cascade.get_element(); }
         };
         
         template<typename T>

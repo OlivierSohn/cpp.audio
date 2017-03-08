@@ -74,7 +74,8 @@ namespace imajuscule {
             audioelement::FreqRampAlgo_ <
             audioelement::Mix <
             
-            audioelement::LowPassAlgo<audioelement::WhiteNoiseAlgo<float>>,
+            audioelement::LowPassAlgo<audioelement::PinkNoiseAlgo<float>>,
+            audioelement::BandPassAlgo<audioelement::PinkNoiseAlgo<float>>,
             audioelement::AdjustableVolumeOscillatorAlgo<audioelement::VolumeAdjust::Yes,float>
             
             >

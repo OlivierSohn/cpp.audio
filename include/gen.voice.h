@@ -6,6 +6,7 @@ namespace imajuscule {
             enum ImplParams {
                 
                 // Common
+                GAIN_WHITE_NOISE,
                 GAIN_PINK_NOISE,
                 GAIN_SINE,
                 SEED,
@@ -48,8 +49,9 @@ namespace imajuscule {
                 
             };
             
-            constexpr std::array<ImplParams, 25> params_markov
+            constexpr std::array<ImplParams, 26> params_markov
             {{
+                GAIN_WHITE_NOISE,
                 GAIN_PINK_NOISE,
                 GAIN_SINE,
 
@@ -85,8 +87,9 @@ namespace imajuscule {
                 
             }};
             
-            constexpr std::array<ImplParams, 25> params_robots
+            constexpr std::array<ImplParams, 26> params_robots
             {{
+                GAIN_WHITE_NOISE,
                 GAIN_PINK_NOISE,
                 GAIN_SINE,
 
@@ -122,8 +125,9 @@ namespace imajuscule {
             }};
             
             
-            constexpr std::array<ImplParams, 14> params_sweep
+            constexpr std::array<ImplParams, 15> params_sweep
             {{
+                GAIN_WHITE_NOISE,
                 GAIN_PINK_NOISE,
                 GAIN_SINE,
 
@@ -180,6 +184,7 @@ namespace imajuscule {
                 static constexpr auto M = 20001; };
 
             template<> struct Limits<LENGTH_EXPONENT_SCATTER> : public NormalizedParamLimits {};
+            template<> struct Limits<GAIN_WHITE_NOISE> : public NormalizedParamLimits {};
             template<> struct Limits<GAIN_PINK_NOISE> : public NormalizedParamLimits {};
             template<> struct Limits<FREQ_SCATTER> : public NormalizedParamLimits {};
             template<> struct Limits<PHASE_RATIO1> : public NormalizedParamLimits {};
@@ -262,7 +267,8 @@ namespace imajuscule {
                 static std::vector<ParamSpec> const & getParamSpecs() {
                     
                     static std::vector<ParamSpec> params_spec = {
-                        {"[Source] Pink Noise", Limits<GAIN_PINK_NOISE>::m, Limits<GAIN_PINK_NOISE>::M},
+                        {"[Source] Pink Noise Low", Limits<GAIN_WHITE_NOISE>::m, Limits<GAIN_WHITE_NOISE>::M},
+                        {"[Source] Pink Noise Band", Limits<GAIN_PINK_NOISE>::m, Limits<GAIN_PINK_NOISE>::M},
                         {"[Source] Sine", Limits<GAIN_SINE>::m, Limits<GAIN_SINE>::M},
                         {"Seed", Limits<SEED>::m, Limits<SEED>::M},
                         {"Random pan"},
@@ -304,7 +310,7 @@ namespace imajuscule {
                     return filtered;
                 }
                 
-                static std::array<float,25> make_common(int start_node,
+                static std::array<float,26> make_common(int start_node,
                                                         int pre_tries,
                                                         int min_path_length,
                                                         int additionnal_tries,
@@ -324,6 +330,7 @@ namespace imajuscule {
                     A(b);
                     
                     return {{
+                        0.f,
                         0.f,
                         1.f,
                         0,
@@ -597,7 +604,8 @@ namespace imajuscule {
                         pan = denorm<PAN>();
                     }
                     
-                    c.elem.setGains(std::array<float,2>{{
+                    c.elem.setGains(std::array<float,3>{{
+                        denorm<GAIN_WHITE_NOISE>(),
                         denorm<GAIN_PINK_NOISE>(),
                         denorm<GAIN_SINE>()
                     }});

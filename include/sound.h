@@ -5,7 +5,7 @@ namespace imajuscule {
         enum Type : unsigned char {
             NOISE, // white, gaussian
             ATOM_NOISE, // white, -1 or 1
-            PINK_NOISE,
+            PINK_NOISE, // pink, gaussian
             
             END_NOISE,
             
