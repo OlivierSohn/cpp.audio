@@ -6,9 +6,10 @@ namespace imajuscule {
             enum ImplParams {
                 
                 // Common
-                GAIN_WHITE_NOISE,
-                GAIN_PINK_NOISE,
-                GAIN_SINE,
+                PINK_NOISE_LP_GAIN,
+                PINK_NOISE_BP_GAIN,
+                PINK_NOISE_BP_OCTAVE_WIDTH,
+                SINE_GAIN,
                 SEED,
                 RANDOM_PAN,
                 PAN,
@@ -46,14 +47,14 @@ namespace imajuscule {
                 // Sweep
                 LOW_FREQ,
                 HIGH_FREQ
-                
             };
             
-            constexpr std::array<ImplParams, 26> params_markov
+            constexpr std::array<ImplParams, 27> params_markov
             {{
-                GAIN_WHITE_NOISE,
-                GAIN_PINK_NOISE,
-                GAIN_SINE,
+                PINK_NOISE_LP_GAIN,
+                PINK_NOISE_BP_GAIN,
+                PINK_NOISE_BP_OCTAVE_WIDTH,
+                SINE_GAIN,
 
                 SEED,
                 
@@ -87,11 +88,12 @@ namespace imajuscule {
                 
             }};
             
-            constexpr std::array<ImplParams, 26> params_robots
+            constexpr std::array<ImplParams, 27> params_robots
             {{
-                GAIN_WHITE_NOISE,
-                GAIN_PINK_NOISE,
-                GAIN_SINE,
+                PINK_NOISE_LP_GAIN,
+                PINK_NOISE_BP_GAIN,
+                PINK_NOISE_BP_OCTAVE_WIDTH,
+                SINE_GAIN,
 
                 SEED,
                 
@@ -125,11 +127,12 @@ namespace imajuscule {
             }};
             
             
-            constexpr std::array<ImplParams, 15> params_sweep
+            constexpr std::array<ImplParams, 16> params_sweep
             {{
-                GAIN_WHITE_NOISE,
-                GAIN_PINK_NOISE,
-                GAIN_SINE,
+                PINK_NOISE_LP_GAIN,
+                PINK_NOISE_BP_GAIN,
+                PINK_NOISE_BP_OCTAVE_WIDTH,
+                SINE_GAIN,
 
                 RANDOM_PAN,
                 PAN,
@@ -184,12 +187,12 @@ namespace imajuscule {
                 static constexpr auto M = 20001; };
 
             template<> struct Limits<LENGTH_EXPONENT_SCATTER> : public NormalizedParamLimits {};
-            template<> struct Limits<GAIN_WHITE_NOISE> : public NormalizedParamLimits {};
-            template<> struct Limits<GAIN_PINK_NOISE> : public NormalizedParamLimits {};
+            template<> struct Limits<PINK_NOISE_LP_GAIN> : public NormalizedParamLimits {};
+            template<> struct Limits<PINK_NOISE_BP_GAIN> : public NormalizedParamLimits {};
             template<> struct Limits<FREQ_SCATTER> : public NormalizedParamLimits {};
             template<> struct Limits<PHASE_RATIO1> : public NormalizedParamLimits {};
             template<> struct Limits<PHASE_RATIO2> : public NormalizedParamLimits {};
-            template<> struct Limits<GAIN_SINE> : public NormalizedParamLimits {};
+            template<> struct Limits<SINE_GAIN> : public NormalizedParamLimits {};
             
             template<> struct Limits<D1> {
                 static constexpr auto m = 0;
@@ -202,6 +205,9 @@ namespace imajuscule {
                 static const float m;
                 static const float M; };
             
+            template<> struct Limits<PINK_NOISE_BP_OCTAVE_WIDTH> {
+                static const float m;
+                static const float M; };
             
             template<> struct Limits<PAN> {
                 static const float m;
@@ -267,9 +273,10 @@ namespace imajuscule {
                 static std::vector<ParamSpec> const & getParamSpecs() {
                     
                     static std::vector<ParamSpec> params_spec = {
-                        {"[Source] Pink Noise Low", Limits<GAIN_WHITE_NOISE>::m, Limits<GAIN_WHITE_NOISE>::M},
-                        {"[Source] Pink Noise Band", Limits<GAIN_PINK_NOISE>::m, Limits<GAIN_PINK_NOISE>::M},
-                        {"[Source] Sine", Limits<GAIN_SINE>::m, Limits<GAIN_SINE>::M},
+                        {"[1/f Noise] LPF Gain", Limits<PINK_NOISE_LP_GAIN>::m, Limits<PINK_NOISE_LP_GAIN>::M},
+                        {"[1/f Noise] BPF Gain", Limits<PINK_NOISE_BP_GAIN>::m, Limits<PINK_NOISE_BP_GAIN>::M},
+                        {"[1/f Noise] BPF Width", Limits<PINK_NOISE_BP_OCTAVE_WIDTH>::m, Limits<PINK_NOISE_BP_OCTAVE_WIDTH>::M},
+                        {"[Sine] Gain", Limits<SINE_GAIN>::m, Limits<SINE_GAIN>::M},
                         {"Seed", Limits<SEED>::m, Limits<SEED>::M},
                         {"Random pan"},
                         {"Pan", Limits<PAN>::m, Limits<PAN>::M},
@@ -310,7 +317,7 @@ namespace imajuscule {
                     return filtered;
                 }
                 
-                static std::array<float,26> make_common(int start_node,
+                static std::array<float,27> make_common(int start_node,
                                                         int pre_tries,
                                                         int min_path_length,
                                                         int additionnal_tries,
@@ -330,6 +337,7 @@ namespace imajuscule {
                     A(b);
                     
                     return {{
+                        0.f,
                         0.f,
                         0.f,
                         1.f,
@@ -604,10 +612,16 @@ namespace imajuscule {
                         pan = denorm<PAN>();
                     }
                     
+                    for(auto & r : c.elem.getRamps()) {
+                        auto & mix = r.algo.getOsc();
+                        auto & band_pass_filter = std::get<1>(mix.get());
+                        auto width_factor = pow(2.f, denorm<PINK_NOISE_BP_OCTAVE_WIDTH>()/2);
+                        band_pass_filter.setWidthFactor(width_factor);
+                    }
                     c.elem.setGains(std::array<float,3>{{
-                        denorm<GAIN_WHITE_NOISE>(),
-                        denorm<GAIN_PINK_NOISE>(),
-                        denorm<GAIN_SINE>()
+                        denorm<PINK_NOISE_LP_GAIN>(),
+                        denorm<PINK_NOISE_BP_GAIN>(),
+                        denorm<SINE_GAIN>()
                     }});
                     
                     if(MODE == Mode::SWEEP) {
@@ -685,6 +699,10 @@ namespace imajuscule {
                     for(auto & r : ramps) {
                         r.algo.getOsc().setGains(std::forward<T>(gains));
                     }
+                }
+                
+                auto & getRamps() {
+                    return ramps;
                 }
                 
                 SoundEngine engine;

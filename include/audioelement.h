@@ -268,12 +268,18 @@ namespace imajuscule {
             using FPT = T;
             static_assert(std::is_floating_point<FPT>::value, "");
             
+            static constexpr auto n_aes = sizeof...(AEs);
+            
         private:
             std::tuple<AEs...> aes;
-            std::array<float, sizeof...(AEs)> gains;
+            std::array<float, n_aes> gains;
             
         public:
             Mix() { gains.fill( 1.f ); }
+            
+            auto & get() {
+                return aes;
+            }
             
             void setGains(decltype(gains) g) { gains = g; }
             
@@ -358,19 +364,47 @@ namespace imajuscule {
         struct BandPassAlgo {
             using FPT = typename AEAlgo::FPT;
             using T = FPT;
-            
-            void setAngleIncrements(float inc) {
-                getHP().setAngleIncrements(inc);
-                getLP().setAngleIncrements(inc);
+            using Tr = NumTraits<T>;
+
+            void setWidthFactor(T w) {
+                width_factor = w;
+            }
+            void setAngleIncrements(T inc) {
+                A(inc >= 0.f);
+                
+                auto inv_width_factor = Tr::one() / width_factor;
+                auto low = inc * inv_width_factor;
+                auto high = inc * width_factor;
+                
+                getHP().setAngleIncrements(low);
+                getLP().setAngleIncrements(high);
+                
+                // gain compensation to have an equal power of the central frequency for all widths
+                {
+                    compensation = 1 + (inv_width_factor * inv_width_factor);
+#ifndef NDEBUG
+                    // verify accuracy of above simplification
+                    
+                    // inc / low == width_factor
+                    // inc / high == 1 / width_factor
+                    auto inv_sq_mag_hp = get_inv_square_filter_magnitude<FilterType::HIGH_PASS>(width_factor * width_factor);
+                    auto inv_sq_mag_lp = get_inv_square_filter_magnitude<FilterType::LOW_PASS >(inv_width_factor * inv_width_factor);
+                    auto inv_mag = sqrt(inv_sq_mag_hp * inv_sq_mag_lp);
+                    auto original_compensation = inv_mag;
+                    A(std::abs(original_compensation - compensation) / (original_compensation + compensation) < FLOAT_EPSILON);
+#endif
+                }
             }
 
             void step() { cascade.step(); }
             
-            T imag() const { return cascade.imag(); }
+            T imag() const { return compensation * cascade.imag(); }
             
             void setLoudnessParams(int low_index, float log_ratio, float loudness_level) {}
         private:
             HighPassAlgo<LowPassAlgo<AEAlgo>> cascade;
+            T compensation;
+            T width_factor;
             
             auto & getHP() { return cascade; }
             auto & getLP() { return cascade.get_element(); }

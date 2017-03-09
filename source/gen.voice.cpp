@@ -2,6 +2,9 @@
 namespace imajuscule {
     namespace audio {
         namespace voice {
+            const float Limits<PINK_NOISE_BP_OCTAVE_WIDTH>::m = 0.f;
+            const float Limits<PINK_NOISE_BP_OCTAVE_WIDTH>::M = 10.f;
+            
             const float Limits<GAIN>::m = 1.f; // gain is multiplicative
             const float Limits<GAIN>::M = 60.f;
             
