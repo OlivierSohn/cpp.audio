@@ -149,4 +149,11 @@ namespace imajuscule {
             return sum/levels.size();
         }
     };
+    
+    
+    static inline float pink_noise(float) {
+        static GaussianPinkNoiseAlgo a;
+        return a.step();
+    }
+
 }

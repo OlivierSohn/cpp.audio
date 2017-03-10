@@ -126,6 +126,35 @@ namespace imajuscule {
                 PHASE_RATIO2
             }};
             
+            constexpr std::array<ImplParams, 21> params_wind
+            {{
+                PINK_NOISE_LP_GAIN,
+                PINK_NOISE_BP_GAIN,
+                PINK_NOISE_BP_OCTAVE_WIDTH,
+                SINE_GAIN,
+                
+                SEED,
+                
+                RANDOM_PAN,
+                PAN,
+                
+                GAIN,
+                LOUDNESS_LEVEL,
+                LOUDNESS_COMPENSATION_AMOUNT,
+                LOUDNESS_REF_FREQ_INDEX,
+                
+                MARKOV_START_NODE,
+                MARKOV_PRE_TRIES,
+                MARKOV_MIN_PATH_LENGTH,
+                MARKOV_ADDITIONAL_TRIES,
+
+                INTERPOLATION,
+                FREQ_SCATTER,
+                LENGTH,
+                LENGTH_EXPONENT,
+                LENGTH_EXPONENT_SCATTER,
+                XFADE_LENGTH
+            }};
             
             constexpr std::array<ImplParams, 16> params_sweep
             {{
@@ -152,7 +181,7 @@ namespace imajuscule {
                 HIGH_FREQ
             }};
             
-            constexpr auto params_all = make_tuple(params_markov, params_robots, params_sweep);
+            constexpr auto params_all = make_tuple(params_markov, params_robots, params_sweep, params_wind);
             
 #include "pernamespace.implparams.h"
             
@@ -457,6 +486,29 @@ namespace imajuscule {
                     return result;
                 }
                 
+                static Program::ARRAY make_wind(int start_node,
+                                                int pre_tries,
+                                                int min_path_length,
+                                                int additionnal_tries,
+                                                itp::interpolation i,
+                                                float freq_scat,
+                                                float length,
+                                                float length_med_exp,
+                                                float length_scale_exp,
+                                                int xfade) {
+                    auto a = make_common(start_node, pre_tries, min_path_length, additionnal_tries, 0, i, freq_scat, length, length_med_exp, length_scale_exp, xfade, 0.f, 0.f, 0,0,0);
+                    Program::ARRAY result;
+                    result.resize(std::get<Mode::WIND>(params_all).size());
+                    for(int idx = 0; idx<a.size(); ++idx) {
+                        auto e = static_cast<ImplParams>(idx);
+                        if(!has(e)) {
+                            continue;
+                        }
+                        result[index(e)] = a[idx];
+                    }
+                    return result;
+                }
+                
                 static Programs const & getPrograms() {
                     if(MODE==Mode::MARKOV) {
                         static ProgramsI ps {{
@@ -497,6 +549,14 @@ namespace imajuscule {
                             },{"Fullrange",
                                 make_sweep(itp::LINEAR, 500.f, 5.f, 481, 10.f, 20000.f)
                             },
+                        }};
+                        return ps.v;
+                    }
+                    else if(MODE==Mode::WIND) {
+                        static ProgramsI ps {{
+                            {"Wind",
+                                make_wind(0, 0, 6, 0, itp::EASE_INOUT_CIRC, 0.12f, 93.3f, 2.f, .5f, 2201)
+                            }
                         }};
                         return ps.v;
                     }
@@ -567,8 +627,11 @@ namespace imajuscule {
                         c.elem.engine.set_length_exp(ex * (1.f - variation), ex * (1.f + variation));
                         
                         c.elem.engine.set_freq_scatter(denorm<FREQ_SCATTER>());
-                        c.elem.engine.set_phase_ratio1(denorm<PHASE_RATIO1>());
-                        c.elem.engine.set_phase_ratio2(denorm<PHASE_RATIO2>());
+                        
+                        if(MODE != Mode::WIND) {
+                            c.elem.engine.set_phase_ratio1(denorm<PHASE_RATIO1>());
+                            c.elem.engine.set_phase_ratio2(denorm<PHASE_RATIO2>());
+                        }
                         
                         thread_local int seed = 0;
                         if(int i_seed = static_cast<int>(value<SEED>() + .5f)) {
@@ -647,6 +710,17 @@ namespace imajuscule {
                                                         SoundEngine::InitPolicy::StartAfresh,
                                                         xfade_freq,
                                                         value<MARKOV_ARTICULATIVE_PAUSE_LENGTH>(),
+                                                        denorm<GAIN>(),
+                                                        pan);
+                    }
+                    else if(MODE == Mode::WIND) {
+                        c.elem.engine.initialize_wind(out,
+                                                        c,
+                                                        value<MARKOV_START_NODE>(),
+                                                        value<MARKOV_PRE_TRIES>(),
+                                                        value<MARKOV_MIN_PATH_LENGTH>(),
+                                                        value<MARKOV_ADDITIONAL_TRIES>(),
+                                                        SoundEngine::InitPolicy::StartAfresh,
                                                         denorm<GAIN>(),
                                                         pan);
                     }

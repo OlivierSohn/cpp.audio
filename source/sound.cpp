@@ -44,11 +44,6 @@ static float square_( float angle_radians ) {
 }
 
 
-static float pink_noise(float) {
-    static GaussianPinkNoiseAlgo a;
-    return a.step();
-}
-
 template < typename F >
 void soundBuffer::generate( int period, F f ) {
     

@@ -58,6 +58,7 @@ namespace imajuscule {
             MARKOV = 0,
             ROBOTS,
             SWEEP,
+            WIND,
             
             END
         };
@@ -298,6 +299,43 @@ namespace imajuscule {
                 return mc;
             }
             
+            float pink() const {
+                
+                static constexpr auto fmax = 10000.f;
+                return powf(fmax, .6f + .4f * std::abs(pink_noise(0.f)));
+            }
+            
+            template<typename OutputData>
+            auto create_wind(OutputData & o) {
+                constexpr auto nAudioOut = OutputData::nOuts;
+                using Request = Request<nAudioOut>;
+                auto mc = std::make_unique<MarkovChain>();
+                
+                freq2_robot = pink();
+
+                auto node0 = mc->emplace([this, &o](Move const m, MarkovNode&me, MarkovNode&from_to) {
+                    //if(m == Move::LEAVE)
+                    {
+                        auto length = this->length;
+                        length *= powf(2.f,
+                                       std::uniform_real_distribution<float>{min_exp, max_exp}(rng::mersenne()));
+                        auto n_frames = static_cast<float>(ms_to_frames(length));
+                        freq1_robot = freq2_robot;
+                        freq2_robot = pink();
+                        if(auto * ramp_spec = ramp_specs.get_next_ramp_for_build()) {
+                            ramp_spec->set(freq1_robot, freq2_robot, n_frames, phase_ratio1 * n_frames, interpolation);
+                        }
+                    }
+                });
+                auto node1 = mc->emplace([](Move const m, MarkovNode&me, MarkovNode&from_to) {
+                });
+                
+                def_markov_transition(node0, node1, 1.f);
+                def_markov_transition(node1, node0, 1.f);
+                
+                return mc;
+            }
+            
             auto & getSilence() {
                 static soundBuffer silence{1, 0.f};
                 return silence;
@@ -513,7 +551,25 @@ namespace imajuscule {
                 }
                 
                 auto volume = MakeVolume::run<OutputData::nOuts>(gain, stereo(pan));
-
+                
+                do_initialize(o, c, initialize, start_node, pre_tries, min_path_length, additional_tries, articulative_pause_length, volume);
+            }
+            
+            template<typename OutputData, typename MonoNoteChannel>
+            void initialize_wind(OutputData & o,
+                                 MonoNoteChannel & c,
+                                 int start_node, int pre_tries, int min_path_length, int additional_tries, InitPolicy init_policy,
+                                 float gain, float pan) {
+                bool initialize = (!markov) || (init_policy==InitPolicy::StartAfresh);
+                if(!markov) {
+                    markov = create_wind(o);
+                    if(!markov) {
+                        return;
+                    }
+                }
+                
+                auto volume = MakeVolume::run<OutputData::nOuts>(gain, stereo(pan));
+                
                 do_initialize(o, c, initialize, start_node, pre_tries, min_path_length, additional_tries, articulative_pause_length, volume);
             }
             
