@@ -136,4 +136,51 @@ namespace imajuscule {
         return (it == container.end()) ? nullptr : &*it;
     }
     
+    /////////////////
+    // instantiations
+    /////////////////
+    
+    static inline auto const & whiteNoise() {
+        static soundBuffer n(soundId{Sound::NOISE, .1f});
+        return n;
+    }
+    
+    static inline auto const & getPinkNoise() {
+        static soundBuffer n(soundId{Sound::PINK_NOISE, .1f});
+        return n;
+    }
+    
+    struct PinkNoiseIter {
+        
+        // we don't do that in constructor because it's a waste of time (sometimes)
+        void initializeForRun() {
+            it = getPinkNoise().begin();
+            // randomize start position
+            it += static_cast<int>(std::uniform_real_distribution<>{
+                0.f,
+                static_cast<float>(getPinkNoise().size()-1)
+            }(rng::mersenne()));
+            A(it < end);
+        }
+        
+        void log() const {
+            LG(INFO, "pink noise iterator @[%d]", getPosition());
+        }
+        
+        float operator ++() {
+            ++it;
+            if(it == end) {
+                it = getPinkNoise().begin();
+            }
+            return *it;
+        }
+        
+        float operator *() const {
+            return *it;
+        }
+        
+        int getPosition() const { return static_cast<int>(std::distance(getPinkNoise().begin(), it)); }
+    private:
+        decltype(getPinkNoise().begin()) it, end = getPinkNoise().end();
+    };
 }

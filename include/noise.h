@@ -150,10 +150,4 @@ namespace imajuscule {
         }
     };
     
-    
-    static inline float pink_noise(float) {
-        static GaussianPinkNoiseAlgo a;
-        return a.step();
-    }
-
 }

@@ -68,15 +68,60 @@ namespace imajuscule {
             StartAfresh
         };
 
+            template<typename T>
+            struct SoundEnginePinkFreqCtrl {
+                void initializeForRun() {
+                    ctrl.initializeForRun();
+                }
+                
+                T step() {
+                    auto v = ctrl.step();
+                    constexpr auto fmax = 10000.f;
+                    return powf(fmax, .6f + .4f * std::abs(v));
+                }
+                
+                auto get_duration_in_samples() const {
+                    return std::numeric_limits<int>::max()
+                    / 2;  // so that we can add .5f and cast to int
+                }
+               
+                // todo remove and make SoundEngine more generic
+                void set(T from_,
+                         T to_,
+                         T duration_in_samples_,
+                         T start_sample,
+                         itp::interpolation i) {
+                    A(0);
+                }
+                void set_by_increments(T from_,
+                          T to_,
+                          T duration_in_samples_,
+                          T start_sample,
+                          itp::interpolation i) {
+                    A(0);
+                }
+                float getFromIncrements() const {
+                    A(0);
+                    return 0.f;
+                }
+                float getToIncrements() const {
+                    A(0);
+                    return 0.f;
+                }
+
+            private:
+                audioelement::PinkCtrl<T> ctrl;
+            };
+            
             template<typename T, SoundEngineMode>
             struct SoundEngineAlgo_ {
-                using CTRL = typename audioelement::LogRamp< typename T::T >;
+                using CTRL = audioelement::LogRamp< typename T::T >;
                 using type = audioelement::FreqCtrl_< CTRL, T >;
             };
             
             template<typename T>
             struct SoundEngineAlgo_<T, SoundEngineMode::WIND> {
-                using CTRL = typename audioelement::LogRamp< typename T::T >;
+                using CTRL = SoundEnginePinkFreqCtrl< typename T::T >;
                 using type = audioelement::FreqCtrl_< CTRL, T >;
             };
             
@@ -249,7 +294,7 @@ namespace imajuscule {
                                        std::uniform_real_distribution<float>{min_exp, max_exp}(rng::mersenne()));
                         auto n_frames = static_cast<float>(ms_to_frames(length));
                         if(auto * ramp_spec = ramp_specs.get_next_ramp_for_build()) {
-                            ramp_spec->set(freq2_robot, freq1_robot, n_frames, interpolation);
+                            ramp_spec->set(freq2_robot, freq1_robot, n_frames, phase_ratio1 * n_frames, interpolation);
                         }
                     }
                 });
@@ -306,32 +351,18 @@ namespace imajuscule {
                 
                 return mc;
             }
-            
-            float pink() const {
-                
-                static constexpr auto fmax = 10000.f;
-                return powf(fmax, .6f + .4f * std::abs(pink_noise(0.f)));
-            }
-            
+                        
             template<typename OutputData>
             auto create_wind(OutputData & o) {
                 constexpr auto nAudioOut = OutputData::nOuts;
                 using Request = Request<nAudioOut>;
                 auto mc = std::make_unique<MarkovChain>();
                 
-                freq2_robot = pink();
-
                 auto node0 = mc->emplace([this, &o](Move const m, MarkovNode&me, MarkovNode&from_to) {
                     //if(m == Move::LEAVE)
                     {
-                        auto length = this->length;
-                        length *= powf(2.f,
-                                       std::uniform_real_distribution<float>{min_exp, max_exp}(rng::mersenne()));
-                        auto n_frames = static_cast<float>(ms_to_frames(length));
-                        freq1_robot = freq2_robot;
-                        freq2_robot = pink();
                         if(auto * ramp_spec = ramp_specs.get_next_ramp_for_build()) {
-                            ramp_spec->set(freq1_robot, freq2_robot, n_frames, phase_ratio1 * n_frames, interpolation);
+                            // no configuration
                         }
                     }
                 });
@@ -410,6 +441,7 @@ namespace imajuscule {
                     A(new_ramp); // might be null if length of ramp is too small
                     ramp_[last_ramp_index] = new_ramp;
                     new_ramp->algo.ctrl = *new_spec;
+                    new_ramp->algo.ctrl.initializeForRun();
                     
                     if(out.playGenericNoLock(c1,
                                              std::make_pair(std::ref(*new_ramp),
@@ -673,6 +705,7 @@ namespace imajuscule {
             
         private:
             bool active : 1;
+            
             itp::interpolation interpolation : 5;
             itp::interpolation freq_interpolation : 5;
             std::function<audioElt*(void)> get_inactive_ramp;
@@ -708,9 +741,9 @@ namespace imajuscule {
                 
                 bool done() const { return it == end; }
                 
-                using Algo = audioelement::FreqRampAlgo<float>;
+                using Ctrl = typename Algo::Ctrl;
                 
-                Algo::Ctrl * get_next_ramp_for_build() {
+                Ctrl * get_next_ramp_for_build() {
                     ++it;
                     A(it==end);
                     if(it == n_specs) {
@@ -726,7 +759,7 @@ namespace imajuscule {
                     --end;
                 }
                 
-                Algo::Ctrl * get_current() {
+                Ctrl * get_current() {
                     if(it >= end) {
                         return nullptr;
                     }
@@ -737,22 +770,20 @@ namespace imajuscule {
                     it=-1;
                 }
                 
-                Algo::Ctrl * get_next_ramp_for_run() {
+                Ctrl * get_next_ramp_for_run() {
                     A(it != end);
                     ++it;
                     if(it == end) {
                         return nullptr;
                     }
                     auto ptr_spec = &a[it];
-                    order = ptr_spec->getFromIncrements() < ptr_spec->getToIncrements();
                     return ptr_spec;
                 }
                 
-                using Ctrls = std::array<Algo::Ctrl, n_specs>;
+                using Ctrls = std::array<Ctrl, n_specs>;
                 unsigned it : n_bits_iter;
                 unsigned end: relevantBits(n_specs+1);
                 Ctrls a;
-                bool order :1;
             } ramp_specs;
         };
         

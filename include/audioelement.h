@@ -77,17 +77,7 @@ namespace imajuscule {
             
             ALGO algo;
         };
-        
-        static inline auto & whiteNoise() {
-            static soundBuffer n(soundId{Sound::NOISE, .1f});
-            return n;
-        }
-        
-        static inline auto & pinkNoise() {
-            static soundBuffer n(soundId{Sound::PINK_NOISE, .1f});
-            return n;
-        }
-        
+                
         
         template<typename ALGO>
         struct VolumeAdjusted {
@@ -212,7 +202,7 @@ namespace imajuscule {
         struct PinkNoiseAlgo : public soundBufferWrapperAlgo<T> {
             using FPT = typename soundBufferWrapperAlgo<T>::FPT;
             static_assert(std::is_floating_point<FPT>::value, "");
-            PinkNoiseAlgo() : soundBufferWrapperAlgo<T>(pinkNoise()) {}
+            PinkNoiseAlgo() : soundBufferWrapperAlgo<T>(getPinkNoise()) {}
         };
         
         template<typename T>
@@ -341,7 +331,7 @@ namespace imajuscule {
             
             // sets the filter frequency
             void setAngleIncrements(T v) {
-                filter_.initWithSampleRate(SAMPLE_RATE, angle_increment_to_freq(v));
+                filter_.initWithAngleIncrement(v);
             }
             
             T imag() const {
@@ -473,46 +463,26 @@ namespace imajuscule {
         template<typename T, eNormalizePolicy NormPolicy = eNormalizePolicy::FAST>
         using Oscillator = FinalAudioElement<OscillatorAlgo<T, NormPolicy>>;
         
-        // 1 : lowest resolution
-        // 0 : highest resolution
-        template<typename T>
-        static constexpr T resolution(range<T> const & r) {
-            A(!r.empty());
-            A(r.getMax() != NumTraits<T>::zero());
-            return r.delta() / r.getMax();
-        }
-
-        enum class VolumeAdjust {
-            Yes,
-            No
-        };
-        
-        template<typename, typename>
-        struct FreqCtrl_;
-
         template<typename T>
         struct LogRamp {
             static_assert(std::is_same<T,float>::value, "non-float interpolation is not supported");
-
-            template<typename, typename> friend class FreqCtrl_;
             
             using Tr = NumTraits<T>;
-            using lut = std::array<T, itp::interpolation::INTERPOLATION_UPPER_BOUND>;
-
-            //static lut lut_interpolation_proportionality;
             
             // offsets because we use the value at the beginning of the timestep
             static constexpr auto increasing_integration_offset = 0;
             static constexpr auto decreasing_integration_offset = 1;
-
+            
             LogRamp() : cur_sample(Tr::zero()), from{}, to{}, duration_in_samples{}
             {}
-
+            
+            void initializeForRun() const {}
+            
             void set(T from_,
                      T to_,
                      T duration_in_samples_,
-                     T start_sample = Tr::zero(),
-                     itp::interpolation i = itp::LINEAR) {
+                     T start_sample,
+                     itp::interpolation i) {
                 set_by_increments(freq_to_angle_increment(from_),
                                   freq_to_angle_increment(to_),
                                   duration_in_samples_,
@@ -524,7 +494,7 @@ namespace imajuscule {
                                    T to_increments,
                                    T duration_in_samples_,
                                    T start_sample,
-                                   itp::interpolation i = itp::LINEAR) {
+                                   itp::interpolation i) {
                 if(start_sample >= Tr::zero()) {
                     cur_sample = start_sample;
                 }
@@ -547,7 +517,7 @@ namespace imajuscule {
                 duration_in_samples = duration_in_samples_;
                 
                 C = get_linear_proportionality_constant();
-                                
+                
                 A(duration_in_samples > 0);
                 interp.setInterpolation(i);
             }
@@ -557,6 +527,7 @@ namespace imajuscule {
                     cur_sample = Tr::zero();
                     std::swap(from, to);
                 }
+                
                 // we call get_unfiltered_value instead of get_value because we ensure:
                 A(cur_sample <= duration_in_samples);
                 auto f_result = interp.get_unfiltered_value(cur_sample, duration_in_samples, from, to);
@@ -568,166 +539,19 @@ namespace imajuscule {
                 
                 // linear interpolation for parameter
                 auto f = from + (to-from) * (cur_sample + .5f) / duration_in_samples;
-                
-                
                 cur_sample += proportionality * f;
+                
                 return f_result;
             }
-
+            
             T step() {
                 return do_step(C);
             }
             
-            T step_calibrate(T proportionality) {
-                return do_step(proportionality * C);
-            }
-            
             T getFromIncrements() const { return from; }
             T getToIncrements() const { return to; }
-
+            
             T get_duration_in_samples() const { return duration_in_samples; }
-            
-            /*
-            static lut compute_lut() {
-                lut l;
-                for(auto i=0; i<itp::interpolation::INTERPOLATION_UPPER_BOUND; ++i) {
-                    auto val = safe_cast<itp::interpolation>(i);
-                    if(itp::intIsReal(val)) {
-                        l[i] = calibrate_constant(val);
-                    }
-                    else {
-                        l[i] = 0;
-                    }
-                }
-                return l;
-            }
-            
-            static constexpr T calibrate_constant(itp::interpolation const i) {
-                LG(INFO, "-------------------");
-                LG(INFO, "%s", itp::interpolationInfo(i));
-                LG(INFO, "-------------------");
-                
-                // no more than 3 captures else dynamic allocation occurs!
-                auto f = [i](T const proportionality, T const duration) -> int {
-                    // avoid 0 in the ramp range (for interpolations that are exponential)
-                    constexpr auto fLow = NumTraits<T>::one();
-                    constexpr auto fHigh = NumTraits<T>::two();
-                    
-                    LogRamp<T> spec;
-                    spec.set_by_increments<AdjustProportionality::No>(fLow,
-                                                                      fHigh,
-                                                                      duration,
-                                                                      NumTraits<T>::zero(),
-                                                                      i);
-
-                    // assuming an ascending ramp (else we need to substract integration_offset)
-                    A(fLow < fHigh);
-                    return steps_to_swap(spec, proportionality);
-                };
-
-                enum TestNature {
-                    NotStrict,
-                    Strict
-                };
-                
-                std::array<TestNature, 2> a_tests {{ Strict, NotStrict }};
-                std::array<range<T>, 2> ranges;
-                
-                range<T> r {
-                    NumTraits<T>::zero(),
-                    NumTraits<T>::two()
-                };
-
-                int idx = -1;
-                for(auto test_nature : a_tests) {
-                    ++idx;
-
-                    auto test = [test_nature](T const proportionality, T const duration, auto f) {
-                        auto n_steps = f(proportionality, duration);
-                        return (n_steps > duration) || ((test_nature == TestNature::NotStrict) && n_steps == duration);
-                    };
-                    
-
-                    // 16 corresponds to one second of sound
-                    // and tests for linear interpolation showed that 17 is the first exponent where numerical errors
-                    // become a problem
-                    constexpr auto n_max_exp = 16;
-                    unsigned int exp = 1;
-                    
-                    A(!r.empty());
-                    
-                    logRange(r);
-                    
-                    while(exp <= n_max_exp) {
-                        auto const duration = static_cast<T>(pow2(exp));
-                        LG(INFO, "-------- %2d --------", exp);
-                        
-                        // when range doesn't contain the wanted value
-                        // we translate and double the delta
-                        {
-                            bool done = false;
-                            while(r.getMin() && !test(r.getMin(), duration, f)) {
-                                // range is too high
-                                r = {
-                                    r.getMin() - 2 * r.delta(),
-                                    r.getMin()
-                                };
-                                if(r.getMin() < 0) {
-                                    r.setMin(0);
-                                }
-                                LG(INFO, "<<<");
-                                logRange(r);
-                                done = true;
-                            }
-                            if(!done) {
-                                while(test(r.getMax(), duration, f)) {
-                                    // range is too low
-                                    r = {
-                                        r.getMax(),
-                                        r.getMax() + 2 * r.delta()
-                                    };
-                                    LG(INFO, "                >>>");
-                                    logRange(r);
-                                }
-                            }
-                        }
-                        
-                        // now range contains the wanted value
-                        
-                        // for the last exponent, we continue even if the resolution is smaller than
-                        // the estimated error
-                        while(
-                              (exp == n_max_exp) ||
-                              resolution(r) > NumTraits<T>::one() / duration
-                              )
-                        {
-                            auto center = r.getCenter();
-                            if(center == r.getMin()) {
-                                break;
-                            }
-                            
-                            if(test(center, duration, f)) {
-                                LG(INFO, "                  >");
-                                r = {center, r.getMax()};
-                            }
-                            else {
-                                LG(INFO, "<");
-                                r = {r.getMin(), center};
-                            }
-                            logRange(r);
-                        }
-                        
-                        ++exp;
-                    }
-                    
-                    ranges[idx] = r;
-                }
-
-                logRange(ranges[0]);
-                logRange(ranges[1]);
-               
-                return (ranges[1].getMin() + ranges[0].getMax()) / 2;
-            }*/
             
         private:
             NormalizedInterpolation<T> interp;
@@ -750,6 +574,71 @@ namespace imajuscule {
             }
         };
         
+        template<typename Iterator>
+        struct SlowIterator {
+            using uint_steps = uint32_t;
+            
+            SlowIterator(uint_steps n_steps, itp::interpolation interp) : n_steps(n_steps), interp(interp) {
+                A(n_steps > 0);
+            }
+            
+            void initializeForRun() {
+                it.initializeForRun();
+                onMajorStep();
+            }
+            
+            void operator ++() {
+                ++slow_it;
+                if(slow_it == n_steps) {
+                    onMajorStep();
+                }
+            }
+            
+            float operator *() const {
+                return interp.get_unfiltered_value(slow_it, n_steps, prev, *it);
+            }
+            
+            auto const & getUnderlyingIterator() const { return it; }
+            
+        private:
+            uint_steps n_steps;
+            uint_steps slow_it = 0;
+            NormalizedInterpolation<> interp;
+            float prev;
+            Iterator it;
+            
+            void onMajorStep() {
+                slow_it = 0;
+                prev = *it;
+                ++it;
+                LG(INFO, "++it:");
+                it.log();
+            }
+        };
+        
+        template<typename T>
+        struct PinkCtrl {
+            
+            using Tr = NumTraits<T>;
+
+            void initializeForRun() {
+                it.initializeForRun();
+            }
+            
+            T step() {
+                auto val = *it;
+                ++it;
+                return val;
+            }
+        private:
+            SlowIterator<PinkNoiseIter> it={100000, itp::LINEAR};
+        };
+        
+        enum class VolumeAdjust {
+            Yes,
+            No
+        };
+
         template<VolumeAdjust V, typename T>
         struct OscillatorAlgo_;
         
@@ -767,12 +656,12 @@ namespace imajuscule {
         using AdjustableVolumeOscillatorAlgo = typename OscillatorAlgo_<V,T>::type;
         
         template<typename T>
-        static int steps_to_swap(LogRamp<T> & spec, T proportionality = 1.f) {
+        static int steps_to_swap(LogRamp<T> & spec) {
             bool order = spec.getToIncrements() < spec.getFromIncrements();
             
             int count = 0;
             while(order == spec.getToIncrements() < spec.getFromIncrements()) {
-                spec.step_calibrate( proportionality );
+                spec.step();
                 ++count;
             }
             --count; // because swap occurs at the beginning of step method, before current step is modified
@@ -790,7 +679,7 @@ namespace imajuscule {
             void step() {
                 auto current_freq = ctrl.step();
                 
-                osc.setAngleIncrements(current_freq);
+                osc.setAngleIncrements(freq_to_angle_increment(current_freq));
                 osc.step();
             }
             

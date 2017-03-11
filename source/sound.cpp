@@ -73,7 +73,10 @@ soundBuffer::soundBuffer( soundId const & id ) {
                 generate( id.period_length, white_atom_noise );
                 break;
             case Sound::PINK_NOISE:
-                generate( id.period_length, pink_noise );
+                generate( id.period_length, [](float){
+                    static GaussianPinkNoiseAlgo a;
+                    return a.step();
+                } );
                 break;
         }
         if( id.period_length < 20 ) {
