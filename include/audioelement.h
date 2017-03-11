@@ -487,13 +487,14 @@ namespace imajuscule {
             No
         };
         
-        template<typename>
-        struct FreqRampAlgo_;
+        template<typename, typename>
+        struct FreqCtrl_;
 
         template<typename T>
-        struct FreqRampAlgoSpec {
-            
-            template<typename> friend class FreqRampAlgo_;
+        struct LogRamp {
+            static_assert(std::is_same<T,float>::value, "non-float interpolation is not supported");
+
+            template<typename, typename> friend class FreqCtrl_;
             
             using Tr = NumTraits<T>;
             using lut = std::array<T, itp::interpolation::INTERPOLATION_UPPER_BOUND>;
@@ -504,13 +505,13 @@ namespace imajuscule {
             static constexpr auto increasing_integration_offset = 0;
             static constexpr auto decreasing_integration_offset = 1;
 
-            FreqRampAlgoSpec() : cur_sample(Tr::zero()), from{}, to{}, duration_in_samples{}
+            LogRamp() : cur_sample(Tr::zero()), from{}, to{}, duration_in_samples{}
             {}
 
             void set(T from_,
                      T to_,
                      T duration_in_samples_,
-                     T start_sample,
+                     T start_sample = Tr::zero(),
                      itp::interpolation i = itp::LINEAR) {
                 set_by_increments(freq_to_angle_increment(from_),
                                   freq_to_angle_increment(to_),
@@ -612,7 +613,7 @@ namespace imajuscule {
                     constexpr auto fLow = NumTraits<T>::one();
                     constexpr auto fHigh = NumTraits<T>::two();
                     
-                    FreqRampAlgoSpec<T> spec;
+                    LogRamp<T> spec;
                     spec.set_by_increments<AdjustProportionality::No>(fLow,
                                                                       fHigh,
                                                                       duration,
@@ -766,7 +767,7 @@ namespace imajuscule {
         using AdjustableVolumeOscillatorAlgo = typename OscillatorAlgo_<V,T>::type;
         
         template<typename T>
-        static int steps_to_swap(FreqRampAlgoSpec<T> & spec, T proportionality = 1.f) {
+        static int steps_to_swap(LogRamp<T> & spec, T proportionality = 1.f) {
             bool order = spec.getToIncrements() < spec.getFromIncrements();
             
             int count = 0;
@@ -778,25 +779,14 @@ namespace imajuscule {
             return count;
         }
 
-        template<typename ALGO>
-        struct FreqRampAlgo_ {
+        template<typename CTRL, typename ALGO>
+        struct FreqCtrl_ {
+            using Ctrl = CTRL;
             using T = typename ALGO::FPT;
             using FPT = T;
             
-            using Spec = FreqRampAlgoSpec<T>;
             using Tr = NumTraits<T>;
-
-            static_assert(std::is_same<T,float>::value, "non-float interpolation is not supported");
-            
-            void set(T from_,
-                     T to_,
-                     T duration_in_samples_,
-                     T start_sample = Tr::zero(),
-                     itp::interpolation i = itp::LINEAR)
-            {
-                spec.set(from_, to_, duration_in_samples_, start_sample, i);
-            }
-            
+                      
             void step() {
                 auto current_freq = spec.step();
                 
@@ -809,13 +799,13 @@ namespace imajuscule {
             
             auto & getOsc() { return osc; }
             
-            Spec spec;
+            CTRL spec;
         private:
             ALGO osc;
         };
         
         template<typename T, VolumeAdjust V>
-        using FreqRampOscillatorAlgo_ = FreqRampAlgo_<AdjustableVolumeOscillatorAlgo<V,T>>;
+        using FreqRampOscillatorAlgo_ = FreqCtrl_<LogRamp<T>, AdjustableVolumeOscillatorAlgo<V,T>>;
         
         template<typename T>
         using FreqRampAlgo = FreqRampOscillatorAlgo_<T, VolumeAdjust::Yes>;
@@ -825,10 +815,10 @@ namespace imajuscule {
         
 
         template<typename T>
-        using FreqRampLPWhiteNoiseAlgo_ = FreqRampAlgo_<LPWhiteNoiseAlgo<T>>;
+        using FreqRampLPWhiteNoiseAlgo_ = FreqCtrl_<LogRamp<T>, LPWhiteNoiseAlgo<T>>;
         
         template<typename T>
-        using FreqRampLPWhiteNoise = FinalAudioElement<FreqRampAlgo_<LPWhiteNoiseAlgo<T>>>;
+        using FreqRampLPWhiteNoise = FinalAudioElement<FreqRampLPWhiteNoiseAlgo_<T>>;
 
         template<typename A1, typename A2>
         struct RingModulationAlgo {

@@ -68,23 +68,31 @@ namespace imajuscule {
             StartAfresh
         };
 
-        template<typename Logger, UpdateMode U = UpdateMode::UPDATE_CAN_BE_SILENT>
-        struct SoundEngine {
-            using audioElt =
-            audioelement::FinalAudioElement <
-            audioelement::FreqRampAlgo_ <
-            audioelement::Mix <
+            template<typename T, SoundEngineMode>
+            struct SoundEngineAlgo_ {
+                using CTRL = typename audioelement::LogRamp< typename T::T >;
+                using type = audioelement::FreqCtrl_< CTRL, T >;
+            };
             
+            template<typename T>
+            struct SoundEngineAlgo_<T, SoundEngineMode::WIND> {
+                using CTRL = typename audioelement::LogRamp< typename T::T >;
+                using type = audioelement::FreqCtrl_< CTRL, T >;
+            };
+            
+        template<SoundEngineMode M, typename Logger>
+        struct SoundEngine {
+            
+            using Mix = audioelement::Mix <
             audioelement::LowPassAlgo<audioelement::PinkNoiseAlgo<float>>,
             audioelement::BandPassAlgo<audioelement::PinkNoiseAlgo<float>>,
             audioelement::AdjustableVolumeOscillatorAlgo<audioelement::VolumeAdjust::Yes,float>
-            
-            >
-            >
             >;
             
-            using Mode = SoundEngineMode;
+            using Algo = typename SoundEngineAlgo_<Mix, M>::type;
             
+            using audioElt = audioelement::FinalAudioElement< Algo >;
+                        
             static enumTraversal ModeTraversal;
             
             template<typename F>
@@ -459,9 +467,6 @@ namespace imajuscule {
             void set_d2(float d2_) {
                 d2 = d2_;
             }
-            void set_mode(Mode m) {
-                mode = m;
-            }
             void set_phase_ratio1(float phase_ratio1_) {
                 phase_ratio1 = clamp_phase_ratio(phase_ratio1_);
             }
@@ -668,7 +673,6 @@ namespace imajuscule {
             
         private:
             bool active : 1;
-            Mode mode : 2;
             itp::interpolation interpolation : 5;
             itp::interpolation freq_interpolation : 5;
             std::function<audioElt*(void)> get_inactive_ramp;
@@ -706,7 +710,7 @@ namespace imajuscule {
                 
                 using Algo = audioelement::FreqRampAlgo<float>;
                 
-                Algo::Spec * get_next_ramp_for_build() {
+                Algo::Ctrl * get_next_ramp_for_build() {
                     ++it;
                     A(it==end);
                     if(it == n_specs) {
@@ -722,7 +726,7 @@ namespace imajuscule {
                     --end;
                 }
                 
-                Algo::Spec * get_current() {
+                Algo::Ctrl * get_current() {
                     if(it >= end) {
                         return nullptr;
                     }
@@ -733,7 +737,7 @@ namespace imajuscule {
                     it=-1;
                 }
                 
-                Algo::Spec * get_next_ramp_for_run() {
+                Algo::Ctrl * get_next_ramp_for_run() {
                     A(it != end);
                     ++it;
                     if(it == end) {
@@ -744,10 +748,10 @@ namespace imajuscule {
                     return ptr_spec;
                 }
                 
-                using Specs = std::array<Algo::Spec, n_specs>;
+                using Ctrls = std::array<Algo::Ctrl, n_specs>;
                 unsigned it : n_bits_iter;
                 unsigned end: relevantBits(n_specs+1);
-                Specs a;
+                Ctrls a;
                 bool order :1;
             } ramp_specs;
         };

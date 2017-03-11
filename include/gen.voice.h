@@ -277,7 +277,6 @@ namespace imajuscule {
             constexpr auto size_interleaved_one_cache_line = cache_line_n_bytes / sizeof(interleaved_buf_t::value_type);
             constexpr auto size_interleaved = size_interleaved_one_cache_line;
             
-            using SoundEngine = SoundEngine<imajuscule::Logger, UpdateMode::FORCE_SOUND_AT_EACH_UPDATE>;
             using Mode = SoundEngineMode;
             
             template <
@@ -297,7 +296,9 @@ namespace imajuscule {
                 
                 using Parent::params;
                 using Parent::half_tone;
-                
+
+                using SoundEngine = SoundEngine<MODE, imajuscule::Logger>;
+
             public:
                 static std::vector<ParamSpec> const & getParamSpecs() {
                     
@@ -611,7 +612,6 @@ namespace imajuscule {
                 void onStartNote(float velocity, MonoNoteChannel & c, OutputData & out) {
                     
                     c.elem.engine.set_active(true);
-                    c.elem.engine.set_mode(MODE);
                     c.elem.engine.set_channels(c.channels[0], c.channels[0]);
                     
                     auto interp = static_cast<itp::interpolation>(itp::interpolation_traversal().realValues()[static_cast<int>(.5f + value<INTERPOLATION>())]);
@@ -804,7 +804,7 @@ namespace imajuscule {
             typename Base = ImplBase<MODE, Parameters, ProcessData>,
             
             typename Parent_ = ImplCRTP < nAudioOut, XfadePolicy::UseXfade,
-            MonoNoteChannel< 1, EngineAndRamps<SoundEngine> >, false,
+            MonoNoteChannel< 1, EngineAndRamps<typename Base::SoundEngine> >, false,
             EventIterator, NoteOnEvent, NoteOffEvent, Base >
             
             >

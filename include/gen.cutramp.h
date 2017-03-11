@@ -190,11 +190,11 @@ namespace imajuscule {
                     }
                     auto start_freq = ramp_start_freq_denormalize(ramp_start_freq());
                     auto & osc = c.elem;
-                    osc.algo.set(freq - ramp_amount() * (freq-start_freq),
-                                 freq,
-                                 ramp_size,
-                                 0.f,
-                                 static_cast<itp::interpolation>(itp::interpolation_traversal().realValues()[static_cast<int>(.5f + params[Params::RAMP_INTERPOLATION])]));
+                    osc.algo.spec.set(freq - ramp_amount() * (freq-start_freq),
+                                      freq,
+                                      ramp_size,
+                                      0.f,
+                                      static_cast<itp::interpolation>(itp::interpolation_traversal().realValues()[static_cast<int>(.5f + params[Params::RAMP_INTERPOLATION])]));
                     out.playGeneric(channel,
                                     std::make_pair(std::ref(osc),
                                                    Request{
@@ -539,11 +539,11 @@ namespace imajuscule {
                             ramp_size = adjusted(ramp_size);
                         }
                         auto start_freq = ramp_start_freq_denormalize(ramp_start_freq());
-                        osc.algo.set(freq - ramp_amount() * (freq-start_freq),
-                                     freq,
-                                     ramp_size,
-                                     -1.f,
-                                     interp);
+                        osc.algo.spec.set(freq - ramp_amount() * (freq-start_freq),
+                                          freq,
+                                          ramp_size,
+                                          -1.f,
+                                          interp);
                     }
                 }
             };

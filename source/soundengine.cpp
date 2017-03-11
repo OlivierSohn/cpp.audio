@@ -1,20 +1,20 @@
 
 namespace imajuscule {
     namespace audio {
-        template<typename Logger, UpdateMode u>
-        enumTraversal SoundEngine<Logger, u>::ModeTraversal(
-                                                            static_cast<unsigned int>(Mode::BEGIN),
-                                                            static_cast<unsigned int>(Mode::END),
+        template<SoundEngineMode M, typename Logger>
+        enumTraversal SoundEngine<M, Logger>::ModeTraversal(
+                                                            static_cast<unsigned int>(SoundEngineMode::BEGIN),
+                                                            static_cast<unsigned int>(SoundEngineMode::END),
                                                             [](int val)->const char* {
-                                                                auto v = static_cast<Mode>(val);
+                                                                auto v = static_cast<SoundEngineMode>(val);
                                                                 switch(v) {
-                                                                    case Mode::ROBOTS:
+                                                                    case SoundEngineMode::ROBOTS:
                                                                         return "Robots";
                                                                         break;
-                                                                    case Mode::SWEEP:
+                                                                    case SoundEngineMode::SWEEP:
                                                                         return "Sweep";
                                                                         break;
-                                                                    case Mode::MARKOV:
+                                                                    case SoundEngineMode::MARKOV:
                                                                         return "Markov Birds";
                                                                         break;
                                                                 }
