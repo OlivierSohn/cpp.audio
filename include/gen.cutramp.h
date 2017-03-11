@@ -190,7 +190,7 @@ namespace imajuscule {
                     }
                     auto start_freq = ramp_start_freq_denormalize(ramp_start_freq());
                     auto & osc = c.elem;
-                    osc.algo.spec.set(freq - ramp_amount() * (freq-start_freq),
+                    osc.algo.ctrl.set(freq - ramp_amount() * (freq-start_freq),
                                       freq,
                                       ramp_size,
                                       0.f,
@@ -527,10 +527,10 @@ namespace imajuscule {
                         }
                         if(!force) {
                             // maybe from/to is swapped so we need to test with both ends
-                            if(std::abs(freq - angle_increment_to_freq(osc.algo.spec.getToIncrements())) < 0.0001f) {
+                            if(std::abs(freq - angle_increment_to_freq(osc.algo.ctrl.getToIncrements())) < 0.0001f) {
                                 continue;
                             }
-                            if(std::abs(freq - angle_increment_to_freq(osc.algo.spec.getFromIncrements())) < 0.0001f) {
+                            if(std::abs(freq - angle_increment_to_freq(osc.algo.ctrl.getFromIncrements())) < 0.0001f) {
                                 continue;
                             }
                         }
@@ -539,7 +539,7 @@ namespace imajuscule {
                             ramp_size = adjusted(ramp_size);
                         }
                         auto start_freq = ramp_start_freq_denormalize(ramp_start_freq());
-                        osc.algo.spec.set(freq - ramp_amount() * (freq-start_freq),
+                        osc.algo.ctrl.set(freq - ramp_amount() * (freq-start_freq),
                                           freq,
                                           ramp_size,
                                           -1.f,

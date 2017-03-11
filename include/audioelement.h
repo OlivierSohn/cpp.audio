@@ -788,7 +788,7 @@ namespace imajuscule {
             using Tr = NumTraits<T>;
                       
             void step() {
-                auto current_freq = spec.step();
+                auto current_freq = ctrl.step();
                 
                 osc.setAngleIncrements(current_freq);
                 osc.step();
@@ -799,7 +799,7 @@ namespace imajuscule {
             
             auto & getOsc() { return osc; }
             
-            CTRL spec;
+            CTRL ctrl;
         private:
             ALGO osc;
         };

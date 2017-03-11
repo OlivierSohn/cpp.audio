@@ -409,14 +409,14 @@ namespace imajuscule {
                     auto new_ramp = get_inactive_ramp();
                     A(new_ramp); // might be null if length of ramp is too small
                     ramp_[last_ramp_index] = new_ramp;
-                    new_ramp->algo.spec = *new_spec;
+                    new_ramp->algo.ctrl = *new_spec;
                     
                     if(out.playGenericNoLock(c1,
                                              std::make_pair(std::ref(*new_ramp),
                                                             Request{
                                                                 &new_ramp->buffer[0],
                                                                 vol? *vol : channel.get_current().volumes * (1.f/Request::chan_base_amplitude),
-                                                                static_cast<int>(.5f + new_ramp->algo.spec.get_duration_in_samples())
+                                                                static_cast<int>(.5f + new_ramp->algo.ctrl.get_duration_in_samples())
                                                             })
                                              ))
                     {
