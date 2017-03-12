@@ -478,23 +478,13 @@ namespace imajuscule {
             
             void initializeForRun() const {}
             
-            void set(T from_,
-                     T to_,
+            void set_interpolation(itp::interpolation) {A(0);} // use set instead
+            
+            void set(T from_increments,
+                     T to_increments,
                      T duration_in_samples_,
                      T start_sample,
                      itp::interpolation i) {
-                set_by_increments(freq_to_angle_increment(from_),
-                                  freq_to_angle_increment(to_),
-                                  duration_in_samples_,
-                                  start_sample,
-                                  i);
-            }
-            
-            void set_by_increments(T from_increments,
-                                   T to_increments,
-                                   T duration_in_samples_,
-                                   T start_sample,
-                                   itp::interpolation i) {
                 if(start_sample >= Tr::zero()) {
                     cur_sample = start_sample;
                 }
@@ -548,8 +538,8 @@ namespace imajuscule {
                 return do_step(C);
             }
             
-            T getFromIncrements() const { return from; }
-            T getToIncrements() const { return to; }
+            T getFrom() const { return from; }
+            T getTo() const { return to; }
             
             T get_duration_in_samples() const { return duration_in_samples; }
             
@@ -573,29 +563,70 @@ namespace imajuscule {
                 return (to==from) ? 1.f : -std::log(from/to) / (to-from);
             }
         };
-        
+
+        /*
+         * std::abs(<value>)
+         */
         template<typename Iterator>
-        struct SlowIterator {
+        struct AbsIter {
+            void initializeForRun() {
+                it.initializeForRun();
+            }
+            
+            void operator ++() {
+                ++it;
+            }
+            
+            auto operator *() const {
+                return std::abs(*it);
+            }
+        private:
+            Iterator it;
+        };
+        
+        /*
+         * Slow down iteration by an integer factor and chose interpolation.
+         */
+        template<typename Iterator>
+        struct SlowIter {
             using uint_steps = uint32_t;
             
-            SlowIterator(uint_steps n_steps, itp::interpolation interp) : n_steps(n_steps), interp(interp) {
+            SlowIter(uint_steps n_steps, itp::interpolation interp) : n_steps(n_steps), interp(interp) {
                 A(n_steps > 0);
             }
             
+            void set_interpolation(itp::interpolation i) { interp.setInterpolation(i); }
+
             void initializeForRun() {
                 it.initializeForRun();
                 onMajorStep();
             }
-            
-            void operator ++() {
+
+            bool increment() {
                 ++slow_it;
                 if(slow_it == n_steps) {
                     onMajorStep();
+                    return true;
                 }
+                return false;
+            }
+
+            void operator ++() {
+                increment();
+            }
+
+            float operator *() const {
+                // todo verify that this is inlined (probably not...)
+                // for performance we may need to have a NormalizedInterpolation class templated for interp
+                return interp.get_unfiltered_value(slow_it, n_steps, prev, *it);
             }
             
-            float operator *() const {
-                return interp.get_unfiltered_value(slow_it, n_steps, prev, *it);
+            bool isDiminishing() const {
+                return prev > *it;
+            }
+
+            bool isAugmenting() const {
+                return !isDiminishing();
             }
             
             auto const & getUnderlyingIterator() const { return it; }
@@ -611,9 +642,47 @@ namespace imajuscule {
                 slow_it = 0;
                 prev = *it;
                 ++it;
-                LG(INFO, "++it:");
-                it.log();
+//                LG(INFO, "++it:");
+//                it.log();
             }
+            
+        };
+        
+        /*
+         * Makes ascending iteration faster than descending.
+         */
+        template<typename UnderlyingIt, int SCALE_UP = 3>
+        struct WindFreqIter {
+            template <class... Args>
+            WindFreqIter(Args&&... args) : it(std::forward<Args>(args)...) {}
+
+            void set_interpolation(itp::interpolation i) { it.set_interpolation(i); }
+
+            void initializeForRun() {
+                it.initializeForRun();
+            }
+            
+            void operator ++() {
+                auto const n = [this]() {
+                    if(it.isDiminishing()) {
+                        return 1;
+                    }
+                    return SCALE_UP;
+                }();
+                
+                for(int i=0; i<n; ++i) {
+                    if(it.increment()) {
+                        return;
+                    }
+                }
+            }
+            
+            auto operator *() const {
+                return *it;
+            }
+            
+        private:
+            UnderlyingIt it;
         };
         
         template<typename T>
@@ -630,8 +699,11 @@ namespace imajuscule {
                 ++it;
                 return val;
             }
+            
+            void set_interpolation(itp::interpolation i) { it.set_interpolation(i); }
+
         private:
-            SlowIterator<PinkNoiseIter> it={100000, itp::LINEAR};
+            WindFreqIter<SlowIter<AbsIter<PinkNoiseIter>>> it={100000, itp::LINEAR};
         };
         
         enum class VolumeAdjust {
@@ -657,10 +729,10 @@ namespace imajuscule {
         
         template<typename T>
         static int steps_to_swap(LogRamp<T> & spec) {
-            bool order = spec.getToIncrements() < spec.getFromIncrements();
+            bool order = spec.getTo() < spec.getFrom();
             
             int count = 0;
-            while(order == spec.getToIncrements() < spec.getFromIncrements()) {
+            while(order == spec.getTo() < spec.getFrom()) {
                 spec.step();
                 ++count;
             }

@@ -7,6 +7,9 @@ namespace imajuscule {
              *  to cut size + 1
              */
             enum ImplParams {
+                
+#include "loudness_enum_names.h"
+
                 // cut
                 CUT_ADJUST_FREQ,
                 CUT_PERIOD,
@@ -24,7 +27,11 @@ namespace imajuscule {
                 
                 NPARAMS // keep last
             };
-            
+
+#include "pernamespace.implparams.h"
+
+#include "loudness_enum_limits.h"
+
             template<typename T>
             constexpr auto get_middle(T p, T g) {
                 static_assert(std::is_integral<T>::value, "");
@@ -49,6 +56,8 @@ namespace imajuscule {
                 static constexpr auto max_ramp_start_freq = 5000.f;
                 static constexpr auto min_ramp_speed = 1.f;
                 static constexpr auto max_ramp_speed = 100.f;
+                
+                // todo replace w. normalize / denorm
                 static constexpr auto ramp_speed_normalize(float v) { return (v-min_ramp_speed) / (max_ramp_speed-min_ramp_speed); }
                 static constexpr auto ramp_speed_denormalize(float v) { return min_ramp_speed + v*max_ramp_speed; }
                 static constexpr auto ramp_start_freq_normalize(float v) { return (v-min_ramp_start_freq) / (max_ramp_start_freq-min_ramp_start_freq); }
@@ -68,6 +77,7 @@ namespace imajuscule {
 
                 static std::vector<ParamSpec> const & getParamSpecs() {
                     static std::vector<ParamSpec> params_spec = {
+#include "loudness_params_specs.h"
                         {"[Cut] Adjust osc. freq."},
                         {"[Cut] Period", min_cut_period, max_cut_period},
                         {"[Cut] Size", 0, max_cut_period - 1},
@@ -167,6 +177,20 @@ namespace imajuscule {
                     return progs[i];
                 }
                 
+                static constexpr int index(ImplParams n) {
+                    return static_cast<int>(n);
+                }
+
+                template<ImplParams N>
+                float value() const {
+                    return params[index(N)];
+                }
+                
+                template<ImplParams N>
+                float denorm() const {
+                    return denormalize<N>(params[index(N)]);
+                }
+                
             protected:
                 int get_xfade_length() { return adjusted(xfade_len); }
                 
@@ -178,7 +202,8 @@ namespace imajuscule {
                     auto freq = to_freq(tunedNote-Do_midi, half_tone);
                     auto channel = c.channels[0];
                     auto len = get_xfade_length();
-                    out.setVolume(channel, 1.f, len);
+                    
+                    out.setVolume(channel, denorm<GAIN>(), len);
                     
                     if(adjustFreq) {
                         auto r = (p - static_cast<float>(gap())) / p;
@@ -190,6 +215,10 @@ namespace imajuscule {
                     }
                     auto start_freq = ramp_start_freq_denormalize(ramp_start_freq());
                     auto & osc = c.elem;
+                    osc.algo.getOsc().setLoudnessParams(value<LOUDNESS_REF_FREQ_INDEX>(),
+                                          value<LOUDNESS_COMPENSATION_AMOUNT>(),
+                                          denorm<LOUDNESS_LEVEL>());
+
                     osc.algo.ctrl.set(freq - ramp_amount() * (freq-start_freq),
                                       freq,
                                       ramp_size,
@@ -214,11 +243,12 @@ namespace imajuscule {
                 }
             private:
                 static Program::ARRAY make_ramp(float amount, itp::interpolation i, float speed, float start_freq = 50.f,
-                                                bool cut_adjust_osc = false, int cut_size = 0) {
+                                                bool cut_adjust_osc = false, int cut_size = 0, float gain = 2.f) {
                     int itp_index = 0;
                     auto b = itp::interpolation_traversal().valToRealValueIndex(i, itp_index);
                     A(b);
                     return {{
+#include "loudness_init_values.h"
                         static_cast<float>(!cut_adjust_osc),
                         max_cut_period-min_cut_period,
                         static_cast<float>(cut_size),
@@ -527,10 +557,10 @@ namespace imajuscule {
                         }
                         if(!force) {
                             // maybe from/to is swapped so we need to test with both ends
-                            if(std::abs(freq - angle_increment_to_freq(osc.algo.ctrl.getToIncrements())) < 0.0001f) {
+                            if(std::abs(freq - osc.algo.ctrl.getTo()) < 0.0001f) {
                                 continue;
                             }
-                            if(std::abs(freq - angle_increment_to_freq(osc.algo.ctrl.getFromIncrements())) < 0.0001f) {
+                            if(std::abs(freq - osc.algo.ctrl.getFrom()) < 0.0001f) {
                                 continue;
                             }
                         }

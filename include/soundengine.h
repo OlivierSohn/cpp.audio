@@ -74,10 +74,15 @@ namespace imajuscule {
                     ctrl.initializeForRun();
                 }
                 
+                void set_interpolation(itp::interpolation i) {
+                    ctrl.set_interpolation(i);
+                }
+                
                 T step() {
                     auto v = ctrl.step();
+                    A(v >= 0.f); // else, use AbsIter
                     constexpr auto fmax = 10000.f;
-                    return powf(fmax, .6f + .4f * std::abs(v));
+                    return powf(fmax, .6f + .4f * v);
                 }
                 
                 auto get_duration_in_samples() const {
@@ -100,11 +105,11 @@ namespace imajuscule {
                           itp::interpolation i) {
                     A(0);
                 }
-                float getFromIncrements() const {
+                float getFrom() const {
                     A(0);
                     return 0.f;
                 }
-                float getToIncrements() const {
+                float getTo() const {
                     A(0);
                     return 0.f;
                 }
@@ -183,8 +188,8 @@ namespace imajuscule {
                     }
                     if(current) {
                         // there was a spec before the one we just added...
-                        auto from_inc = current->getToIncrements();
-                        auto to_inc = ramp_spec->getFromIncrements();
+                        auto from_inc = current->getTo();
+                        auto to_inc = ramp_spec->getFrom();
                         auto diff = from_inc - to_inc;
                         if(xfade_freq==FreqXfade::All || diff) {
                             // ... and the new spec creates a frequency discontinuity
@@ -195,7 +200,7 @@ namespace imajuscule {
                                 if(from_inc == to_inc) {
                                     from_inc *= 1.00001f; // make sure ramp is non trivial else we cannot detect when it's done
                                 }
-                                ramp_spec->set_by_increments(from_inc, to_inc, freq_xfade, 0, freq_interpolation);
+                                ramp_spec->set(from_inc, to_inc, freq_xfade, 0, freq_interpolation);
                             }
                             else {
                                 // just discard it
@@ -359,11 +364,8 @@ namespace imajuscule {
                 auto mc = std::make_unique<MarkovChain>();
                 
                 auto node0 = mc->emplace([this, &o](Move const m, MarkovNode&me, MarkovNode&from_to) {
-                    //if(m == Move::LEAVE)
-                    {
-                        if(auto * ramp_spec = ramp_specs.get_next_ramp_for_build()) {
-                            // no configuration
-                        }
+                    if(auto * ramp_spec = ramp_specs.get_next_ramp_for_build()) {
+                        ramp_spec->set_interpolation(interpolation);
                     }
                 });
                 auto node1 = mc->emplace([](Move const m, MarkovNode&me, MarkovNode&from_to) {

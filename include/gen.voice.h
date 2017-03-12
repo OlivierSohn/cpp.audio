@@ -13,10 +13,8 @@ namespace imajuscule {
                 SEED,
                 RANDOM_PAN,
                 PAN,
-                GAIN,
-                LOUDNESS_LEVEL,
-                LOUDNESS_COMPENSATION_AMOUNT,
-                LOUDNESS_REF_FREQ_INDEX,
+
+#include "loudness_enum_names.h"
                 
                 MARKOV_START_NODE,
                 MARKOV_PRE_TRIES,
@@ -185,23 +183,11 @@ namespace imajuscule {
             
 #include "pernamespace.implparams.h"
             
+#include "loudness_enum_limits.h"
+            
             template<> struct Limits<SEED> {
                 static constexpr auto m = 0;
                 static constexpr auto M = 257; };
-            
-            template<> struct Limits<GAIN> {
-                static const float m;
-                static const float M; };
-            
-            template<> struct Limits<LOUDNESS_LEVEL> {
-                static const float m;
-                static const float M; };
-            
-            template<> struct Limits<LOUDNESS_REF_FREQ_INDEX> {
-                static constexpr auto m = 0;
-                static constexpr auto M = 10; };
-            
-            template<> struct Limits<LOUDNESS_COMPENSATION_AMOUNT> : public NormalizedParamLimits {};
             
             template<> struct Limits<XFADE_LENGTH> {
                 static constexpr auto m = 101;
@@ -310,10 +296,7 @@ namespace imajuscule {
                         {"Seed", Limits<SEED>::m, Limits<SEED>::M},
                         {"Random pan"},
                         {"Pan", Limits<PAN>::m, Limits<PAN>::M},
-                        {"Gain", Limits<GAIN>::m, Limits<GAIN>::M},
-                        {"[Loudness] Level", Limits<LOUDNESS_LEVEL>::m, Limits<LOUDNESS_LEVEL>::M},
-                        {"[Loudness] Compensation", Limits<LOUDNESS_COMPENSATION_AMOUNT>::m, Limits<LOUDNESS_COMPENSATION_AMOUNT>::M},
-                        {"[Loudness] Min comp. f. idx", Limits<LOUDNESS_REF_FREQ_INDEX>::m, Limits<LOUDNESS_REF_FREQ_INDEX>::M },
+#include "loudness_params_specs.h"
                         {"[Markov] Start node", Limits<MARKOV_START_NODE>::m, Limits<MARKOV_START_NODE>::M},
                         {"[Markov] Num. pre tries", Limits<MARKOV_PRE_TRIES>::m, Limits<MARKOV_PRE_TRIES>::M},
                         {"[Markov] Min path length", Limits<MARKOV_MIN_PATH_LENGTH>::m, Limits<MARKOV_MIN_PATH_LENGTH>::M},
@@ -374,10 +357,7 @@ namespace imajuscule {
                         0,
                         static_cast<float>(!true),
                         normalize<PAN>(0.f),
-                        normalize<GAIN>(gain),
-                        normalize<LOUDNESS_LEVEL>(30.f),
-                        /*normalize<LOUDNESS_COMPENSATION_AMOUNT>*/1.f,
-                        /*normalize<LOUDNESS_REF_FREQ_INDEX>*/5,
+#include "loudness_init_values.h"
                         static_cast<float>(start_node),
                         static_cast<float>(pre_tries),
                         static_cast<float>(min_path_length),
@@ -507,6 +487,9 @@ namespace imajuscule {
                         }
                         result[index(e)] = a[idx];
                     }
+                    result[index(SINE_GAIN)] = 0.f;
+                    result[index(PINK_NOISE_BP_GAIN)] = 1.f;
+                    
                     return result;
                 }
                 
@@ -556,7 +539,7 @@ namespace imajuscule {
                     else if(MODE==Mode::WIND) {
                         static ProgramsI ps {{
                             {"Wind",
-                                make_wind(0, 0, 6, 0, itp::EASE_INOUT_CIRC, 0.12f, 93.3f, 2.f, .5f, 2201)
+                                make_wind(0, 0, 6, 0, itp::PROPORTIONAL_VALUE_DERIVATIVE, 0.12f, 93.3f, 2.f, .5f, 2201)
                             }
                         }};
                         return ps.v;
@@ -600,11 +583,6 @@ namespace imajuscule {
                 template<ImplParams N>
                 float denorm() const {
                     return denormalize<N>(params[index(N)]);
-                }
-                
-                template<ImplParams N>
-                float norm() const {
-                    return normalize<N>(params[index(N)]);
                 }
                 
             protected:

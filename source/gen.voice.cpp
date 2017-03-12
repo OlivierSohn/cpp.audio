@@ -2,18 +2,15 @@
 namespace imajuscule {
     namespace audio {
         namespace voice {
+
+#include "loudness_enum_limits_impl.h"
+
             const float Limits<PINK_NOISE_BP_OCTAVE_WIDTH>::m = 0.f;
             const float Limits<PINK_NOISE_BP_OCTAVE_WIDTH>::M = 10.f;
-            
-            const float Limits<GAIN>::m = 1.f; // gain is multiplicative
-            const float Limits<GAIN>::M = 60.f;
             
             const float Limits<PAN>::m = -1.f;
             const float Limits<PAN>::M = 1.f;
             
-            const float Limits<LOUDNESS_LEVEL>::m = 20.f;
-            const float Limits<LOUDNESS_LEVEL>::M = 100.f;
-
             const float Limits<HARMONIC_ATTENUATION>::m = 0.f;
             const float Limits<HARMONIC_ATTENUATION>::M = 0.98f;
             

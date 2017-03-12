@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		090B14C11E75CC2C005A47C5 /* loudness_enum_limits.h in Headers */ = {isa = PBXBuildFile; fileRef = 090B14C01E75CC2C005A47C5 /* loudness_enum_limits.h */; };
 		099E06E11E36EC720012348E /* unity.build.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 099E06E01E36EC6D0012348E /* unity.build.cpp */; };
 		09BA14991E38791C00A05F83 /* unity.build.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 099E06E01E36EC6D0012348E /* unity.build.cpp */; };
 /* End PBXBuildFile section */
@@ -24,6 +25,12 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		090B14BF1E75CC04005A47C5 /* loudness_enum_names.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = loudness_enum_names.h; path = include/loudness_enum_names.h; sourceTree = "<group>"; };
+		090B14C01E75CC2C005A47C5 /* loudness_enum_limits.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = loudness_enum_limits.h; path = include/loudness_enum_limits.h; sourceTree = "<group>"; };
+		090B14C21E75CCAE005A47C5 /* loudness_enum_limits_impl.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = loudness_enum_limits_impl.h; path = include/loudness_enum_limits_impl.h; sourceTree = "<group>"; };
+		090B14C31E75CCDF005A47C5 /* gen.cutramp.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = gen.cutramp.cpp; path = source/gen.cutramp.cpp; sourceTree = "<group>"; };
+		090B14C41E75CDF9005A47C5 /* loudness_params_specs.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = loudness_params_specs.h; path = include/loudness_params_specs.h; sourceTree = "<group>"; };
+		090B14C51E75D771005A47C5 /* loudness_init_values.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = loudness_init_values.h; path = include/loudness_init_values.h; sourceTree = "<group>"; };
 		091177B41E5B2F9100343D54 /* loudness.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = loudness.h; path = include/loudness.h; sourceTree = "<group>"; };
 		091E76E81E46B4FE009CFBA5 /* soundengine.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; lineEnding = 0; name = soundengine.h; path = include/soundengine.h; sourceTree = "<group>"; xcLanguageSpecificationIdentifier = xcode.lang.objcpp; };
 		091E76E91E46BE78009CFBA5 /* normalization.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = normalization.h; path = include/normalization.h; sourceTree = "<group>"; };
@@ -92,6 +99,7 @@
 		099E06E21E36EC7F0012348E /* source */ = {
 			isa = PBXGroup;
 			children = (
+				090B14C31E75CCDF005A47C5 /* gen.cutramp.cpp */,
 				092412A01E56F04500A848A8 /* audioelement.cpp */,
 				0966EA6E1E45C62B00A86E7C /* gen.voice.cpp */,
 				091E76EA1E46C02F009CFBA5 /* normalization.cpp */,
@@ -113,6 +121,11 @@
 				091E76EC1E46D03B009CFBA5 /* gen.crtp.h */,
 				094562341E43E475006E7076 /* gen.cutramp.h */,
 				09529DF81E439D8D00705B99 /* gen.voice.h */,
+				090B14C21E75CCAE005A47C5 /* loudness_enum_limits_impl.h */,
+				090B14C01E75CC2C005A47C5 /* loudness_enum_limits.h */,
+				090B14BF1E75CC04005A47C5 /* loudness_enum_names.h */,
+				090B14C51E75D771005A47C5 /* loudness_init_values.h */,
+				090B14C41E75CDF9005A47C5 /* loudness_params_specs.h */,
 				091177B41E5B2F9100343D54 /* loudness.h */,
 				09529DFE1E439FD800705B99 /* midi.h */,
 				09529DF91E439D8D00705B99 /* mononotechannel.h */,
@@ -179,6 +192,7 @@
 			isa = PBXHeadersBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				090B14C11E75CC2C005A47C5 /* loudness_enum_limits.h in Headers */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
