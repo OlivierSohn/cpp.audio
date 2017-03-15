@@ -213,6 +213,8 @@ namespace imajuscule {
                 c.pitch = e.pitch;
                 c.tuning = e.tuning;
                 
+                c.elem.forgetPastSignals();
+                
                 onStartNote(e.velocity, c, out);
                 return onEventResult::OK;
             }

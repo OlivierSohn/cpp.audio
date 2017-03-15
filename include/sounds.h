@@ -8,23 +8,23 @@ namespace imajuscule {
         std::array<audioelement::FreqRamp<float>, 6> ramps;
  
         std::array<audioelement::RingModulation<
-        audioelement::LowPassAlgo<audioelement::PulseTrainAlgo<float>>,
+        audioelement::LowPassAlgo<audioelement::PulseTrainAlgo<float>, 1>,
         audioelement::OscillatorAlgo<float>
         >, 6> ringmods;
         
-        std::array<audioelement::LowPass<audioelement::PulseTrainAlgo<float>>, 6> lptrains;
+        std::array<audioelement::LowPass<audioelement::PulseTrainAlgo<float>, 1>, 6> lptrains;
     public:
         soundBuffer & get( soundId );
         
-        audioelement::Oscillator<float> * getInactiveOscillator() {
+        auto * getInactiveOscillator() {
             return editInactiveAudioElement(oscillators);
         }
         
-        audioelement::Square<float> * getInactiveSquare() {
+        auto * getInactiveSquare() {
             return editInactiveAudioElement(squares);
         }
         
-        audioelement::FreqRamp<float> * getInactiveFreqRamp() {
+        auto * getInactiveFreqRamp() {
             return editInactiveAudioElement(ramps);
         }
         
@@ -32,7 +32,7 @@ namespace imajuscule {
             return editInactiveAudioElement(ringmods);
         }
         
-        audioelement::LowPass<audioelement::PulseTrainAlgo<float>> * getInactiveLPTrain() {
+        auto * getInactiveLPTrain() {
             return editInactiveAudioElement(lptrains);
         }
     };

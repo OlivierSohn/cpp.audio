@@ -74,6 +74,10 @@ namespace imajuscule {
                     ctrl.initializeForRun();
                 }
                 
+                void forgetPastSignals() {
+                    ctrl.forgetPastSignals();
+                }
+                
                 void set_interpolation(itp::interpolation i) {
                     ctrl.set_interpolation(i);
                 }
@@ -132,10 +136,11 @@ namespace imajuscule {
             
         template<SoundEngineMode M, typename Logger>
         struct SoundEngine {
+            static constexpr auto Order = VariableOrder;
             
             using Mix = audioelement::Mix <
-            audioelement::LowPassAlgo<audioelement::PinkNoiseAlgo<float>>,
-            audioelement::BandPassAlgo<audioelement::PinkNoiseAlgo<float>>,
+            audioelement::LowPassAlgo<audioelement::PinkNoiseAlgo<float>, Order>,
+            audioelement::BandPassAlgo<audioelement::PinkNoiseAlgo<float>, Order>,
             audioelement::AdjustableVolumeOscillatorAlgo<audioelement::VolumeAdjust::Yes,float>
             >;
             
@@ -151,7 +156,7 @@ namespace imajuscule {
             active(false),
             xfade_freq(FreqXfade::No)
             {
-                getSilence(); // make sure potential dynamic allocation occur not under audio lock
+                getSilence(); // make sure potential dynamic allocation occurs not under audio lock
             }
             
             template<typename OutputData>

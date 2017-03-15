@@ -75,6 +75,10 @@ namespace imajuscule {
             template <class... Args>
             FinalAudioElement(Args&&... args) : algo(std::forward<Args>(args)...) {}
             
+            void forgetPastSignals() {
+                algo.forgetPastSignals();
+            }
+
             ALGO algo;
         };
                 
@@ -91,6 +95,14 @@ namespace imajuscule {
             T angleIncrements() const { return osc.angleIncrements(); }
             
             VolumeAdjusted() : log_ratio_(1.f), low_index_(0) {}
+            
+            void forgetPastSignals() {
+                osc.forgetPastSignals();
+            }
+            
+            void setFiltersOrder(int order) {
+                osc.setFiltersOrder(order);
+            }
             
             void setAngleIncrements(T ai) {
                 volume = loudness::equal_loudness_volume(angle_increment_to_freq(ai),
@@ -177,7 +189,10 @@ namespace imajuscule {
             static_assert(std::is_floating_point<FPT>::value, "");
 
             soundBufferWrapperAlgo(soundBuffer const & sb) : sb(sb) {}
-
+            
+            void forgetPastSignals() const {
+            }
+            
             T imag() const { return sb[index]; }
             
             void step() {
@@ -273,6 +288,18 @@ namespace imajuscule {
             
             void setGains(decltype(gains) g) { gains = g; }
             
+            void setFiltersOrder(int order) {
+                for_each(aes, [order](auto & ae) {
+                    ae.setFiltersOrder(order);
+                });
+            }
+            
+            void forgetPastSignals() {
+                for_each(aes, [](auto & ae) {
+                    ae.forgetPastSignals();
+                });
+            }
+            
             void step() {
                 for_each(aes, [](auto & ae) {
                     ae.step();
@@ -313,19 +340,39 @@ namespace imajuscule {
             std::tuple<AEs...> aes;
         };
         
-        template<typename AEAlgo, FilterType KIND>
+        template<int ORDER, typename T>
+        struct InternalFilterFPTFromOrder {
+            using type = double; // for order >= 2 and 0(adjustable), we use double
+        };
+        
+        template<typename T>
+        struct InternalFilterFPTFromOrder<1,T> {
+            using type = T;
+        };
+        
+        template<typename AEAlgo, FilterType KIND, int ORDER>
         struct FilterAlgo {
             using T = typename AEAlgo::FPT;
             using FPT = T;
+            using FilterFPT = typename InternalFilterFPTFromOrder<ORDER, FPT>::type;
             static_assert(std::is_floating_point<FPT>::value, "");
-            
+
         private:
             AEAlgo audio_element;
-            Filter<T, 1, KIND> filter_;
+            Filter<FilterFPT, 1, KIND, ORDER> filter_;
         public:
+            void forgetPastSignals() {
+                filter_.forgetPastSignals();
+                audio_element.forgetPastSignals();
+            }
+
+            void setFiltersOrder(int order) {
+                filter_.setOrder(order);
+            }
+
             void step() {
                 audio_element.step();
-                auto val = audio_element.imag();
+                FilterFPT val = static_cast<FilterFPT>(audio_element.imag());
                 filter_.feed(&val);
             }
             
@@ -344,18 +391,28 @@ namespace imajuscule {
             void setLoudnessParams(int low_index, float log_ratio, float loudness_level) {}
         };
         
-        template<typename T>
-        using LowPassAlgo = FilterAlgo<T, FilterType::LOW_PASS>;
+        template<typename T, int ORDER>
+        using LowPassAlgo = FilterAlgo<T, FilterType::LOW_PASS, ORDER>;
         
-        template<typename T>
-        using HighPassAlgo = FilterAlgo<T, FilterType::HIGH_PASS>;
+        template<typename T, int ORDER>
+        using HighPassAlgo = FilterAlgo<T, FilterType::HIGH_PASS, ORDER>;
         
-        template<typename AEAlgo>
+        template<typename AEAlgo, int ORDER>
         struct BandPassAlgo {
             using FPT = typename AEAlgo::FPT;
             using T = FPT;
             using Tr = NumTraits<T>;
 
+            void forgetPastSignals() {
+                getHP().forgetPastSignals();
+                getLP().forgetPastSignals();
+            }
+            
+            void setFiltersOrder(int order) {
+                getHP().setFiltersOrder(order);
+                getLP().setFiltersOrder(order);
+            }
+            
             void setWidthFactor(T w) {
                 width_factor = w;
             }
@@ -372,6 +429,7 @@ namespace imajuscule {
                 // gain compensation to have an equal power of the central frequency for all widths
                 {
                     compensation = 1 + (inv_width_factor * inv_width_factor);
+                    compensation = expt<ORDER>(compensation);
 #ifndef NDEBUG
                     // verify accuracy of above simplification
                     
@@ -381,6 +439,7 @@ namespace imajuscule {
                     auto inv_sq_mag_lp = get_inv_square_filter_magnitude<FilterType::LOW_PASS >(inv_width_factor * inv_width_factor);
                     auto inv_mag = sqrt(inv_sq_mag_hp * inv_sq_mag_lp);
                     auto original_compensation = inv_mag;
+                    original_compensation = expt<ORDER>(original_compensation);
                     A(std::abs(original_compensation - compensation) / (original_compensation + compensation) < FLOAT_EPSILON);
 #endif
                 }
@@ -392,7 +451,7 @@ namespace imajuscule {
             
             void setLoudnessParams(int low_index, float log_ratio, float loudness_level) {}
         private:
-            HighPassAlgo<LowPassAlgo<AEAlgo>> cascade;
+            HighPassAlgo<LowPassAlgo<AEAlgo, ORDER>, ORDER> cascade;
             T compensation;
             T width_factor;
             
@@ -400,14 +459,14 @@ namespace imajuscule {
             auto & getLP() { return cascade.get_element(); }
         };
         
-        template<typename T>
-        using LPWhiteNoiseAlgo = LowPassAlgo<WhiteNoiseAlgo<T>>;
+        template<typename T, int ORDER>
+        using LPWhiteNoiseAlgo = LowPassAlgo<WhiteNoiseAlgo<T>, ORDER>;
         
-        template<typename T>
-        using LPWhiteNoise = FinalAudioElement<LPWhiteNoiseAlgo<T>>;
+        template<typename T, int ORDER>
+        using LPWhiteNoise = FinalAudioElement<LPWhiteNoiseAlgo<T, ORDER>>;
         
-        template<typename AEAlgo>
-        using LowPass = FinalAudioElement<LowPassAlgo<AEAlgo>>;
+        template<typename AEAlgo, int ORDER>
+        using LowPass = FinalAudioElement<LowPassAlgo<AEAlgo, ORDER>>;
         
         enum class eNormalizePolicy {
             FAST,
@@ -421,6 +480,12 @@ namespace imajuscule {
             
             constexpr OscillatorAlgo(T angle_increments) { setAngleIncrements(angle_increments); }
             constexpr OscillatorAlgo() : mult(Tr::one(), Tr::zero()) {}
+            
+            void forgetPastSignals() const {
+            }
+            
+            void setFiltersOrder(int order) const {
+            }
             
             void setAngle(T f) {
                 cur = polar(static_cast<T>(M_PI)*f);
@@ -476,6 +541,7 @@ namespace imajuscule {
             LogRamp() : cur_sample(Tr::zero()), from{}, to{}, duration_in_samples{}
             {}
             
+            void forgetPastSignals() const {}
             void initializeForRun() const {}
             
             void set_interpolation(itp::interpolation) {A(0);} // use set instead
@@ -694,6 +760,9 @@ namespace imajuscule {
                 it.initializeForRun();
             }
             
+            void forgetPastSignals() const {
+            }
+
             T step() {
                 auto val = *it;
                 ++it;
@@ -747,6 +816,11 @@ namespace imajuscule {
             using FPT = T;
             
             using Tr = NumTraits<T>;
+            
+            void forgetPastSignals() {
+                ctrl.forgetPastSignals();
+                osc.forgetPastSignals();
+            }
                       
             void step() {
                 auto current_freq = ctrl.step();
@@ -775,11 +849,11 @@ namespace imajuscule {
         using FreqRamp = FinalAudioElement<FreqRampAlgo<T>>;
         
 
-        template<typename T>
-        using FreqRampLPWhiteNoiseAlgo_ = FreqCtrl_<LogRamp<T>, LPWhiteNoiseAlgo<T>>;
+        template<typename T, int ORDER>
+        using FreqRampLPWhiteNoiseAlgo_ = FreqCtrl_<LogRamp<T>, LPWhiteNoiseAlgo<T, ORDER>>;
         
-        template<typename T>
-        using FreqRampLPWhiteNoise = FinalAudioElement<FreqRampLPWhiteNoiseAlgo_<T>>;
+        template<typename T, int ORDER>
+        using FreqRampLPWhiteNoise = FinalAudioElement<FreqRampLPWhiteNoiseAlgo_<T, ORDER>>;
 
         template<typename A1, typename A2>
         struct RingModulationAlgo {

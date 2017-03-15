@@ -27,7 +27,7 @@ namespace imajuscule {
                 
                 NPARAMS // keep last
             };
-
+            
 #include "pernamespace.implparams.h"
 
 #include "loudness_enum_limits.h"

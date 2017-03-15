@@ -5,6 +5,9 @@
 template<ImplParams e>
 struct Limits;
 
+template<ImplParams e>
+struct NoLimits;
+
 template<ImplParams N>
 struct Normalizer {
     template<typename lim = Limits<N>, int m = lim::m, int M = lim::M>
@@ -36,6 +39,21 @@ struct Denormalizer {
 };
 
 template<ImplParams N>
+struct Valuator {
+    template<typename lim = Limits<N>, int m = lim::m, int M = lim::M>
+    static float run(float v)
+    {
+        return m + v;
+    }
+    
+    template<typename nolim = NoLimits<N>, int zero = nolim::zero>
+    static float run(float v)
+    {
+        return v + zero;
+    }
+};
+
+template<ImplParams N>
 constexpr auto normalize(float v) {
     return Normalizer<N>::run(v);
 }
@@ -43,4 +61,9 @@ constexpr auto normalize(float v) {
 template<ImplParams N>
 constexpr auto denormalize(float v) {
     return Denormalizer<N>::run(v);
+}
+
+template<ImplParams N>
+constexpr auto valueof(float v) {
+    return Valuator<N>::run(v);
 }
