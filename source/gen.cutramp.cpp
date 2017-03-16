@@ -5,6 +5,7 @@ namespace imajuscule {
             
 #include "loudness_enum_limits_impl.h"
         
+            
         }
     }
 } // namespaces

@@ -413,6 +413,10 @@ namespace imajuscule {
                 getLP().setFiltersOrder(order);
             }
             
+            void setWidthRange(range<float> const & r) {
+                width_range = r;
+            }
+            
             void setAngleIncrements(T inc) {
                 A(inc >= 0.f);
                 increment = inc;
@@ -420,7 +424,7 @@ namespace imajuscule {
             
             void step() {
                 width.step();
-                T width_factor = pow(Tr::two(), 5.f * std::abs(width.imag()));
+                T width_factor = pow(Tr::two(), width_range.getAt(std::abs(width.imag())));
                 
                 A(width_factor);
                 auto inv_width_factor = Tr::one() / width_factor;
@@ -440,6 +444,7 @@ namespace imajuscule {
             HighPassAlgo<LowPassAlgo<AEAlgo, ORDER>, ORDER> cascade;
             T compensation, increment;
             AEAlgoWidth width;
+            range<float> width_range;
             
             auto & getHP() { return cascade; }
             auto & getLP() { return cascade.get_element(); }

@@ -140,15 +140,9 @@ namespace imajuscule {
     // instantiations
     /////////////////
     
-    static inline auto const & whiteNoise() {
-        static soundBuffer n(soundId{Sound::NOISE, .1f});
-        return n;
-    }
+    soundBuffer const & whiteNoise();
     
-    static inline auto const & getPinkNoise() {
-        static soundBuffer n(soundId{Sound::PINK_NOISE, .1f});
-        return n;
-    }
+    soundBuffer const & getPinkNoise();
     
     struct PinkNoiseIter {
         
@@ -159,10 +153,12 @@ namespace imajuscule {
         void initializeForRun() {
             it = getPinkNoise().begin();
             // randomize start position
-            it += static_cast<int>(std::uniform_real_distribution<>{
+            auto add = static_cast<int>(std::uniform_real_distribution<>{
                 0.f,
                 static_cast<float>(getPinkNoise().size()-1)
             }(rng::mersenne()));
+            
+            it += add;
             A(it < end);
         }
         

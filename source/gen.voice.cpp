@@ -5,8 +5,10 @@ namespace imajuscule {
 
 #include "loudness_enum_limits_impl.h"
 
-            const float Limits<PINK_NOISE_BP_OCTAVE_WIDTH>::m = 0.f;
-            const float Limits<PINK_NOISE_BP_OCTAVE_WIDTH>::M = 10.f;
+            const float Limits<PINK_NOISE_BP_OCTAVE_WIDTH_MIN>::m = 0.f;
+            const float Limits<PINK_NOISE_BP_OCTAVE_WIDTH_MIN>::M = 5.f;
+            const float Limits<PINK_NOISE_BP_OCTAVE_WIDTH_MAX>::m = 0.f;
+            const float Limits<PINK_NOISE_BP_OCTAVE_WIDTH_MAX>::M = 5.f;
             
             const float Limits<PAN>::m = -1.f;
             const float Limits<PAN>::M = 1.f;

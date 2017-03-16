@@ -1,6 +1,8 @@
 
 namespace imajuscule {
     namespace audio {
+        soundBuffer & getSilence();
+
         enum class FreqXfade : unsigned char {
             BEGIN,
             
@@ -12,27 +14,7 @@ namespace imajuscule {
             };
             
             
-            static enumTraversal const & xfade_freq_traversal() {
-                static enumTraversal et(
-                                        static_cast<unsigned int>(FreqXfade::BEGIN),
-                                        static_cast<unsigned int>(FreqXfade::END),
-                                        [](int val)->const char* {
-                                            auto v = static_cast<FreqXfade>(val);
-                                            switch(v) {
-                                                case FreqXfade::No:
-                                                    return "None";
-                                                    break;
-                                                case FreqXfade::NonTrivial:
-                                                    return "Non Trivial";
-                                                    break;
-                                                case FreqXfade::All:
-                                                    return "All";
-                                                    break;
-                                            }
-                                            return "?";
-                                        });
-                return et;
-            }
+        enumTraversal const & xfade_freq_traversal();
             
         static inline float clamp_phase_ratio(float v) {
             if(v > 1.f) {
@@ -396,11 +378,6 @@ namespace imajuscule {
                 def_markov_transition(node1, node0, 1.f);
                 
                 return mc;
-            }
-            
-            auto & getSilence() {
-                static soundBuffer silence{1, 0.f};
-                return silence;
             }
             
             template<typename OutputData, typename MonoNoteChannel>

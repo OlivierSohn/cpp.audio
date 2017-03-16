@@ -1,4 +1,17 @@
 
+namespace imajuscule {
+    
+    soundBuffer const & getPinkNoise() {
+        static soundBuffer n(soundId{Sound::PINK_NOISE, .1f});
+        return n;
+    }
+    
+    soundBuffer const & whiteNoise() {
+        static soundBuffer n(soundId{Sound::NOISE, .1f});
+        return n;
+    }
+}
+
 using namespace imajuscule;
 
 static float triangle_( float angle_radians ) {

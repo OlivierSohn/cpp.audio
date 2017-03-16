@@ -8,7 +8,8 @@ namespace imajuscule {
                 // Common
                 PINK_NOISE_LP_GAIN,
                 PINK_NOISE_BP_GAIN,
-                PINK_NOISE_BP_OCTAVE_WIDTH,
+                PINK_NOISE_BP_OCTAVE_WIDTH_MIN,
+                PINK_NOISE_BP_OCTAVE_WIDTH_MAX,
                 ORDER_FILTERS,
                 SINE_GAIN,
                 SEED,
@@ -48,11 +49,12 @@ namespace imajuscule {
                 HIGH_FREQ
             };
             
-            constexpr std::array<ImplParams, 28> params_markov
+            constexpr std::array<ImplParams, 29> params_markov
             {{
                 PINK_NOISE_LP_GAIN,
                 PINK_NOISE_BP_GAIN,
-                PINK_NOISE_BP_OCTAVE_WIDTH,
+                PINK_NOISE_BP_OCTAVE_WIDTH_MIN,
+                PINK_NOISE_BP_OCTAVE_WIDTH_MAX,
                 ORDER_FILTERS,
                 SINE_GAIN,
 
@@ -88,11 +90,12 @@ namespace imajuscule {
                 
             }};
             
-            constexpr std::array<ImplParams, 28> params_robots
+            constexpr std::array<ImplParams, 29> params_robots
             {{
                 PINK_NOISE_LP_GAIN,
                 PINK_NOISE_BP_GAIN,
-                PINK_NOISE_BP_OCTAVE_WIDTH,
+                PINK_NOISE_BP_OCTAVE_WIDTH_MIN,
+                PINK_NOISE_BP_OCTAVE_WIDTH_MAX,
                 ORDER_FILTERS,
                 SINE_GAIN,
 
@@ -127,11 +130,12 @@ namespace imajuscule {
                 PHASE_RATIO2
             }};
             
-            constexpr std::array<ImplParams, 22> params_wind
+            constexpr std::array<ImplParams, 23> params_wind
             {{
                 PINK_NOISE_LP_GAIN,
                 PINK_NOISE_BP_GAIN,
-                PINK_NOISE_BP_OCTAVE_WIDTH,
+                PINK_NOISE_BP_OCTAVE_WIDTH_MIN,
+                PINK_NOISE_BP_OCTAVE_WIDTH_MAX,
                 ORDER_FILTERS,
                 SINE_GAIN,
                 
@@ -158,11 +162,12 @@ namespace imajuscule {
                 XFADE_LENGTH
             }};
             
-            constexpr std::array<ImplParams, 17> params_sweep
+            constexpr std::array<ImplParams, 18> params_sweep
             {{
                 PINK_NOISE_LP_GAIN,
                 PINK_NOISE_BP_GAIN,
-                PINK_NOISE_BP_OCTAVE_WIDTH,
+                PINK_NOISE_BP_OCTAVE_WIDTH_MIN,
+                PINK_NOISE_BP_OCTAVE_WIDTH_MAX,
                 ORDER_FILTERS,
                 SINE_GAIN,
 
@@ -236,7 +241,11 @@ namespace imajuscule {
                 static const float m;
                 static const float M; };
             
-            template<> struct Limits<PINK_NOISE_BP_OCTAVE_WIDTH> {
+            template<> struct Limits<PINK_NOISE_BP_OCTAVE_WIDTH_MIN> {
+                static const float m;
+                static const float M; };
+            
+            template<> struct Limits<PINK_NOISE_BP_OCTAVE_WIDTH_MAX> {
                 static const float m;
                 static const float M; };
             
@@ -307,7 +316,8 @@ namespace imajuscule {
                     static std::vector<ParamSpec> params_spec = {
                         {"[1/f Noise] LPF Gain", Limits<PINK_NOISE_LP_GAIN>::m, Limits<PINK_NOISE_LP_GAIN>::M},
                         {"[1/f Noise] BPF Gain", Limits<PINK_NOISE_BP_GAIN>::m, Limits<PINK_NOISE_BP_GAIN>::M},
-                        {"[1/f Noise] BPF Width", Limits<PINK_NOISE_BP_OCTAVE_WIDTH>::m, Limits<PINK_NOISE_BP_OCTAVE_WIDTH>::M},
+                        {"[1/f Noise] BPF Width Min", Limits<PINK_NOISE_BP_OCTAVE_WIDTH_MIN>::m, Limits<PINK_NOISE_BP_OCTAVE_WIDTH_MIN>::M},
+                        {"[1/f Noise] BPF Width Max", Limits<PINK_NOISE_BP_OCTAVE_WIDTH_MAX>::m, Limits<PINK_NOISE_BP_OCTAVE_WIDTH_MAX>::M},
                         {"Filters Order", Limits<ORDER_FILTERS>::m, Limits<ORDER_FILTERS>::M},
                         {"[Sine] Gain", Limits<SINE_GAIN>::m, Limits<SINE_GAIN>::M},
                         {"Seed", Limits<SEED>::m, Limits<SEED>::M},
@@ -347,7 +357,7 @@ namespace imajuscule {
                     return filtered;
                 }
                 
-                static std::array<float,28> make_common(int start_node,
+                static std::array<float,29> make_common(int start_node,
                                                         int pre_tries,
                                                         int min_path_length,
                                                         int additionnal_tries,
@@ -362,7 +372,8 @@ namespace imajuscule {
                                                         float d1, float d2,
                                                         float harmonic_attenuation,
                                                         int filter_order,
-                                                        float bandpass_width,
+                                                        float bandpass_width_min,
+                                                        float bandpass_width_max,
                                                         float gain = 2.f) {
                     int itp_index = 0;
                     auto b = itp::interpolation_traversal().valToRealValueIndex(i, itp_index);
@@ -371,7 +382,8 @@ namespace imajuscule {
                     return {{
                         0.f,
                         0.f,
-                        normalize<PINK_NOISE_BP_OCTAVE_WIDTH>(bandpass_width),
+                        normalize<PINK_NOISE_BP_OCTAVE_WIDTH_MIN>(bandpass_width_min),
+                        normalize<PINK_NOISE_BP_OCTAVE_WIDTH_MAX>(bandpass_width_max),
                         static_cast<float>(filter_order-Limits<ORDER_FILTERS>::m),
                         1.f,
                         0,
@@ -411,7 +423,7 @@ namespace imajuscule {
                                                  float d1, float d2,
                                                  float harmonic_attenuation,
                                                  float phase_ratio1 = 0.f, float phase_ratio2 = 0.f) {
-                    auto a = make_common(start_node, pre_tries, min_path_length, additionnal_tries, articulative_pause_length, i, freq_scat, length, length_med_exp, length_scale_exp, xfade, phase_ratio1, phase_ratio2, d1,d2,harmonic_attenuation, 1, 0.f);
+                    auto a = make_common(start_node, pre_tries, min_path_length, additionnal_tries, articulative_pause_length, i, freq_scat, length, length_med_exp, length_scale_exp, xfade, phase_ratio1, phase_ratio2, d1,d2,harmonic_attenuation, 1, 1, 0.f);
                     Program::ARRAY result;
                     result.resize(std::get<Mode::ROBOTS>(params_all).size());
                     for(int idx = 0; idx<a.size(); ++idx) {
@@ -429,7 +441,7 @@ namespace imajuscule {
                                                  float length_med_exp,
                                                  int xfade,
                                                  float low, float high) {
-                    auto a = make_common(0, 0, 0, 0, 0.f, i, 0.f, length, length_med_exp, 0.f, xfade, 0.f, 0.f, 0, 0, 0.f, 20.f, 1, 0.f);
+                    auto a = make_common(0, 0, 0, 0, 0.f, i, 0.f, length, length_med_exp, 0.f, xfade, 0.f, 0.f, 0, 0, 0.f, 20.f, 1, 1, 0.f);
                     Program::ARRAY result;
                     result.resize(std::get<Mode::SWEEP>(params_all).size());
                     for(int idx = 0; idx<a.size(); ++idx) {
@@ -461,7 +473,7 @@ namespace imajuscule {
                                                   int freq_xfade,
                                                   itp::interpolation freq_i,
                                                   float phase_ratio1 = 0.f, float phase_ratio2 = 0.f) {
-                    auto a = make_common(start_node, pre_tries, min_path_length, additionnal_tries, articulative_pause_length, i, freq_scat, length, length_med_exp, length_scale_exp, xfade, phase_ratio1, phase_ratio2, 0,0,0, 1, 0.f);
+                    auto a = make_common(start_node, pre_tries, min_path_length, additionnal_tries, articulative_pause_length, i, freq_scat, length, length_med_exp, length_scale_exp, xfade, phase_ratio1, phase_ratio2, 0,0,0, 1, 1, 0.f);
                     Program::ARRAY result;
                     result.resize(std::get<Mode::MARKOV>(params_all).size());
                     for(int idx = 0; idx<a.size(); ++idx) {
@@ -488,7 +500,8 @@ namespace imajuscule {
                 }
                 
                 static Program::ARRAY make_wind(int filter_order,
-                                                float bandpass_width,
+                                                float bandpass_width_min,
+                                                float bandpass_width_max,
                                                 int start_node,
                                                 int pre_tries,
                                                 int min_path_length,
@@ -499,7 +512,7 @@ namespace imajuscule {
                                                 float length_med_exp,
                                                 float length_scale_exp,
                                                 int xfade) {
-                    auto a = make_common(start_node, pre_tries, min_path_length, additionnal_tries, 0, i, freq_scat, length, length_med_exp, length_scale_exp, xfade, 0.f, 0.f, 0,0,0, filter_order, bandpass_width);
+                    auto a = make_common(start_node, pre_tries, min_path_length, additionnal_tries, 0, i, freq_scat, length, length_med_exp, length_scale_exp, xfade, 0.f, 0.f, 0,0,0, filter_order, bandpass_width_min, bandpass_width_max);
                     Program::ARRAY result;
                     result.resize(std::get<Mode::WIND>(params_all).size());
                     for(int idx = 0; idx<a.size(); ++idx) {
@@ -561,9 +574,9 @@ namespace imajuscule {
                     else if(MODE==Mode::WIND) {
                         static ProgramsI ps {{
                             {"Medium wind in trees",
-                                make_wind(1, 0.f, 0, 0, 6, 0, itp::PROPORTIONAL_VALUE_DERIVATIVE, 0.12f, 93.3f, 2.f, .5f, 2201)
+                                make_wind(1, 0.f, 0.f, 0, 0, 6, 0, itp::PROPORTIONAL_VALUE_DERIVATIVE, 0.12f, 93.3f, 2.f, .5f, 2201)
                             }, {"Strong wind",
-                                make_wind(4, 3.8f, 0, 0, 6, 0, itp::PROPORTIONAL_VALUE_DERIVATIVE, 0.12f, 93.3f, 2.f, .5f, 2201)
+                                make_wind(4, 3.8f, 3.8f, 0, 0, 6, 0, itp::PROPORTIONAL_VALUE_DERIVATIVE, 0.12f, 93.3f, 2.f, .5f, 2201)
                             }
 
                         }};
@@ -617,9 +630,11 @@ namespace imajuscule {
                     c.elem.engine.set_active(true);
                     c.elem.engine.set_channels(c.channels[0], c.channels[0]);
                     
-                    auto interp = static_cast<itp::interpolation>(itp::interpolation_traversal().realValues()[static_cast<int>(.5f + value<INTERPOLATION>())]);
-                    
-                    c.elem.engine.set_itp(interp);
+                    {
+                        auto interp = static_cast<itp::interpolation>(itp::interpolation_traversal().realValues()[static_cast<int>(.5f + value<INTERPOLATION>())]);
+                        
+                        c.elem.engine.set_itp(interp);
+                    }
                     
                     auto ex = denorm<LENGTH_EXPONENT>();
                     A(ex >= 0.f);
@@ -657,9 +672,11 @@ namespace imajuscule {
                         c.elem.engine.set_length_exp(ex, ex);
                     }
                     
-                    auto tunedNote = midi::tuned_note(c.pitch, c.tuning);
-                    auto f = to_freq(tunedNote-Do_midi, half_tone);
-                    c.elem.engine.set_base_freq(f);
+                    {
+                        auto tunedNote = midi::tuned_note(c.pitch, c.tuning);
+                        auto f = to_freq(tunedNote-Do_midi, half_tone);
+                        c.elem.engine.set_base_freq(f);
+                    }
                     
                     c.elem.engine.set_length(denorm<LENGTH>());
                     
@@ -669,23 +686,14 @@ namespace imajuscule {
                                              value<LOUDNESS_COMPENSATION_AMOUNT>(),
                                              denorm<LOUDNESS_LEVEL>());
                     c.elem.setFiltersOrder(value<ORDER_FILTERS>());
-                    
-                    auto rnd_pan = value<RANDOM_PAN>() ? false : true;
-                    float pan;
-                    if(rnd_pan) {
-                        pan = std::uniform_real_distribution<float>{-1.f, 1.f}(rng::mersenne());
-                    }
-                    else {
-                        pan = denorm<PAN>();
-                    }
 
                     {
-                        // todo make nim/max widths
-                        auto width_factor = pow(2.f, denorm<PINK_NOISE_BP_OCTAVE_WIDTH>()/2);
+                        auto width_factor_range = range<float>(denorm<PINK_NOISE_BP_OCTAVE_WIDTH_MIN>(),
+                                                               denorm<PINK_NOISE_BP_OCTAVE_WIDTH_MAX>());
                         for(auto & r : c.elem.getRamps()) {
                             auto & mix = r.algo.getOsc();
-                            auto & band_pass_filter = std::get<1>(mix.get());
-                            //band_pass_filter.setWidthFactor(width_factor);
+                            auto & band_pass_filter = std::get<1>(mix.get()).getOsc();
+                            band_pass_filter.setWidthRange(width_factor_range);
                         }
                     }
                     
@@ -695,57 +703,70 @@ namespace imajuscule {
                         denorm<SINE_GAIN>()
                     }});
                     
-                    if(MODE == Mode::SWEEP) {
-                        c.elem.engine.initialize_sweep(out,
-                                                       c,
-                                                       denorm<LOW_FREQ>(),
-                                                       denorm<HIGH_FREQ>(),
-                                                       denorm<GAIN>(),
-                                                       pan);
-                    }
-                    else if(MODE == Mode::MARKOV) {
-                        c.elem.engine.set_freq_xfade(denorm<FREQ_TRANSITION_LENGTH>());
-                        auto interp_freq = static_cast<itp::interpolation>(itp::interpolation_traversal().realValues()[static_cast<int>(.5f + value<FREQ_TRANSITION_INTERPOLATION>())]);
-                        c.elem.engine.set_freq_interpolation(interp_freq);
-                        auto xfade_freq = static_cast<FreqXfade>(xfade_freq_traversal().realValues()[static_cast<int>(.5f + value<MARKOV_XFADE_FREQ>())]);
+                    {
+                        float pan;
+                        {
+                            auto rnd_pan = value<RANDOM_PAN>() ? false : true;
+                            if(rnd_pan) {
+                                pan = std::uniform_real_distribution<float>{-1.f, 1.f}(rng::mersenne());
+                            }
+                            else {
+                                pan = denorm<PAN>();
+                            }
+                        }
                         
-                        c.elem.engine.initialize_markov(out,
-                                                        c,
-                                                        value<MARKOV_START_NODE>(),
-                                                        value<MARKOV_PRE_TRIES>(),
-                                                        value<MARKOV_MIN_PATH_LENGTH>(),
-                                                        value<MARKOV_ADDITIONAL_TRIES>(),
-                                                        SoundEngine::InitPolicy::StartAfresh,
-                                                        xfade_freq,
-                                                        value<MARKOV_ARTICULATIVE_PAUSE_LENGTH>(),
-                                                        denorm<GAIN>(),
-                                                        pan);
-                    }
-                    else if(MODE == Mode::WIND) {
-                        c.elem.engine.initialize_wind(out,
-                                                        c,
-                                                        value<MARKOV_START_NODE>(),
-                                                        value<MARKOV_PRE_TRIES>(),
-                                                        value<MARKOV_MIN_PATH_LENGTH>(),
-                                                        value<MARKOV_ADDITIONAL_TRIES>(),
-                                                        SoundEngine::InitPolicy::StartAfresh,
-                                                        denorm<GAIN>(),
-                                                        pan);
-                    }
-                    else if(MODE == Mode::ROBOTS) {
-                        c.elem.engine.set_d1(/*denorm<D1>()*/value<D1>());
-                        c.elem.engine.set_d2(/*denorm<D2>()*/value<D2>());
-                        c.elem.engine.set_har_att(denorm<HARMONIC_ATTENUATION>());
-                        c.elem.engine.initialize_robot(out,
-                                                       c,
-                                                       value<MARKOV_START_NODE>(),
-                                                       value<MARKOV_PRE_TRIES>(),
-                                                       value<MARKOV_MIN_PATH_LENGTH>(),
-                                                       value<MARKOV_ADDITIONAL_TRIES>(),
-                                                       SoundEngine::InitPolicy::StartAfresh,
-                                                       value<MARKOV_ARTICULATIVE_PAUSE_LENGTH>(),
-                                                       denorm<GAIN>(),
-                                                       pan);
+                        if(MODE == Mode::SWEEP) {
+                            c.elem.engine.initialize_sweep(out,
+                                                           c,
+                                                           denorm<LOW_FREQ>(),
+                                                           denorm<HIGH_FREQ>(),
+                                                           denorm<GAIN>(),
+                                                           pan);
+                        }
+                        else if(MODE == Mode::MARKOV) {
+                            c.elem.engine.set_freq_xfade(denorm<FREQ_TRANSITION_LENGTH>());
+                            auto interp_freq = static_cast<itp::interpolation>(itp::interpolation_traversal().realValues()[static_cast<int>(.5f + value<FREQ_TRANSITION_INTERPOLATION>())]);
+                            c.elem.engine.set_freq_interpolation(interp_freq);
+                            auto xfade_freq = static_cast<FreqXfade>(xfade_freq_traversal().realValues()[static_cast<int>(.5f + value<MARKOV_XFADE_FREQ>())]);
+                            
+                            c.elem.engine.initialize_markov(out,
+                                                            c,
+                                                            value<MARKOV_START_NODE>(),
+                                                            value<MARKOV_PRE_TRIES>(),
+                                                            value<MARKOV_MIN_PATH_LENGTH>(),
+                                                            value<MARKOV_ADDITIONAL_TRIES>(),
+                                                            SoundEngine::InitPolicy::StartAfresh,
+                                                            xfade_freq,
+                                                            value<MARKOV_ARTICULATIVE_PAUSE_LENGTH>(),
+                                                            denorm<GAIN>(),
+                                                            pan);
+                        }
+                        else if(MODE == Mode::WIND) {
+                            c.elem.engine.initialize_wind(out,
+                                                          c,
+                                                          value<MARKOV_START_NODE>(),
+                                                          value<MARKOV_PRE_TRIES>(),
+                                                          value<MARKOV_MIN_PATH_LENGTH>(),
+                                                          value<MARKOV_ADDITIONAL_TRIES>(),
+                                                          SoundEngine::InitPolicy::StartAfresh,
+                                                          denorm<GAIN>(),
+                                                          pan);
+                        }
+                        else if(MODE == Mode::ROBOTS) {
+                            c.elem.engine.set_d1(/*denorm<D1>()*/value<D1>());
+                            c.elem.engine.set_d2(/*denorm<D2>()*/value<D2>());
+                            c.elem.engine.set_har_att(denorm<HARMONIC_ATTENUATION>());
+                            c.elem.engine.initialize_robot(out,
+                                                           c,
+                                                           value<MARKOV_START_NODE>(),
+                                                           value<MARKOV_PRE_TRIES>(),
+                                                           value<MARKOV_MIN_PATH_LENGTH>(),
+                                                           value<MARKOV_ADDITIONAL_TRIES>(),
+                                                           SoundEngine::InitPolicy::StartAfresh,
+                                                           value<MARKOV_ARTICULATIVE_PAUSE_LENGTH>(),
+                                                           denorm<GAIN>(),
+                                                           pan);
+                        }
                     }
                 }
                 
