@@ -152,7 +152,10 @@ namespace imajuscule {
     
     struct PinkNoiseIter {
         
-        // we don't do that in constructor because it's a waste of time (sometimes)
+        PinkNoiseIter() {
+            initializeForRun();
+        }
+
         void initializeForRun() {
             it = getPinkNoise().begin();
             // randomize start position

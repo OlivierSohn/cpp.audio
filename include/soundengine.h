@@ -73,9 +73,17 @@ namespace imajuscule {
                 void initializeForRun() {
                     ctrl.initializeForRun();
                 }
+
+                void setFiltersOrder(int order) {
+                    ctrl.setFiltersOrder(order);
+                }
                 
                 void forgetPastSignals() {
                     ctrl.forgetPastSignals();
+                }
+                
+                void setAngleIncrements(T v) {
+                    ctrl.setAngleIncrements(v);
                 }
                 
                 void set_interpolation(itp::interpolation i) {
@@ -83,7 +91,8 @@ namespace imajuscule {
                 }
                 
                 T step() {
-                    auto v = ctrl.step();
+                    ctrl.step();
+                    auto v = ctrl.imag();
                     A(v >= 0.f); // else, use AbsIter
                     constexpr auto fmax = 10000.f;
                     return powf(fmax, .6f + .4f * v);
@@ -122,16 +131,23 @@ namespace imajuscule {
                 audioelement::PinkCtrl<T> ctrl;
             };
             
+            
+            template<typename AEAlgo, int ORDER, typename T = typename AEAlgo::FPT>
+            using PinkAsymBandPassAlgo = audioelement::FreqCtrl_<
+            audioelement::BandPassAlgo<AEAlgo, audioelement::PinkCtrl<T>, ORDER>,
+            SoundEnginePinkFreqCtrl<T>
+            >;
+
             template<typename T, SoundEngineMode>
             struct SoundEngineAlgo_ {
                 using CTRL = audioelement::LogRamp< typename T::T >;
-                using type = audioelement::FreqCtrl_< CTRL, T >;
+                using type = audioelement::FreqCtrl_< T, CTRL >;
             };
             
             template<typename T>
             struct SoundEngineAlgo_<T, SoundEngineMode::WIND> {
                 using CTRL = SoundEnginePinkFreqCtrl< typename T::T >;
-                using type = audioelement::FreqCtrl_< CTRL, T >;
+                using type = audioelement::FreqCtrl_< T, CTRL >;
             };
             
         template<SoundEngineMode M, typename Logger>
@@ -140,7 +156,7 @@ namespace imajuscule {
             
             using Mix = audioelement::Mix <
             audioelement::LowPassAlgo<audioelement::PinkNoiseAlgo<float>, Order>,
-            audioelement::BandPassAlgo<audioelement::PinkNoiseAlgo<float>, Order>,
+            PinkAsymBandPassAlgo<audioelement::PinkNoiseAlgo<float>, Order>,
             audioelement::AdjustableVolumeOscillatorAlgo<audioelement::VolumeAdjust::Yes,float>
             >;
             
@@ -447,15 +463,15 @@ namespace imajuscule {
                     auto new_ramp = get_inactive_ramp();
                     A(new_ramp); // might be null if length of ramp is too small
                     ramp_[last_ramp_index] = new_ramp;
-                    new_ramp->algo.ctrl = *new_spec;
-                    new_ramp->algo.ctrl.initializeForRun();
+                    new_ramp->algo.getCtrl() = *new_spec;
+                    new_ramp->algo.getCtrl().initializeForRun();
                     
                     if(out.playGenericNoLock(c1,
                                              std::make_pair(std::ref(*new_ramp),
                                                             Request{
                                                                 &new_ramp->buffer[0],
                                                                 vol? *vol : channel.get_current().volumes * (1.f/Request::chan_base_amplitude),
-                                                                static_cast<int>(.5f + new_ramp->algo.ctrl.get_duration_in_samples())
+                                                                static_cast<int>(.5f + new_ramp->algo.getCtrl().get_duration_in_samples())
                                                             })
                                              ))
                     {
@@ -748,7 +764,9 @@ namespace imajuscule {
                 
                 bool done() const { return it == end; }
                 
-                using Ctrl = typename Algo::Ctrl;
+                using CTRLS = typename Algo::Ctrl;
+                static_assert(std::tuple_size<CTRLS>::value == 1,"multi freq not supported");
+                using Ctrl = typename std::tuple_element<0, CTRLS>::type;
                 
                 Ctrl * get_next_ramp_for_build() {
                     ++it;

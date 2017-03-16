@@ -397,7 +397,7 @@ namespace imajuscule {
         template<typename T, int ORDER>
         using HighPassAlgo = FilterAlgo<T, FilterType::HIGH_PASS, ORDER>;
         
-        template<typename AEAlgo, int ORDER>
+        template<typename AEAlgo, typename AEAlgoWidth, int ORDER>
         struct BandPassAlgo {
             using FPT = typename AEAlgo::FPT;
             using T = FPT;
@@ -413,50 +413,59 @@ namespace imajuscule {
                 getLP().setFiltersOrder(order);
             }
             
-            void setWidthFactor(T w) {
-                width_factor = w;
-            }
             void setAngleIncrements(T inc) {
                 A(inc >= 0.f);
-                
-                auto inv_width_factor = Tr::one() / width_factor;
-                auto low = inc * inv_width_factor;
-                auto high = inc * width_factor;
-                
-                getHP().setAngleIncrements(low);
-                getLP().setAngleIncrements(high);
-                
-                // gain compensation to have an equal power of the central frequency for all widths
-                {
-                    compensation = 1 + (inv_width_factor * inv_width_factor);
-                    compensation = expt<ORDER>(compensation);
-#ifndef NDEBUG
-                    // verify accuracy of above simplification
-                    
-                    // inc / low == width_factor
-                    // inc / high == 1 / width_factor
-                    auto inv_sq_mag_hp = get_inv_square_filter_magnitude<FilterType::HIGH_PASS>(width_factor * width_factor);
-                    auto inv_sq_mag_lp = get_inv_square_filter_magnitude<FilterType::LOW_PASS >(inv_width_factor * inv_width_factor);
-                    auto inv_mag = sqrt(inv_sq_mag_hp * inv_sq_mag_lp);
-                    auto original_compensation = inv_mag;
-                    original_compensation = expt<ORDER>(original_compensation);
-                    A(std::abs(original_compensation - compensation) / (original_compensation + compensation) < FLOAT_EPSILON);
-#endif
-                }
+                increment = inc;
             }
+            
+            void step() {
+                width.step();
+                T width_factor = pow(Tr::two(), 5.f * std::abs(width.imag()));
+                
+                A(width_factor);
+                auto inv_width_factor = Tr::one() / width_factor;
+                auto low  = increment * inv_width_factor;
+                auto high = increment * width_factor;
+                
+                setCompensation(inv_width_factor * inv_width_factor);
+                doSetAngleIncrements({{low, high}});
 
-            void step() { cascade.step(); }
+                cascade.step();
+            }
             
             T imag() const { return compensation * cascade.imag(); }
             
-            void setLoudnessParams(int low_index, float log_ratio, float loudness_level) {}
+            void setLoudnessParams(int low_index, float log_ratio, float loudness_level) const {}
         private:
             HighPassAlgo<LowPassAlgo<AEAlgo, ORDER>, ORDER> cascade;
-            T compensation;
-            T width_factor;
+            T compensation, increment;
+            AEAlgoWidth width;
             
             auto & getHP() { return cascade; }
             auto & getLP() { return cascade.get_element(); }
+            
+            void doSetAngleIncrements(std::array<T, 2> incs) {
+                getHP().setAngleIncrements(incs[0]);
+                getLP().setAngleIncrements(incs[1]);
+            }
+            
+            void setCompensation(T sq_inv_width_factor) {
+                // gain compensation to have an equal power of the central frequency for all widths
+                compensation = 1 + sq_inv_width_factor;
+                compensation = expt<ORDER>(compensation);
+#ifndef NDEBUG
+                // verify accuracy of above simplification
+                
+                // inc / low == width_factor
+                // inc / high == 1 / width_factor
+                auto inv_sq_mag_hp = get_inv_square_filter_magnitude<FilterType::HIGH_PASS>(1/sq_inv_width_factor);
+                auto inv_sq_mag_lp = get_inv_square_filter_magnitude<FilterType::LOW_PASS >(sq_inv_width_factor);
+                auto inv_mag = sqrt(inv_sq_mag_hp * inv_sq_mag_lp);
+                auto original_compensation = inv_mag;
+                original_compensation = expt<ORDER>(original_compensation);
+                A(std::abs(original_compensation - compensation) / (original_compensation + compensation) < FLOAT_EPSILON);
+#endif
+            }
         };
         
         template<typename T, int ORDER>
@@ -762,11 +771,16 @@ namespace imajuscule {
             
             void forgetPastSignals() const {
             }
-
-            T step() {
-                auto val = *it;
+            void setFiltersOrder(int) const {
+            }
+            void setAngleIncrements(T) const {
+            }
+            
+            void step() {
                 ++it;
-                return val;
+            }
+            T imag() const {
+                return *it;
             }
             
             void set_interpolation(itp::interpolation i) { it.set_interpolation(i); }
@@ -808,24 +822,71 @@ namespace imajuscule {
             --count; // because swap occurs at the beginning of step method, before current step is modified
             return count;
         }
-
-        template<typename CTRL, typename ALGO>
+        
+        template<typename ALGO, typename CTRLS, int N>
+        struct SetFreqs {
+            void operator()(CTRLS & ctrls, ALGO & osc) {
+                constexpr auto sz = std::tuple_size<CTRLS>::value;
+                std::array<typename ALGO::FPT, sz> increments;
+                int i = 0;
+                for_each(ctrls, [&i, &increments] (auto & c) {
+                    increments[i] = freq_to_angle_increment(c.step());
+                    ++i;
+                });
+                osc.setAngleIncrements(std::move(increments));
+            }
+        };
+        
+        template<typename ALGO, typename CTRLS>
+        struct SetFreqs<ALGO, CTRLS, 1> {
+            void operator()(CTRLS & ctrls, ALGO & osc) {
+                auto f = std::get<0>(ctrls).step();
+                osc.setAngleIncrements(freq_to_angle_increment(f));
+            }
+        };
+        
+        template<typename ALGO, typename CTRLS>
+        void setFreqs(CTRLS & ctrls, ALGO & osc) {
+            SetFreqs<ALGO,CTRLS, std::tuple_size<CTRLS>::value>{}(ctrls, osc);
+        }
+        
+        template<typename ALGO, typename ...CTRLS>
         struct FreqCtrl_ {
-            using Ctrl = CTRL;
+            using Ctrl = std::tuple<CTRLS...>;
             using T = typename ALGO::FPT;
             using FPT = T;
             
             using Tr = NumTraits<T>;
+
+            void setLoudnessParams(int low_index, float log_ratio, float loudness_level) {
+                osc.setLoudnessParams(low_index, log_ratio, loudness_level);
+            }
+
+            void setFiltersOrder(int order) {
+                for_each(ctrls, [order](auto & c) {
+                    c.setFiltersOrder(order);
+                });
+                osc.setFiltersOrder(order);
+            }
             
             void forgetPastSignals() {
-                ctrl.forgetPastSignals();
+                for_each(ctrls, [](auto & c) {
+                    c.forgetPastSignals();
+                });
                 osc.forgetPastSignals();
             }
-                      
+
+            void setAngleIncrements(T v) {
+                for_each(ctrls, [v](auto & c) {
+                    c.setAngleIncrements(v);
+                });
+                // not for osc : it will be done in step()
+            }
+            
             void step() {
-                auto current_freq = ctrl.step();
+
+                setFreqs(ctrls, osc);
                 
-                osc.setAngleIncrements(freq_to_angle_increment(current_freq));
                 osc.step();
             }
             
@@ -833,14 +894,19 @@ namespace imajuscule {
             T imag() const { return osc.imag(); }
             
             auto & getOsc() { return osc; }
-            
-            CTRL ctrl;
+
+            auto & getCtrl() {
+                assert(std::tuple_size<Ctrl>::value == 1);
+                return std::get<0>(ctrls);
+            }
+
         private:
+            Ctrl ctrls;
             ALGO osc;
         };
         
         template<typename T, VolumeAdjust V>
-        using FreqRampOscillatorAlgo_ = FreqCtrl_<LogRamp<T>, AdjustableVolumeOscillatorAlgo<V,T>>;
+        using FreqRampOscillatorAlgo_ = FreqCtrl_<AdjustableVolumeOscillatorAlgo<V,T>, LogRamp<T>>;
         
         template<typename T>
         using FreqRampAlgo = FreqRampOscillatorAlgo_<T, VolumeAdjust::Yes>;
@@ -850,11 +916,12 @@ namespace imajuscule {
         
 
         template<typename T, int ORDER>
-        using FreqRampLPWhiteNoiseAlgo_ = FreqCtrl_<LogRamp<T>, LPWhiteNoiseAlgo<T, ORDER>>;
+        using FreqRampLPWhiteNoiseAlgo_ = FreqCtrl_<LPWhiteNoiseAlgo<T, ORDER>, LogRamp<T>>;
         
         template<typename T, int ORDER>
         using FreqRampLPWhiteNoise = FinalAudioElement<FreqRampLPWhiteNoiseAlgo_<T, ORDER>>;
 
+                
         template<typename A1, typename A2>
         struct RingModulationAlgo {
             using T = typename A1::FPT;

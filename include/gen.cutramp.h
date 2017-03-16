@@ -219,7 +219,7 @@ namespace imajuscule {
                                           value<LOUDNESS_COMPENSATION_AMOUNT>(),
                                           denorm<LOUDNESS_LEVEL>());
 
-                    osc.algo.ctrl.set(freq - ramp_amount() * (freq-start_freq),
+                    osc.algo.getCtrl().set(freq - ramp_amount() * (freq-start_freq),
                                       freq,
                                       ramp_size,
                                       0.f,
@@ -557,10 +557,10 @@ namespace imajuscule {
                         }
                         if(!force) {
                             // maybe from/to is swapped so we need to test with both ends
-                            if(std::abs(freq - osc.algo.ctrl.getTo()) < 0.0001f) {
+                            if(std::abs(freq - osc.algo.getCtrl().getTo()) < 0.0001f) {
                                 continue;
                             }
-                            if(std::abs(freq - osc.algo.ctrl.getFrom()) < 0.0001f) {
+                            if(std::abs(freq - osc.algo.getCtrl().getFrom()) < 0.0001f) {
                                 continue;
                             }
                         }
@@ -569,7 +569,7 @@ namespace imajuscule {
                             ramp_size = adjusted(ramp_size);
                         }
                         auto start_freq = ramp_start_freq_denormalize(ramp_start_freq());
-                        osc.algo.ctrl.set(freq - ramp_amount() * (freq-start_freq),
+                        osc.algo.getCtrl().set(freq - ramp_amount() * (freq-start_freq),
                                           freq,
                                           ramp_size,
                                           -1.f,

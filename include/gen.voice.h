@@ -680,11 +680,12 @@ namespace imajuscule {
                     }
 
                     {
+                        // todo make nim/max widths
                         auto width_factor = pow(2.f, denorm<PINK_NOISE_BP_OCTAVE_WIDTH>()/2);
                         for(auto & r : c.elem.getRamps()) {
                             auto & mix = r.algo.getOsc();
                             auto & band_pass_filter = std::get<1>(mix.get());
-                            band_pass_filter.setWidthFactor(width_factor);
+                            //band_pass_filter.setWidthFactor(width_factor);
                         }
                     }
                     
