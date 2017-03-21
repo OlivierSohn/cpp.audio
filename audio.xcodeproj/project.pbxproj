@@ -597,6 +597,7 @@
 				098474061E8057E90014465E /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
 		};
 		09BA148C1E3877BD00A05F83 /* Build configuration list for PBXNativeTarget "audio.ios" */ = {
 			isa = XCConfigurationList;
