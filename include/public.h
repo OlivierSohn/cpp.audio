@@ -11,11 +11,13 @@
 #include "../../algorithms/include/public.h"
 #include "../../os.log/include/public.h"
 
+#include "loudness_filter_coefficients.h"
 #include "loudness.h"
 #include "sound.defines.h"
 #include "sound.functions.h"
 #include "stereo.h"
 #include "sound.h"
+#include "loudness_filter.h"
 #include "audioelement.h"
 #include "noise.h"
 #include "sounds.h"

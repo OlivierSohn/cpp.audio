@@ -1,13 +1,22 @@
 
 namespace imajuscule {
     
+    constexpr auto noise_duration = .05f;
+    // take into account the fact that to compute gray noise, a filter needs to be initialized using some pink noise samples
+    constexpr auto grey_noise_duration = 2.f * noise_duration;
+    
     soundBuffer const & getPinkNoise() {
-        static soundBuffer n(soundId{Sound::PINK_NOISE, .1f});
+        static soundBuffer n(soundId{Sound::PINK_NOISE, noise_duration});
         return n;
     }
     
-    soundBuffer const & whiteNoise() {
-        static soundBuffer n(soundId{Sound::NOISE, .1f});
+    soundBuffer const & getGreyNoise() {
+        static soundBuffer n(soundId{Sound::GREY_NOISE, grey_noise_duration});
+        return n;
+    }
+    
+    soundBuffer const & getWhiteNoise() {
+        static soundBuffer n(soundId{Sound::NOISE, noise_duration});
         return n;
     }
 }
@@ -88,7 +97,15 @@ soundBuffer::soundBuffer( soundId const & id ) {
             case Sound::PINK_NOISE:
                 generate( id.period_length, [](float){
                     static GaussianPinkNoiseAlgo a;
-                    return a.step();
+                    a.step();
+                    return a.get();
+                } );
+                break;
+            case Sound::GREY_NOISE:
+                generate( id.period_length, [](float){
+                    static GaussianGreyNoiseAlgo a;
+                    a.step();
+                    return a.get();
                 } );
                 break;
         }

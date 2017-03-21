@@ -6,6 +6,7 @@ namespace imajuscule {
             NOISE, // white, gaussian
             ATOM_NOISE, // white, -1 or 1
             PINK_NOISE, // pink, gaussian
+            GREY_NOISE, // grey, gaussian
             
             END_NOISE,
             
@@ -15,7 +16,7 @@ namespace imajuscule {
             SQUARE,
             SILENCE,
             ONE
-        } type : 3;
+        } type : 4;
         
         static constexpr auto ConstantSoundDummyFrequency = 1.f;
         
@@ -36,10 +37,9 @@ namespace imajuscule {
                 case SAW:
                     return 3; // 2 would give the same result as a triangle
                 case NOISE:
-                    return 1;
                 case ATOM_NOISE:
-                    return 1;
                 case PINK_NOISE:
+                case GREY_NOISE:
                     return 1;
                 case SILENCE:
                     return 0;
@@ -136,26 +136,25 @@ namespace imajuscule {
         return (it == container.end()) ? nullptr : &*it;
     }
     
-    /////////////////
-    // instantiations
-    /////////////////
     
-    soundBuffer const & whiteNoise();
+    template<Sound::Type SOUND>
+    struct FGetBuffer;
     
-    soundBuffer const & getPinkNoise();
-    
-    struct PinkNoiseIter {
+    template<Sound::Type SOUND>
+    struct BufferIter {
+        using F_GET_BUFFER = FGetBuffer<SOUND>;
+        using FPT = float;
         
-        PinkNoiseIter() {
+        BufferIter() {
             initializeForRun();
         }
-
+        
         void initializeForRun() {
-            it = getPinkNoise().begin();
+            it = F_GET_BUFFER()().begin();
             // randomize start position
             auto add = static_cast<int>(std::uniform_real_distribution<>{
                 0.f,
-                static_cast<float>(getPinkNoise().size()-1)
+                static_cast<float>(F_GET_BUFFER()().size()-1)
             }(rng::mersenne()));
             
             it += add;
@@ -169,7 +168,7 @@ namespace imajuscule {
         float operator ++() {
             ++it;
             if(it == end) {
-                it = getPinkNoise().begin();
+                it = F_GET_BUFFER()().begin();
             }
             return *it;
         }
@@ -178,8 +177,34 @@ namespace imajuscule {
             return *it;
         }
         
-        int getPosition() const { return static_cast<int>(std::distance(getPinkNoise().begin(), it)); }
+        int getPosition() const { return static_cast<int>(std::distance(F_GET_BUFFER()().begin(), it)); }
     private:
-        decltype(getPinkNoise().begin()) it, end = getPinkNoise().end();
+        decltype(F_GET_BUFFER()().begin()) it, end = F_GET_BUFFER()().end();
     };
+
+    /////////////////
+    // instantiations
+    /////////////////
+    
+    soundBuffer const & getWhiteNoise();
+    
+    soundBuffer const & getPinkNoise();
+
+    soundBuffer const & getGreyNoise();
+    
+    template<>
+    struct FGetBuffer<Sound::PINK_NOISE> {
+        auto const & operator()() {
+            return getPinkNoise();
+        }
+    };
+    template<>
+    struct FGetBuffer<Sound::GREY_NOISE> {
+        auto const & operator()() {
+            return getGreyNoise();
+        }
+    };
+
+    using PinkNoiseIter = BufferIter<Sound::PINK_NOISE>;
+    using GreyNoiseIter = BufferIter<Sound::GREY_NOISE>;
 }

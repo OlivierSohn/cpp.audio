@@ -183,12 +183,12 @@ namespace imajuscule {
         template<typename T>
         using PCOscillator = FinalAudioElement<PCOscillatorAlgo<T>>;
   
-        template<typename T>
-        struct soundBufferWrapperAlgo {            
+        template<Sound::Type SOUND>
+        struct soundBufferWrapperAlgo {
+            using F_GET_BUFFER = FGetBuffer<SOUND>;
+            using T = soundBuffer::FPT;
             using FPT = T;
             static_assert(std::is_floating_point<FPT>::value, "");
-
-            soundBufferWrapperAlgo(soundBuffer const & sb) : sb(sb) {}
             
             void forgetPastSignals() const {
             }
@@ -203,25 +203,11 @@ namespace imajuscule {
             }
             
             int index = -1;
-            soundBuffer const & sb;
+            soundBuffer const & sb = F_GET_BUFFER()();
         };
         
         template<typename T>
-        struct WhiteNoiseAlgo : public soundBufferWrapperAlgo<T> {
-            using FPT = typename soundBufferWrapperAlgo<T>::FPT;
-            static_assert(std::is_floating_point<FPT>::value, "");
-            WhiteNoiseAlgo() : soundBufferWrapperAlgo<T>(whiteNoise()) {}
-        };
-        
-        template<typename T>
-        struct PinkNoiseAlgo : public soundBufferWrapperAlgo<T> {
-            using FPT = typename soundBufferWrapperAlgo<T>::FPT;
-            static_assert(std::is_floating_point<FPT>::value, "");
-            PinkNoiseAlgo() : soundBufferWrapperAlgo<T>(getPinkNoise()) {}
-        };
-        
-        template<typename T>
-        using WhiteNoise = FinalAudioElement< WhiteNoiseAlgo<T> >;
+        using WhiteNoise = FinalAudioElement< soundBufferWrapperAlgo<Sound::NOISE> >;
         
         template<typename T>
         struct SquareAlgo : public Phased<T> {
@@ -386,6 +372,7 @@ namespace imajuscule {
             }
             
             auto & get_element() { return audio_element; }
+            auto & get_element() const { return audio_element; }
             auto & filter() { return filter_; }
             
             void setLoudnessParams(int low_index, float log_ratio, float loudness_level) {}
@@ -397,11 +384,95 @@ namespace imajuscule {
         template<typename T, int ORDER>
         using HighPassAlgo = FilterAlgo<T, FilterType::HIGH_PASS, ORDER>;
         
-        template<typename AEAlgo, typename AEAlgoWidth, int ORDER>
-        struct BandPassAlgo {
+        template<typename AEAlgo, int ORDER>
+        struct BandPassAlgo_ {
             using FPT = typename AEAlgo::FPT;
             using T = FPT;
+            static constexpr auto low_index = 0;
+            static constexpr auto high_index = 1;
+            
+            void setCompensation(T sq_inv_width_factor) {
+                // gain compensation to have an equal power of the central frequency for all widths
+                compensation = 1 + sq_inv_width_factor;
+                compensation = expt<ORDER>(compensation);
+#ifndef NDEBUG
+                // verify accuracy of above simplification
+                
+                // inc / low == width_factor
+                // inc / high == 1 / width_factor
+                auto inv_sq_mag_hp = get_inv_square_filter_magnitude<FilterType::HIGH_PASS>(1/sq_inv_width_factor);
+                auto inv_sq_mag_lp = get_inv_square_filter_magnitude<FilterType::LOW_PASS >(sq_inv_width_factor);
+                auto inv_mag = sqrt(inv_sq_mag_hp * inv_sq_mag_lp);
+                auto original_compensation = inv_mag;
+                original_compensation = expt<ORDER>(original_compensation);
+                A(std::abs(original_compensation - compensation) / (original_compensation + compensation) < FLOAT_EPSILON);
+#endif
+            }
+
+            T imag() const {
+                return compensation * cascade.imag();
+            }
+
+        protected:
+            T compensation;
+        private:
+            HighPassAlgo<LowPassAlgo<AEAlgo, ORDER>, ORDER> cascade;
+        protected:
+
+            auto & getHP() { return cascade; }
+            auto & getLP() { return cascade.get_element(); }
+
+            void onWidthFactor(float inv_width_factor) {
+                setCompensation(inv_width_factor * inv_width_factor);
+            }
+        
+            void doStep() {
+                cascade.step();
+            }
+        };
+        
+        template<typename AEAlgo, int ORDER>
+        struct BandRejectAlgo_ {
+            using FPT = typename AEAlgo::FPT;
+            using T = FPT;
+            
+            T imag() const { return lp.imag() + hp.imag(); }
+
+        private:
+            LowPassAlgo<AEAlgo, ORDER> lp;
+            HighPassAlgo<AEAlgo, ORDER> hp;
+        protected:
             using Tr = NumTraits<T>;
+            
+            static constexpr auto compensation = Tr::one();
+            
+            static constexpr auto low_index = 1;
+            static constexpr auto high_index = 0;
+            
+            auto & getHP() { return hp; }
+            auto & getLP() { return lp; }
+            
+            void onWidthFactor(float) const {}
+
+            void doStep() {
+                lp.step();
+                hp.step();
+            }
+        };
+        
+        template<typename AEAlgoWidth, typename Base>
+        struct BandAlgo_ : public Base {
+            using FPT = typename Base::FPT;
+            using T = FPT;
+            using Tr = NumTraits<T>;
+            using Base::compensation;
+            using Base::low_index;
+            using Base::high_index;
+            using Base::onWidthFactor;
+            using Base::getHP;
+            using Base::getLP;
+            using Base::doStep;
+            
 
             void forgetPastSignals() {
                 getHP().forgetPastSignals();
@@ -430,51 +501,51 @@ namespace imajuscule {
                 auto inv_width_factor = Tr::one() / width_factor;
                 auto low  = increment * inv_width_factor;
                 auto high = increment * width_factor;
-                
-                setCompensation(inv_width_factor * inv_width_factor);
+
+                onWidthFactor(inv_width_factor);
                 doSetAngleIncrements({{low, high}});
 
-                cascade.step();
+                doStep();
             }
             
-            T imag() const { return compensation * cascade.imag(); }
-            
             void setLoudnessParams(int low_index, float log_ratio, float loudness_level) const {}
-        private:
-            HighPassAlgo<LowPassAlgo<AEAlgo, ORDER>, ORDER> cascade;
-            T compensation, increment;
+        protected:
+            T increment;
             AEAlgoWidth width;
             range<float> width_range;
             
-            auto & getHP() { return cascade; }
-            auto & getLP() { return cascade.get_element(); }
             
             void doSetAngleIncrements(std::array<T, 2> incs) {
-                getHP().setAngleIncrements(incs[0]);
-                getLP().setAngleIncrements(incs[1]);
-            }
-            
-            void setCompensation(T sq_inv_width_factor) {
-                // gain compensation to have an equal power of the central frequency for all widths
-                compensation = 1 + sq_inv_width_factor;
-                compensation = expt<ORDER>(compensation);
-#ifndef NDEBUG
-                // verify accuracy of above simplification
-                
-                // inc / low == width_factor
-                // inc / high == 1 / width_factor
-                auto inv_sq_mag_hp = get_inv_square_filter_magnitude<FilterType::HIGH_PASS>(1/sq_inv_width_factor);
-                auto inv_sq_mag_lp = get_inv_square_filter_magnitude<FilterType::LOW_PASS >(sq_inv_width_factor);
-                auto inv_mag = sqrt(inv_sq_mag_hp * inv_sq_mag_lp);
-                auto original_compensation = inv_mag;
-                original_compensation = expt<ORDER>(original_compensation);
-                A(std::abs(original_compensation - compensation) / (original_compensation + compensation) < FLOAT_EPSILON);
-#endif
+                getHP().setAngleIncrements(incs[low_index]);
+                getLP().setAngleIncrements(incs[high_index]);
             }
         };
         
+        template<typename AEAlgo, typename AEAlgoWidth, int ORDER>
+        using BandPassAlgo = BandAlgo_<AEAlgoWidth, BandPassAlgo_<AEAlgo, ORDER>>;
+
+        template<typename AEAlgo, typename AEAlgoWidth, int ORDER>
+        using BandRejectAlgo = BandAlgo_<AEAlgoWidth, BandRejectAlgo_<AEAlgo, ORDER>>;
+
+        template<typename T>
+        struct LoudnessCompensationFilter {
+            LoudnessCompensationFilter() :
+            filter(imajuscule::loudness::getLoudnessCompensationFIRCoefficients())
+            {}
+            
+            void step(T val) {
+                filter.step(val);
+            }
+            
+            T get() const { return filter.get(); }
+            
+            auto size() const { return filter.size(); }
+        private:
+            FIRFilter<double> filter;
+        };
+        
         template<typename T, int ORDER>
-        using LPWhiteNoiseAlgo = LowPassAlgo<WhiteNoiseAlgo<T>, ORDER>;
+        using LPWhiteNoiseAlgo = LowPassAlgo<soundBufferWrapperAlgo<Sound::NOISE>, ORDER>;
         
         template<typename T, int ORDER>
         using LPWhiteNoise = FinalAudioElement<LPWhiteNoiseAlgo<T, ORDER>>;
@@ -765,33 +836,27 @@ namespace imajuscule {
             UnderlyingIt it;
         };
         
-        template<typename T>
-        struct PinkCtrl {
-            
+        template<typename ITER>
+        struct Ctrl {
+            using FPT = typename ITER::FPT;
+            using T = FPT;
             using Tr = NumTraits<T>;
 
             void initializeForRun() {
                 it.initializeForRun();
             }
             
-            void forgetPastSignals() const {
-            }
-            void setFiltersOrder(int) const {
-            }
-            void setAngleIncrements(T) const {
-            }
+            void forgetPastSignals() const {}
+            void setFiltersOrder(int ) const {}
+            void setAngleIncrements(T ) const {}
             
-            void step() {
-                ++it;
-            }
-            T imag() const {
-                return *it;
-            }
+            void step() { ++it; }
+            T imag() const { return *it; }
             
             void set_interpolation(itp::interpolation i) { it.set_interpolation(i); }
 
         private:
-            WindFreqIter<SlowIter<AbsIter<PinkNoiseIter>>> it={100000, itp::LINEAR};
+            WindFreqIter<SlowIter<AbsIter<ITER>>> it={100000, itp::LINEAR};
         };
         
         enum class VolumeAdjust {

@@ -8,6 +8,7 @@ namespace imajuscule {
                 // Common
                 PINK_NOISE_LP_GAIN,
                 PINK_NOISE_BP_GAIN,
+                PINK_NOISE_BR_GAIN,
                 PINK_NOISE_BP_OCTAVE_WIDTH_MIN,
                 PINK_NOISE_BP_OCTAVE_WIDTH_MAX,
                 ORDER_FILTERS,
@@ -49,10 +50,11 @@ namespace imajuscule {
                 HIGH_FREQ
             };
             
-            constexpr std::array<ImplParams, 29> params_markov
+            constexpr std::array<ImplParams, 30> params_markov
             {{
                 PINK_NOISE_LP_GAIN,
                 PINK_NOISE_BP_GAIN,
+                PINK_NOISE_BR_GAIN,
                 PINK_NOISE_BP_OCTAVE_WIDTH_MIN,
                 PINK_NOISE_BP_OCTAVE_WIDTH_MAX,
                 ORDER_FILTERS,
@@ -90,10 +92,11 @@ namespace imajuscule {
                 
             }};
             
-            constexpr std::array<ImplParams, 29> params_robots
+            constexpr std::array<ImplParams, 30> params_robots
             {{
                 PINK_NOISE_LP_GAIN,
                 PINK_NOISE_BP_GAIN,
+                PINK_NOISE_BR_GAIN,
                 PINK_NOISE_BP_OCTAVE_WIDTH_MIN,
                 PINK_NOISE_BP_OCTAVE_WIDTH_MAX,
                 ORDER_FILTERS,
@@ -130,10 +133,11 @@ namespace imajuscule {
                 PHASE_RATIO2
             }};
             
-            constexpr std::array<ImplParams, 23> params_wind
+            constexpr std::array<ImplParams, 24> params_wind
             {{
                 PINK_NOISE_LP_GAIN,
                 PINK_NOISE_BP_GAIN,
+                PINK_NOISE_BR_GAIN,
                 PINK_NOISE_BP_OCTAVE_WIDTH_MIN,
                 PINK_NOISE_BP_OCTAVE_WIDTH_MAX,
                 ORDER_FILTERS,
@@ -162,10 +166,11 @@ namespace imajuscule {
                 XFADE_LENGTH
             }};
             
-            constexpr std::array<ImplParams, 18> params_sweep
+            constexpr std::array<ImplParams, 19> params_sweep
             {{
                 PINK_NOISE_LP_GAIN,
                 PINK_NOISE_BP_GAIN,
+                PINK_NOISE_BR_GAIN,
                 PINK_NOISE_BP_OCTAVE_WIDTH_MIN,
                 PINK_NOISE_BP_OCTAVE_WIDTH_MAX,
                 ORDER_FILTERS,
@@ -225,6 +230,7 @@ namespace imajuscule {
             template<> struct Limits<LENGTH_EXPONENT_SCATTER> : public NormalizedParamLimits {};
             template<> struct Limits<PINK_NOISE_LP_GAIN> : public NormalizedParamLimits {};
             template<> struct Limits<PINK_NOISE_BP_GAIN> : public NormalizedParamLimits {};
+            template<> struct Limits<PINK_NOISE_BR_GAIN> : public NormalizedParamLimits {};
             template<> struct Limits<FREQ_SCATTER> : public NormalizedParamLimits {};
             template<> struct Limits<PHASE_RATIO1> : public NormalizedParamLimits {};
             template<> struct Limits<PHASE_RATIO2> : public NormalizedParamLimits {};
@@ -316,6 +322,7 @@ namespace imajuscule {
                     static std::vector<ParamSpec> params_spec = {
                         {"[1/f Noise] LPF Gain", Limits<PINK_NOISE_LP_GAIN>::m, Limits<PINK_NOISE_LP_GAIN>::M},
                         {"[1/f Noise] BPF Gain", Limits<PINK_NOISE_BP_GAIN>::m, Limits<PINK_NOISE_BP_GAIN>::M},
+                        {"[1/f Noise] BRF Gain", Limits<PINK_NOISE_BR_GAIN>::m, Limits<PINK_NOISE_BR_GAIN>::M},
                         {"[1/f Noise] BPF Width Min", Limits<PINK_NOISE_BP_OCTAVE_WIDTH_MIN>::m, Limits<PINK_NOISE_BP_OCTAVE_WIDTH_MIN>::M},
                         {"[1/f Noise] BPF Width Max", Limits<PINK_NOISE_BP_OCTAVE_WIDTH_MAX>::m, Limits<PINK_NOISE_BP_OCTAVE_WIDTH_MAX>::M},
                         {"Filters Order", Limits<ORDER_FILTERS>::m, Limits<ORDER_FILTERS>::M},
@@ -357,7 +364,7 @@ namespace imajuscule {
                     return filtered;
                 }
                 
-                static std::array<float,29> make_common(int start_node,
+                static std::array<float,30> make_common(int start_node,
                                                         int pre_tries,
                                                         int min_path_length,
                                                         int additionnal_tries,
@@ -380,6 +387,7 @@ namespace imajuscule {
                     A(b);
                     
                     return {{
+                        0.f,
                         0.f,
                         0.f,
                         normalize<PINK_NOISE_BP_OCTAVE_WIDTH_MIN>(bandpass_width_min),
@@ -524,6 +532,7 @@ namespace imajuscule {
                     }
                     result[index(SINE_GAIN)] = 0.f;
                     result[index(PINK_NOISE_BP_GAIN)] = 1.f;
+                    result[index(PINK_NOISE_BR_GAIN)] = 0.f;
                     
                     return result;
                 }
@@ -692,14 +701,15 @@ namespace imajuscule {
                                                                denorm<PINK_NOISE_BP_OCTAVE_WIDTH_MAX>());
                         for(auto & r : c.elem.getRamps()) {
                             auto & mix = r.algo.getOsc();
-                            auto & band_pass_filter = std::get<1>(mix.get()).getOsc();
-                            band_pass_filter.setWidthRange(width_factor_range);
+                            std::get<1>(mix.get()).getOsc().setWidthRange(width_factor_range);
+                            std::get<2>(mix.get()).getOsc().setWidthRange(width_factor_range);
                         }
                     }
                     
-                    c.elem.setGains(std::array<float,3>{{
+                    c.elem.setGains(std::array<float,4>{{
                         denorm<PINK_NOISE_LP_GAIN>(),
                         denorm<PINK_NOISE_BP_GAIN>(),
+                        denorm<PINK_NOISE_BR_GAIN>(),
                         denorm<SINE_GAIN>()
                     }});
                     

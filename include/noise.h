@@ -112,10 +112,17 @@ namespace imajuscule {
 #endif
         }
         
-        float step() {
+        void step() {
             ++counter;
             do_step(0);
             do_step();
+        }
+        
+        float get()
+#ifdef NDEBUG
+        const
+#endif
+        {
             return compute();
         }
         
@@ -148,6 +155,38 @@ namespace imajuscule {
             }
             return sum/levels.size();
         }
+    };
+    
+    
+    struct GaussianGreyNoiseAlgo {
+        GaussianGreyNoiseAlgo() {
+            int n = loudness_compensation_filter.size();
+            for(int i=0; i<n; ++i) {
+                // fill filter
+                step();
+            }
+        }
+        
+        void step() {
+            //auto & noise = getPinkNoise(); // BYPASS
+            auto & noise = getWhiteNoise();
+            assert(counter < noise.size());
+            
+            auto v = noise[counter];
+            loudness_compensation_filter.step(v);
+            ++counter;
+            if(counter == noise.size()) {
+                counter = 0;
+            }
+        }
+        
+        double get() const {
+            return loudness_compensation_filter.get();
+        }
+        
+    private:
+        unsigned int counter = 0;
+        audioelement::LoudnessCompensationFilter<float> loudness_compensation_filter;
     };
     
 }

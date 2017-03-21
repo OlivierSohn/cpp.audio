@@ -50,8 +50,11 @@ namespace imajuscule {
             StartAfresh
         };
 
-            template<typename T>
-            struct SoundEnginePinkFreqCtrl {
+            template<typename ITER>
+            struct SoundEngineFreqCtrl {
+                using FPT = typename ITER::FPT;
+                using T = FPT;
+                
                 void initializeForRun() {
                     ctrl.initializeForRun();
                 }
@@ -110,16 +113,22 @@ namespace imajuscule {
                 }
 
             private:
-                audioelement::PinkCtrl<T> ctrl;
+                audioelement::Ctrl<ITER> ctrl;
             };
             
             
-            template<typename AEAlgo, int ORDER, typename T = typename AEAlgo::FPT>
-            using PinkAsymBandPassAlgo = audioelement::FreqCtrl_<
-            audioelement::BandPassAlgo<AEAlgo, audioelement::PinkCtrl<T>, ORDER>,
-            SoundEnginePinkFreqCtrl<T>
+            template<typename AEAlgo, int ORDER, typename ITER>
+            using AsymBandPassAlgo = audioelement::FreqCtrl_<
+            audioelement::BandPassAlgo<AEAlgo, audioelement::Ctrl<ITER>, ORDER>,
+            SoundEngineFreqCtrl<ITER>
             >;
-
+            
+            template<typename AEAlgo, int ORDER, typename ITER>
+            using AsymBandRejectAlgo = audioelement::FreqCtrl_<
+            audioelement::BandRejectAlgo<AEAlgo, audioelement::Ctrl<ITER>, ORDER>,
+            SoundEngineFreqCtrl<ITER>
+            >;
+            
             template<typename T, SoundEngineMode>
             struct SoundEngineAlgo_ {
                 using CTRL = audioelement::LogRamp< typename T::T >;
@@ -128,7 +137,7 @@ namespace imajuscule {
             
             template<typename T>
             struct SoundEngineAlgo_<T, SoundEngineMode::WIND> {
-                using CTRL = SoundEnginePinkFreqCtrl< typename T::T >;
+                using CTRL = SoundEngineFreqCtrl< PinkNoiseIter >;
                 using type = audioelement::FreqCtrl_< T, CTRL >;
             };
             
@@ -136,9 +145,12 @@ namespace imajuscule {
         struct SoundEngine {
             static constexpr auto Order = VariableOrder;
             
+            using GreyNoiseAlgo = audioelement::soundBufferWrapperAlgo<Sound::GREY_NOISE>;
+            
             using Mix = audioelement::Mix <
-            audioelement::LowPassAlgo<audioelement::PinkNoiseAlgo<float>, Order>,
-            PinkAsymBandPassAlgo<audioelement::PinkNoiseAlgo<float>, Order>,
+            audioelement::LowPassAlgo<GreyNoiseAlgo, Order>,
+            AsymBandPassAlgo<GreyNoiseAlgo, Order, PinkNoiseIter>,
+            AsymBandRejectAlgo<GreyNoiseAlgo, Order, PinkNoiseIter>,
             audioelement::AdjustableVolumeOscillatorAlgo<audioelement::VolumeAdjust::Yes,float>
             >;
             

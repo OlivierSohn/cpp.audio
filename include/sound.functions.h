@@ -23,7 +23,11 @@ namespace imajuscule {
         }
         return static_cast<int>(SAMPLE_RATE / freq_hz);
     }
-
+    
+    constexpr float get_nyquist_frequency() {
+        return int_period_to_freq(2);
+    }
+    
     // angle increment unit is "rad / pi"
     template<typename T>
     constexpr T freq_to_angle_increment(T freq) {
