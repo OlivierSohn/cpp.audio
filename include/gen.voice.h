@@ -697,8 +697,10 @@ namespace imajuscule {
                     c.elem.setFiltersOrder(value<ORDER_FILTERS>());
 
                     {
-                        auto width_factor_range = range<float>(denorm<PINK_NOISE_BP_OCTAVE_WIDTH_MIN>(),
-                                                               denorm<PINK_NOISE_BP_OCTAVE_WIDTH_MAX>());
+                        auto m = denorm<PINK_NOISE_BP_OCTAVE_WIDTH_MIN>();
+                        auto M = denorm<PINK_NOISE_BP_OCTAVE_WIDTH_MAX>();
+                        auto width_factor_range = range<float>(std::min(m,M),
+                                                               std::max(m,M));
                         for(auto & r : c.elem.getRamps()) {
                             auto & mix = r.algo.getOsc();
                             std::get<1>(mix.get()).getOsc().setWidthRange(width_factor_range);
