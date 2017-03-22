@@ -160,6 +160,7 @@ namespace imajuscule {
     
     struct GaussianGreyNoiseAlgo {
         GaussianGreyNoiseAlgo() {
+            ScopedLog l("Pre-fill", "loudness compensation filter");
             int n = loudness_compensation_filter.size();
             for(int i=0; i<n; ++i) {
                 // fill filter
@@ -168,8 +169,7 @@ namespace imajuscule {
         }
         
         void step() {
-            //auto & noise = getPinkNoise(); // BYPASS
-            auto & noise = getWhiteNoise();
+            auto & noise = getPinkNoise();
             assert(counter < noise.size());
             
             auto v = noise[counter];

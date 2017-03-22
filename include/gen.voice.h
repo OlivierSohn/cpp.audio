@@ -284,13 +284,13 @@ namespace imajuscule {
                 static constexpr auto M = 20; };
             
             template<> struct Limits<LOW_FREQ> {
-                static constexpr auto m = 10;
-                static constexpr auto M = 10000; };
-            
+                static const float m;
+                static const float M; };
+    
             template<> struct Limits<HIGH_FREQ> {
-                static constexpr auto m = 20;
-                static constexpr auto M = 40000; };
-            
+                static const float m;
+                static const float M; };
+        
             constexpr auto size_interleaved_one_cache_line = cache_line_n_bytes / sizeof(interleaved_buf_t::value_type);
             constexpr auto size_interleaved = size_interleaved_one_cache_line;
             
@@ -350,8 +350,8 @@ namespace imajuscule {
                         {"Xfade freq", xfade_freq_traversal()},
                         {"Frequency transition length", static_cast<float>(Limits<FREQ_TRANSITION_LENGTH>::m), static_cast<float>(Limits<FREQ_TRANSITION_LENGTH>::M) },
                         {"Frequency Interpolation", itp::interpolation_traversal()},
-                        {"[Sweep] Low freq.", static_cast<float>(Limits<LOW_FREQ>::m), static_cast<float>(Limits<LOW_FREQ>::M) },
-                        {"[Sweep] High freq.", static_cast<float>(Limits<HIGH_FREQ>::m), static_cast<float>(Limits<HIGH_FREQ>::M) },
+                        {"[Sweep] Low freq.", Limits<LOW_FREQ>::m, Limits<LOW_FREQ>::M },
+                        {"[Sweep] High freq.", Limits<HIGH_FREQ>::m, Limits<HIGH_FREQ>::M },
                     };
                     
                     static std::vector<ParamSpec> filtered;
@@ -380,8 +380,9 @@ namespace imajuscule {
                                                         float harmonic_attenuation,
                                                         int filter_order,
                                                         float bandpass_width_min,
-                                                        float bandpass_width_max,
-                                                        float gain = 2.f) {
+                                                        float bandpass_width_max
+                                                        ) {
+                    float gain = 2.f;
                     int itp_index = 0;
                     auto b = itp::interpolation_traversal().valToRealValueIndex(i, itp_index);
                     A(b);
@@ -449,7 +450,7 @@ namespace imajuscule {
                                                  float length_med_exp,
                                                  int xfade,
                                                  float low, float high) {
-                    auto a = make_common(0, 0, 0, 0, 0.f, i, 0.f, length, length_med_exp, 0.f, xfade, 0.f, 0.f, 0, 0, 0.f, 20.f, 1, 1, 0.f);
+                    auto a = make_common(0, 0, 0, 0, 0.f, i, 0.f, length, length_med_exp, 0.f, xfade, 0.f, 0.f, 0, 0, 0.f, 20.f, 1, 1);
                     Program::ARRAY result;
                     result.resize(std::get<Mode::SWEEP>(params_all).size());
                     for(int idx = 0; idx<a.size(); ++idx) {
@@ -573,7 +574,7 @@ namespace imajuscule {
                     else if(MODE==Mode::SWEEP) {
                         static ProgramsI ps {{
                             {"Sweep 1",
-                                make_sweep(itp::LINEAR, 500.f, 5.f, 481, 40.f, 20000.f)
+                                make_sweep(itp::LINEAR, 73.f, 5.f, 481, 40.f, 20000.f)
                             },{"Fullrange",
                                 make_sweep(itp::LINEAR, 500.f, 5.f, 481, 10.f, 20000.f)
                             },

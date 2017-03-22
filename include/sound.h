@@ -96,12 +96,18 @@ namespace imajuscule {
         
         auto & getBuffer() { return values; }
         
+        void logSummary(int nsamples_per_extremity = 3) const;
     private:
         template < typename F >
         void generate( int period, F );
+        
+        template < typename F >
+        void generate_with_smooth_transition( int period, F );
 
         auto begin() { return values.begin(); }
         auto end() { return values.end(); }
+
+        auto & operator [] (int i) { return values[i]; }
 
         buffer values;
     };

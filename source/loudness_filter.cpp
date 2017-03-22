@@ -7,7 +7,7 @@ namespace imajuscule {
             for(auto c : v) {
                 mags.push_back(abs(c));
             }
-            StringPlot<30,1024> plot;
+            StringPlot plot(30,1024);
             plot.draw(mags);
             plot.log();
         }
@@ -25,6 +25,7 @@ namespace imajuscule {
 
         template<typename T>
         auto make_coefficients_by_f_sampling() {
+            ScopedLog l("Compute", "filter coeffs using freq. sampling method");
             // according to http://iowahills.com/FIRFiltersByFreqSampling.html
             // with the same number of taps as of fft size (we could try less)
             
@@ -69,13 +70,15 @@ namespace imajuscule {
                 ++i;
             }
             
-            plotMagnitude(res);
+            //plotMagnitude(res);
             return to_vector<double>(res, [](auto const &val) { return val.real(); });
         }
         
         
         template<typename T>
         auto make_coefficients_by_least_squares() {
+            ScopedLog l("Compute", "filter coeffs using least square method");
+
             auto vec = to_vector<T>(loudness_filter_coeffs_5001, [](T v){return v;});
          
             T max_ = {};

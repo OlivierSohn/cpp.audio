@@ -146,6 +146,7 @@ namespace imajuscule {
             static constexpr auto Order = VariableOrder;
             
             using GreyNoiseAlgo = audioelement::soundBufferWrapperAlgo<Sound::GREY_NOISE>;
+            using PinkNoiseAlgo = audioelement::soundBufferWrapperAlgo<Sound::PINK_NOISE>;
             
             using Mix = audioelement::Mix <
             audioelement::LowPassAlgo<GreyNoiseAlgo, Order>,

@@ -83,31 +83,85 @@ void soundBuffer::generate( int period, F f ) {
     A( (int)values.size() == period );
 }
 
+template<typename F>
+void soundBuffer::generate_with_smooth_transition(int period, F f) {
+    constexpr auto min_transition_length = 10;
+    constexpr auto transition_ratio = 10;
+    
+    auto transition_length = min_transition_length + period / transition_ratio;
+    transition_length = std::min(transition_length, period);
+    
+    A(transition_length > 0);
+    
+    generate(transition_length, f);
+    auto pre = std::move(values);
+    values.clear();
+    generate(period, f);
+    for(int i=0; i<transition_length; ++i) {
+        auto ratio_pre = (i+1) / (float)(transition_length+1); // we want the ratio to start after 0 and never reach 1
+        static_assert(std::is_floating_point<decltype(ratio_pre)>::value, "");
+        A(ratio_pre > 0.f);
+        A(ratio_pre < 1.f);
+        
+        // we consider the two signals are not correlated (this is - hopefully - the case for noises!)
+        // and we want to keep an equal power during fade, so the sum of the squared gains should be 1.
+        // throughout the fade. We use sin / cos instead of sqrt to have a smoother start and end.
+        
+        auto angle = ratio_pre * (float)M_PI_2;
+        auto gain_pre = std::sin(angle);
+        auto gain_v = std::cos(angle);
+        
+        auto & v = values[values.size()-transition_length+i];
+        v = gain_pre * pre[i] + gain_v * v;
+        A(values[values.size()-transition_length+i] == v); // verify we used the right operator [] !
+    }
+}
+
 soundBuffer::soundBuffer( soundId const & id ) {
     values.reserve( id.period_length );
 
     if(id.sound.type < Sound::END_NOISE) {
         switch (id.sound.type) {
             case Sound::NOISE:
+            {
+                ScopedLog l("Generating", "White Noise");
+                // no need to generate_with_smooth_transition : white gaussian noise has no correlation between samples
                 generate( id.period_length, white_gaussian_noise );
+                logSummary();
                 break;
+            }
             case Sound::ATOM_NOISE:
+            {
+                ScopedLog l("Generating", "Atom Noise");
+                // no need to generate_with_smooth_transition : white atom noise has no correlation between samples
                 generate( id.period_length, white_atom_noise );
+                logSummary();
                 break;
+            }
             case Sound::PINK_NOISE:
-                generate( id.period_length, [](float){
+            {
+                ScopedLog l("Generating", "Pink Noise");
+                // using generate_with_smooth_transition because pink noise has some correlation between samples
+                generate_with_smooth_transition( id.period_length, [](float){
                     static GaussianPinkNoiseAlgo a;
                     a.step();
                     return a.get();
                 } );
+                logSummary();
                 break;
+            }
             case Sound::GREY_NOISE:
-                generate( id.period_length, [](float){
+            {
+                ScopedLog l("Generating", "Grey Noise");
+                // using generate_with_smooth_transition because grey noise has some correlation between samples
+                generate_with_smooth_transition( id.period_length, [](float){
                     static GaussianGreyNoiseAlgo a;
                     a.step();
                     return a.get();
                 } );
+                logSummary();
                 break;
+            }
         }
         if( id.period_length < 20 ) {
             {
@@ -167,6 +221,20 @@ soundBuffer::soundBuffer( soundId const & id ) {
             A(0);
             break;
     }
+}
+
+void soundBuffer::logSummary(int nsamples_per_extremity) const {
+    std::vector<float> startend;
+    startend.reserve(nsamples_per_extremity*2);
+    for(int i=0; i < nsamples_per_extremity; ++i) {
+        startend.push_back(values[i]);
+    }
+    for(int i=0; i < nsamples_per_extremity; ++i) {
+        startend.push_back(values[values.size()-nsamples_per_extremity+i]);
+    }
+    StringPlot s(10, 10);
+    s.draw(startend);
+    s.log();
 }
 
 soundBuffer & Sounds::get(soundId id ) {
