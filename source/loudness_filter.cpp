@@ -65,6 +65,7 @@ namespace imajuscule {
             int i=0;
             for(auto & r : res) {
                 r /= scale;
+                //LG(INFO, "%04d: %f", i, abs(r));
                 //            W(n) = cos(n/NumTaps · π/2)
                 r *= cos( std::abs(nyquist-i)/(double)(NumTaps/2) * M_PI_2);
                 ++i;
