@@ -169,7 +169,7 @@ namespace imajuscule {
             return max_;
         }
 
-        static float equal_loudness_volume(int i, float LN)
+        static float compute_equal_loudness_volume(int i, float LN)
         {
             auto alpha_f = alpha_f_[i];
             auto Lu = Lu_[i];
@@ -185,7 +185,7 @@ namespace imajuscule {
             std::array<float, n_freq> v;
             int i=0;
             for(auto & e : v) {
-                e = equal_loudness_volume(i, level);
+                e = compute_equal_loudness_volume(i, level);
                 ++i;
             }
             return v;

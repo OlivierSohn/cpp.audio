@@ -606,7 +606,7 @@ namespace imajuscule {
             }
             
             void normalize() {
-                cur /= abs(cur);
+                cur *= 1/abs(cur);
             }
         };
         
