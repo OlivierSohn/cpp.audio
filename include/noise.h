@@ -158,8 +158,11 @@ namespace imajuscule {
     };
     
     
+    template<typename SOURCE_NOISE>
     struct GaussianGreyNoiseAlgo {
-        GaussianGreyNoiseAlgo() {
+        GaussianGreyNoiseAlgo(SOURCE_NOISE source, unsigned int fft_length, unsigned int NumTaps) :
+        source(source),
+        loudness_compensation_filter(fft_length, NumTaps) {
             ScopedLog l("Pre-fill", "loudness compensation filter");
             int n = loudness_compensation_filter.size();
             for(int i=0; i<n; ++i) {
@@ -169,7 +172,7 @@ namespace imajuscule {
         }
         
         void step() {
-            auto & noise = getPinkNoise();
+            auto & noise = source();
             assert(counter < noise.size());
             
             auto v = noise[counter];
@@ -187,6 +190,14 @@ namespace imajuscule {
     private:
         unsigned int counter = 0;
         audioelement::LoudnessCompensationFilter<float> loudness_compensation_filter;
+        SOURCE_NOISE source;
     };
     
+    
+    template<typename T>
+    GaussianGreyNoiseAlgo<typename std::decay<T>::type>
+    make_loudness_adapted_noise(T&& t, unsigned int fft_length, unsigned int NumTaps)
+    {
+        return { std::forward<T>(t), fft_length, NumTaps };
+    }
 }

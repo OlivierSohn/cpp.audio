@@ -8,6 +8,10 @@
 
 /* Begin PBXBuildFile section */
 		090B14C11E75CC2C005A47C5 /* loudness_enum_limits.h in Headers */ = {isa = PBXBuildFile; fileRef = 090B14C01E75CC2C005A47C5 /* loudness_enum_limits.h */; };
+		097D56C61E86D14D00018F14 /* libos.storage.osx.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 097D56C11E86D14000018F14 /* libos.storage.osx.a */; };
+		097D56CD1E86DCA000018F14 /* CoreFoundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 097D56CC1E86DCA000018F14 /* CoreFoundation.framework */; };
+		097D56CF1E86DCB600018F14 /* CoreGraphics.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 097D56CE1E86DCB600018F14 /* CoreGraphics.framework */; };
+		097D56D11E86DCC900018F14 /* AppKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 097D56D01E86DCC900018F14 /* AppKit.framework */; };
 		098474081E8058EE0014465E /* unity.build.genheaders.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 098474071E8058EE0014465E /* unity.build.genheaders.cpp */; };
 		098474281E8059920014465E /* libaudio.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 09FF3F231E36EBBB00C81351 /* libaudio.a */; };
 		098474291E8059920014465E /* libalgorithms.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 098474151E80595C0014465E /* libalgorithms.a */; };
@@ -17,6 +21,27 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
+		097D56C01E86D14000018F14 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 097D56B71E86D14000018F14 /* os.storage.xcodeproj */;
+			proxyType = 2;
+			remoteGlobalIDString = 09C2F82919BF163B00472700;
+			remoteInfo = os.storage.osx;
+		};
+		097D56C21E86D14000018F14 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 097D56B71E86D14000018F14 /* os.storage.xcodeproj */;
+			proxyType = 2;
+			remoteGlobalIDString = 09C2F83A19BF181B00472700;
+			remoteInfo = os.storage.ios;
+		};
+		097D56C41E86D14500018F14 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 097D56B71E86D14000018F14 /* os.storage.xcodeproj */;
+			proxyType = 1;
+			remoteGlobalIDString = 09C2F82819BF163B00472700;
+			remoteInfo = os.storage.osx;
+		};
 		098474101E80595C0014465E /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = 098474091E80595C0014465E /* algorithms.xcodeproj */;
@@ -116,7 +141,7 @@
 		091E76EA1E46C02F009CFBA5 /* normalization.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = normalization.cpp; path = source/normalization.cpp; sourceTree = "<group>"; };
 		091E76EB1E46C08F009CFBA5 /* pernamespace.implparams.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = pernamespace.implparams.h; path = include/pernamespace.implparams.h; sourceTree = "<group>"; };
 		091E76EC1E46D03B009CFBA5 /* gen.crtp.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = gen.crtp.h; path = include/gen.crtp.h; sourceTree = "<group>"; };
-		092412A01E56F04500A848A8 /* audioelement.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = audioelement.cpp; path = source/audioelement.cpp; sourceTree = "<group>"; };
+		092412A01E56F04500A848A8 /* samples.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = samples.cpp; path = source/samples.cpp; sourceTree = "<group>"; };
 		094562341E43E475006E7076 /* gen.cutramp.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; lineEnding = 0; name = gen.cutramp.h; path = include/gen.cutramp.h; sourceTree = "<group>"; xcLanguageSpecificationIdentifier = xcode.lang.objcpp; };
 		09529DF81E439D8D00705B99 /* gen.voice.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; lineEnding = 0; name = gen.voice.h; path = include/gen.voice.h; sourceTree = "<group>"; xcLanguageSpecificationIdentifier = xcode.lang.objcpp; };
 		09529DF91E439D8D00705B99 /* mononotechannel.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = mononotechannel.h; path = include/mononotechannel.h; sourceTree = "<group>"; };
@@ -126,6 +151,12 @@
 		09529DFD1E439F2700705B99 /* smoothparam.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = smoothparam.h; path = include/smoothparam.h; sourceTree = "<group>"; };
 		09529DFE1E439FD800705B99 /* midi.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = midi.h; path = include/midi.h; sourceTree = "<group>"; };
 		0966EA6E1E45C62B00A86E7C /* gen.voice.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = gen.voice.cpp; path = source/gen.voice.cpp; sourceTree = "<group>"; };
+		097D56B71E86D14000018F14 /* os.storage.xcodeproj */ = {isa = PBXFileReference; lastKnownFileType = "wrapper.pb-project"; name = os.storage.xcodeproj; path = /Users/Olivier/Dev/shared/../os.storage/os.storage.xcodeproj; sourceTree = "<absolute>"; };
+		097D56C71E86D42D00018F14 /* samples.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = samples.h; path = include/samples.h; sourceTree = "<group>"; };
+		097D56C81E86D42D00018F14 /* loudness_filter_coefficients_gen.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = loudness_filter_coefficients_gen.h; path = include/loudness_filter_coefficients_gen.h; sourceTree = "<group>"; };
+		097D56CC1E86DCA000018F14 /* CoreFoundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreFoundation.framework; path = System/Library/Frameworks/CoreFoundation.framework; sourceTree = SDKROOT; };
+		097D56CE1E86DCB600018F14 /* CoreGraphics.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreGraphics.framework; path = System/Library/Frameworks/CoreGraphics.framework; sourceTree = SDKROOT; };
+		097D56D01E86DCC900018F14 /* AppKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = AppKit.framework; path = System/Library/Frameworks/AppKit.framework; sourceTree = SDKROOT; };
 		098473FA1E7F2A8C0014465E /* loudness_filter.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = loudness_filter.cpp; path = source/loudness_filter.cpp; sourceTree = "<group>"; };
 		098474001E8057E90014465E /* generate_filters_headers */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = generate_filters_headers; sourceTree = BUILT_PRODUCTS_DIR; };
 		098474021E8057E90014465E /* gen_headers.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = gen_headers.cpp; path = source/gen_headers.cpp; sourceTree = "<group>"; };
@@ -170,6 +201,10 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				097D56D11E86DCC900018F14 /* AppKit.framework in Frameworks */,
+				097D56CF1E86DCB600018F14 /* CoreGraphics.framework in Frameworks */,
+				097D56CD1E86DCA000018F14 /* CoreFoundation.framework in Frameworks */,
+				097D56C61E86D14D00018F14 /* libos.storage.osx.a in Frameworks */,
 				098474281E8059920014465E /* libaudio.a in Frameworks */,
 				098474291E8059920014465E /* libalgorithms.a in Frameworks */,
 				0984742A1E8059920014465E /* libos.log.osx.a in Frameworks */,
@@ -193,6 +228,25 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		097D56B81E86D14000018F14 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				097D56C11E86D14000018F14 /* libos.storage.osx.a */,
+				097D56C31E86D14000018F14 /* libos.storage.ios.a */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		097D56CB1E86DCA000018F14 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				097D56D01E86DCC900018F14 /* AppKit.framework */,
+				097D56CE1E86DCB600018F14 /* CoreGraphics.framework */,
+				097D56CC1E86DCA000018F14 /* CoreFoundation.framework */,
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
 		0984740A1E80595C0014465E /* Products */ = {
 			isa = PBXGroup;
 			children = (
@@ -207,6 +261,7 @@
 		098474181E8059600014465E /* dependencies */ = {
 			isa = PBXGroup;
 			children = (
+				097D56B71E86D14000018F14 /* os.storage.xcodeproj */,
 				098474191E80596D0014465E /* os.log.xcodeproj */,
 				098474091E80595C0014465E /* algorithms.xcodeproj */,
 			);
@@ -225,7 +280,7 @@
 		099E06E21E36EC7F0012348E /* source */ = {
 			isa = PBXGroup;
 			children = (
-				092412A01E56F04500A848A8 /* audioelement.cpp */,
+				092412A01E56F04500A848A8 /* samples.cpp */,
 				098474021E8057E90014465E /* gen_headers.cpp */,
 				090B14C31E75CCDF005A47C5 /* gen.cutramp.cpp */,
 				0966EA6E1E45C62B00A86E7C /* gen.voice.cpp */,
@@ -244,6 +299,8 @@
 		099E06E31E36EC850012348E /* include */ = {
 			isa = PBXGroup;
 			children = (
+				097D56C71E86D42D00018F14 /* samples.h */,
+				097D56C81E86D42D00018F14 /* loudness_filter_coefficients_gen.h */,
 				099E06E61E36EC920012348E /* audioelement.h */,
 				099E06E41E36EC920012348E /* channel.h */,
 				09529DFA1E439D8D00705B99 /* events.h */,
@@ -305,6 +362,7 @@
 				099E06E31E36EC850012348E /* include */,
 				099E06E21E36EC7F0012348E /* source */,
 				09FF3F241E36EBBB00C81351 /* Products */,
+				097D56CB1E86DCA000018F14 /* Frameworks */,
 			);
 			sourceTree = "<group>";
 		};
@@ -343,6 +401,7 @@
 			buildRules = (
 			);
 			dependencies = (
+				097D56C51E86D14500018F14 /* PBXTargetDependency */,
 				098474231E8059810014465E /* PBXTargetDependency */,
 				098474251E8059810014465E /* PBXTargetDependency */,
 				098474271E8059810014465E /* PBXTargetDependency */,
@@ -428,6 +487,10 @@
 					ProductGroup = 0984741A1E80596D0014465E /* Products */;
 					ProjectRef = 098474191E80596D0014465E /* os.log.xcodeproj */;
 				},
+				{
+					ProductGroup = 097D56B81E86D14000018F14 /* Products */;
+					ProjectRef = 097D56B71E86D14000018F14 /* os.storage.xcodeproj */;
+				},
 			);
 			projectRoot = "";
 			targets = (
@@ -439,6 +502,20 @@
 /* End PBXProject section */
 
 /* Begin PBXReferenceProxy section */
+		097D56C11E86D14000018F14 /* libos.storage.osx.a */ = {
+			isa = PBXReferenceProxy;
+			fileType = archive.ar;
+			path = libos.storage.osx.a;
+			remoteRef = 097D56C01E86D14000018F14 /* PBXContainerItemProxy */;
+			sourceTree = BUILT_PRODUCTS_DIR;
+		};
+		097D56C31E86D14000018F14 /* libos.storage.ios.a */ = {
+			isa = PBXReferenceProxy;
+			fileType = archive.ar;
+			path = libos.storage.ios.a;
+			remoteRef = 097D56C21E86D14000018F14 /* PBXContainerItemProxy */;
+			sourceTree = BUILT_PRODUCTS_DIR;
+		};
 		098474111E80595C0014465E /* algorithms.test.xctest */ = {
 			isa = PBXReferenceProxy;
 			fileType = wrapper.cfbundle;
@@ -511,6 +588,11 @@
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
+		097D56C51E86D14500018F14 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			name = os.storage.osx;
+			targetProxy = 097D56C41E86D14500018F14 /* PBXContainerItemProxy */;
+		};
 		098474231E8059810014465E /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
 			target = 09FF3F221E36EBBB00C81351 /* audio */;

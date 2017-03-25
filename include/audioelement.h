@@ -529,8 +529,8 @@ namespace imajuscule {
 
         template<typename T>
         struct LoudnessCompensationFilter {
-            LoudnessCompensationFilter() :
-            filter(imajuscule::loudness::getLoudnessCompensationFIRCoefficients())
+            LoudnessCompensationFilter(unsigned int fft_length, unsigned int NumTaps) :
+            filter(imajuscule::loudness::getLoudnessCompensationFIRCoefficients(fft_length, NumTaps))
             {}
             
             void step(T val) {

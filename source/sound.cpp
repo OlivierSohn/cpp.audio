@@ -155,7 +155,7 @@ soundBuffer::soundBuffer( soundId const & id ) {
                 ScopedLog l("Generating", "Grey Noise");
                 // using generate_with_smooth_transition because grey noise has some correlation between samples
                 generate_with_smooth_transition( id.period_length, [](float){
-                    static GaussianGreyNoiseAlgo a;
+                    static auto a = make_loudness_adapted_noise(getPinkNoise, 4096, 4096);
                     a.step();
                     return a.get();
                 } );
