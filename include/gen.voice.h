@@ -484,7 +484,7 @@ namespace imajuscule {
                                                   float phase_ratio1 = 0.f, float phase_ratio2 = 0.f) {
                     auto a = make_common(start_node, pre_tries, min_path_length, additionnal_tries, articulative_pause_length, i, freq_scat, length, length_med_exp, length_scale_exp, xfade, phase_ratio1, phase_ratio2, 0,0,0, 1, 1, 0.f);
                     Program::ARRAY result;
-                    result.resize(std::get<Mode::MARKOV>(params_all).size());
+                    result.resize(std::get<Mode::BIRDS>(params_all).size());
                     for(int idx = 0; idx<a.size(); ++idx) {
                         auto e = static_cast<ImplParams>(idx);
                         if(!has(e)) {
@@ -539,7 +539,7 @@ namespace imajuscule {
                 }
                 
                 static Programs const & getPrograms() {
-                    if(MODE==Mode::MARKOV) {
+                    if(MODE==Mode::BIRDS) {
                         static ProgramsI ps {{
                             {"Standard & Cute bird",
                                 make_markov(0, 0, 1, 0, itp::EASE_INOUT_CIRC, 0.f, 93.f, 2.f, .5f, 1000, 1301, FreqXfade::No, 6200, itp::EASE_OUT_EXPO)
@@ -736,7 +736,7 @@ namespace imajuscule {
                                                            denorm<GAIN>(),
                                                            pan);
                         }
-                        else if(MODE == Mode::MARKOV) {
+                        else if(MODE == Mode::BIRDS) {
                             c.elem.engine.set_freq_xfade(denorm<FREQ_TRANSITION_LENGTH>());
                             auto interp_freq = static_cast<itp::interpolation>(itp::interpolation_traversal().realValues()[static_cast<int>(.5f + value<FREQ_TRANSITION_INTERPOLATION>())]);
                             c.elem.engine.set_freq_interpolation(interp_freq);

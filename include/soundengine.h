@@ -37,7 +37,7 @@ namespace imajuscule {
         enum SoundEngineMode : unsigned char {
             BEGIN=0,
             
-            MARKOV = 0,
+            BIRDS = 0,
             ROBOTS,
             SWEEP,
             WIND,
@@ -214,6 +214,9 @@ namespace imajuscule {
                                 *ramp_spec2 = *ramp_spec;
                                 // and create a transition
                                 if(from_inc == to_inc) {
+                                    // comment on next line :  I think this is obsolete,
+                                    // now we don't detect the end that way anymore
+                                    // (todo remove and test with an instrument that uses that)
                                     from_inc *= 1.00001f; // make sure ramp is non trivial else we cannot detect when it's done
                                 }
                                 ramp_spec->set(from_inc, to_inc, freq_xfade, 0, freq_interpolation);
