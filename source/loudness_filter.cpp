@@ -13,7 +13,7 @@ namespace imajuscule {
             }
             A(max_);
             std::transform(vec.begin(), vec.end(),
-                           vec.begin(), [](auto v){ v/= max_; });
+                           vec.begin(), [max_](auto v){ v/= max_; });
             
             return vec;
         }
