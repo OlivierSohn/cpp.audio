@@ -393,8 +393,7 @@ namespace imajuscule {
             
             void setCompensation(T sq_inv_width_factor) {
                 // gain compensation to have an equal power of the central frequency for all widths
-                compensation = 1 + sq_inv_width_factor;
-                compensation = expt<ORDER>(compensation);
+                compensation = expt<ORDER>(1 + sq_inv_width_factor);
 #ifndef NDEBUG
                 // verify accuracy of above simplification
                 
