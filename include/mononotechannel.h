@@ -63,6 +63,13 @@ namespace imajuscule {
                 }
                 return true;
             }
+
+            template<typename OutputData>
+            void toVolume(OutputData & out, float vol, int xfade_len) {
+                for(auto & c : channels) {
+                    out.toVolume(c, vol, xfade_len);
+                }
+            }
         };
         
     }

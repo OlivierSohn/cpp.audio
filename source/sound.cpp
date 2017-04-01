@@ -147,6 +147,7 @@ soundBuffer::soundBuffer( soundId const & id ) {
                     a.step();
                     return a.get();
                 } );
+                normalize();
                 logSummary();
                 break;
             }
@@ -155,10 +156,17 @@ soundBuffer::soundBuffer( soundId const & id ) {
                 ScopedLog l("Generating", "Grey Noise");
                 // using generate_with_smooth_transition because grey noise has some correlation between samples
                 generate_with_smooth_transition( id.period_length, [](float){
-                    static auto a = make_loudness_adapted_noise(getPinkNoise, 4096, 4096);
+                    constexpr auto length_ftt =
+#ifdef NDEBUG
+                    4096;
+#else
+                    256;
+#endif
+                    static auto a = make_loudness_adapted_noise(getPinkNoise, length_ftt, length_ftt);
                     a.step();
                     return a.get();
                 } );
+                normalize();
                 logSummary();
                 break;
             }
@@ -235,6 +243,35 @@ void soundBuffer::logSummary(int nsamples_per_extremity) const {
     StringPlot s(10, 10);
     s.draw(startend);
     s.log();
+
+    auto power = 0.f;
+    range<float> range;
+    for(auto v : values) {
+        range.extend(v);
+        power += v*v;
+    }
+    power /= values.size();
+    LG(INFO, "signal range [%.2f %.2f] avg power %.3f", range.getMin(), range.getMax(), power);
+}
+
+void soundBuffer::normalize() {
+    if(values.empty()) {
+        return;
+    }
+    range<float> r;
+    for(auto v: values) {
+        r.extend(v);
+    }
+    A(!r.empty());
+    if(r.delta() < 0.f) {
+        return;
+    }
+    
+    auto M = std::max(-r.getMin(), r.getMax());
+    M = 1.f / M;
+    for(auto & v: values) {
+        v *= M;
+    }
 }
 
 soundBuffer & Sounds::get(soundId id ) {

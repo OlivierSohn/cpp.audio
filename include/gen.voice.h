@@ -728,13 +728,14 @@ namespace imajuscule {
                             }
                         }
                         
+                        auto volume = MakeVolume::run<OutputData::nOuts>(1.f, stereo(pan));
+                        
                         if(MODE == Mode::SWEEP) {
                             c.elem.engine.initialize_sweep(out,
                                                            c,
                                                            denorm<LOW_FREQ>(),
                                                            denorm<HIGH_FREQ>(),
-                                                           denorm<GAIN>(),
-                                                           pan);
+                                                           volume);
                         }
                         else if(MODE == Mode::BIRDS) {
                             c.elem.engine.set_freq_xfade(denorm<FREQ_TRANSITION_LENGTH>());
@@ -751,8 +752,7 @@ namespace imajuscule {
                                                             SoundEngine::InitPolicy::StartAfresh,
                                                             xfade_freq,
                                                             value<MARKOV_ARTICULATIVE_PAUSE_LENGTH>(),
-                                                            denorm<GAIN>(),
-                                                            pan);
+                                                            volume);
                         }
                         else if(MODE == Mode::WIND) {
                             c.elem.engine.initialize_wind(out,
@@ -762,8 +762,7 @@ namespace imajuscule {
                                                           value<MARKOV_MIN_PATH_LENGTH>(),
                                                           value<MARKOV_ADDITIONAL_TRIES>(),
                                                           SoundEngine::InitPolicy::StartAfresh,
-                                                          denorm<GAIN>(),
-                                                          pan);
+                                                          volume);
                         }
                         else if(MODE == Mode::ROBOTS) {
                             c.elem.engine.set_d1(/*denorm<D1>()*/value<D1>());
@@ -777,8 +776,7 @@ namespace imajuscule {
                                                            value<MARKOV_ADDITIONAL_TRIES>(),
                                                            SoundEngine::InitPolicy::StartAfresh,
                                                            value<MARKOV_ARTICULATIVE_PAUSE_LENGTH>(),
-                                                           denorm<GAIN>(),
-                                                           pan);
+                                                           volume);
                         }
                     }
                 }
@@ -789,6 +787,26 @@ namespace imajuscule {
                     return 1 + ( static_cast<int>( .5f + d ) / 2 ) * 2;
                 }
                 
+                float get_gain() const { return denorm<GAIN>(); }
+
+            public:
+                void set_gain(float g) {
+                    params[index(GAIN)] = normalize<GAIN>(g);
+                    assert(get_gain() == g);
+                }
+                
+                void set_pan(float pan) {
+                    params[index(PAN)] = normalize<PAN>(pan);
+                }
+                
+                void set_random(bool b) {
+                    params[index(RANDOM_PAN)] = static_cast<float>(!b);
+                    if(!b) {
+                        if(has(SEED)) {
+                            params[index(SEED)] = 1.f; // 0 means random, >0 means fixed
+                        }
+                    }
+                }
             };
             
             template<typename SoundEngine>

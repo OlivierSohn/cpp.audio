@@ -110,6 +110,8 @@ namespace imajuscule {
         auto & operator [] (int i) { return values[i]; }
 
         buffer values;
+        
+        void normalize();
     };
     
     template<typename T, size_t N>

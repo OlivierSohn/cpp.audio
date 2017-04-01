@@ -571,7 +571,8 @@ namespace imajuscule {
             template<typename OutputData, typename MonoNoteChannel>
             void initialize_sweep(OutputData & o,
                                   MonoNoteChannel & c,
-                                  float low, float high, float gain, float pan) {
+                                  float low, float high,
+                                  Volumes<OutputData::nOuts> const & volume) {
                 bool initialize = true;
                 if(!markov) {
                     markov = create_sweep(o);
@@ -583,8 +584,6 @@ namespace imajuscule {
                 freq1_robot = low;
                 freq2_robot = high;
                 
-                auto volume = MakeVolume::run<OutputData::nOuts>(gain, stereo(pan));
-                
                 do_initialize(o, c, initialize, 0, 0, 1, 0, articulative_pause_length, volume);
             }
             
@@ -592,7 +591,8 @@ namespace imajuscule {
             void initialize_markov(OutputData & o,
                                    MonoNoteChannel & c,
                                    int start_node, int pre_tries, int min_path_length, int additional_tries, InitPolicy init_policy,
-                                   FreqXfade xfade_freq, int articulative_pause_length, float gain, float pan) {
+                                   FreqXfade xfade_freq, int articulative_pause_length,
+                                   Volumes<OutputData::nOuts> const & volume) {
                 this->xfade_freq = xfade_freq;
                 
                 bool initialize = (!markov) || (init_policy==InitPolicy::StartAfresh);
@@ -603,8 +603,6 @@ namespace imajuscule {
                     }
                 }
                 
-                auto volume = MakeVolume::run<OutputData::nOuts>(gain, stereo(pan));
-                
                 do_initialize(o, c, initialize, start_node, pre_tries, min_path_length, additional_tries, articulative_pause_length, volume);
             }
             
@@ -612,7 +610,7 @@ namespace imajuscule {
             void initialize_wind(OutputData & o,
                                  MonoNoteChannel & c,
                                  int start_node, int pre_tries, int min_path_length, int additional_tries, InitPolicy init_policy,
-                                 float gain, float pan) {
+                                 Volumes<OutputData::nOuts> const & volume) {
                 bool initialize = (!markov) || (init_policy==InitPolicy::StartAfresh);
                 if(!markov) {
                     markov = create_wind(o);
@@ -621,8 +619,6 @@ namespace imajuscule {
                     }
                 }
                 
-                auto volume = MakeVolume::run<OutputData::nOuts>(gain, stereo(pan));
-                
                 do_initialize(o, c, initialize, start_node, pre_tries, min_path_length, additional_tries, articulative_pause_length, volume);
             }
             
@@ -630,7 +626,8 @@ namespace imajuscule {
             void initialize_robot(OutputData & o,
                                   MonoNoteChannel & c,
                                   int start_node, int pre_tries, int min_path_length, int additional_tries, InitPolicy init_policy,
-                                  int articulative_pause_length, float gain, float pan) {
+                                  int articulative_pause_length,
+                                  Volumes<OutputData::nOuts> const & volume) {
                 auto scatter = 1.f + freq_scatter;
                 freq1_robot = std::uniform_real_distribution<float>{base_freq / scatter, base_freq * scatter}(rng::mersenne());
                 freq2_robot = std::uniform_real_distribution<float>{freq1_robot*0.97f, freq1_robot/0.97f}(rng::mersenne());
@@ -660,8 +657,6 @@ namespace imajuscule {
                     }
                 }
                 
-                auto volume = MakeVolume::run<OutputData::nOuts>(gain, stereo(pan));
-
                 do_initialize(o, c, initialize, start_node, pre_tries, min_path_length, additional_tries, articulative_pause_length, volume);
             }
             

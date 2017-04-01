@@ -192,6 +192,7 @@
 		099E06F71E36ECE50012348E /* Project.Shared.xcconfig */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.xcconfig; name = Project.Shared.xcconfig; path = xcode.config/Project.Shared.xcconfig; sourceTree = "<group>"; };
 		09A8F2291E442C3A0071C141 /* soundengine.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = soundengine.cpp; path = source/soundengine.cpp; sourceTree = "<group>"; };
 		09BA14861E3877BD00A05F83 /* libaudio.ios.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = libaudio.ios.a; sourceTree = BUILT_PRODUCTS_DIR; };
+		09D4BAC11E883BA400C9472E /* events.impl.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = events.impl.h; path = include/events.impl.h; sourceTree = "<group>"; };
 		09FD59EB1E7F266D0052B2FD /* loudness_filter.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = loudness_filter.h; path = include/loudness_filter.h; sourceTree = "<group>"; };
 		09FF3F231E36EBBB00C81351 /* libaudio.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = libaudio.a; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
@@ -299,18 +300,18 @@
 		099E06E31E36EC850012348E /* include */ = {
 			isa = PBXGroup;
 			children = (
-				097D56C71E86D42D00018F14 /* samples.h */,
-				097D56C81E86D42D00018F14 /* loudness_filter_coefficients_gen.h */,
 				099E06E61E36EC920012348E /* audioelement.h */,
 				099E06E41E36EC920012348E /* channel.h */,
 				09529DFA1E439D8D00705B99 /* events.h */,
-				0984742B1E809F650014465E /* loudness_filter_coefficients.h */,
+				09D4BAC11E883BA400C9472E /* events.impl.h */,
 				091E76EC1E46D03B009CFBA5 /* gen.crtp.h */,
 				094562341E43E475006E7076 /* gen.cutramp.h */,
 				09529DF81E439D8D00705B99 /* gen.voice.h */,
 				090B14C21E75CCAE005A47C5 /* loudness_enum_limits_impl.h */,
 				090B14C01E75CC2C005A47C5 /* loudness_enum_limits.h */,
 				090B14BF1E75CC04005A47C5 /* loudness_enum_names.h */,
+				097D56C81E86D42D00018F14 /* loudness_filter_coefficients_gen.h */,
+				0984742B1E809F650014465E /* loudness_filter_coefficients.h */,
 				09FD59EB1E7F266D0052B2FD /* loudness_filter.h */,
 				090B14C51E75D771005A47C5 /* loudness_init_values.h */,
 				090B14C41E75CDF9005A47C5 /* loudness_params_specs.h */,
@@ -327,6 +328,7 @@
 				09529DFC1E439EC000705B99 /* program.h */,
 				099E06E91E36EC920012348E /* public.h */,
 				099E06EA1E36EC920012348E /* request.h */,
+				097D56C71E86D42D00018F14 /* samples.h */,
 				09529DFD1E439F2700705B99 /* smoothparam.h */,
 				099E06EB1E36EC920012348E /* sound.defines.h */,
 				099E06EC1E36EC920012348E /* sound.functions.h */,

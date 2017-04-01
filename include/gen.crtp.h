@@ -120,6 +120,7 @@ namespace imajuscule {
             using MonoNoteChannel = MNC;
             
             using Base::get_xfade_length;
+            using Base::get_gain;
             using Base::onStartNote;
             
             using Event = typename EventIterator::object;
@@ -198,12 +199,14 @@ namespace imajuscule {
                 
                 int xf_len;
                 float initial_volume;
+                bool gain_is_set = true;
                 if(xfade_policy==XfadePolicy::SkipXfade) {
                     initial_volume = 0.f;
                     xf_len= 0 ;
+                    gain_is_set = false;
                 }
                 else {
-                    initial_volume = 1.f;
+                    initial_volume = get_gain();
                     xf_len = get_xfade_length();
                 }
                 
@@ -215,6 +218,9 @@ namespace imajuscule {
                 
                 c.elem.forgetPastSignals();
                 
+                if(!gain_is_set) {
+                    c.toVolume(out, get_gain(), get_xfade_length());
+                }
                 onStartNote(e.velocity, c, out);
                 return onEventResult::OK;
             }

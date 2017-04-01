@@ -191,9 +191,21 @@ namespace imajuscule {
                     return denormalize<N>(params[index(N)]);
                 }
                 
+                float set_gain(float g) {
+                    params[index(GAIN)] = normalize<GAIN>(g);
+                    assert(get_gain() == g);
+                }
+                
+                void set_pan(float pan) const {}
+                
+                void set_random(bool b) const {}
+
+                
             protected:
                 int get_xfade_length() { return adjusted(xfade_len); }
-                
+
+                float get_gain() const { return denorm<GAIN>(); }
+
                 template<typename MonoNoteChannel, typename OutputData>
                 void onStartNote(float velocity, MonoNoteChannel & c, OutputData & out) {
                     using Request = typename OutputData::Request;
@@ -201,9 +213,6 @@ namespace imajuscule {
                     auto tunedNote = midi::tuned_note(c.pitch, c.tuning);
                     auto freq = to_freq(tunedNote-Do_midi, half_tone);
                     auto channel = c.channels[0];
-                    auto len = get_xfade_length();
-                    
-                    out.setVolume(channel, denorm<GAIN>(), len);
                     
                     if(adjustFreq) {
                         auto r = (p - static_cast<float>(gap())) / p;
@@ -311,18 +320,19 @@ namespace imajuscule {
                 static_assert(cut_period_one_cache_line <= max_cut_period, "");
                 
             public:
+                
                 template<typename OutputData>
-                void doProcessing (ProcessData& data, OutputData & out)
+                onEventResult onEvent(EventIterator it, OutputData & out)
                 {
-                    A(data.numSamples);
-                    
-                    std::array<float *, nAudioOut> outs;
-                    A(1 == data.numOutputs);
-                    A(nAudioOut == data.outputs[0].numChannels);
-                    for(auto i=0; i<data.outputs[0].numChannels; ++i) {
-                        outs[i] = data.outputs[0].channelBuffers32[i];
+                    // in case this is called before the first doProcessing:
+                    if(!period.hasValue()) {
+                        updateParams();
                     }
-                    
+                    return onEvent(it, [](auto & c) { return c.elem.isInactive(); }, out);
+                }
+                
+                void updateParams()
+                {
                     auto p_ = static_cast<int>(params[CUT_PERIOD] + 0.5f) + min_cut_period;
                     auto g_ = static_cast<int>(params[CUT_SIZE] + 0.5f);
                     auto x_ = static_cast<int>(params[CUT_XFADE_AMOUNT] + 0.5f);
@@ -351,6 +361,21 @@ namespace imajuscule {
                         compute_state();
                         A(gap() < p);
                     }
+                }
+                
+                template<typename OutputData>
+                void doProcessing (ProcessData& data, OutputData & out)
+                {
+                    A(data.numSamples);
+                    
+                    std::array<float *, nAudioOut> outs;
+                    A(1 == data.numOutputs);
+                    A(nAudioOut == data.outputs[0].numChannels);
+                    for(auto i=0; i<data.outputs[0].numChannels; ++i) {
+                        outs[i] = data.outputs[0].channelBuffers32[i];
+                    }
+                    
+                    updateParams();
                     
                     auto nRemainingFrames = data.numSamples;
                     auto middle = get_middle(p,gap());
@@ -387,7 +412,7 @@ namespace imajuscule {
                         // keep this loop after onEndBufferStepParamChanges()/compute_state(),
                         // so that new notes have the correct adjusted frequency
                         while(nextEventPosition == currentFrame) {
-                            this->onEvent(it, [](auto & c) { return c.elem.isInactive(); }, out);
+                            this->onEvent(it, out);
                             ++it;
                             nextEventPosition = getNextEventPosition(it, end);
                         }

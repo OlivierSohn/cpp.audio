@@ -98,9 +98,24 @@ namespace imajuscule {
         NONE
     };
     
+    enum class WithLock {
+        Yes,No
+    };
+    
+    template<WithLock>
+    struct LockIf_;
+    
     struct NoOpLock {
         NoOpLock(bool) {}
     };
+
+    template <>
+    struct LockIf_<WithLock::Yes> { using type = Sensor::RAIILock; };
+    template <>
+    struct LockIf_<WithLock::No> { using type = NoOpLock; };
+    
+    template<WithLock l>
+    using LockIf = typename LockIf_<l>::type;
     
     enum class ChannelClosingPolicy {
         AutoClose,  // once the request queue is empty (or more precisely
@@ -110,7 +125,6 @@ namespace imajuscule {
         // Explicitely closing an AutoClose channel will result in undefined behaviour.
         ExplicitClose, // the channel cannot be reassigned unless explicitely closed
     };
-    
     
     enum class AudioOutPolicy {
         Slave,
@@ -122,7 +136,7 @@ namespace imajuscule {
     template<typename T, int nAudioOut>
     struct AudioPolicyImpl<T, nAudioOut, AudioOutPolicy::Slave> {
         /////////////////////////////// lock
-        using LOCK = NoOpLock;
+        static constexpr WithLock useLock = WithLock::No;
         
         bool lock() { return false; }
 
@@ -140,7 +154,7 @@ namespace imajuscule {
         {}
         
         /////////////////////////////// lock
-        using LOCK = Sensor::RAIILock;
+        static constexpr WithLock useLock = WithLock::Yes;
         
         std::atomic_bool & lock() { return used; }
 
@@ -196,10 +210,6 @@ namespace imajuscule {
 #endif
     };
     
-    enum class WithLock {
-        Yes,No
-    };
-    
     template<
     int nAudioOut,
     XfadePolicy XF = XfadePolicy::UseXfade,
@@ -215,7 +225,7 @@ namespace imajuscule {
         static constexpr auto Policy = policy;
         static constexpr auto DefLock = (policy==AudioOutPolicy::Slave) ? WithLock::No : WithLock::Yes;
         using Impl = AudioPolicyImpl<T, nAudioOut, policy>;
-        using Locking = typename Impl::LOCK;
+        using Locking = LockIf<Impl::useLock>;
         
         static constexpr auto nOuts = nAudioOut;
 
@@ -251,7 +261,7 @@ namespace imajuscule {
         std::vector<OrchestratorFunc> orchestrators;
         std::vector<audioelement::ComputeFunc> computes;
 
-        public:
+    public:
         template<typename F>
         void registerCompute(F f) {
             A(computes.capacity() > computes.size()); // we are in the audio thread, we shouldn't allocate dynamically
@@ -317,7 +327,7 @@ namespace imajuscule {
         
         bool empty() const { return channels.empty(); }
         
-        void setVolume(uint8_t channel_id, float volume, int nSteps = Channel::default_volume_transition_length) {
+        void toVolume(uint8_t channel_id, float volume, int nSteps) {
             Locking l(get_lock());
             editChannel(channel_id).toVolume(volume, nSteps);
         }
