@@ -55,6 +55,10 @@ namespace imajuscule {
                 using FPT = typename ITER::FPT;
                 using T = FPT;
                 
+                SoundEngineFreqCtrl() {
+                    invApproxRange = 1.f / (2.f * ctrl.getAbsMean());
+                }
+                
                 void initializeForRun() {
                     ctrl.initializeForRun();
                 }
@@ -77,10 +81,19 @@ namespace imajuscule {
                 
                 T step() {
                     ctrl.step();
-                    auto v = ctrl.imag();
+                    auto v = ctrl.imag() * invApproxRange;
                     A(v >= 0.f); // else, use AbsIter
                     constexpr auto fmax = 10000.f;
-                    return powf(fmax, .6f + .4f * v);
+                    auto exponent = .6f + .4f * v;
+                    /*
+                    static auto deb = 0;
+                    ++deb;
+                    if(deb == 10000) {
+                        deb = 0;
+                        LG(INFO, "exp: %.2f", exponent);
+                    }
+                     */
+                    return powf(fmax, exponent);
                 }
                 
                 auto get_duration_in_samples() const {
@@ -113,6 +126,7 @@ namespace imajuscule {
                 }
 
             private:
+                float invApproxRange;
                 audioelement::Ctrl<ITER> ctrl;
             };
             
@@ -148,6 +162,7 @@ namespace imajuscule {
             using GreyNoiseAlgo = audioelement::soundBufferWrapperAlgo<Sound::GREY_NOISE>;
             using PinkNoiseAlgo = audioelement::soundBufferWrapperAlgo<Sound::PINK_NOISE>;
             
+            // should we chose pink or grey here? todo audio tests... maybe the right answer is neither, or pink filtered to model wind
             using Mix = audioelement::Mix <
             audioelement::LowPassAlgo<GreyNoiseAlgo, Order>,
             AsymBandPassAlgo<GreyNoiseAlgo, Order, PinkNoiseIter>,

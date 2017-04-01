@@ -19,6 +19,32 @@ namespace imajuscule {
         static soundBuffer n(soundId{Sound::NOISE, noise_duration});
         return n;
     }
+    
+    float getAbsMean(soundBuffer const & b) {
+        auto sum = 0.f;
+        float inv_sz = 1.f/b.size();
+        for(auto v : b) {
+            sum += std::abs(v) * inv_sz;
+        }
+        LG(INFO, "abs mean: %f", sum);
+        return sum;
+    }
+    
+    float getWhiteNoiseAbsMean() {
+        static auto val = getAbsMean(getWhiteNoise());
+        return val;
+    }
+    
+    float getPinkNoiseAbsMean() {
+        static auto val = getAbsMean(getPinkNoise());
+        return val;
+    }
+    
+    float getGreyNoiseAbsMean() {
+        static auto val = getAbsMean(getGreyNoise());
+        return val;
+    }
+
 }
 
 using namespace imajuscule;

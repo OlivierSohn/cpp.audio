@@ -186,6 +186,8 @@ namespace imajuscule {
         }
         
         int getPosition() const { return static_cast<int>(std::distance(F_GET_BUFFER()().begin(), it)); }
+
+        float getAbsMean() const { return F_GET_BUFFER().getAbsMean(); }
     private:
         decltype(F_GET_BUFFER()().begin()) it, end = F_GET_BUFFER()().end();
     };
@@ -195,21 +197,30 @@ namespace imajuscule {
     /////////////////
     
     soundBuffer const & getWhiteNoise();
+    float getWhiteNoiseAbsMean();
     
     soundBuffer const & getPinkNoise();
+    float getPinkNoiseAbsMean();
 
     soundBuffer const & getGreyNoise();
+    float getGreyNoiseAbsMean();
     
     template<>
     struct FGetBuffer<Sound::PINK_NOISE> {
         auto const & operator()() {
             return getPinkNoise();
         }
+        float getAbsMean() {
+            return getPinkNoiseAbsMean();
+        }
     };
     template<>
     struct FGetBuffer<Sound::GREY_NOISE> {
         auto const & operator()() {
             return getGreyNoise();
+        }
+        float getAbsMean() {
+            return getGreyNoiseAbsMean();
         }
     };
 

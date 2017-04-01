@@ -515,6 +515,16 @@ namespace imajuscule {
             
             
             void doSetAngleIncrements(std::array<T, 2> incs) {
+                /*
+                static auto deb = 0;
+                ++deb;
+                if(deb == 10000) {
+                    deb = 0;
+                    LG(INFO, "%.2f %.2f",
+                       angle_increment_to_freq(incs[low_index]),
+                       angle_increment_to_freq(incs[high_index]));
+                }
+                 */
                 getHP().setAngleIncrements(incs[low_index]);
                 getLP().setAngleIncrements(incs[high_index]);
             }
@@ -730,6 +740,8 @@ namespace imajuscule {
             auto operator *() const {
                 return std::abs(*it);
             }
+
+            float getAbsMean() const { return it.getAbsMean(); }
         private:
             Iterator it;
         };
@@ -780,7 +792,9 @@ namespace imajuscule {
             }
             
             auto const & getUnderlyingIterator() const { return it; }
-            
+
+            float getAbsMean() const { return it.getAbsMean(); }
+
         private:
             uint_steps n_steps;
             uint_steps slow_it = 0;
@@ -830,7 +844,9 @@ namespace imajuscule {
             auto operator *() const {
                 return *it;
             }
-            
+
+            float getAbsMean() const { return it.getAbsMean(); }
+
         private:
             UnderlyingIt it;
         };
@@ -854,6 +870,7 @@ namespace imajuscule {
             
             void set_interpolation(itp::interpolation i) { it.set_interpolation(i); }
 
+            float getAbsMean() const { return it.getAbsMean(); }
         private:
             WindFreqIter<SlowIter<AbsIter<ITER>>> it={100000, itp::LINEAR};
         };
