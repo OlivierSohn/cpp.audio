@@ -464,6 +464,7 @@ namespace imajuscule {
             using FPT = typename Base::FPT;
             using T = FPT;
             using Tr = NumTraits<T>;
+            using AEWidth = AEAlgoWidth;
             using Base::compensation;
             using Base::low_index;
             using Base::high_index;
@@ -476,6 +477,7 @@ namespace imajuscule {
             void forgetPastSignals() {
                 getHP().forgetPastSignals();
                 getLP().forgetPastSignals();
+                width.forgetPastSignals();
             }
             
             void setFiltersOrder(int order) {
@@ -508,6 +510,9 @@ namespace imajuscule {
             }
             
             void setLoudnessParams(int low_index, float log_ratio, float loudness_level) const {}
+            
+            AEWidth & getWidth() { return width; }
+            
         protected:
             T increment;
             AEAlgoWidth width;
@@ -638,7 +643,9 @@ namespace imajuscule {
             void forgetPastSignals() const {}
             void initializeForRun() const {}
             
-            void set_interpolation(itp::interpolation) {A(0);} // use set instead
+            void setFreqRange(range<float> const &) const { A(0); } // use set instead
+            void set_interpolation(itp::interpolation) const {A(0);} // use set instead
+            void set_n_slow_steps(unsigned int) const { A(0); }
             
             void set(T from_increments,
                      T to_increments,
@@ -732,6 +739,10 @@ namespace imajuscule {
             void initializeForRun() {
                 it.initializeForRun();
             }
+
+            void forgetPastSignals() {
+                it.forgetPastSignals();
+            }
             
             void operator ++() {
                 ++it;
@@ -751,26 +762,35 @@ namespace imajuscule {
          */
         template<typename Iterator>
         struct SlowIter {
-            using uint_steps = uint32_t;
+            using uint_steps = int32_t;
             
-            SlowIter(uint_steps n_steps, itp::interpolation interp) : n_steps(n_steps), interp(interp) {
-                A(n_steps > 0);
+            SlowIter(itp::interpolation interp) : interp(interp) {
             }
             
             void set_interpolation(itp::interpolation i) { interp.setInterpolation(i); }
-
+            void set_n_slow_steps(uint_steps n) {
+                n_steps = n;
+                A(n_steps > 0);
+            }
+            
             void initializeForRun() {
                 it.initializeForRun();
                 onMajorStep();
             }
+            
+            void forgetPastSignals() {
+                it.forgetPastSignals();
+                onMajorStep();
+            }
 
             bool increment() {
+                A(slow_it < n_steps);
                 ++slow_it;
-                if(slow_it == n_steps) {
-                    onMajorStep();
-                    return true;
+                if(slow_it != n_steps) {
+                    return false;
                 }
-                return false;
+                onMajorStep();
+                return true;
             }
 
             void operator ++() {
@@ -796,7 +816,7 @@ namespace imajuscule {
             float getAbsMean() const { return it.getAbsMean(); }
 
         private:
-            uint_steps n_steps;
+            uint_steps n_steps = -1;
             uint_steps slow_it = 0;
             NormalizedInterpolation<> interp;
             float prev;
@@ -821,9 +841,16 @@ namespace imajuscule {
             WindFreqIter(Args&&... args) : it(std::forward<Args>(args)...) {}
 
             void set_interpolation(itp::interpolation i) { it.set_interpolation(i); }
+            void set_n_slow_steps(unsigned int n) {
+                it.set_n_slow_steps(n);
+            }
 
             void initializeForRun() {
                 it.initializeForRun();
+            }
+
+            void forgetPastSignals() {
+                it.forgetPastSignals();
             }
             
             void operator ++() {
@@ -861,7 +888,9 @@ namespace imajuscule {
                 it.initializeForRun();
             }
             
-            void forgetPastSignals() const {}
+            void forgetPastSignals() {
+                it.forgetPastSignals();
+            }
             void setFiltersOrder(int ) const {}
             void setAngleIncrements(T ) const {}
             
@@ -869,10 +898,13 @@ namespace imajuscule {
             T imag() const { return *it; }
             
             void set_interpolation(itp::interpolation i) { it.set_interpolation(i); }
+            void set_n_slow_steps(unsigned int n) {
+                it.set_n_slow_steps(n);
+            }
 
             float getAbsMean() const { return it.getAbsMean(); }
         private:
-            WindFreqIter<SlowIter<AbsIter<ITER>>> it={100000, itp::LINEAR};
+            WindFreqIter<SlowIter<AbsIter<ITER>>> it={itp::LINEAR};
         };
         
         enum class VolumeAdjust {

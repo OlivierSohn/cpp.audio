@@ -11,6 +11,8 @@ namespace imajuscule {
                 PINK_NOISE_BR_GAIN,
                 PINK_NOISE_BP_OCTAVE_WIDTH_MIN,
                 PINK_NOISE_BP_OCTAVE_WIDTH_MAX,
+                PINK_NOISE_BP_CENTER_FO_MIN,
+                PINK_NOISE_BP_CENTER_FO_MAX,
                 ORDER_FILTERS,
                 SINE_GAIN,
                 SEED,
@@ -27,6 +29,7 @@ namespace imajuscule {
                 
                 INTERPOLATION,
                 FREQ_SCATTER,
+                N_SLOW_ITER,
                 LENGTH,
                 LENGTH_EXPONENT,
                 LENGTH_EXPONENT_SCATTER,
@@ -39,7 +42,7 @@ namespace imajuscule {
                 D2,
                 HARMONIC_ATTENUATION,
                 
-                // Markov
+                // Birds
                 MARKOV_XFADE_FREQ,
                 
                 FREQ_TRANSITION_LENGTH,
@@ -50,13 +53,15 @@ namespace imajuscule {
                 HIGH_FREQ
             };
             
-            constexpr std::array<ImplParams, 30> params_markov
+            constexpr std::array<ImplParams, 32> params_markov
             {{
                 PINK_NOISE_LP_GAIN,
                 PINK_NOISE_BP_GAIN,
                 PINK_NOISE_BR_GAIN,
                 PINK_NOISE_BP_OCTAVE_WIDTH_MIN,
                 PINK_NOISE_BP_OCTAVE_WIDTH_MAX,
+                PINK_NOISE_BP_CENTER_FO_MIN,
+                PINK_NOISE_BP_CENTER_FO_MAX,
                 ORDER_FILTERS,
                 SINE_GAIN,
 
@@ -92,13 +97,15 @@ namespace imajuscule {
                 
             }};
             
-            constexpr std::array<ImplParams, 30> params_robots
+            constexpr std::array<ImplParams, 32> params_robots
             {{
                 PINK_NOISE_LP_GAIN,
                 PINK_NOISE_BP_GAIN,
                 PINK_NOISE_BR_GAIN,
                 PINK_NOISE_BP_OCTAVE_WIDTH_MIN,
                 PINK_NOISE_BP_OCTAVE_WIDTH_MAX,
+                PINK_NOISE_BP_CENTER_FO_MIN,
+                PINK_NOISE_BP_CENTER_FO_MAX,
                 ORDER_FILTERS,
                 SINE_GAIN,
 
@@ -133,13 +140,15 @@ namespace imajuscule {
                 PHASE_RATIO2
             }};
             
-            constexpr std::array<ImplParams, 24> params_wind
+            constexpr std::array<ImplParams, 27> params_wind
             {{
                 PINK_NOISE_LP_GAIN,
                 PINK_NOISE_BP_GAIN,
                 PINK_NOISE_BR_GAIN,
                 PINK_NOISE_BP_OCTAVE_WIDTH_MIN,
                 PINK_NOISE_BP_OCTAVE_WIDTH_MAX,
+                PINK_NOISE_BP_CENTER_FO_MIN,
+                PINK_NOISE_BP_CENTER_FO_MAX,
                 ORDER_FILTERS,
                 SINE_GAIN,
                 
@@ -160,19 +169,22 @@ namespace imajuscule {
 
                 INTERPOLATION,
                 FREQ_SCATTER,
+                N_SLOW_ITER,
                 LENGTH,
                 LENGTH_EXPONENT,
                 LENGTH_EXPONENT_SCATTER,
                 XFADE_LENGTH
             }};
             
-            constexpr std::array<ImplParams, 19> params_sweep
+            constexpr std::array<ImplParams, 21> params_sweep
             {{
                 PINK_NOISE_LP_GAIN,
                 PINK_NOISE_BP_GAIN,
                 PINK_NOISE_BR_GAIN,
                 PINK_NOISE_BP_OCTAVE_WIDTH_MIN,
                 PINK_NOISE_BP_OCTAVE_WIDTH_MAX,
+                PINK_NOISE_BP_CENTER_FO_MIN,
+                PINK_NOISE_BP_CENTER_FO_MAX,
                 ORDER_FILTERS,
                 SINE_GAIN,
 
@@ -255,7 +267,19 @@ namespace imajuscule {
                 static const float m;
                 static const float M; };
             
+            template<> struct Limits<PINK_NOISE_BP_CENTER_FO_MIN> {
+                static const float m;
+                static const float M; };
+            
+            template<> struct Limits<PINK_NOISE_BP_CENTER_FO_MAX> {
+                static const float m;
+                static const float M; };
+            
             template<> struct Limits<PAN> {
+                static const float m;
+                static const float M; };
+            
+            template<> struct Limits<N_SLOW_ITER> {
                 static const float m;
                 static const float M; };
             
@@ -323,8 +347,10 @@ namespace imajuscule {
                         {"[1/f Noise] LPF Gain", Limits<PINK_NOISE_LP_GAIN>::m, Limits<PINK_NOISE_LP_GAIN>::M},
                         {"[1/f Noise] BPF Gain", Limits<PINK_NOISE_BP_GAIN>::m, Limits<PINK_NOISE_BP_GAIN>::M},
                         {"[1/f Noise] BRF Gain", Limits<PINK_NOISE_BR_GAIN>::m, Limits<PINK_NOISE_BR_GAIN>::M},
-                        {"[1/f Noise] BPF Width Min", Limits<PINK_NOISE_BP_OCTAVE_WIDTH_MIN>::m, Limits<PINK_NOISE_BP_OCTAVE_WIDTH_MIN>::M},
-                        {"[1/f Noise] BPF Width Max", Limits<PINK_NOISE_BP_OCTAVE_WIDTH_MAX>::m, Limits<PINK_NOISE_BP_OCTAVE_WIDTH_MAX>::M},
+                        {"BPF Width Min", Limits<PINK_NOISE_BP_OCTAVE_WIDTH_MIN>::m, Limits<PINK_NOISE_BP_OCTAVE_WIDTH_MIN>::M},
+                        {"BPF Width Max", Limits<PINK_NOISE_BP_OCTAVE_WIDTH_MAX>::m, Limits<PINK_NOISE_BP_OCTAVE_WIDTH_MAX>::M},
+                        {"BPF Center Min", Limits<PINK_NOISE_BP_CENTER_FO_MIN>::m, Limits<PINK_NOISE_BP_CENTER_FO_MIN>::M},
+                        {"BPF Center Max", Limits<PINK_NOISE_BP_CENTER_FO_MAX>::m, Limits<PINK_NOISE_BP_CENTER_FO_MAX>::M},
                         {"Filters Order", Limits<ORDER_FILTERS>::m, Limits<ORDER_FILTERS>::M},
                         {"[Sine] Gain", Limits<SINE_GAIN>::m, Limits<SINE_GAIN>::M},
                         {"Seed", Limits<SEED>::m, Limits<SEED>::M},
@@ -338,6 +364,7 @@ namespace imajuscule {
                         {"Articulative pause length", Limits<MARKOV_ARTICULATIVE_PAUSE_LENGTH>::m, Limits<MARKOV_ARTICULATIVE_PAUSE_LENGTH>::M},
                         {"Interpolation", itp::interpolation_traversal()},
                         {"Frequency scatter", Limits<FREQ_SCATTER>::m, Limits<FREQ_SCATTER>::M },
+                        {"N. slow iter", Limits<N_SLOW_ITER>::m, Limits<N_SLOW_ITER>::M},
                         {"Length", Limits<LENGTH>::m, Limits<LENGTH>::M},
                         {"Length Exponent", Limits<LENGTH_EXPONENT>::m, Limits<LENGTH_EXPONENT>::M},
                         {"Length Exponent Scatter", Limits<LENGTH_EXPONENT_SCATTER>::m, Limits<LENGTH_EXPONENT_SCATTER>::M},
@@ -364,7 +391,7 @@ namespace imajuscule {
                     return filtered;
                 }
                 
-                static std::array<float,30> make_common(int start_node,
+                static std::array<float,33> make_common(int start_node,
                                                         int pre_tries,
                                                         int min_path_length,
                                                         int additionnal_tries,
@@ -393,6 +420,8 @@ namespace imajuscule {
                         0.f,
                         normalize<PINK_NOISE_BP_OCTAVE_WIDTH_MIN>(bandpass_width_min),
                         normalize<PINK_NOISE_BP_OCTAVE_WIDTH_MAX>(bandpass_width_max),
+                        normalize<PINK_NOISE_BP_CENTER_FO_MIN>(1.f),
+                        normalize<PINK_NOISE_BP_CENTER_FO_MAX>(8.f),
                         static_cast<float>(filter_order-Limits<ORDER_FILTERS>::m),
                         1.f,
                         0,
@@ -406,6 +435,7 @@ namespace imajuscule {
                         static_cast<float>(articulative_pause_length),
                         static_cast<float>(itp_index),
                         /*normalize<FREQ_SCATTER>*/(freq_scat),
+                        normalize<N_SLOW_ITER>(100000.f),
                         normalize<LENGTH>(length),
                         normalize<LENGTH_EXPONENT>(length_med_exp),
                         normalize<LENGTH_EXPONENT_SCATTER>(length_scale_exp),
@@ -432,7 +462,7 @@ namespace imajuscule {
                                                  float d1, float d2,
                                                  float harmonic_attenuation,
                                                  float phase_ratio1 = 0.f, float phase_ratio2 = 0.f) {
-                    auto a = make_common(start_node, pre_tries, min_path_length, additionnal_tries, articulative_pause_length, i, freq_scat, length, length_med_exp, length_scale_exp, xfade, phase_ratio1, phase_ratio2, d1,d2,harmonic_attenuation, 1, 1, 0.f);
+                    auto a = make_common(start_node, pre_tries, min_path_length, additionnal_tries, articulative_pause_length, i, freq_scat, length, length_med_exp, length_scale_exp, xfade, phase_ratio1, phase_ratio2, d1,d2,harmonic_attenuation, 1, 0.f, 0.f);
                     Program::ARRAY result;
                     result.resize(std::get<Mode::ROBOTS>(params_all).size());
                     for(int idx = 0; idx<a.size(); ++idx) {
@@ -450,7 +480,7 @@ namespace imajuscule {
                                                  float length_med_exp,
                                                  int xfade,
                                                  float low, float high) {
-                    auto a = make_common(0, 0, 0, 0, 0.f, i, 0.f, length, length_med_exp, 0.f, xfade, 0.f, 0.f, 0, 0, 0.f, 20.f, 1, 1);
+                    auto a = make_common(0, 0, 0, 0, 0.f, i, 0.f, length, length_med_exp, 0.f, xfade, 0.f, 0.f, 0, 0, 0.f, 20.f, 0.f, 0.f);
                     Program::ARRAY result;
                     result.resize(std::get<Mode::SWEEP>(params_all).size());
                     for(int idx = 0; idx<a.size(); ++idx) {
@@ -482,7 +512,7 @@ namespace imajuscule {
                                                   int freq_xfade,
                                                   itp::interpolation freq_i,
                                                   float phase_ratio1 = 0.f, float phase_ratio2 = 0.f) {
-                    auto a = make_common(start_node, pre_tries, min_path_length, additionnal_tries, articulative_pause_length, i, freq_scat, length, length_med_exp, length_scale_exp, xfade, phase_ratio1, phase_ratio2, 0,0,0, 1, 1, 0.f);
+                    auto a = make_common(start_node, pre_tries, min_path_length, additionnal_tries, articulative_pause_length, i, freq_scat, length, length_med_exp, length_scale_exp, xfade, phase_ratio1, phase_ratio2, 0,0,0, 1, 0.f, 0.f);
                     Program::ARRAY result;
                     result.resize(std::get<Mode::BIRDS>(params_all).size());
                     for(int idx = 0; idx<a.size(); ++idx) {
@@ -716,6 +746,48 @@ namespace imajuscule {
                         denorm<SINE_GAIN>()
                     }});
                     
+                    {
+                        auto m = denorm<PINK_NOISE_BP_CENTER_FO_MIN>();
+                        auto M = denorm<PINK_NOISE_BP_CENTER_FO_MAX>();
+                        constexpr auto lowest_f = 10.f;
+                        m = lowest_f * pow(2.f, m);
+                        M = lowest_f * pow(2.f, M);
+                        
+                        // we could omit calling set_n_slow_steps when not in mode WIND,
+                        // but we call it with value 1 to be sure that all objects
+                        // that we need to call for WIND are called (the value is initialized to
+                        // -1 in constructor and makes an assert fail if the method is not called)
+                        float n_slow_steps(1.f); // not used
+                        if(MODE == Mode::WIND) {
+                            n_slow_steps = denorm<N_SLOW_ITER>();
+                        }
+                        auto ra = range<float>(std::min(m,M),
+                                               std::max(m,M));
+                        LG(INFO, "%f %f", ra.getMin(), ra.getMax());
+                        for(auto & r : c.elem.getRamps()) {
+                            auto & mix = r.algo.getOsc();
+                            
+                            auto & bpf_width = std::get<1>(mix.get()).getOsc().getWidth();
+                            auto & bpr_width = std::get<2>(mix.get()).getOsc().getWidth();
+                            
+                            auto & bpf_center_ctrl = std::get<1>(mix.get()).getCtrl();
+                            auto & bpr_center_ctrl = std::get<2>(mix.get()).getCtrl();
+
+                            bpf_center_ctrl.setFreqRange(ra);
+                            bpf_center_ctrl.set_n_slow_steps(n_slow_steps);
+                            bpf_width.set_n_slow_steps(n_slow_steps);
+                            
+                            bpr_center_ctrl.setFreqRange(ra);
+                            bpr_center_ctrl.set_n_slow_steps(n_slow_steps);
+                            bpr_width.set_n_slow_steps(n_slow_steps);
+                        }
+                        if(MODE == Mode::WIND) {
+                            for(auto & f_control : c.elem.engine.getRamps().a) {
+                                f_control.setFreqRange(ra);
+                                f_control.set_n_slow_steps(n_slow_steps);
+                            }
+                        }
+                    }
                     {
                         float pan;
                         {

@@ -48,15 +48,22 @@ namespace imajuscule {
         enum SoundEngineInitPolicy : unsigned char {
             StartAtLastPosition,
             StartAfresh
-        };
+        };            
+
+            // to optimize things, should this class work in increments instead of frequencies?
 
             template<typename ITER>
             struct SoundEngineFreqCtrl {
                 using FPT = typename ITER::FPT;
                 using T = FPT;
-                
-                SoundEngineFreqCtrl() {
+
+                void setFreqRange(range<float> const & r) {
+                    this->fmax = r.getMax();
+                    A(this->fmax);
                     invApproxRange = 1.f / (2.f * ctrl.getAbsMean());
+                    x = std::log(r.getMin()) / std::log(fmax);
+                    A(x > 0.f);
+                    A(x <= 1.f);
                 }
                 
                 void initializeForRun() {
@@ -78,13 +85,16 @@ namespace imajuscule {
                 void set_interpolation(itp::interpolation i) {
                     ctrl.set_interpolation(i);
                 }
+                void set_n_slow_steps(unsigned int n) {
+                    ctrl.set_n_slow_steps(n);
+                }
                 
                 T step() {
+                    A(fmax && x);
                     ctrl.step();
                     auto v = ctrl.imag() * invApproxRange;
                     A(v >= 0.f); // else, use AbsIter
-                    constexpr auto fmax = 10000.f;
-                    auto exponent = .6f + .4f * v;
+                    auto exponent = x + (1.f-x) * v;
                     /*
                     static auto deb = 0;
                     ++deb;
@@ -127,9 +137,9 @@ namespace imajuscule {
 
             private:
                 float invApproxRange;
+                float fmax = 0.f, x = 0.f;
                 audioelement::Ctrl<ITER> ctrl;
             };
-            
             
             template<typename AEAlgo, int ORDER, typename ITER>
             using AsymBandPassAlgo = audioelement::FreqCtrl_<
@@ -229,9 +239,6 @@ namespace imajuscule {
                                 *ramp_spec2 = *ramp_spec;
                                 // and create a transition
                                 if(from_inc == to_inc) {
-                                    // comment on next line :  I think this is obsolete,
-                                    // now we don't detect the end that way anymore
-                                    // (todo remove and test with an instrument that uses that)
                                     from_inc *= 1.00001f; // make sure ramp is non trivial else we cannot detect when it's done
                                 }
                                 ramp_spec->set(from_inc, to_inc, freq_xfade, 0, freq_interpolation);
@@ -467,10 +474,8 @@ namespace imajuscule {
                 auto & channel = out.editChannel(c1);
 
                 while(auto new_spec = ramp_specs.get_next_ramp_for_run()) {
-                    last_ramp_index = 1-last_ramp_index;
                     auto new_ramp = get_inactive_ramp();
                     A(new_ramp); // might be null if length of ramp is too small
-                    ramp_[last_ramp_index] = new_ramp;
                     new_ramp->algo.getCtrl() = *new_spec;
                     new_ramp->algo.getCtrl().initializeForRun();
                     
@@ -485,8 +490,6 @@ namespace imajuscule {
                     {
                         return true; // channel is playing
                     }
-                    // cancel the index change
-                    last_ramp_index = 1-last_ramp_index;
                 }
                 return false; // close channel
             }
@@ -751,8 +754,6 @@ namespace imajuscule {
             std::unique_ptr<MarkovChain> markov;
             FreqXfade xfade_freq:2;
             
-            std::array<audioElt *, 2> ramp_= {};
-            unsigned int last_ramp_index : 1;
             bool state_silence:1;
             
             struct RampSpecs {
@@ -813,6 +814,9 @@ namespace imajuscule {
                 unsigned end: relevantBits(n_specs+1);
                 Ctrls a;
             } ramp_specs;
+            
+        public:
+            auto & getRamps() { return ramp_specs; }
         };
         
     }

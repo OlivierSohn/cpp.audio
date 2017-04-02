@@ -10,11 +10,19 @@ namespace imajuscule {
             const float Limits<PINK_NOISE_BP_OCTAVE_WIDTH_MAX>::m = 0.f;
             const float Limits<PINK_NOISE_BP_OCTAVE_WIDTH_MAX>::M = 5.f;
             
+            const float Limits<PINK_NOISE_BP_CENTER_FO_MIN>::m = 0.f;
+            const float Limits<PINK_NOISE_BP_CENTER_FO_MIN>::M = 10.f;
+            const float Limits<PINK_NOISE_BP_CENTER_FO_MAX>::m = 0.f;
+            const float Limits<PINK_NOISE_BP_CENTER_FO_MAX>::M = 10.f;
+            
             const float Limits<PAN>::m = -1.f;
             const float Limits<PAN>::M = 1.f;
             
             const float Limits<HARMONIC_ATTENUATION>::m = 0.f;
             const float Limits<HARMONIC_ATTENUATION>::M = 0.98f;
+            
+            const float Limits<N_SLOW_ITER>::m = 10.f;
+            const float Limits<N_SLOW_ITER>::M = 100000.f;
             
             const float Limits<LENGTH>::m = 10.f;
             const float Limits<LENGTH>::M = 500.f; // see comment below
