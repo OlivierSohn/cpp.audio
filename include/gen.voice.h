@@ -497,7 +497,7 @@ namespace imajuscule {
                     return result;
                 }
                 
-                static Program::ARRAY make_markov(int start_node,
+                static Program::ARRAY make_bird(int start_node,
                                                   int pre_tries,
                                                   int min_path_length,
                                                   int additionnal_tries,
@@ -539,8 +539,8 @@ namespace imajuscule {
                 }
                 
                 static Program::ARRAY make_wind(int filter_order,
-                                                float bandpass_width_min,
-                                                float bandpass_width_max,
+                                                range<float> bp_width,
+                                                range<float> bp_center,
                                                 int start_node,
                                                 int pre_tries,
                                                 int min_path_length,
@@ -550,8 +550,9 @@ namespace imajuscule {
                                                 float length,
                                                 float length_med_exp,
                                                 float length_scale_exp,
-                                                int xfade) {
-                    auto a = make_common(start_node, pre_tries, min_path_length, additionnal_tries, 0, i, freq_scat, length, length_med_exp, length_scale_exp, xfade, 0.f, 0.f, 0,0,0, filter_order, bandpass_width_min, bandpass_width_max);
+                                                int xfade,
+                                                float n_slow_iter) {
+                    auto a = make_common(start_node, pre_tries, min_path_length, additionnal_tries, 0, i, freq_scat, length, length_med_exp, length_scale_exp, xfade, 0.f, 0.f, 0,0,0, filter_order, bp_width.getMin(), bp_width.getMax());
                     Program::ARRAY result;
                     result.resize(std::get<Mode::WIND>(params_all).size());
                     for(int idx = 0; idx<a.size(); ++idx) {
@@ -564,7 +565,10 @@ namespace imajuscule {
                     result[index(SINE_GAIN)] = 0.f;
                     result[index(PINK_NOISE_BP_GAIN)] = 1.f;
                     result[index(PINK_NOISE_BR_GAIN)] = 0.f;
-                    
+                    result[index(PINK_NOISE_BP_CENTER_FO_MIN)] = normalize<PINK_NOISE_BP_CENTER_FO_MIN>(bp_center.getMin()),
+                    result[index(PINK_NOISE_BP_CENTER_FO_MAX)] = normalize<PINK_NOISE_BP_CENTER_FO_MAX>(bp_center.getMax()),
+                    result[index(N_SLOW_ITER)] = normalize<N_SLOW_ITER>(n_slow_iter);
+
                     return result;
                 }
                 
@@ -572,21 +576,23 @@ namespace imajuscule {
                     if(MODE==Mode::BIRDS) {
                         static ProgramsI ps {{
                             {"Standard & Cute bird",
-                                make_markov(0, 0, 1, 0, itp::EASE_INOUT_CIRC, 0.f, 93.f, 2.f, .5f, 1000, 1301, FreqXfade::No, 6200, itp::EASE_OUT_EXPO)
+                                make_bird(0, 0, 1, 0, itp::EASE_INOUT_CIRC, 0.f, 93.f, 2.f, .5f, 1000, 1301, FreqXfade::No, 6200, itp::EASE_OUT_EXPO)
                             },{"Scat bird",
-                                make_markov(0, 0, 3, 17, itp::EASE_INOUT_CIRC, 0.015f, 10.f, 2.f, .5f, 1961, 782, FreqXfade::NonTrivial, 1601, itp::EASE_INOUT_EXPO)
+                                make_bird(0, 0, 3, 17, itp::EASE_INOUT_CIRC, 0.015f, 10.f, 2.f, .5f, 1961, 782, FreqXfade::NonTrivial, 1601, itp::EASE_INOUT_EXPO)
                             },{"Rhythmic bird",
-                                make_markov(1, 0, 3, 11, itp::EASE_INOUT_CIRC, 0.f, 19.8f, 2.f, 0.f, 1406, 502, FreqXfade::All, 801, itp::EASE_INOUT_EXPO)
+                                make_bird(1, 0, 3, 11, itp::EASE_INOUT_CIRC, 0.f, 19.8f, 2.f, 0.f, 1406, 502, FreqXfade::All, 801, itp::EASE_INOUT_EXPO)
                             },{"Slow bird",
-                                make_markov(0, 2, 1, 0, itp::EASE_IN_EXPO, 0.f, 73.7f, 2.f, .5f, 1000, 1301, FreqXfade::No, 6200, itp::EASE_OUT_EXPO)
+                                make_bird(0, 2, 1, 0, itp::EASE_IN_EXPO, 0.f, 73.7f, 2.f, .5f, 1000, 1301, FreqXfade::No, 6200, itp::EASE_OUT_EXPO)
                             },{"BiTone bird",
-                                make_markov(1, 0, 2, 0, itp::EASE_IN_EXPO, .414f, 78.6f, 2.f, .5f, 4302, 1301, FreqXfade::No, 6200, itp::EASE_OUT_EXPO)
-                            },{"Happy bird",
-                                make_markov(1, 0, 4, 0, itp::EASE_IN_EXPO, .414f, 78.6f, 2.f, .5f, 5848, 2001, FreqXfade::No, 6200, itp::EASE_OUT_EXPO)
+                                make_bird(1, 0, 2, 0, itp::EASE_IN_EXPO, .414f, 78.6f, 2.f, .5f, 4302, 1301, FreqXfade::No, 6200, itp::EASE_OUT_EXPO)
+                            },{"Happy bird 1",
+                                make_bird(1, 0, 4, 0, itp::EASE_IN_EXPO, .414f, 78.6f, 2.f, .5f, 5848, 2001, FreqXfade::No, 6200, itp::EASE_OUT_EXPO)
+                            },{"Happy bird 2",
+                                make_bird(1, 0, 4, 0, itp::EASE_IN_EXPO, .414f, 63.9f, 1.19f, 1.f, 5848, 2001, FreqXfade::No, 6200, itp::EASE_OUT_EXPO)
                             },{"Laughing bird",
-                                make_markov(1, 0, 2, 0, itp::EASE_IN_EXPO, .414f, 78.6f, 2.f, .5f, 9672, 1301, FreqXfade::All, 3201, itp::EASE_OUT_EXPO)
+                                make_bird(1, 0, 2, 0, itp::EASE_IN_EXPO, .414f, 78.6f, 2.f, .5f, 9672, 1301, FreqXfade::All, 3201, itp::EASE_OUT_EXPO)
                             },{"Talkative bird",
-                                make_markov(0, 0, 6, 0, itp::EASE_INOUT_CIRC, 0.12f, 93.3f, 2.f, .5f, 6713, 2201, FreqXfade::NonTrivial, 4401, itp::EASE_OUT_EXPO)
+                                make_bird(0, 0, 6, 0, itp::EASE_INOUT_CIRC, 0.12f, 93.3f, 2.f, .5f, 6713, 2201, FreqXfade::NonTrivial, 4401, itp::EASE_OUT_EXPO)
                             }
                         }};
                         return ps.v;
@@ -614,11 +620,24 @@ namespace imajuscule {
                     else if(MODE==Mode::WIND) {
                         static ProgramsI ps {{
                             {"Medium wind in trees",
-                                make_wind(1, 0.f, 0.f, 0, 0, 6, 0, itp::PROPORTIONAL_VALUE_DERIVATIVE, 0.12f, 93.3f, 2.f, .5f, 2201)
+                                make_wind(1, {0.f, 0.f}, {1.f, 8.f}, 0, 0, 6, 0, itp::PROPORTIONAL_VALUE_DERIVATIVE, 0.12f, 93.3f, 2.f, .5f, 2201, 100000.f)
                             }, {"Strong wind",
-                                make_wind(4, 3.8f, 3.8f, 0, 0, 6, 0, itp::PROPORTIONAL_VALUE_DERIVATIVE, 0.12f, 93.3f, 2.f, .5f, 2201)
-                            }
-
+                                make_wind(4, {3.8f, 3.8f}, {1.f, 8.f}, 0, 0, 6, 0, itp::PROPORTIONAL_VALUE_DERIVATIVE, 0.12f, 93.3f, 2.f, .5f, 2201, 100000.f)
+                            }, {"Vinyl cracks",
+                                make_wind(5, {0.f, 5.f}, {8.1f, 8.1f}, 0, 0, 6, 0, itp::PROPORTIONAL_VALUE_DERIVATIVE, 0.12f, 93.3f, 2.f, .5f, 2201, 10.f)
+                            }, {"Small animal eating",
+                                make_wind(61, {0.f, 5.f}, {8.1f, 8.1f}, 0, 0, 6, 0, itp::PROPORTIONAL_VALUE_DERIVATIVE, 0.12f, 93.3f, 2.f, .5f, 2201, 10.f)
+                            }, {"Heavy rain in a car",
+                                make_wind(33, {3.45f, 5.f}, {8.1f, 8.1f}, 0, 0, 6, 0, itp::PROPORTIONAL_VALUE_DERIVATIVE, 0.12f, 93.3f, 2.f, .5f, 2201, 10.f)
+                            }, {"Light rain in a car",
+                                make_wind(89, {3.45f, 5.f}, {8.1f, 8.1f}, 0, 0, 6, 0, itp::PROPORTIONAL_VALUE_DERIVATIVE, 0.12f, 93.3f, 2.f, .5f, 2201, 10.f)
+                            }, {"Light rain",
+                                make_wind(13, {3.45f, 3.45f}, {8.0f, 8.3f}, 0, 0, 6, 0, itp::PROPORTIONAL_VALUE_DERIVATIVE, 0.12f, 93.3f, 2.f, .5f, 2201, 10.f)
+                            }, {"Bubbles",
+                                make_wind(129, {2.45f, 3.25f}, {4.8f, 8.3f}, 0, 0, 6, 0, itp::PROPORTIONAL_VALUE_DERIVATIVE, 0.12f, 93.3f, 2.f, .5f, 2201, 1009.9f)
+                            }, {"Earth rumbling",
+                                make_wind(30, {1.95f, 5.f}, {2.5f, 3.2f}, 0, 0, 6, 0, itp::PROPORTIONAL_VALUE_DERIVATIVE, 0.12f, 93.3f, 2.f, .5f, 2201, 7009.3f)
+                            },
                         }};
                         return ps.v;
                     }
@@ -763,7 +782,6 @@ namespace imajuscule {
                         }
                         auto ra = range<float>(std::min(m,M),
                                                std::max(m,M));
-                        LG(INFO, "%f %f", ra.getMin(), ra.getMax());
                         for(auto & r : c.elem.getRamps()) {
                             auto & mix = r.algo.getOsc();
                             
