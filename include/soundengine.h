@@ -141,6 +141,8 @@ namespace imajuscule {
                 audioelement::Ctrl<ITER> ctrl;
             };
             
+            // 'setAngleIncrements' of BandAlgo is controlled by SoundEngineFreqCtrl
+            
             template<typename AEAlgo, int ORDER, typename ITER>
             using AsymBandPassAlgo = audioelement::FreqCtrl_<
             audioelement::BandPassAlgo<AEAlgo, audioelement::Ctrl<ITER>, ORDER>,
@@ -155,12 +157,14 @@ namespace imajuscule {
             
             template<typename T, SoundEngineMode>
             struct SoundEngineAlgo_ {
+                // 'setAngleIncrements' of T (aka Mix) is controlled by LogRamp
                 using CTRL = audioelement::LogRamp< typename T::T >;
                 using type = audioelement::FreqCtrl_< T, CTRL >;
             };
             
             template<typename T>
             struct SoundEngineAlgo_<T, SoundEngineMode::WIND> {
+                // 'setAngleIncrements' of T (aka Mix) is controlled by SoundEngineFreqCtrl
                 using CTRL = SoundEngineFreqCtrl< PinkNoiseIter >;
                 using type = audioelement::FreqCtrl_< T, CTRL >;
             };
@@ -222,15 +226,17 @@ namespace imajuscule {
                     freq1 *= state_factor;
                     freq2 *= state_factor;
                     
-                    ramp_spec->set(freq1, freq2, n_frames, 0, interpolation);
+                    ramp_spec->get().set(freq1, freq2, n_frames, 0, interpolation);
+                    ramp_spec->silenceFollows(true);
+                    ramp_spec->setVolume(1.f);
                     if(xfade_freq==FreqXfade::No) {
                         // don't try to solve frequency discontinuity
                         return;
                     }
                     if(current) {
                         // there was a spec before the one we just added...
-                        auto from_inc = current->getTo();
-                        auto to_inc = ramp_spec->getFrom();
+                        auto from_inc = current->get().getTo();
+                        auto to_inc = ramp_spec->get().getFrom();
                         auto diff = from_inc - to_inc;
                         if(xfade_freq==FreqXfade::All || diff) {
                             // ... and the new spec creates a frequency discontinuity
@@ -241,7 +247,9 @@ namespace imajuscule {
                                 if(from_inc == to_inc) {
                                     from_inc *= 1.00001f; // make sure ramp is non trivial else we cannot detect when it's done
                                 }
-                                ramp_spec->set(from_inc, to_inc, freq_xfade, 0, freq_interpolation);
+                                ramp_spec->get().set(from_inc, to_inc, freq_xfade, 0, freq_interpolation);
+                                ramp_spec->silenceFollows(true);
+                                ramp_spec->setVolume(1.f);
                             }
                             else {
                                 // just discard it
@@ -256,7 +264,7 @@ namespace imajuscule {
             }
             
             template<typename OutputData>
-            auto create_markov(OutputData & o) {
+            auto create_birds(OutputData & o) {
                 constexpr auto nAudioOut = OutputData::nOuts;
                 using Request = Request<nAudioOut>;
                 auto mc = std::make_unique<MarkovChain>();
@@ -303,10 +311,14 @@ namespace imajuscule {
                                        std::uniform_real_distribution<float>{min_exp, max_exp}(rng::mersenne()));
                         auto n_frames = static_cast<float>(ms_to_frames(length));
                         if(auto * ramp_spec = ramp_specs.get_next_ramp_for_build()) {
-                            ramp_spec->set(freq1_robot, freq1_robot, n_frames, phase_ratio1 * n_frames, interpolation);
+                            ramp_spec->get().set(freq1_robot, freq1_robot, n_frames, phase_ratio1 * n_frames, interpolation);
+                            ramp_spec->setVolume(vol1);
+                            ramp_spec->silenceFollows(false);
                         }
                         if(auto * ramp_spec = ramp_specs.get_next_ramp_for_build()) {
-                            ramp_spec->set(freq2_robot, freq2_robot, n_frames, phase_ratio1 * n_frames, interpolation);
+                            ramp_spec->get().set(freq2_robot, freq2_robot, n_frames, phase_ratio1 * n_frames, interpolation);
+                            ramp_spec->setVolume(vol2);
+                            ramp_spec->silenceFollows(true);
                         }
                     }
                 });
@@ -319,28 +331,36 @@ namespace imajuscule {
                                        std::uniform_real_distribution<float>{min_exp, max_exp}(rng::mersenne()));
                         auto n_frames = static_cast<float>(ms_to_frames(length));
                         if(auto * ramp_spec = ramp_specs.get_next_ramp_for_build()) {
-                            // repeat f2...
-                            auto i = std::uniform_int_distribution<>{0,3}(rng::mersenne());
-                            // ... at same or twice or half freq
-                            auto freq2 = freq2_robot;
-                            if(i==0) {
-                                freq2 *= 2.f;
-                            }
-                            else if(i==2) {
-                                freq2 *= 0.5f;
-                            }
-                            ramp_spec->set(freq2, freq2, n_frames, phase_ratio1 * n_frames, interpolation);
+                            ramp_spec->get().set(freq2_robot, freq2_robot, n_frames, phase_ratio1 * n_frames, interpolation);
+                            ramp_spec->setVolume(vol2);
+                            ramp_spec->silenceFollows(true);
+                        }
+                        auto ht = compute_half_tone(1.f);
+                        if(auto * ramp_spec = ramp_specs.get_next_ramp_for_build()) {
+                            auto f = transpose_frequency(freq2_robot, ht, 2);
+                            ramp_spec->get().set(f, f, n_frames, phase_ratio1 * n_frames, interpolation);
+                            ramp_spec->setVolume(vol2);
+                            ramp_spec->silenceFollows(true);
+                        }
+                        if(auto * ramp_spec = ramp_specs.get_next_ramp_for_build()) {
+                            auto f = transpose_frequency(freq2_robot, ht, 4);
+                            ramp_spec->get().set(f, f, n_frames, phase_ratio1 * n_frames, interpolation);
+                            ramp_spec->setVolume(vol2);
+                            ramp_spec->silenceFollows(true);
                         }
                     }
                 });
                 auto node3 = mc->emplace([&o, this](Move const m, MarkovNode&me, MarkovNode&from_to) {
                     if(m==Move::ENTER) {
-                        auto length = this->length;
+                        constexpr auto slide_length_scale = 2.f;
+                        auto length = slide_length_scale * this->length;
                         length *= powf(2.f,
                                        std::uniform_real_distribution<float>{min_exp, max_exp}(rng::mersenne()));
                         auto n_frames = static_cast<float>(ms_to_frames(length));
                         if(auto * ramp_spec = ramp_specs.get_next_ramp_for_build()) {
-                            ramp_spec->set(freq2_robot, freq1_robot, n_frames, phase_ratio1 * n_frames, interpolation);
+                            ramp_spec->get().set(freq2_robot, freq1_robot, n_frames, phase_ratio1 * n_frames, interpolation);
+                            ramp_spec->setVolume(std::min(vol2, vol1));
+                            ramp_spec->silenceFollows(true);
                         }
                     }
                 });
@@ -353,21 +373,21 @@ namespace imajuscule {
                 //                  3
                 //                  |
                 //                  ^
-                //                 0.1
+                //                 0.2
                 //                  ^
                 //                  |
                 // 0 --- > 1 > ---- 1---\
                 //                  |   |
                 //                  v   ^
-                //                 0.1  1
+                //                 0.2  .1
                 //                  v   ^
                 //                  |   |
                 //                  2---/
                 
                 def_markov_transition(node0, node1, 1.f);
-                def_markov_transition(node1, node2, 0.1f);
-                def_markov_transition(node2, node1, 1.f);
-                def_markov_transition(node1, node3, 0.1f);
+                def_markov_transition(node1, node2, 0.2f);
+                def_markov_transition(node2, node1, 0.1f);
+                def_markov_transition(node1, node3, 0.2f);
                 def_markov_transition(node3, node1, 1.f);
                 
                 return mc;
@@ -386,7 +406,7 @@ namespace imajuscule {
                                        std::uniform_real_distribution<float>{min_exp, max_exp}(rng::mersenne()));
                         auto n_frames = static_cast<float>(ms_to_frames(length));
                         if(auto * ramp_spec = ramp_specs.get_next_ramp_for_build()) {
-                            ramp_spec->set(freq1_robot, freq2_robot, n_frames, phase_ratio1 * n_frames, interpolation);
+                            ramp_spec->get().set(freq1_robot, freq2_robot, n_frames, phase_ratio1 * n_frames, interpolation);
                         }
                     }
                 });
@@ -406,7 +426,7 @@ namespace imajuscule {
                 
                 auto node0 = mc->emplace([this, &o](Move const m, MarkovNode&me, MarkovNode&from_to) {
                     if(auto * ramp_spec = ramp_specs.get_next_ramp_for_build()) {
-                        ramp_spec->set_interpolation(interpolation);
+                        ramp_spec->get().set_interpolation(interpolation);
                     }
                 });
                 auto node1 = mc->emplace([](Move const m, MarkovNode&me, MarkovNode&from_to) {
@@ -455,9 +475,13 @@ namespace imajuscule {
                     else {
                         bool const has_silence = articulative_pause_length > 2*channel.get_size_xfade();
                         if(has_silence) {
-                            state_silence = true;
-                            playSilence(out, getSilence());
-                            return true;
+                            if(auto cur = ramp_specs.get_current()) {
+                                if(cur->silenceFollows()) {
+                                    state_silence = true;
+                                    playSilence(out, getSilence());
+                                    return true;
+                                }
+                            }
                         }
                         done = !playNextSpec(out);
                     }
@@ -467,7 +491,7 @@ namespace imajuscule {
             }
             
             template<typename OutputData>
-            bool playNextSpec(OutputData & out, Volumes<OutputData::nOuts> const * vol = nullptr) {
+            bool playNextSpec(OutputData & out) {
                 constexpr auto nAudioOut = OutputData::nOuts;
                 using Request = Request<nAudioOut>;
 
@@ -476,14 +500,17 @@ namespace imajuscule {
                 while(auto new_spec = ramp_specs.get_next_ramp_for_run()) {
                     auto new_ramp = get_inactive_ramp();
                     A(new_ramp); // might be null if length of ramp is too small
-                    new_ramp->algo.getCtrl() = *new_spec;
+                    new_ramp->algo.getCtrl() = new_spec->get();
                     new_ramp->algo.getCtrl().initializeForRun();
+                    
+                    
+                    auto v = MakeVolume::run<nAudioOut>(1.f, pan) * (new_spec->volume()/Request::chan_base_amplitude);
                     
                     if(out.playGenericNoLock(c1,
                                              std::make_pair(std::ref(*new_ramp),
                                                             Request{
                                                                 &new_ramp->buffer[0],
-                                                                vol? *vol : channel.get_current().volumes * (1.f/Request::chan_base_amplitude),
+                                                                v,
                                                                 static_cast<int>(.5f + new_ramp->algo.getCtrl().get_duration_in_samples())
                                                             })
                                              ))
@@ -590,7 +617,7 @@ namespace imajuscule {
             void initialize_sweep(OutputData & o,
                                   MonoNoteChannel & c,
                                   float low, float high,
-                                  Volumes<OutputData::nOuts> const & volume) {
+                                  float pan) {
                 bool initialize = true;
                 if(!markov) {
                     markov = create_sweep(o);
@@ -602,33 +629,33 @@ namespace imajuscule {
                 freq1_robot = low;
                 freq2_robot = high;
                 
-                do_initialize(o, c, initialize, 0, 0, 1, 0, articulative_pause_length, volume);
+                do_initialize(o, c, initialize, 0, 0, 1, 0, articulative_pause_length, pan);
             }
             
             template<typename OutputData, typename MonoNoteChannel>
-            void initialize_markov(OutputData & o,
+            void initialize_birds(OutputData & o,
                                    MonoNoteChannel & c,
                                    int start_node, int pre_tries, int min_path_length, int additional_tries, InitPolicy init_policy,
                                    FreqXfade xfade_freq, int articulative_pause_length,
-                                   Volumes<OutputData::nOuts> const & volume) {
+                                   float pan) {
                 this->xfade_freq = xfade_freq;
                 
                 bool initialize = (!markov) || (init_policy==InitPolicy::StartAfresh);
                 if(!markov) {
-                    markov = create_markov(o);
+                    markov = create_birds(o);
                     if(!markov) {
                         return;
                     }
                 }
                 
-                do_initialize(o, c, initialize, start_node, pre_tries, min_path_length, additional_tries, articulative_pause_length, volume);
+                do_initialize(o, c, initialize, start_node, pre_tries, min_path_length, additional_tries, articulative_pause_length, pan);
             }
             
             template<typename OutputData, typename MonoNoteChannel>
             void initialize_wind(OutputData & o,
                                  MonoNoteChannel & c,
                                  int start_node, int pre_tries, int min_path_length, int additional_tries, InitPolicy init_policy,
-                                 Volumes<OutputData::nOuts> const & volume) {
+                                 float pan) {
                 bool initialize = (!markov) || (init_policy==InitPolicy::StartAfresh);
                 if(!markov) {
                     markov = create_wind(o);
@@ -637,7 +664,7 @@ namespace imajuscule {
                     }
                 }
                 
-                do_initialize(o, c, initialize, start_node, pre_tries, min_path_length, additional_tries, articulative_pause_length, volume);
+                do_initialize(o, c, initialize, start_node, pre_tries, min_path_length, additional_tries, articulative_pause_length, pan);
             }
             
             template<typename OutputData, typename MonoNoteChannel>
@@ -645,20 +672,25 @@ namespace imajuscule {
                                   MonoNoteChannel & c,
                                   int start_node, int pre_tries, int min_path_length, int additional_tries, InitPolicy init_policy,
                                   int articulative_pause_length,
-                                  Volumes<OutputData::nOuts> const & volume) {
+                                  float pan) {
                 auto scatter = 1.f + freq_scatter;
+                constexpr auto detune = 0.985f;
                 freq1_robot = std::uniform_real_distribution<float>{base_freq / scatter, base_freq * scatter}(rng::mersenne());
-                freq2_robot = std::uniform_real_distribution<float>{freq1_robot*0.97f, freq1_robot/0.97f}(rng::mersenne());
+                freq2_robot = std::uniform_real_distribution<float>{freq1_robot*detune, freq1_robot/detune}(rng::mersenne());
+                
+                vol1 = vol2 = 1.f;
                 
                 auto ht = compute_half_tone(1.f);
                 
                 if(!std::uniform_int_distribution<>{0,1}(rng::mersenne())) {
                     // f1 is shifted up by d1
                     freq1_robot = transpose_frequency(freq1_robot, ht, d1);
+                    vol1 = pow(har_att, d1);
                 }
                 else {
                     // f2 is shifted up by d2
                     freq2_robot = transpose_frequency(freq2_robot, ht, d2);
+                    vol2 = pow(har_att, d2);
                 }
                 
                 auto n_frames = static_cast<float>(ms_to_frames(length));
@@ -675,7 +707,7 @@ namespace imajuscule {
                     }
                 }
                 
-                do_initialize(o, c, initialize, start_node, pre_tries, min_path_length, additional_tries, articulative_pause_length, volume);
+                do_initialize(o, c, initialize, start_node, pre_tries, min_path_length, additional_tries, articulative_pause_length, pan);
             }
             
             template<typename OutputData, typename MonoNoteChannel>
@@ -684,7 +716,7 @@ namespace imajuscule {
                                bool initialize,
                                int start_node, int pre_tries, int min_path_length, int additional_tries,
                                int articulative_pause_length,
-                               Volumes<OutputData::nOuts> const & volume)
+                               float pan)
             {
                 using Request = typename OutputData::Request;
 
@@ -729,7 +761,8 @@ namespace imajuscule {
                     return orchestrate(o, c, max_frame_compute);
                 });
                 
-                playNextSpec(o, &volume);
+                this->pan = pan;
+                playNextSpec(o);
             }
             
         private:
@@ -746,7 +779,9 @@ namespace imajuscule {
             float state_factor = 0.f;
             
             float freq1_robot, freq2_robot; // used also for sweep
-
+            float vol1 = 1.f, vol2 = 1.f;
+            float pan;
+            
             uint8_t c1, c2;
             int xfade, freq_xfade;
             int articulative_pause_length;
@@ -770,7 +805,28 @@ namespace imajuscule {
                 
                 using CTRLS = typename Algo::Ctrl;
                 static_assert(std::tuple_size<CTRLS>::value == 1,"multi freq not supported");
-                using Ctrl = typename std::tuple_element<0, CTRLS>::type;
+                struct Ctrl {
+                    bool silenceFollows() const { return silenceAfter; }
+
+                    void silenceFollows(bool b) { silenceAfter = b; }
+                    
+                    void setVolume(float vol) {
+                        A(vol > 0.f);
+                        this->vol = vol;
+                    }
+                    
+                    float volume() const {
+                        A(vol > 0.f);
+                        return vol;
+                    }
+                    
+                    using Type = typename std::tuple_element<0, CTRLS>::type;
+                    Type & get() { return ctrl; }
+                private:
+                    Type ctrl;
+                    float vol = 1.f;
+                    bool silenceAfter = true;
+                };
                 
                 Ctrl * get_next_ramp_for_build() {
                     ++it;

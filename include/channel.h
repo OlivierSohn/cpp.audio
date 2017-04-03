@@ -27,6 +27,20 @@ namespace imajuscule {
         run(float volume, StereoGain const & gain) {
             return {{gain.left*volume, gain.right*volume}};
         }
+
+        template<int J>
+        static
+        typename std::enable_if<J == 1, Volumes<J>>::type
+        run(float volume, float pan ) {
+            return {{volume}};
+        }
+        
+        template<int J>
+        static
+        typename std::enable_if<J == 2, Volumes<J>>::type
+        run(float volume, float pan) {
+            return run<J>(volume, stereo(pan));
+        }
     };
     
     /*

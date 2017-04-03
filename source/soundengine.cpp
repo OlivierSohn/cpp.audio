@@ -15,7 +15,7 @@ namespace imajuscule {
                                                                         return "Sweep";
                                                                         break;
                                                                     case SoundEngineMode::BIRDS:
-                                                                        return "Markov Birds";
+                                                                        return "Birds";
                                                                         break;
                                                                 }
                                                                 return "?";

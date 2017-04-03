@@ -176,6 +176,7 @@ namespace imajuscule {
         }
     };
     
+    
     template<int nAudioOut>
     struct Volumes {
         using array = std::array<float, nAudioOut>;

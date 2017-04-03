@@ -186,7 +186,10 @@ namespace imajuscule {
         }
         
         float operator *() const {
-            return *it;
+            auto v = *it;
+            A(v <=  1.f);
+            A(v >= -1.f);
+            return v;
         }
         
         int getPosition() const { return static_cast<int>(std::distance(F_GET_BUFFER()().begin(), it)); }

@@ -800,6 +800,7 @@ namespace imajuscule {
             float operator *() const {
                 // todo verify that this is inlined (probably not...)
                 // for performance we may need to have a NormalizedInterpolation class templated for interp
+                A(n_steps >= 1);
                 return interp.get_unfiltered_value(slow_it, n_steps, prev, *it);
             }
             
