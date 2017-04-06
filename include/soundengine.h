@@ -51,7 +51,6 @@ namespace imajuscule {
         };            
 
             // to optimize things, should this class work in increments instead of frequencies?
-
             template<typename ITER>
             struct SoundEngineFreqCtrl {
                 using FPT = typename ITER::FPT;
@@ -82,13 +81,6 @@ namespace imajuscule {
                     ctrl.setAngleIncrements(v);
                 }
                 
-                void set_interpolation(itp::interpolation i) {
-                    ctrl.set_interpolation(i);
-                }
-                void set_n_slow_steps(unsigned int n) {
-                    ctrl.set_n_slow_steps(n);
-                }
-                
                 T step() {
                     A(fmax && x);
                     ctrl.step();
@@ -106,11 +98,59 @@ namespace imajuscule {
                     return powf(fmax, exponent);
                 }
                 
+                auto & getUnderlyingIter() { return ctrl.getUnderlyingIter(); }
+
+            private:
+                float invApproxRange;
+                float fmax = 0.f, x = 0.f;
+                audioelement::Ctrl<ITER> ctrl;
+            };
+            
+            template<typename CTRL, typename NOISE_ITER>
+            struct ShortTermNoiseAdderCtrl {
+                using T = typename CTRL::FPT;
+                using FPT = T;
+                using Tr = NumTraits<T>;
+                
+                void setFreqRange(range<float> const & r) {
+                    ctrl.setFreqRange(r);
+                }
+
+                void forgetPastSignals() {
+                    ctrl.forgetPastSignals();
+                    noise.forgetPastSignals();
+                }
+                
+                void initializeForRun() {
+                    ctrl.initializeForRun();
+                    noise.initializeForRun();
+                }
+
+                void set_short_term_noise_amplitude(float f) {
+                    noise_amplitude = f;
+                }
+                
+                void set_short_term_noise_rate(float f) {
+                    ratio = 20000.f * f;
+                }
+                
+                T step() {
+                    auto long_term_freq = ctrl.step();
+                    A(long_term_freq > 0.f);
+                    A(ratio >= 0.f);
+                    // keep short term noise rate inv. proportional to long term frequency
+                    noise.set_n_slow_steps(1 + ratio / long_term_freq);
+                    ++noise;
+                    return long_term_freq * std::pow(Tr::two(), *noise * noise_amplitude);
+                }
+                
                 auto get_duration_in_samples() const {
                     return std::numeric_limits<int>::max()
                     / 2;  // so that we can add .5f and cast to int
                 }
-               
+                
+                auto & getUnderlyingIter() { return ctrl.getUnderlyingIter(); }
+
                 // todo remove and make SoundEngine more generic
                 void set(T from_,
                          T to_,
@@ -120,10 +160,10 @@ namespace imajuscule {
                     A(0);
                 }
                 void set_by_increments(T from_,
-                          T to_,
-                          T duration_in_samples_,
-                          T start_sample,
-                          itp::interpolation i) {
+                                       T to_,
+                                       T duration_in_samples_,
+                                       T start_sample,
+                                       itp::interpolation i) {
                     A(0);
                 }
                 float getFrom() const {
@@ -136,9 +176,11 @@ namespace imajuscule {
                 }
 
             private:
-                float invApproxRange;
-                float fmax = 0.f, x = 0.f;
-                audioelement::Ctrl<ITER> ctrl;
+                T noise_amplitude;
+                // we want approx. 1000 for 10000Hx
+                T ratio = .1f;
+                CTRL ctrl;
+                NOISE_ITER noise;
             };
             
             // 'setAngleIncrements' of BandAlgo is controlled by SoundEngineFreqCtrl
@@ -157,16 +199,14 @@ namespace imajuscule {
             
             template<typename T, SoundEngineMode>
             struct SoundEngineAlgo_ {
-                // 'setAngleIncrements' of T (aka Mix) is controlled by LogRamp
-                using CTRL = audioelement::LogRamp< typename T::T >;
+                using CTRL = audioelement::LogRamp< typename T::FPT >;
                 using type = audioelement::FreqCtrl_< T, CTRL >;
             };
             
             template<typename T>
             struct SoundEngineAlgo_<T, SoundEngineMode::WIND> {
-                // 'setAngleIncrements' of T (aka Mix) is controlled by SoundEngineFreqCtrl
-                using CTRL = SoundEngineFreqCtrl< PinkNoiseIter >;
-                using type = audioelement::FreqCtrl_< T, CTRL >;
+                using CTRL = ShortTermNoiseAdderCtrl < SoundEngineFreqCtrl< audioelement::SlowIter<audioelement::AbsIter< PinkNoiseIter>> >, audioelement::SlowIter< PinkNoiseIter> >;
+                using type = audioelement::FreqCtrl_< T, CTRL >;                
             };
             
         template<SoundEngineMode M, typename Logger>
@@ -179,9 +219,9 @@ namespace imajuscule {
             // should we chose pink or grey here? todo audio tests... maybe the right answer is neither, or pink filtered to model wind
             using Mix = audioelement::Mix <
             audioelement::LowPassAlgo<GreyNoiseAlgo, Order>,
-            AsymBandPassAlgo<GreyNoiseAlgo, Order, PinkNoiseIter>,
-            AsymBandRejectAlgo<GreyNoiseAlgo, Order, PinkNoiseIter>,
-            audioelement::AdjustableVolumeOscillatorAlgo<audioelement::VolumeAdjust::Yes,float>
+            AsymBandPassAlgo<GreyNoiseAlgo, Order, audioelement::SlowIter<audioelement::AbsIter<PinkNoiseIter>>>,
+            AsymBandRejectAlgo<GreyNoiseAlgo, Order, audioelement::SlowIter<audioelement::AbsIter<PinkNoiseIter>>>,
+            audioelement::AdjustableVolumeOscillatorAlgo<audioelement::VolumeAdjust::Yes, float>
             >;
             
             using Algo = typename SoundEngineAlgo_<Mix, M>::type;
@@ -426,7 +466,7 @@ namespace imajuscule {
                 
                 auto node0 = mc->emplace([this, &o](Move const m, MarkovNode&me, MarkovNode&from_to) {
                     if(auto * ramp_spec = ramp_specs.get_next_ramp_for_build()) {
-                        ramp_spec->get().set_interpolation(interpolation);
+                        ramp_spec->get().getUnderlyingIter().set_interpolation(interpolation);
                     }
                 });
                 auto node1 = mc->emplace([](Move const m, MarkovNode&me, MarkovNode&from_to) {

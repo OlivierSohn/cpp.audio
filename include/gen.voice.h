@@ -11,9 +11,11 @@ namespace imajuscule {
                 PINK_NOISE_BR_GAIN,
                 PINK_NOISE_BP_OCTAVE_WIDTH_MIN,
                 PINK_NOISE_BP_OCTAVE_WIDTH_MAX,
-                CENTER_FREQ_OCTAVE_MIN,
-                CENTER_FREQ_OCTAVE_MAX,
-                N_SLOW_ITER,
+                CENTER_OCTAVE_MIN_LONG_TERM,
+                CENTER_OCTAVE_MAX_LONG_TERM,
+                CENTER_SHORT_TERM_RATIO,
+                N_SLOW_ITER_SHORT_TERM,
+                N_SLOW_ITER_LONG_TERM,
                 ORDER_FILTERS,
                 SINE_GAIN,
                 SEED,
@@ -60,8 +62,8 @@ namespace imajuscule {
                 PINK_NOISE_BR_GAIN,
                 PINK_NOISE_BP_OCTAVE_WIDTH_MIN,
                 PINK_NOISE_BP_OCTAVE_WIDTH_MAX,
-                CENTER_FREQ_OCTAVE_MIN,
-                CENTER_FREQ_OCTAVE_MAX,
+                CENTER_OCTAVE_MIN_LONG_TERM,
+                CENTER_OCTAVE_MAX_LONG_TERM,
                 ORDER_FILTERS,
                 SINE_GAIN,
 
@@ -104,8 +106,8 @@ namespace imajuscule {
                 PINK_NOISE_BR_GAIN,
                 PINK_NOISE_BP_OCTAVE_WIDTH_MIN,
                 PINK_NOISE_BP_OCTAVE_WIDTH_MAX,
-                CENTER_FREQ_OCTAVE_MIN,
-                CENTER_FREQ_OCTAVE_MAX,
+                CENTER_OCTAVE_MIN_LONG_TERM,
+                CENTER_OCTAVE_MAX_LONG_TERM,
                 ORDER_FILTERS,
                 SINE_GAIN,
 
@@ -140,16 +142,18 @@ namespace imajuscule {
                 PHASE_RATIO2
             }};
             
-            constexpr std::array<ImplParams, 27> params_wind
+            constexpr std::array<ImplParams, 29> params_wind
             {{
                 PINK_NOISE_LP_GAIN,
                 PINK_NOISE_BP_GAIN,
                 PINK_NOISE_BR_GAIN,
                 PINK_NOISE_BP_OCTAVE_WIDTH_MIN,
                 PINK_NOISE_BP_OCTAVE_WIDTH_MAX,
-                CENTER_FREQ_OCTAVE_MIN,
-                CENTER_FREQ_OCTAVE_MAX,
-                N_SLOW_ITER,
+                CENTER_OCTAVE_MIN_LONG_TERM,
+                CENTER_OCTAVE_MAX_LONG_TERM,
+                CENTER_SHORT_TERM_RATIO,
+                N_SLOW_ITER_SHORT_TERM,
+                N_SLOW_ITER_LONG_TERM,
                 ORDER_FILTERS,
                 SINE_GAIN,
                 
@@ -183,8 +187,8 @@ namespace imajuscule {
                 PINK_NOISE_BR_GAIN,
                 PINK_NOISE_BP_OCTAVE_WIDTH_MIN,
                 PINK_NOISE_BP_OCTAVE_WIDTH_MAX,
-                CENTER_FREQ_OCTAVE_MIN,
-                CENTER_FREQ_OCTAVE_MAX,
+                CENTER_OCTAVE_MIN_LONG_TERM,
+                CENTER_OCTAVE_MAX_LONG_TERM,
                 ORDER_FILTERS,
                 SINE_GAIN,
 
@@ -267,11 +271,11 @@ namespace imajuscule {
                 static const float m;
                 static const float M; };
             
-            template<> struct Limits<CENTER_FREQ_OCTAVE_MIN> {
+            template<> struct Limits<CENTER_OCTAVE_MIN_LONG_TERM> {
                 static const float m;
                 static const float M; };
             
-            template<> struct Limits<CENTER_FREQ_OCTAVE_MAX> {
+            template<> struct Limits<CENTER_OCTAVE_MAX_LONG_TERM> {
                 static const float m;
                 static const float M; };
             
@@ -279,7 +283,9 @@ namespace imajuscule {
                 static const float m;
                 static const float M; };
             
-            template<> struct Limits<N_SLOW_ITER> : public NormalizedParamLimits {};
+            template<> struct Limits<CENTER_SHORT_TERM_RATIO> : public NormalizedParamLimits {};
+            template<> struct Limits<N_SLOW_ITER_SHORT_TERM> : public NormalizedParamLimits {};
+            template<> struct Limits<N_SLOW_ITER_LONG_TERM> : public NormalizedParamLimits {};
             
             template<> struct Limits<LENGTH> {
                 static const float m;
@@ -318,6 +324,25 @@ namespace imajuscule {
             
             using Mode = SoundEngineMode;
             
+            
+            template<SoundEngineMode>
+            struct SetSlowParams {
+                template<typename CTRL>
+                static void set(CTRL & ctrl, int n_slow_steps_short, int n_slow_steps, float ratio) {
+                    A(0);
+                }
+            };
+            
+            template<>
+            struct SetSlowParams<SoundEngineMode::WIND> {
+                template<typename CTRL>
+                static void set(CTRL & ctrl, int n_slow_steps_short, int n_slow_steps_long, float ratio) {
+                    ctrl.getUnderlyingIter().set_n_slow_steps(n_slow_steps_long);
+                    ctrl.set_short_term_noise_rate(n_slow_steps_short);
+                    ctrl.set_short_term_noise_amplitude(ratio);
+                }
+            };
+            
             template <
             
             Mode MODE,
@@ -347,9 +372,11 @@ namespace imajuscule {
                         {"[1/f Noise] BRF Gain", Limits<PINK_NOISE_BR_GAIN>::m, Limits<PINK_NOISE_BR_GAIN>::M},
                         {"BPF Width Min", Limits<PINK_NOISE_BP_OCTAVE_WIDTH_MIN>::m, Limits<PINK_NOISE_BP_OCTAVE_WIDTH_MIN>::M},
                         {"BPF Width Max", Limits<PINK_NOISE_BP_OCTAVE_WIDTH_MAX>::m, Limits<PINK_NOISE_BP_OCTAVE_WIDTH_MAX>::M},
-                        {"BPF Center Min", Limits<CENTER_FREQ_OCTAVE_MIN>::m, Limits<CENTER_FREQ_OCTAVE_MIN>::M},
-                        {"BPF Center Max", Limits<CENTER_FREQ_OCTAVE_MAX>::m, Limits<CENTER_FREQ_OCTAVE_MAX>::M},
-                        {"N. slow iter exp", Limits<N_SLOW_ITER>::m, Limits<N_SLOW_ITER>::M},
+                        {"Long Center Min", Limits<CENTER_OCTAVE_MIN_LONG_TERM>::m, Limits<CENTER_OCTAVE_MIN_LONG_TERM>::M},
+                        {"Long Center Max", Limits<CENTER_OCTAVE_MAX_LONG_TERM>::m, Limits<CENTER_OCTAVE_MAX_LONG_TERM>::M},
+                        {"Short Center Ratio", Limits<CENTER_SHORT_TERM_RATIO>::m, Limits<CENTER_SHORT_TERM_RATIO>::M},
+                        {"Iter exp short", Limits<N_SLOW_ITER_SHORT_TERM>::m, Limits<N_SLOW_ITER_SHORT_TERM>::M},
+                        {"Iter exp long", Limits<N_SLOW_ITER_LONG_TERM>::m, Limits<N_SLOW_ITER_LONG_TERM>::M},
                         {"Filters Order", Limits<ORDER_FILTERS>::m, Limits<ORDER_FILTERS>::M},
                         {"[Sine] Gain", Limits<SINE_GAIN>::m, Limits<SINE_GAIN>::M},
                         {"Seed", Limits<SEED>::m, Limits<SEED>::M},
@@ -389,7 +416,7 @@ namespace imajuscule {
                     return filtered;
                 }
                 
-                static std::array<float,33> make_common(int start_node,
+                static std::array<float,35> make_common(int start_node,
                                                         int pre_tries,
                                                         int min_path_length,
                                                         int additionnal_tries,
@@ -418,9 +445,11 @@ namespace imajuscule {
                         0.f,
                         normalize<PINK_NOISE_BP_OCTAVE_WIDTH_MIN>(bandpass_width_min),
                         normalize<PINK_NOISE_BP_OCTAVE_WIDTH_MAX>(bandpass_width_max),
-                        normalize<CENTER_FREQ_OCTAVE_MIN>(1.f),
-                        normalize<CENTER_FREQ_OCTAVE_MAX>(8.f),
-                        /*normalize<N_SLOW_ITER>*/(1.f),
+                        normalize<CENTER_OCTAVE_MIN_LONG_TERM>(1.f),
+                        normalize<CENTER_OCTAVE_MAX_LONG_TERM>(8.f),
+                        normalize<CENTER_SHORT_TERM_RATIO>(0.f),
+                        /*normalize<N_SLOW_ITER_SHORT_TERM>*/(0.f),
+                        /*normalize<N_SLOW_ITER_LONG_TERM>*/(1.f),
                         static_cast<float>(filter_order-Limits<ORDER_FILTERS>::m),
                         1.f,
                         0,
@@ -555,16 +584,18 @@ namespace imajuscule {
                     result[index(PINK_NOISE_BP_GAIN)] = 1.f;
                     result[index(PINK_NOISE_BR_GAIN)] = 0.f;
                     result[index(SINE_GAIN)] = 0.f;
-                    result[index(CENTER_FREQ_OCTAVE_MIN)] = normalize<CENTER_FREQ_OCTAVE_MIN>(bp_center.getMin()),
-                    result[index(CENTER_FREQ_OCTAVE_MAX)] = normalize<CENTER_FREQ_OCTAVE_MAX>(bp_center.getMax()),
-                    result[index(N_SLOW_ITER)] = std::log(n_slow_iter) / std::log(max_n_slow_iter);
+                    result[index(CENTER_OCTAVE_MIN_LONG_TERM)] = normalize<CENTER_OCTAVE_MIN_LONG_TERM>(bp_center.getMin()),
+                    result[index(CENTER_OCTAVE_MAX_LONG_TERM)] = normalize<CENTER_OCTAVE_MAX_LONG_TERM>(bp_center.getMax()),
+                    result[index(N_SLOW_ITER_LONG_TERM)] = std::log(n_slow_iter) / std::log(max_n_slow_iter);
                     
                     return result;
                 }
                 
                 static Program::ARRAY make_sine_wind(range<float> bp_center,
-                                                     float n_slow_iter) {
-                    auto a = make_common(0, 0, 6, 0, 0, itp::PROPORTIONAL_VALUE_DERIVATIVE, 0.12f, 93.3f, 2.f, .5f, 2201, 0.f, 0.f, 0,0,0, 1, 0.f, 0.f);
+                                                     float short_center_ratio,
+                                                     float n_slow_iter_long_term,
+                                                     float n_slow_iter_short_term) {
+                    auto a = make_common(0, 0, 6, 0, 0, itp::LINEAR, 0.12f, 93.3f, 2.f, .5f, 2201, 0.f, 0.f, 0,0,0, 1, 0.f, 0.f);
                     Program::ARRAY result;
                     result.resize(std::get<Mode::WIND>(params_all).size());
                     for(int idx = 0; idx<a.size(); ++idx) {
@@ -574,11 +605,13 @@ namespace imajuscule {
                         }
                         result[index(e)] = a[idx];
                     }
-                    result[index(LOUDNESS_COMPENSATION_AMOUNT)] = 0.f; // to not have volume discontinuities when freq varies fast
+                    result[index(LOUDNESS_COMPENSATION_AMOUNT)] = 1.f; // to not have volume discontinuities when freq varies fast
                     result[index(SINE_GAIN)] = 0.01f; // to have the same volume as noise winds
-                    result[index(CENTER_FREQ_OCTAVE_MIN)] = normalize<CENTER_FREQ_OCTAVE_MIN>(bp_center.getMin()),
-                    result[index(CENTER_FREQ_OCTAVE_MAX)] = normalize<CENTER_FREQ_OCTAVE_MAX>(bp_center.getMax()),
-                    result[index(N_SLOW_ITER)] = std::log(n_slow_iter) / std::log(max_n_slow_iter);
+                    result[index(CENTER_OCTAVE_MIN_LONG_TERM)] = normalize<CENTER_OCTAVE_MIN_LONG_TERM>(bp_center.getMin()),
+                    result[index(CENTER_OCTAVE_MAX_LONG_TERM)] = normalize<CENTER_OCTAVE_MAX_LONG_TERM>(bp_center.getMax()),
+                    result[index(N_SLOW_ITER_LONG_TERM)] = std::log(n_slow_iter_long_term) / std::log(max_n_slow_iter);
+                    result[index(N_SLOW_ITER_SHORT_TERM)] = std::log(n_slow_iter_short_term) / std::log(max_n_slow_iter);
+                    result[index(CENTER_SHORT_TERM_RATIO)] = short_center_ratio;
                     
                     return result;
                 }
@@ -601,9 +634,9 @@ namespace imajuscule {
                     result[index(PINK_NOISE_BP_GAIN)] = 1.f;
                     result[index(PINK_NOISE_BR_GAIN)] = 0.f;
                     result[index(SINE_GAIN)] = 0.01f;
-                    result[index(CENTER_FREQ_OCTAVE_MIN)] = normalize<CENTER_FREQ_OCTAVE_MIN>(bp_center.getMin()),
-                    result[index(CENTER_FREQ_OCTAVE_MAX)] = normalize<CENTER_FREQ_OCTAVE_MAX>(bp_center.getMax()),
-                    result[index(N_SLOW_ITER)] = std::log(n_slow_iter) / std::log(max_n_slow_iter);
+                    result[index(CENTER_OCTAVE_MIN_LONG_TERM)] = normalize<CENTER_OCTAVE_MIN_LONG_TERM>(bp_center.getMin()),
+                    result[index(CENTER_OCTAVE_MAX_LONG_TERM)] = normalize<CENTER_OCTAVE_MAX_LONG_TERM>(bp_center.getMax()),
+                    result[index(N_SLOW_ITER_LONG_TERM)] = std::log(n_slow_iter) / std::log(max_n_slow_iter);
                     
                     return result;
                 }
@@ -677,9 +710,9 @@ namespace imajuscule {
                             }, {"Earth rumbling",
                                 make_noise_wind(30, {1.95f, 5.f}, {2.5f, 3.2f}, 7009.3f)
                             }, {"Sine wind",
-                                make_sine_wind({4.9f, 5.1f}, 316.f)
+                                make_sine_wind({4.6f, 6.8f}, 0.2f, 100000.f, 22.3f )
                             }, {"Kettle whistle pure",
-                                make_sine_wind({7.5f, 7.7f}, 316.f)
+                                make_sine_wind({7.5f, 7.7f}, 0.f, 22.3f, 22.3f)
                             }, {"Kettle whistle mixed",
                                 make_mixed_wind(7, {.9f, .9f}, {7.5f, 7.7f}, 316.f)
                             },
@@ -725,6 +758,23 @@ namespace imajuscule {
                 template<ImplParams N>
                 float denorm() const {
                     return denormalize<N>(params[index(N)]);
+                }
+                
+                template<ImplParams N>
+                float octaveToFreq() const {
+                    constexpr auto lowest_f = 10.f;
+                    auto m = denorm<N>();
+                    return lowest_f * pow(2.f, m);
+                }
+                
+                template<ImplParams N1, ImplParams N2>
+                range<float> octaveRangeToFreqRange() const {
+                    auto m = octaveToFreq<N1>();
+                    auto M = octaveToFreq<N2>();
+                    if(m > M) {
+                        std::swap(m,M);
+                    }
+                    return { m, M };
                 }
                 
             protected:
@@ -811,11 +861,10 @@ namespace imajuscule {
                     }});
                     
                     {
-                        auto m = denorm<CENTER_FREQ_OCTAVE_MIN>();
-                        auto M = denorm<CENTER_FREQ_OCTAVE_MAX>();
-                        constexpr auto lowest_f = 10.f;
-                        m = lowest_f * pow(2.f, m);
-                        M = lowest_f * pow(2.f, M);
+                        auto ra = octaveRangeToFreqRange<
+                        CENTER_OCTAVE_MIN_LONG_TERM,
+                        CENTER_OCTAVE_MAX_LONG_TERM
+                        >();
                         
                         // we could omit calling set_n_slow_steps when not in mode WIND,
                         // but we call it with value 1 to be sure that all objects
@@ -823,10 +872,8 @@ namespace imajuscule {
                         // -1 in constructor and makes an assert fail if the method is not called)
                         float n_slow_steps(1.f); // not used
                         if(MODE == Mode::WIND) {
-                            n_slow_steps = std::pow(max_n_slow_iter, denorm<N_SLOW_ITER>());
+                            n_slow_steps = std::pow(max_n_slow_iter, denorm<N_SLOW_ITER_LONG_TERM>());
                         }
-                        auto ra = range<float>(std::min(m,M),
-                                               std::max(m,M));
                         for(auto & r : c.elem.getRamps()) {
                             auto & mix = r.algo.getOsc();
                             
@@ -838,19 +885,22 @@ namespace imajuscule {
                             auto & bpf_center_ctrl = std::get<1>(mix.get()).getCtrl();
                             auto & bpr_center_ctrl = std::get<2>(mix.get()).getCtrl();
 
+                            bpf_center_ctrl.getUnderlyingIter().set_n_slow_steps(n_slow_steps);
                             bpf_center_ctrl.setFreqRange(ra);
-                            bpf_center_ctrl.set_n_slow_steps(n_slow_steps);
-                            bpf_width.set_n_slow_steps(n_slow_steps);
+                            bpf_width.getUnderlyingIter().set_n_slow_steps(n_slow_steps);
                             
+                            bpr_center_ctrl.getUnderlyingIter().set_n_slow_steps(n_slow_steps);
                             bpr_center_ctrl.setFreqRange(ra);
-                            bpr_center_ctrl.set_n_slow_steps(n_slow_steps);
-                            bpr_width.set_n_slow_steps(n_slow_steps);
+                            bpr_width.getUnderlyingIter().set_n_slow_steps(n_slow_steps);
                         }
                         if(MODE == Mode::WIND) {
+                            auto n_slow_steps_short = std::pow(max_n_slow_iter, denorm<N_SLOW_ITER_SHORT_TERM>());
+                            auto ratio = denorm<CENTER_SHORT_TERM_RATIO>();
                             for(auto & f_control : c.elem.engine.getRamps().a) {
                                 // f_control controls the frequency of the Mix (has an effect only for sinus and low pass)
+                                SetSlowParams<MODE>::set(f_control.get(), n_slow_steps_short, n_slow_steps, ratio);
+                                // needs to be after the previous call
                                 f_control.get().setFreqRange(ra);
-                                f_control.get().set_n_slow_steps(n_slow_steps);
                             }
                         }
                     }

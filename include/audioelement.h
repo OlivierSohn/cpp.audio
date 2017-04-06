@@ -632,6 +632,7 @@ namespace imajuscule {
             static_assert(std::is_same<T,float>::value, "non-float interpolation is not supported");
             
             using Tr = NumTraits<T>;
+            using FPT = T;
             
             // offsets because we use the value at the beginning of the timestep
             static constexpr auto increasing_integration_offset = 0;
@@ -646,6 +647,8 @@ namespace imajuscule {
             void setFreqRange(range<float> const &) const { A(0); } // use set instead
             void set_interpolation(itp::interpolation) const {A(0);} // use set instead
             void set_n_slow_steps(unsigned int) const { A(0); }
+            
+            auto & getUnderlyingIter() { A(0); return *this; }
             
             void set(T from_increments,
                      T to_increments,
@@ -736,6 +739,8 @@ namespace imajuscule {
          */
         template<typename Iterator>
         struct AbsIter {
+            using FPT = typename Iterator::FPT;
+            
             void initializeForRun() {
                 it.initializeForRun();
             }
@@ -762,13 +767,31 @@ namespace imajuscule {
          */
         template<typename Iterator>
         struct SlowIter {
+            using FPT = typename Iterator::FPT;
+            
             using uint_steps = int32_t;
             
             SlowIter(itp::interpolation interp) : interp(interp) {
             }
+            SlowIter() : SlowIter(itp::LINEAR) {
+            }
             
             void set_interpolation(itp::interpolation i) { interp.setInterpolation(i); }
             void set_n_slow_steps(uint_steps n) {
+                if(n == n_steps) {
+                    return;
+                }
+                if(slow_it) {
+                    // adapt the iterator
+                    A(n_steps);
+                    auto ratio = (slow_it + .5f) / static_cast<float>(n_steps);
+                    A(ratio < 1.f);
+                    A(ratio > 0.f);
+                    slow_it = ratio * static_cast<float>(n);
+                    if(slow_it == n) {
+                        onMajorStep();
+                    }
+                }
                 n_steps = n;
                 A(n_steps > 0);
             }
@@ -784,9 +807,8 @@ namespace imajuscule {
             }
 
             bool increment() {
-                A(slow_it < n_steps);
                 ++slow_it;
-                if(slow_it != n_steps) {
+                if(slow_it < n_steps) {
                     return false;
                 }
                 onMajorStep();
@@ -841,11 +863,6 @@ namespace imajuscule {
             template <class... Args>
             WindFreqIter(Args&&... args) : it(std::forward<Args>(args)...) {}
 
-            void set_interpolation(itp::interpolation i) { it.set_interpolation(i); }
-            void set_n_slow_steps(unsigned int n) {
-                it.set_n_slow_steps(n);
-            }
-
             void initializeForRun() {
                 it.initializeForRun();
             }
@@ -875,6 +892,10 @@ namespace imajuscule {
 
             float getAbsMean() const { return it.getAbsMean(); }
 
+            auto & getUnderlyingIter() {
+                return it;
+            }
+            
         private:
             UnderlyingIt it;
         };
@@ -898,14 +919,13 @@ namespace imajuscule {
             void step() { ++it; }
             T imag() const { return *it; }
             
-            void set_interpolation(itp::interpolation i) { it.set_interpolation(i); }
-            void set_n_slow_steps(unsigned int n) {
-                it.set_n_slow_steps(n);
+            auto & getUnderlyingIter() {
+                return it.getUnderlyingIter();
             }
-
+            
             float getAbsMean() const { return it.getAbsMean(); }
         private:
-            WindFreqIter<SlowIter<AbsIter<ITER>>> it={itp::LINEAR};
+            WindFreqIter<ITER> it = { itp::LINEAR };
         };
         
         enum class VolumeAdjust {

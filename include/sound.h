@@ -177,12 +177,11 @@ namespace imajuscule {
             LG(INFO, "pink noise iterator @[%d]", getPosition());
         }
         
-        float operator ++() {
+        void operator ++() {
             ++it;
             if(it == end) {
                 it = F_GET_BUFFER()().begin();
             }
-            return *it;
         }
         
         float operator *() const {
