@@ -218,9 +218,9 @@ namespace imajuscule {
             
             // should we chose pink or grey here? todo audio tests... maybe the right answer is neither, or pink filtered to model wind
             using Mix = audioelement::Mix <
-            audioelement::LowPassAlgo<GreyNoiseAlgo, Order>,
-            AsymBandPassAlgo<GreyNoiseAlgo, Order, audioelement::SlowIter<audioelement::AbsIter<PinkNoiseIter>>>,
-            AsymBandRejectAlgo<GreyNoiseAlgo, Order, audioelement::SlowIter<audioelement::AbsIter<PinkNoiseIter>>>,
+            audioelement::LowPassAlgo<PinkNoiseAlgo, Order>,
+            AsymBandPassAlgo<PinkNoiseAlgo, Order, audioelement::SlowIter<audioelement::AbsIter<PinkNoiseIter>>>,
+            AsymBandRejectAlgo<PinkNoiseAlgo, Order, audioelement::SlowIter<audioelement::AbsIter<PinkNoiseIter>>>,
             audioelement::AdjustableVolumeOscillatorAlgo<audioelement::VolumeAdjust::Yes, float>
             >;
             
