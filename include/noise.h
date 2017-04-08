@@ -1,11 +1,11 @@
 
 namespace imajuscule {
     static inline float white_gaussian_noise(float f = 0.f) {
-        return std::normal_distribution<float>{0.f, 1.f}(rng::mersenne());
+        return std::normal_distribution<float>{0.f, 1.f}(mersenne<SEEDED::No>());
     }
     
     static inline float white_atom_noise(float) {
-        return (0==std::uniform_int_distribution<>{0,1}(rng::mersenne())) ? 1.f : -1.f;
+        return (0==std::uniform_int_distribution<>{0,1}(mersenne<SEEDED::No>())) ? 1.f : -1.f;
     }
     
     struct InterpolatedSignal {

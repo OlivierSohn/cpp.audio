@@ -245,7 +245,7 @@ namespace imajuscule {
                       float phase_ratio1, float phase_ratio2,
                       float freq_scatter) {
                 length *= powf(2.f,
-                               std::uniform_real_distribution<float>{min_exp, max_exp}(rng::mersenne()));
+                               std::uniform_real_distribution<float>{min_exp, max_exp}(mersenne<SEEDED::Yes>()));
                 auto n_frames = static_cast<float>(ms_to_frames(length));
                 if(n_frames <= 0) {
                     Logger::err("zero length");
@@ -260,7 +260,7 @@ namespace imajuscule {
                     }
                     else {
                         auto scatter = 1.f + freq_scatter;
-                        state_factor = std::uniform_real_distribution<float>{1.f / scatter, scatter}(rng::mersenne());
+                        state_factor = std::uniform_real_distribution<float>{1.f / scatter, scatter}(mersenne<SEEDED::Yes>());
                     }
                     state_freq = freq2;
                     freq1 *= state_factor;
@@ -348,7 +348,7 @@ namespace imajuscule {
                     if(m == Move::LEAVE) {
                         auto length = this->length;
                         length *= powf(2.f,
-                                       std::uniform_real_distribution<float>{min_exp, max_exp}(rng::mersenne()));
+                                       std::uniform_real_distribution<float>{min_exp, max_exp}(mersenne<SEEDED::Yes>()));
                         auto n_frames = static_cast<float>(ms_to_frames(length));
                         if(auto * ramp_spec = ramp_specs.get_next_ramp_for_build()) {
                             ramp_spec->get().set(freq1_robot, freq1_robot, n_frames, phase_ratio1 * n_frames, interpolation);
@@ -368,7 +368,7 @@ namespace imajuscule {
                     if(m==Move::ENTER) {
                         auto length = this->length;
                         length *= powf(2.f,
-                                       std::uniform_real_distribution<float>{min_exp, max_exp}(rng::mersenne()));
+                                       std::uniform_real_distribution<float>{min_exp, max_exp}(mersenne<SEEDED::Yes>()));
                         auto n_frames = static_cast<float>(ms_to_frames(length));
                         if(auto * ramp_spec = ramp_specs.get_next_ramp_for_build()) {
                             ramp_spec->get().set(freq2_robot, freq2_robot, n_frames, phase_ratio1 * n_frames, interpolation);
@@ -395,7 +395,7 @@ namespace imajuscule {
                         constexpr auto slide_length_scale = 2.f;
                         auto length = slide_length_scale * this->length;
                         length *= powf(2.f,
-                                       std::uniform_real_distribution<float>{min_exp, max_exp}(rng::mersenne()));
+                                       std::uniform_real_distribution<float>{min_exp, max_exp}(mersenne<SEEDED::Yes>()));
                         auto n_frames = static_cast<float>(ms_to_frames(length));
                         if(auto * ramp_spec = ramp_specs.get_next_ramp_for_build()) {
                             ramp_spec->get().set(freq2_robot, freq1_robot, n_frames, phase_ratio1 * n_frames, interpolation);
@@ -443,7 +443,7 @@ namespace imajuscule {
                     if(m == Move::LEAVE) {
                         auto length = this->length;
                         length *= powf(2.f,
-                                       std::uniform_real_distribution<float>{min_exp, max_exp}(rng::mersenne()));
+                                       std::uniform_real_distribution<float>{min_exp, max_exp}(mersenne<SEEDED::Yes>()));
                         auto n_frames = static_cast<float>(ms_to_frames(length));
                         if(auto * ramp_spec = ramp_specs.get_next_ramp_for_build()) {
                             ramp_spec->get().set(freq1_robot, freq2_robot, n_frames, phase_ratio1 * n_frames, interpolation);
@@ -715,14 +715,14 @@ namespace imajuscule {
                                   float pan) {
                 auto scatter = 1.f + freq_scatter;
                 constexpr auto detune = 0.985f;
-                freq1_robot = std::uniform_real_distribution<float>{base_freq / scatter, base_freq * scatter}(rng::mersenne());
-                freq2_robot = std::uniform_real_distribution<float>{freq1_robot*detune, freq1_robot/detune}(rng::mersenne());
+                freq1_robot = std::uniform_real_distribution<float>{base_freq / scatter, base_freq * scatter}(mersenne<SEEDED::Yes>());
+                freq2_robot = std::uniform_real_distribution<float>{freq1_robot*detune, freq1_robot/detune}(mersenne<SEEDED::Yes>());
                 
                 vol1 = vol2 = 1.f;
                 
                 auto ht = compute_half_tone(1.f);
                 
-                if(!std::uniform_int_distribution<>{0,1}(rng::mersenne())) {
+                if(!std::uniform_int_distribution<>{0,1}(mersenne<SEEDED::Yes>())) {
                     // f1 is shifted up by d1
                     freq1_robot = transpose_frequency(freq1_robot, ht, d1);
                     vol1 = pow(har_att, d1);
@@ -783,16 +783,16 @@ namespace imajuscule {
                     markov->initialize(start_node);
                     
                     for(int i=0; i<pre_tries; ++i) {
-                        markov->step_normalized<false>();
+                        markov->step_normalized<ExecuteLambdas::No>(rand_0_1());
                     }
                 }
                 
                 for(int i=0; i<min_path_length; ++i) {
-                    markov->step_normalized<true>();
+                    markov->step_normalized<ExecuteLambdas::Yes>(rand_0_1());
                 }
                 
                 for(int i=0; i<additional_tries; ++i) {
-                    markov->step<true>();
+                    markov->step<ExecuteLambdas::Yes>(rand_0_1());
                 }
                 
                 ramp_specs.finalize();
@@ -911,6 +911,7 @@ namespace imajuscule {
                 Ctrls a;
             } ramp_specs;
             
+            float rand_0_1() const { return std::uniform_real_distribution<float>{0.f, 1.f}(mersenne<SEEDED::Yes>());}
         public:
             auto & getRamps() { return ramp_specs; }
         };

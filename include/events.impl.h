@@ -90,22 +90,28 @@ namespace imajuscule {
         
         ////////////////////
         
-        struct Bird {
-            Bird(int prog, float gain, float pan, bool random) : program(prog), pan(pan), gain(gain), random(random) {}
+        struct Voicing {
+            Voicing(int prog, float gain, float pan, bool random, int seed) : program(prog), pan(pan), gain(gain), random(random), seed(seed) {}
             int program;
             bool random;
+            int seed;
             float gain;
             float pan;
         };
         
         template<typename Voice, typename OutputData>
-        void playOneThing(Voice & v, OutputData & out, Bird const & b) {
+        void playOneThing(Voice & v, OutputData & out, Voicing const & b) {
             
             v.initializeSlow(); // does something only the 1st time
-            v.useProgram(b.program);
+            v.useProgram(b.program); // keep it first as it reinitializes params
+            v.set_random_pan(false);
             v.set_random(b.random);
+            if(!b.random) {
+                v.set_seed(b.seed);
+            }
             v.set_gain(b.gain);
             v.set_pan(b.pan);
+            v.set_loudness_compensation(.2f); // birds do not naturally emit loudness compensated frequencies!
                         
             Event e;
             e.type = Event::kNoteOnEvent;

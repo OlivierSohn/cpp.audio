@@ -163,7 +163,7 @@ namespace imajuscule {
             auto add = static_cast<int>(std::uniform_real_distribution<>{
                 0.f,
                 static_cast<float>(F_GET_BUFFER()().size()-1)
-            }(rng::mersenne()));
+            }(mersenne<SEEDED::No>()));
             
             it += add;
             A(it < end);

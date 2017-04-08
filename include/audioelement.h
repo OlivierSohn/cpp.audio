@@ -190,6 +190,10 @@ namespace imajuscule {
             using FPT = T;
             static_assert(std::is_floating_point<FPT>::value, "");
             
+            soundBufferWrapperAlgo() {
+                F_GET_BUFFER().getAbsMean(); // just to initialize the static in it
+            }
+            
             void forgetPastSignals() const {
             }
             

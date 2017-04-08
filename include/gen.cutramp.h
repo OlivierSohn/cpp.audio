@@ -199,7 +199,14 @@ namespace imajuscule {
                 void set_pan(float pan) const {}
                 
                 void set_random(bool b) const {}
+                
+                void set_loudness_compensation(float c) {
+                    params[index(LOUDNESS_COMPENSATION_AMOUNT)] = normalize<LOUDNESS_COMPENSATION_AMOUNT>(c);
+                }
+                
+                void set_random_pan(bool is_random) const {}
 
+                void set_seed(int seed) {}
                 
             protected:
                 int get_xfade_length() { return adjusted(xfade_len); }

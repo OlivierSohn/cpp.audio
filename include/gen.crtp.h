@@ -86,7 +86,7 @@ namespace imajuscule {
             
             void useProgram(int index) {
                 auto const & p = getProgram(index);
-                LG(INFO, "%d %d", p.params.size(), NPARAMS);
+                MIDI_LG(INFO, "with program %d of %d", index, NPARAMS);
                 A(p.params.size() == NPARAMS);
                 for (auto i = 0; i < NPARAMS; i++) {
                     params[i] = p.params[i];

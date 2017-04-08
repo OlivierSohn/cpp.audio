@@ -820,7 +820,7 @@ namespace imajuscule {
                                 ++seed;
                             }
                         }
-                        rng::mersenne().seed(seed);
+                        mersenne<SEEDED::Yes>().seed(seed);
                     }
                     else {
                         c.elem.engine.set_length_exp(ex, ex);
@@ -909,7 +909,7 @@ namespace imajuscule {
                         {
                             auto rnd_pan = value<RANDOM_PAN>() ? false : true;
                             if(rnd_pan) {
-                                pan = std::uniform_real_distribution<float>{-1.f, 1.f}(rng::mersenne());
+                                pan = std::uniform_real_distribution<float>{-1.f, 1.f}(mersenne<SEEDED::Yes>());
                             }
                             else {
                                 pan = denorm<PAN>();
@@ -978,20 +978,41 @@ namespace imajuscule {
             public:
                 void set_gain(float g) {
                     params[index(GAIN)] = normalize<GAIN>(g);
-                    assert(get_gain() == g);
+                    A(std::abs(get_gain()-g) < .001f);
+                }
+                
+                void set_loudness_compensation(float c) {
+                    params[index(LOUDNESS_COMPENSATION_AMOUNT)] = normalize<LOUDNESS_COMPENSATION_AMOUNT>(c);
                 }
                 
                 void set_pan(float pan) {
                     params[index(PAN)] = normalize<PAN>(pan);
                 }
                 
-                void set_random(bool b) {
-                    params[index(RANDOM_PAN)] = static_cast<float>(!b);
-                    if(!b) {
-                        if(has(SEED)) {
-                            params[index(SEED)] = 1.f; // 0 means random, >0 means fixed
-                        }
+                void set_random_pan(bool is_random) {
+                    params[index(RANDOM_PAN)] = static_cast<float>(!is_random);
+                }
+                
+                void set_random(bool is_random) {
+                    if(!has(SEED)) {
+                        return;
                     }
+                    // seed param: 0 means random, >= 1 means fixed
+                    if(is_random) {
+                        constexpr auto seed_random = 0;
+                        params[index(SEED)] = static_cast<float>(seed_random);
+                    }
+                    else {
+                        constexpr auto seed_fixed = 1;
+                        params[index(SEED)] = static_cast<float>(seed_fixed);
+                    }
+                }
+                
+                void set_seed(int seed) {
+                    if(!has(SEED)) {
+                        return;
+                    }
+                    params[index(SEED)] = static_cast<float>(seed);
                 }
             };
             
