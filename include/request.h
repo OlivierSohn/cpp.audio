@@ -264,7 +264,7 @@ namespace imajuscule {
     struct Request {
         using Volumes = Volumes<nAudioOut>;
 
-        static constexpr float chan_base_amplitude = 0.1f; // ok to have 10 chanels at max amplitude at the same time
+        static constexpr float chan_base_amplitude = 0.3f; // ok to have3 chanels at max amplitude at the same time
 
         Request( Sounds & sounds, Sound const sound, float freq_hz, Volumes vol, float duration_ms ) :
         volumes(vol*chan_base_amplitude),
