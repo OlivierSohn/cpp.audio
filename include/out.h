@@ -152,6 +152,16 @@ namespace imajuscule {
     template<typename T, int nAudioOut>
     struct AudioPolicyImpl<T, nAudioOut, AudioOutPolicy::Master> {
         
+        // the naive way of doing convolution:
+        using ConvolutionReverb = FIRFilter<T>;
+
+        // convolution using FFT:
+        // using ConvolutionReverb = NaiveFFTConvolution<T>;
+        
+        // convolution using overlapp-add FFT:
+        // using ConvolutionReverb = OverlappAddFFTConvolution<T>;
+        
+        
         AudioPolicyImpl()
 #if WITH_DELAY
         : delays{{1000, 0.6f},{4000, 0.2f}, {4300, 0.3f}, {5000, 0.1f}},
@@ -267,17 +277,6 @@ namespace imajuscule {
                 }
             }
             
-            // set the coefficients
-            
-            int i=0;
-            for(auto & rev : conv_reverbs) {
-                rev.setCoefficients(deinterlaced[i]);
-                ++i;
-                if(i == stride) {
-                    i = 0;
-                }
-            }
-            
             // debugging
             
             /*
@@ -292,6 +291,17 @@ namespace imajuscule {
                 write_wav("/Users/Olivier/Dev/Audiofiles", "deinterlaced.wav", deinterlaced);
             }
              */
+            
+            // set the coefficients
+            
+            int i=0;
+            for(auto & rev : conv_reverbs) {
+                rev.setCoefficients(deinterlaced[i]);
+                ++i;
+                if(i == stride) {
+                    i = 0;
+                }
+            }
         }
         
         private:
@@ -326,7 +336,7 @@ namespace imajuscule {
 #endif
         
         //////////////////////////////// convolution reverb
-        std::array<ConvolutionReverb<T>, nAudioOut> conv_reverbs;
+        std::array<ConvolutionReverb, nAudioOut> conv_reverbs;
     };
     
     template<
