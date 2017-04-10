@@ -152,11 +152,11 @@ namespace imajuscule {
     template<typename T, int nAudioOut>
     struct AudioPolicyImpl<T, nAudioOut, AudioOutPolicy::Master> {
         
-        // the naive way of doing convolution:
-        using ConvolutionReverb = FIRFilter<T>;
+        // "brute force" convolution
+        //using ConvolutionReverb = FIRFilter<T>;
 
-        // convolution using FFT:
-        // using ConvolutionReverb = NaiveFFTConvolution<T>;
+        // convolution using FFT
+        using ConvolutionReverb = FFTConvolution<double>;
         
         // convolution using overlapp-add FFT:
         // using ConvolutionReverb = OverlappAddFFTConvolution<T>;
@@ -179,7 +179,7 @@ namespace imajuscule {
         void postprocess(T*buffer, int nFrames) {
 
             // apply convolution reverbs
-            if(nAudioOut && conv_reverbs[0].size()) {
+            if(nAudioOut && !conv_reverbs[0].empty()) {
                 for(int i=0; i<nFrames; ++i) {
                     for(int j=0; j<nAudioOut; ++j) {
                         auto & conv_reverb = conv_reverbs[j];
@@ -295,9 +295,20 @@ namespace imajuscule {
             // set the coefficients
             
             int i=0;
-            for(auto & rev : conv_reverbs) {
-                rev.setCoefficients(deinterlaced[i]);
+            auto n = 0;
+            for(auto & rev : conv_reverbs)
+            {
+                {
+                    auto & coeffs = deinterlaced[i];
+                    if(n < static_cast<int>(conv_reverbs.size()) - static_cast<int>(deinterlaced.size())) {
+                        rev.setCoefficients(coeffs);
+                    }
+                    else {
+                        rev.setCoefficients(std::move(coeffs));
+                    }
+                }
                 ++i;
+                ++n;
                 if(i == stride) {
                     i = 0;
                 }
