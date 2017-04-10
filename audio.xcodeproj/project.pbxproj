@@ -8,6 +8,22 @@
 
 /* Begin PBXBuildFile section */
 		090B14C11E75CC2C005A47C5 /* loudness_enum_limits.h in Headers */ = {isa = PBXBuildFile; fileRef = 090B14C01E75CC2C005A47C5 /* loudness_enum_limits.h */; };
+		093A24B71E9B8BE8009874DF /* AppKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 097D56D01E86DCC900018F14 /* AppKit.framework */; };
+		093A24B81E9B8BE8009874DF /* CoreGraphics.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 097D56CE1E86DCB600018F14 /* CoreGraphics.framework */; };
+		093A24B91E9B8BE8009874DF /* CoreFoundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 097D56CC1E86DCA000018F14 /* CoreFoundation.framework */; };
+		093A24BA1E9B8BE8009874DF /* libos.storage.osx.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 097D56C11E86D14000018F14 /* libos.storage.osx.a */; };
+		093A24BB1E9B8BE8009874DF /* libaudio.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 09FF3F231E36EBBB00C81351 /* libaudio.a */; };
+		093A24BC1E9B8BE8009874DF /* libalgorithms.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 098474151E80595C0014465E /* libalgorithms.a */; };
+		093A24BD1E9B8BE8009874DF /* libos.log.osx.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 0984741F1E80596E0014465E /* libos.log.osx.a */; };
+		093A24C91E9B8C47009874DF /* unity.build.joinnonzeros.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 093A24C81E9B8C47009874DF /* unity.build.joinnonzeros.cpp */; };
+		093A24D61E9B8CC3009874DF /* AppKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 097D56D01E86DCC900018F14 /* AppKit.framework */; };
+		093A24D71E9B8CC3009874DF /* CoreGraphics.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 097D56CE1E86DCB600018F14 /* CoreGraphics.framework */; };
+		093A24D81E9B8CC3009874DF /* CoreFoundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 097D56CC1E86DCA000018F14 /* CoreFoundation.framework */; };
+		093A24D91E9B8CC3009874DF /* libos.storage.osx.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 097D56C11E86D14000018F14 /* libos.storage.osx.a */; };
+		093A24DA1E9B8CC3009874DF /* libaudio.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 09FF3F231E36EBBB00C81351 /* libaudio.a */; };
+		093A24DB1E9B8CC3009874DF /* libalgorithms.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 098474151E80595C0014465E /* libalgorithms.a */; };
+		093A24DC1E9B8CC3009874DF /* libos.log.osx.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 0984741F1E80596E0014465E /* libos.log.osx.a */; };
+		093A24E41E9B8D73009874DF /* unity.build.testfft.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 093A24E31E9B8D73009874DF /* unity.build.testfft.cpp */; };
 		097D56C61E86D14D00018F14 /* libos.storage.osx.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 097D56C11E86D14000018F14 /* libos.storage.osx.a */; };
 		097D56CD1E86DCA000018F14 /* CoreFoundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 097D56CC1E86DCA000018F14 /* CoreFoundation.framework */; };
 		097D56CF1E86DCB600018F14 /* CoreGraphics.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 097D56CE1E86DCB600018F14 /* CoreGraphics.framework */; };
@@ -21,6 +37,62 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
+		093A24AD1E9B8BE8009874DF /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 097D56B71E86D14000018F14 /* os.storage.xcodeproj */;
+			proxyType = 1;
+			remoteGlobalIDString = 09C2F82819BF163B00472700;
+			remoteInfo = os.storage.osx;
+		};
+		093A24AF1E9B8BE8009874DF /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 09FF3F1B1E36EBBB00C81351 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 09FF3F221E36EBBB00C81351;
+			remoteInfo = audio;
+		};
+		093A24B11E9B8BE8009874DF /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 098474191E80596D0014465E /* os.log.xcodeproj */;
+			proxyType = 1;
+			remoteGlobalIDString = 09C559E719C8008700879A96;
+			remoteInfo = os.log.osx;
+		};
+		093A24B31E9B8BE8009874DF /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 098474091E80595C0014465E /* algorithms.xcodeproj */;
+			proxyType = 1;
+			remoteGlobalIDString = 093239D71DB5651B003C168E;
+			remoteInfo = algorithms;
+		};
+		093A24CC1E9B8CC3009874DF /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 097D56B71E86D14000018F14 /* os.storage.xcodeproj */;
+			proxyType = 1;
+			remoteGlobalIDString = 09C2F82819BF163B00472700;
+			remoteInfo = os.storage.osx;
+		};
+		093A24CE1E9B8CC3009874DF /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 09FF3F1B1E36EBBB00C81351 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 09FF3F221E36EBBB00C81351;
+			remoteInfo = audio;
+		};
+		093A24D01E9B8CC3009874DF /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 098474191E80596D0014465E /* os.log.xcodeproj */;
+			proxyType = 1;
+			remoteGlobalIDString = 09C559E719C8008700879A96;
+			remoteInfo = os.log.osx;
+		};
+		093A24D21E9B8CC3009874DF /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 098474091E80595C0014465E /* algorithms.xcodeproj */;
+			proxyType = 1;
+			remoteGlobalIDString = 093239D71DB5651B003C168E;
+			remoteInfo = algorithms;
+		};
 		097D56C01E86D14000018F14 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = 097D56B71E86D14000018F14 /* os.storage.xcodeproj */;
@@ -108,6 +180,24 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXCopyFilesBuildPhase section */
+		093A24BE1E9B8BE8009874DF /* CopyFiles */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = /usr/share/man/man1/;
+			dstSubfolderSpec = 0;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 1;
+		};
+		093A24DD1E9B8CC3009874DF /* CopyFiles */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = /usr/share/man/man1/;
+			dstSubfolderSpec = 0;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 1;
+		};
 		098473FE1E8057E90014465E /* CopyFiles */ = {
 			isa = PBXCopyFilesBuildPhase;
 			buildActionMask = 2147483647;
@@ -142,6 +232,12 @@
 		091E76EB1E46C08F009CFBA5 /* pernamespace.implparams.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = pernamespace.implparams.h; path = include/pernamespace.implparams.h; sourceTree = "<group>"; };
 		091E76EC1E46D03B009CFBA5 /* gen.crtp.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = gen.crtp.h; path = include/gen.crtp.h; sourceTree = "<group>"; };
 		092412A01E56F04500A848A8 /* samples.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = samples.cpp; path = source/samples.cpp; sourceTree = "<group>"; };
+		093A24C21E9B8BE8009874DF /* wav_join_nonzeros */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = wav_join_nonzeros; sourceTree = BUILT_PRODUCTS_DIR; };
+		093A24C81E9B8C47009874DF /* unity.build.joinnonzeros.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = unity.build.joinnonzeros.cpp; path = source/unity.build.joinnonzeros.cpp; sourceTree = "<group>"; };
+		093A24E11E9B8CC3009874DF /* test_fft */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = test_fft; sourceTree = BUILT_PRODUCTS_DIR; };
+		093A24E21E9B8D10009874DF /* main.test_fft.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = main.test_fft.cpp; path = source/main.test_fft.cpp; sourceTree = "<group>"; };
+		093A24E31E9B8D73009874DF /* unity.build.testfft.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = unity.build.testfft.cpp; path = source/unity.build.testfft.cpp; sourceTree = "<group>"; };
+		093A24E51E9B8E21009874DF /* main.join_non_zeros.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = main.join_non_zeros.cpp; path = source/main.join_non_zeros.cpp; sourceTree = "<group>"; };
 		094562341E43E475006E7076 /* gen.cutramp.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; lineEnding = 0; name = gen.cutramp.h; path = include/gen.cutramp.h; sourceTree = "<group>"; xcLanguageSpecificationIdentifier = xcode.lang.objcpp; };
 		09529DF81E439D8D00705B99 /* gen.voice.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; lineEnding = 0; name = gen.voice.h; path = include/gen.voice.h; sourceTree = "<group>"; xcLanguageSpecificationIdentifier = xcode.lang.objcpp; };
 		09529DF91E439D8D00705B99 /* mononotechannel.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = mononotechannel.h; path = include/mononotechannel.h; sourceTree = "<group>"; };
@@ -159,7 +255,7 @@
 		097D56D01E86DCC900018F14 /* AppKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = AppKit.framework; path = System/Library/Frameworks/AppKit.framework; sourceTree = SDKROOT; };
 		098473FA1E7F2A8C0014465E /* loudness_filter.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = loudness_filter.cpp; path = source/loudness_filter.cpp; sourceTree = "<group>"; };
 		098474001E8057E90014465E /* generate_filters_headers */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = generate_filters_headers; sourceTree = BUILT_PRODUCTS_DIR; };
-		098474021E8057E90014465E /* gen_headers.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = gen_headers.cpp; path = source/gen_headers.cpp; sourceTree = "<group>"; };
+		098474021E8057E90014465E /* main.gen_headers.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = main.gen_headers.cpp; path = source/main.gen_headers.cpp; sourceTree = "<group>"; };
 		098474071E8058EE0014465E /* unity.build.genheaders.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = unity.build.genheaders.cpp; path = source/unity.build.genheaders.cpp; sourceTree = "<group>"; };
 		098474091E80595C0014465E /* algorithms.xcodeproj */ = {isa = PBXFileReference; lastKnownFileType = "wrapper.pb-project"; name = algorithms.xcodeproj; path = /Users/Olivier/Dev/shared/../algorithms/algorithms.xcodeproj; sourceTree = "<absolute>"; };
 		098474191E80596D0014465E /* os.log.xcodeproj */ = {isa = PBXFileReference; lastKnownFileType = "wrapper.pb-project"; name = os.log.xcodeproj; path = /Users/Olivier/Dev/shared/../os.log/os.log.xcodeproj; sourceTree = "<absolute>"; };
@@ -192,12 +288,43 @@
 		099E06F71E36ECE50012348E /* Project.Shared.xcconfig */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.xcconfig; name = Project.Shared.xcconfig; path = xcode.config/Project.Shared.xcconfig; sourceTree = "<group>"; };
 		09A8F2291E442C3A0071C141 /* soundengine.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = soundengine.cpp; path = source/soundengine.cpp; sourceTree = "<group>"; };
 		09BA14861E3877BD00A05F83 /* libaudio.ios.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = libaudio.ios.a; sourceTree = BUILT_PRODUCTS_DIR; };
+		09C02B0B1E9A64BD00E570F5 /* read.wav.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = read.wav.cpp; path = source/read.wav.cpp; sourceTree = "<group>"; };
+		09C02B0C1E9A64BD00E570F5 /* write.wav.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = write.wav.cpp; path = source/write.wav.cpp; sourceTree = "<group>"; };
+		09C02B121E9A64F700E570F5 /* read.wav.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = read.wav.h; path = include/read.wav.h; sourceTree = "<group>"; };
 		09D4BAC11E883BA400C9472E /* events.impl.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = events.impl.h; path = include/events.impl.h; sourceTree = "<group>"; };
 		09FD59EB1E7F266D0052B2FD /* loudness_filter.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = loudness_filter.h; path = include/loudness_filter.h; sourceTree = "<group>"; };
 		09FF3F231E36EBBB00C81351 /* libaudio.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = libaudio.a; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
+		093A24B61E9B8BE8009874DF /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				093A24B71E9B8BE8009874DF /* AppKit.framework in Frameworks */,
+				093A24B81E9B8BE8009874DF /* CoreGraphics.framework in Frameworks */,
+				093A24B91E9B8BE8009874DF /* CoreFoundation.framework in Frameworks */,
+				093A24BA1E9B8BE8009874DF /* libos.storage.osx.a in Frameworks */,
+				093A24BB1E9B8BE8009874DF /* libaudio.a in Frameworks */,
+				093A24BC1E9B8BE8009874DF /* libalgorithms.a in Frameworks */,
+				093A24BD1E9B8BE8009874DF /* libos.log.osx.a in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		093A24D51E9B8CC3009874DF /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				093A24D61E9B8CC3009874DF /* AppKit.framework in Frameworks */,
+				093A24D71E9B8CC3009874DF /* CoreGraphics.framework in Frameworks */,
+				093A24D81E9B8CC3009874DF /* CoreFoundation.framework in Frameworks */,
+				093A24D91E9B8CC3009874DF /* libos.storage.osx.a in Frameworks */,
+				093A24DA1E9B8CC3009874DF /* libaudio.a in Frameworks */,
+				093A24DB1E9B8CC3009874DF /* libalgorithms.a in Frameworks */,
+				093A24DC1E9B8CC3009874DF /* libos.log.osx.a in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		098473FD1E8057E90014465E /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
@@ -281,18 +408,24 @@
 		099E06E21E36EC7F0012348E /* source */ = {
 			isa = PBXGroup;
 			children = (
-				092412A01E56F04500A848A8 /* samples.cpp */,
-				098474021E8057E90014465E /* gen_headers.cpp */,
 				090B14C31E75CCDF005A47C5 /* gen.cutramp.cpp */,
 				0966EA6E1E45C62B00A86E7C /* gen.voice.cpp */,
 				098473FA1E7F2A8C0014465E /* loudness_filter.cpp */,
+				098474021E8057E90014465E /* main.gen_headers.cpp */,
+				093A24E51E9B8E21009874DF /* main.join_non_zeros.cpp */,
+				093A24E21E9B8D10009874DF /* main.test_fft.cpp */,
 				091E76EA1E46C02F009CFBA5 /* normalization.cpp */,
 				099E06DC1E36EC6D0012348E /* parse.music.cpp */,
 				099E06DD1E36EC6D0012348E /* private.h */,
+				09C02B0B1E9A64BD00E570F5 /* read.wav.cpp */,
+				092412A01E56F04500A848A8 /* samples.cpp */,
 				099E06DF1E36EC6D0012348E /* sound.cpp */,
 				09A8F2291E442C3A0071C141 /* soundengine.cpp */,
 				099E06E01E36EC6D0012348E /* unity.build.cpp */,
 				098474071E8058EE0014465E /* unity.build.genheaders.cpp */,
+				093A24C81E9B8C47009874DF /* unity.build.joinnonzeros.cpp */,
+				093A24E31E9B8D73009874DF /* unity.build.testfft.cpp */,
+				09C02B0C1E9A64BD00E570F5 /* write.wav.cpp */,
 			);
 			name = source;
 			sourceTree = "<group>";
@@ -327,6 +460,7 @@
 				091E76EB1E46C08F009CFBA5 /* pernamespace.implparams.h */,
 				09529DFC1E439EC000705B99 /* program.h */,
 				099E06E91E36EC920012348E /* public.h */,
+				09C02B121E9A64F700E570F5 /* read.wav.h */,
 				099E06EA1E36EC920012348E /* request.h */,
 				097D56C71E86D42D00018F14 /* samples.h */,
 				09529DFD1E439F2700705B99 /* smoothparam.h */,
@@ -374,6 +508,8 @@
 				09FF3F231E36EBBB00C81351 /* libaudio.a */,
 				09BA14861E3877BD00A05F83 /* libaudio.ios.a */,
 				098474001E8057E90014465E /* generate_filters_headers */,
+				093A24C21E9B8BE8009874DF /* wav_join_nonzeros */,
+				093A24E11E9B8CC3009874DF /* test_fft */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -392,6 +528,48 @@
 /* End PBXHeadersBuildPhase section */
 
 /* Begin PBXNativeTarget section */
+		093A24AB1E9B8BE8009874DF /* wav_join_nonzeros */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 093A24BF1E9B8BE8009874DF /* Build configuration list for PBXNativeTarget "wav_join_nonzeros" */;
+			buildPhases = (
+				093A24B41E9B8BE8009874DF /* Sources */,
+				093A24B61E9B8BE8009874DF /* Frameworks */,
+				093A24BE1E9B8BE8009874DF /* CopyFiles */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				093A24AC1E9B8BE8009874DF /* PBXTargetDependency */,
+				093A24AE1E9B8BE8009874DF /* PBXTargetDependency */,
+				093A24B01E9B8BE8009874DF /* PBXTargetDependency */,
+				093A24B21E9B8BE8009874DF /* PBXTargetDependency */,
+			);
+			name = wav_join_nonzeros;
+			productName = generate_filters_headers;
+			productReference = 093A24C21E9B8BE8009874DF /* wav_join_nonzeros */;
+			productType = "com.apple.product-type.tool";
+		};
+		093A24CA1E9B8CC3009874DF /* test_fft */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 093A24DE1E9B8CC3009874DF /* Build configuration list for PBXNativeTarget "test_fft" */;
+			buildPhases = (
+				093A24D31E9B8CC3009874DF /* Sources */,
+				093A24D51E9B8CC3009874DF /* Frameworks */,
+				093A24DD1E9B8CC3009874DF /* CopyFiles */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				093A24CB1E9B8CC3009874DF /* PBXTargetDependency */,
+				093A24CD1E9B8CC3009874DF /* PBXTargetDependency */,
+				093A24CF1E9B8CC3009874DF /* PBXTargetDependency */,
+				093A24D11E9B8CC3009874DF /* PBXTargetDependency */,
+			);
+			name = test_fft;
+			productName = generate_filters_headers;
+			productReference = 093A24E11E9B8CC3009874DF /* test_fft */;
+			productType = "com.apple.product-type.tool";
+		};
 		098473FF1E8057E90014465E /* generate_filters_headers */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = 098474041E8057E90014465E /* Build configuration list for PBXNativeTarget "generate_filters_headers" */;
@@ -499,6 +677,8 @@
 				09FF3F221E36EBBB00C81351 /* audio */,
 				09BA14851E3877BD00A05F83 /* audio.ios */,
 				098473FF1E8057E90014465E /* generate_filters_headers */,
+				093A24AB1E9B8BE8009874DF /* wav_join_nonzeros */,
+				093A24CA1E9B8CC3009874DF /* test_fft */,
 			);
 		};
 /* End PBXProject section */
@@ -563,6 +743,22 @@
 /* End PBXReferenceProxy section */
 
 /* Begin PBXSourcesBuildPhase section */
+		093A24B41E9B8BE8009874DF /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				093A24C91E9B8C47009874DF /* unity.build.joinnonzeros.cpp in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		093A24D31E9B8CC3009874DF /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				093A24E41E9B8D73009874DF /* unity.build.testfft.cpp in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		098473FC1E8057E90014465E /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -590,6 +786,46 @@
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
+		093A24AC1E9B8BE8009874DF /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			name = os.storage.osx;
+			targetProxy = 093A24AD1E9B8BE8009874DF /* PBXContainerItemProxy */;
+		};
+		093A24AE1E9B8BE8009874DF /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 09FF3F221E36EBBB00C81351 /* audio */;
+			targetProxy = 093A24AF1E9B8BE8009874DF /* PBXContainerItemProxy */;
+		};
+		093A24B01E9B8BE8009874DF /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			name = os.log.osx;
+			targetProxy = 093A24B11E9B8BE8009874DF /* PBXContainerItemProxy */;
+		};
+		093A24B21E9B8BE8009874DF /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			name = algorithms;
+			targetProxy = 093A24B31E9B8BE8009874DF /* PBXContainerItemProxy */;
+		};
+		093A24CB1E9B8CC3009874DF /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			name = os.storage.osx;
+			targetProxy = 093A24CC1E9B8CC3009874DF /* PBXContainerItemProxy */;
+		};
+		093A24CD1E9B8CC3009874DF /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 09FF3F221E36EBBB00C81351 /* audio */;
+			targetProxy = 093A24CE1E9B8CC3009874DF /* PBXContainerItemProxy */;
+		};
+		093A24CF1E9B8CC3009874DF /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			name = os.log.osx;
+			targetProxy = 093A24D01E9B8CC3009874DF /* PBXContainerItemProxy */;
+		};
+		093A24D11E9B8CC3009874DF /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			name = algorithms;
+			targetProxy = 093A24D21E9B8CC3009874DF /* PBXContainerItemProxy */;
+		};
 		097D56C51E86D14500018F14 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
 			name = os.storage.osx;
@@ -613,6 +849,38 @@
 /* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
+		093A24C01E9B8BE8009874DF /* Debug */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 099E06F21E36ECE50012348E /* osx.debug.xcconfig */;
+			buildSettings = {
+				PRODUCT_NAME = "$(TARGET_NAME)";
+			};
+			name = Debug;
+		};
+		093A24C11E9B8BE8009874DF /* Release */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 099E06F31E36ECE50012348E /* osx.release.xcconfig */;
+			buildSettings = {
+				PRODUCT_NAME = "$(TARGET_NAME)";
+			};
+			name = Release;
+		};
+		093A24DF1E9B8CC3009874DF /* Debug */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 099E06F21E36ECE50012348E /* osx.debug.xcconfig */;
+			buildSettings = {
+				PRODUCT_NAME = "$(TARGET_NAME)";
+			};
+			name = Debug;
+		};
+		093A24E01E9B8CC3009874DF /* Release */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 099E06F31E36ECE50012348E /* osx.release.xcconfig */;
+			buildSettings = {
+				PRODUCT_NAME = "$(TARGET_NAME)";
+			};
+			name = Release;
+		};
 		098474051E8057E90014465E /* Debug */ = {
 			isa = XCBuildConfiguration;
 			baseConfigurationReference = 099E06F21E36ECE50012348E /* osx.debug.xcconfig */;
@@ -674,6 +942,24 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
+		093A24BF1E9B8BE8009874DF /* Build configuration list for PBXNativeTarget "wav_join_nonzeros" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				093A24C01E9B8BE8009874DF /* Debug */,
+				093A24C11E9B8BE8009874DF /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		093A24DE1E9B8CC3009874DF /* Build configuration list for PBXNativeTarget "test_fft" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				093A24DF1E9B8CC3009874DF /* Debug */,
+				093A24E01E9B8CC3009874DF /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
 		098474041E8057E90014465E /* Build configuration list for PBXNativeTarget "generate_filters_headers" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (

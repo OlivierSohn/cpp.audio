@@ -1,6 +1,7 @@
 #include "private.h"
 
-
+#include "read.wav.cpp"
+#include "write.wav.cpp"
 #include "samples.cpp"
 #include "sound.cpp"
 #include "parse.music.cpp"

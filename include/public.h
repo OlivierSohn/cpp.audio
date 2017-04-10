@@ -11,6 +11,7 @@
 
 #include "../../algorithms/include/public.h"
 #include "../../os.log/include/public.h"
+#include "../../os.storage/include/public.h"
 
 #include "samples.h"
 #include "loudness_filter_coefficients.h"
@@ -25,6 +26,7 @@
 #include "sounds.h"
 #include "request.h"
 #include "channel.h"
+#include "read.wav.h"
 #include "out.h"
 #include "note.h"
 #include "soundengine.h"

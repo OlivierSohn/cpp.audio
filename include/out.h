@@ -142,6 +142,11 @@ namespace imajuscule {
 
         /////////////////////////////// postprocess
         void postprocess(T*buffer, int nFrames) const {}
+        
+        /////////////////////////////// convolution reverb
+        void setConvolutionReverbIR(std::vector<double>, int) {
+            A(0);
+        }
     };
     
     template<typename T, int nAudioOut>
@@ -163,6 +168,18 @@ namespace imajuscule {
 
         void postprocess(T*buffer, int nFrames) {
 
+            // apply convolution reverbs
+            if(nAudioOut && conv_reverbs[0].size()) {
+                for(int i=0; i<nFrames; ++i) {
+                    for(int j=0; j<nAudioOut; ++j) {
+                        auto & conv_reverb = conv_reverbs[j];
+                        auto & sample = buffer[i*nAudioOut + j];
+                        conv_reverb.step(sample);
+                        sample = conv_reverb.get();
+                    }
+                }
+            }
+            
             // run delays before hardlimiting...
 #if WITH_DELAY
             for( auto & delay : delays ) {
@@ -176,6 +193,105 @@ namespace imajuscule {
                     f(&buffer[i*nAudioOut]); // or call the lambda for the whole buffer at once?
                 }
             }
+        }
+        
+        ///////////////////////////////// convolution reverb
+        
+        void setConvolutionReverbIR(std::vector<double> ir, int stride) {
+            
+            // deinterlace the buffer
+            
+            std::vector<std::vector<double>> deinterlaced(stride);
+            auto sz = ir.size() / stride;
+            A(sz * stride == ir.size());
+            for(auto & v : deinterlaced) {
+                v.reserve(sz);
+            }
+            for(auto it = ir.begin(), end = ir.end(); it != end;) {
+                for(int i=0; i<stride; ++i) {
+                    deinterlaced[i].push_back(*it);
+                    ++it;
+                }
+            }
+            
+            // truncate the irrelevant head
+            
+            size_t start = sz;
+            for(auto const & v : deinterlaced) {
+                constexpr auto sliding_average_size = 15;
+                constexpr auto relevant_level = .1f;
+                
+                auto it = find_relevant_start_relaxed(v.begin(),
+                                                      v.end(),
+                                                      relevant_level,
+                                                      sliding_average_size);
+                auto dist = std::distance(v.begin(), it);
+                LG(INFO, "dist : %d", dist);
+                start = std::min(start, static_cast<size_t>(dist));
+            }
+            
+            if(start < sz) {
+                for(auto & v : deinterlaced) {
+                    v.erase(v.begin(), v.begin() + start);
+                    v.shrink_to_fit();
+                }
+            }
+            
+            // truncate the tail if it is too long
+            
+            constexpr auto max_size = 10000;
+            for(auto & v : deinterlaced) {
+                if(v.size() > max_size) {
+                    v.resize(max_size);
+                    v.shrink_to_fit();
+                }
+            }
+            
+            // symetrically scale
+            
+            auto scale = 1.;
+            for(auto & v : deinterlaced) {
+                auto lobe = max_abs_integrated_lobe(v.begin(), v.end());
+                LG(INFO, "lobe : %f", lobe);
+                //auto sum = abs_integrated(v.begin(), v.end());
+                //LG(INFO, "sum : %f", sum);
+                constexpr auto security_lobe_factor = 3;
+                scale = std::max(scale, security_lobe_factor*lobe);
+            }
+            
+            scale = 1. / scale;
+            
+            for(auto & v : deinterlaced) {
+                for(auto &s : v) {
+                    s *= scale;
+                }
+            }
+            
+            // set the coefficients
+            
+            int i=0;
+            for(auto & rev : conv_reverbs) {
+                rev.setCoefficients(deinterlaced[i]);
+                ++i;
+                if(i == stride) {
+                    i = 0;
+                }
+            }
+            
+            // debugging
+            
+            /*
+             for(auto const & v : deinterlaced) {
+                StringPlot plot(40, 100);
+                plot.draw(v);
+                plot.log();
+            }
+            
+            {
+                using namespace audio;
+                write_wav("/Users/Olivier/Dev/Audiofiles", "deinterlaced.wav", deinterlaced);
+            }
+             */
         }
         
         private:
@@ -208,6 +324,9 @@ namespace imajuscule {
 #if WITH_DELAY
         std::vector< DelayLine > delays;
 #endif
+        
+        //////////////////////////////// convolution reverb
+        std::array<ConvolutionReverb<T>, nAudioOut> conv_reverbs;
     };
     
     template<
@@ -300,6 +419,10 @@ namespace imajuscule {
             available_ids.reserve(nChannelsMax);
         }
 
+        void setConvolutionReverbIR(std::vector<double> resp, int stride) {
+            impl.setConvolutionReverbIR(std::move(resp), stride);
+        }
+        
         // called from audio callback
         void step(SAMPLE *outputBuffer, int nFrames) {
             Locking l(get_lock());
