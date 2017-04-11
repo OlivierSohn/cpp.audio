@@ -176,8 +176,8 @@ namespace imajuscule {
             PCOscillatorAlgo() = default;
             PCOscillatorAlgo(T angle_increments) : Phased<T>(angle_increments) {}
             
-            T real() const { return std::cos(M_PI*angle_); }
-            T imag() const { return std::sin(M_PI*angle_); }
+            T real() const { return std::cos(static_cast<T>(M_PI) * angle_); }
+            T imag() const { return std::sin(static_cast<T>(M_PI) * angle_); }
         };
         
         template<typename T>
@@ -548,7 +548,7 @@ namespace imajuscule {
         template<typename T>
         struct LoudnessCompensationFilter {
             LoudnessCompensationFilter(unsigned int fft_length, unsigned int NumTaps) :
-            filter(imajuscule::loudness::getLoudnessCompensationFIRCoefficients(fft_length, NumTaps))
+            filter(imajuscule::loudness::getLoudnessCompensationFIRCoefficients<T>(fft_length, NumTaps))
             {}
             
             void step(T val) {
@@ -559,7 +559,7 @@ namespace imajuscule {
             
             auto size() const { return filter.size(); }
         private:
-            FIRFilter<double> filter;
+            FIRFilter<T> filter;
         };
         
         template<typename T, int ORDER>

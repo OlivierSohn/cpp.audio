@@ -131,6 +131,10 @@ namespace imajuscule {
         Master
     };
     
+    // cooley-tukey leads to error growths of O(log n) (worst case) and O(sqrt(log n)) (mean for random input)
+    // so float should be enough
+    using FFT_T = float;
+    
     template<typename T, int nAudioOut, AudioOutPolicy> struct AudioPolicyImpl;
 
     template<typename T, int nAudioOut>
@@ -144,7 +148,7 @@ namespace imajuscule {
         void postprocess(T*buffer, int nFrames) const {}
         
         /////////////////////////////// convolution reverb
-        void setConvolutionReverbIR(std::vector<double>, int) {
+        void setConvolutionReverbIR(std::vector<FFT_T>, int) {
             A(0);
         }
     };
@@ -156,7 +160,7 @@ namespace imajuscule {
         //using ConvolutionReverb = FIRFilter<T>;
 
         // convolution using FFT
-        using ConvolutionReverb = FFTConvolution<double>;
+        using ConvolutionReverb = FFTConvolution<FFT_T>;
         
         // convolution using overlapp-add FFT:
         // using ConvolutionReverb = OverlappAddFFTConvolution<T>;
@@ -207,11 +211,11 @@ namespace imajuscule {
         
         ///////////////////////////////// convolution reverb
         
-        void setConvolutionReverbIR(std::vector<double> ir, int stride) {
+        void setConvolutionReverbIR(std::vector<FFT_T> ir, int stride) {
             
             // deinterlace the buffer
             
-            std::vector<std::vector<double>> deinterlaced(stride);
+            std::vector<std::vector<FFT_T>> deinterlaced(stride);
             auto sz = ir.size() / stride;
             A(sz * stride == ir.size());
             for(auto & v : deinterlaced) {
@@ -259,7 +263,7 @@ namespace imajuscule {
             
             // symetrically scale
             
-            auto scale = 1.;
+            FFT_T scale = 1;
             for(auto & v : deinterlaced) {
                 auto lobe = max_abs_integrated_lobe(v.begin(), v.end());
                 LG(INFO, "lobe : %f", lobe);
@@ -440,7 +444,7 @@ namespace imajuscule {
             available_ids.reserve(nChannelsMax);
         }
 
-        void setConvolutionReverbIR(std::vector<double> resp, int stride) {
+        void setConvolutionReverbIR(std::vector<FFT_T> resp, int stride) {
             impl.setConvolutionReverbIR(std::move(resp), stride);
         }
         

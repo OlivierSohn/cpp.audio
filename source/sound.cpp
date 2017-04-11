@@ -125,7 +125,6 @@ void soundBuffer::generate_with_smooth_transition(int period, F f) {
     generate(period, f);
     for(int i=0; i<transition_length; ++i) {
         auto ratio_pre = (i+1) / (float)(transition_length+1); // we want the ratio to start after 0 and never reach 1
-        static_assert(std::is_floating_point<decltype(ratio_pre)>::value, "");
         A(ratio_pre > 0.f);
         A(ratio_pre < 1.f);
         

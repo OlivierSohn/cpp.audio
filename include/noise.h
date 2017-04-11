@@ -160,6 +160,9 @@ namespace imajuscule {
     
     template<typename SOURCE_NOISE>
     struct GaussianGreyNoiseAlgo {
+        using FPT = typename std::remove_reference<decltype(SOURCE_NOISE()())>::type::FPT;
+        using T = FPT;
+        
         GaussianGreyNoiseAlgo(SOURCE_NOISE source, unsigned int fft_length, unsigned int NumTaps) :
         source(source),
         loudness_compensation_filter(fft_length, NumTaps) {
@@ -183,13 +186,13 @@ namespace imajuscule {
             }
         }
         
-        double get() const {
+        T get() const {
             return loudness_compensation_filter.get();
         }
         
     private:
         unsigned int counter = 0;
-        audioelement::LoudnessCompensationFilter<float> loudness_compensation_filter;
+        audioelement::LoudnessCompensationFilter<T> loudness_compensation_filter;
         SOURCE_NOISE source;
     };
     
