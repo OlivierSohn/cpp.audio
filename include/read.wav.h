@@ -227,7 +227,11 @@ namespace imajuscule {
             return 0;
         }
         
-        static constexpr bool is_signed(SampleFormat const f) {
+        static
+#ifdef NDEBUG
+        constexpr
+#endif
+        bool is_signed(SampleFormat const f) {
             switch(f) {
                 case SampleFormat::signed_16:
                 case SampleFormat::signed_24:
@@ -237,12 +241,16 @@ namespace imajuscule {
                 case SampleFormat::float_64:
                     return false;
             }
-            
-            LG(ERR, "unhandled sample format");
+   
+            A(0);
             return false;
         }
         
-        static constexpr bool is_float(SampleFormat const f) {
+        static
+#ifdef NDEBUG
+        constexpr
+#endif
+        bool is_float(SampleFormat const f) {
             switch(f) {
                 case SampleFormat::signed_16:
                 case SampleFormat::signed_24:
@@ -253,7 +261,7 @@ namespace imajuscule {
                     return true;
             }
 
-            LG(ERR, "unhandled sample format");
+            A(0);
             return false;
         }
         
