@@ -24,6 +24,14 @@
 		093A24DB1E9B8CC3009874DF /* libalgorithms.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 098474151E80595C0014465E /* libalgorithms.a */; };
 		093A24DC1E9B8CC3009874DF /* libos.log.osx.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 0984741F1E80596E0014465E /* libos.log.osx.a */; };
 		093A24E41E9B8D73009874DF /* unity.build.testfft.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 093A24E31E9B8D73009874DF /* unity.build.testfft.cpp */; };
+		096C6D571E9F85B800389746 /* AppKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 097D56D01E86DCC900018F14 /* AppKit.framework */; };
+		096C6D581E9F85B800389746 /* CoreGraphics.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 097D56CE1E86DCB600018F14 /* CoreGraphics.framework */; };
+		096C6D591E9F85B800389746 /* CoreFoundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 097D56CC1E86DCA000018F14 /* CoreFoundation.framework */; };
+		096C6D5A1E9F85B800389746 /* libos.storage.osx.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 097D56C11E86D14000018F14 /* libos.storage.osx.a */; };
+		096C6D5B1E9F85B800389746 /* libaudio.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 09FF3F231E36EBBB00C81351 /* libaudio.a */; };
+		096C6D5C1E9F85B800389746 /* libalgorithms.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 098474151E80595C0014465E /* libalgorithms.a */; };
+		096C6D5D1E9F85B800389746 /* libos.log.osx.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 0984741F1E80596E0014465E /* libos.log.osx.a */; };
+		096C6D651E9F860A00389746 /* unity.build.wir_2_wav.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 096C6D641E9F860300389746 /* unity.build.wir_2_wav.cpp */; };
 		097D56C61E86D14D00018F14 /* libos.storage.osx.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 097D56C11E86D14000018F14 /* libos.storage.osx.a */; };
 		097D56CD1E86DCA000018F14 /* CoreFoundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 097D56CC1E86DCA000018F14 /* CoreFoundation.framework */; };
 		097D56CF1E86DCB600018F14 /* CoreGraphics.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 097D56CE1E86DCB600018F14 /* CoreGraphics.framework */; };
@@ -87,6 +95,34 @@
 			remoteInfo = os.log.osx;
 		};
 		093A24D21E9B8CC3009874DF /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 098474091E80595C0014465E /* algorithms.xcodeproj */;
+			proxyType = 1;
+			remoteGlobalIDString = 093239D71DB5651B003C168E;
+			remoteInfo = algorithms;
+		};
+		096C6D4D1E9F85B800389746 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 097D56B71E86D14000018F14 /* os.storage.xcodeproj */;
+			proxyType = 1;
+			remoteGlobalIDString = 09C2F82819BF163B00472700;
+			remoteInfo = os.storage.osx;
+		};
+		096C6D4F1E9F85B800389746 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 09FF3F1B1E36EBBB00C81351 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 09FF3F221E36EBBB00C81351;
+			remoteInfo = audio;
+		};
+		096C6D511E9F85B800389746 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 098474191E80596D0014465E /* os.log.xcodeproj */;
+			proxyType = 1;
+			remoteGlobalIDString = 09C559E719C8008700879A96;
+			remoteInfo = os.log.osx;
+		};
+		096C6D531E9F85B800389746 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = 098474091E80595C0014465E /* algorithms.xcodeproj */;
 			proxyType = 1;
@@ -198,6 +234,15 @@
 			);
 			runOnlyForDeploymentPostprocessing = 1;
 		};
+		096C6D5E1E9F85B800389746 /* CopyFiles */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = /usr/share/man/man1/;
+			dstSubfolderSpec = 0;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 1;
+		};
 		098473FE1E8057E90014465E /* CopyFiles */ = {
 			isa = PBXCopyFilesBuildPhase;
 			buildActionMask = 2147483647;
@@ -247,6 +292,9 @@
 		09529DFD1E439F2700705B99 /* smoothparam.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = smoothparam.h; path = include/smoothparam.h; sourceTree = "<group>"; };
 		09529DFE1E439FD800705B99 /* midi.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = midi.h; path = include/midi.h; sourceTree = "<group>"; };
 		0966EA6E1E45C62B00A86E7C /* gen.voice.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = gen.voice.cpp; path = source/gen.voice.cpp; sourceTree = "<group>"; };
+		096C6D621E9F85B800389746 /* wir_2_wav */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = wir_2_wav; sourceTree = BUILT_PRODUCTS_DIR; };
+		096C6D631E9F860300389746 /* main.wir_2_wav.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = main.wir_2_wav.cpp; path = source/main.wir_2_wav.cpp; sourceTree = "<group>"; };
+		096C6D641E9F860300389746 /* unity.build.wir_2_wav.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = unity.build.wir_2_wav.cpp; path = source/unity.build.wir_2_wav.cpp; sourceTree = "<group>"; };
 		097D56B71E86D14000018F14 /* os.storage.xcodeproj */ = {isa = PBXFileReference; lastKnownFileType = "wrapper.pb-project"; name = os.storage.xcodeproj; path = /Users/Olivier/Dev/shared/../os.storage/os.storage.xcodeproj; sourceTree = "<absolute>"; };
 		097D56C71E86D42D00018F14 /* samples.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = samples.h; path = include/samples.h; sourceTree = "<group>"; };
 		097D56C81E86D42D00018F14 /* loudness_filter_coefficients_gen.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = loudness_filter_coefficients_gen.h; path = include/loudness_filter_coefficients_gen.h; sourceTree = "<group>"; };
@@ -288,8 +336,8 @@
 		099E06F71E36ECE50012348E /* Project.Shared.xcconfig */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.xcconfig; name = Project.Shared.xcconfig; path = xcode.config/Project.Shared.xcconfig; sourceTree = "<group>"; };
 		09A8F2291E442C3A0071C141 /* soundengine.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = soundengine.cpp; path = source/soundengine.cpp; sourceTree = "<group>"; };
 		09BA14861E3877BD00A05F83 /* libaudio.ios.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = libaudio.ios.a; sourceTree = BUILT_PRODUCTS_DIR; };
-		09C02B0B1E9A64BD00E570F5 /* read.wav.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = read.wav.cpp; path = source/read.wav.cpp; sourceTree = "<group>"; };
-		09C02B0C1E9A64BD00E570F5 /* write.wav.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = write.wav.cpp; path = source/write.wav.cpp; sourceTree = "<group>"; };
+		09C02B0B1E9A64BD00E570F5 /* read.wav.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; lineEnding = 0; name = read.wav.cpp; path = source/read.wav.cpp; sourceTree = "<group>"; xcLanguageSpecificationIdentifier = xcode.lang.cpp; };
+		09C02B0C1E9A64BD00E570F5 /* write.wav.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; lineEnding = 0; name = write.wav.cpp; path = source/write.wav.cpp; sourceTree = "<group>"; xcLanguageSpecificationIdentifier = xcode.lang.cpp; };
 		09C02B121E9A64F700E570F5 /* read.wav.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = read.wav.h; path = include/read.wav.h; sourceTree = "<group>"; };
 		09D4BAC11E883BA400C9472E /* events.impl.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = events.impl.h; path = include/events.impl.h; sourceTree = "<group>"; };
 		09FD59EB1E7F266D0052B2FD /* loudness_filter.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = loudness_filter.h; path = include/loudness_filter.h; sourceTree = "<group>"; };
@@ -322,6 +370,20 @@
 				093A24DA1E9B8CC3009874DF /* libaudio.a in Frameworks */,
 				093A24DB1E9B8CC3009874DF /* libalgorithms.a in Frameworks */,
 				093A24DC1E9B8CC3009874DF /* libos.log.osx.a in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		096C6D561E9F85B800389746 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				096C6D571E9F85B800389746 /* AppKit.framework in Frameworks */,
+				096C6D581E9F85B800389746 /* CoreGraphics.framework in Frameworks */,
+				096C6D591E9F85B800389746 /* CoreFoundation.framework in Frameworks */,
+				096C6D5A1E9F85B800389746 /* libos.storage.osx.a in Frameworks */,
+				096C6D5B1E9F85B800389746 /* libaudio.a in Frameworks */,
+				096C6D5C1E9F85B800389746 /* libalgorithms.a in Frameworks */,
+				096C6D5D1E9F85B800389746 /* libos.log.osx.a in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -414,6 +476,7 @@
 				098474021E8057E90014465E /* main.gen_headers.cpp */,
 				093A24E51E9B8E21009874DF /* main.join_non_zeros.cpp */,
 				093A24E21E9B8D10009874DF /* main.test_fft.cpp */,
+				096C6D631E9F860300389746 /* main.wir_2_wav.cpp */,
 				091E76EA1E46C02F009CFBA5 /* normalization.cpp */,
 				099E06DC1E36EC6D0012348E /* parse.music.cpp */,
 				099E06DD1E36EC6D0012348E /* private.h */,
@@ -425,6 +488,7 @@
 				098474071E8058EE0014465E /* unity.build.genheaders.cpp */,
 				093A24C81E9B8C47009874DF /* unity.build.joinnonzeros.cpp */,
 				093A24E31E9B8D73009874DF /* unity.build.testfft.cpp */,
+				096C6D641E9F860300389746 /* unity.build.wir_2_wav.cpp */,
 				09C02B0C1E9A64BD00E570F5 /* write.wav.cpp */,
 			);
 			name = source;
@@ -510,6 +574,7 @@
 				098474001E8057E90014465E /* generate_filters_headers */,
 				093A24C21E9B8BE8009874DF /* wav_join_nonzeros */,
 				093A24E11E9B8CC3009874DF /* test_fft */,
+				096C6D621E9F85B800389746 /* wir_2_wav */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -568,6 +633,27 @@
 			name = test_fft;
 			productName = generate_filters_headers;
 			productReference = 093A24E11E9B8CC3009874DF /* test_fft */;
+			productType = "com.apple.product-type.tool";
+		};
+		096C6D4B1E9F85B800389746 /* wir_2_wav */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 096C6D5F1E9F85B800389746 /* Build configuration list for PBXNativeTarget "wir_2_wav" */;
+			buildPhases = (
+				096C6D541E9F85B800389746 /* Sources */,
+				096C6D561E9F85B800389746 /* Frameworks */,
+				096C6D5E1E9F85B800389746 /* CopyFiles */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				096C6D4C1E9F85B800389746 /* PBXTargetDependency */,
+				096C6D4E1E9F85B800389746 /* PBXTargetDependency */,
+				096C6D501E9F85B800389746 /* PBXTargetDependency */,
+				096C6D521E9F85B800389746 /* PBXTargetDependency */,
+			);
+			name = wir_2_wav;
+			productName = generate_filters_headers;
+			productReference = 096C6D621E9F85B800389746 /* wir_2_wav */;
 			productType = "com.apple.product-type.tool";
 		};
 		098473FF1E8057E90014465E /* generate_filters_headers */ = {
@@ -679,6 +765,7 @@
 				098473FF1E8057E90014465E /* generate_filters_headers */,
 				093A24AB1E9B8BE8009874DF /* wav_join_nonzeros */,
 				093A24CA1E9B8CC3009874DF /* test_fft */,
+				096C6D4B1E9F85B800389746 /* wir_2_wav */,
 			);
 		};
 /* End PBXProject section */
@@ -759,6 +846,14 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		096C6D541E9F85B800389746 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				096C6D651E9F860A00389746 /* unity.build.wir_2_wav.cpp in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		098473FC1E8057E90014465E /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -826,6 +921,26 @@
 			name = algorithms;
 			targetProxy = 093A24D21E9B8CC3009874DF /* PBXContainerItemProxy */;
 		};
+		096C6D4C1E9F85B800389746 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			name = os.storage.osx;
+			targetProxy = 096C6D4D1E9F85B800389746 /* PBXContainerItemProxy */;
+		};
+		096C6D4E1E9F85B800389746 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 09FF3F221E36EBBB00C81351 /* audio */;
+			targetProxy = 096C6D4F1E9F85B800389746 /* PBXContainerItemProxy */;
+		};
+		096C6D501E9F85B800389746 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			name = os.log.osx;
+			targetProxy = 096C6D511E9F85B800389746 /* PBXContainerItemProxy */;
+		};
+		096C6D521E9F85B800389746 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			name = algorithms;
+			targetProxy = 096C6D531E9F85B800389746 /* PBXContainerItemProxy */;
+		};
 		097D56C51E86D14500018F14 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
 			name = os.storage.osx;
@@ -874,6 +989,22 @@
 			name = Debug;
 		};
 		093A24E01E9B8CC3009874DF /* Release */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 099E06F31E36ECE50012348E /* osx.release.xcconfig */;
+			buildSettings = {
+				PRODUCT_NAME = "$(TARGET_NAME)";
+			};
+			name = Release;
+		};
+		096C6D601E9F85B800389746 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 099E06F21E36ECE50012348E /* osx.debug.xcconfig */;
+			buildSettings = {
+				PRODUCT_NAME = "$(TARGET_NAME)";
+			};
+			name = Debug;
+		};
+		096C6D611E9F85B800389746 /* Release */ = {
 			isa = XCBuildConfiguration;
 			baseConfigurationReference = 099E06F31E36ECE50012348E /* osx.release.xcconfig */;
 			buildSettings = {
@@ -956,6 +1087,15 @@
 			buildConfigurations = (
 				093A24DF1E9B8CC3009874DF /* Debug */,
 				093A24E01E9B8CC3009874DF /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		096C6D5F1E9F85B800389746 /* Build configuration list for PBXNativeTarget "wir_2_wav" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				096C6D601E9F85B800389746 /* Debug */,
+				096C6D611E9F85B800389746 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

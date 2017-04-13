@@ -4,20 +4,28 @@ namespace imajuscule {
         
         // http://www-mmsp.ece.mcgill.ca/Documents/AudioFormats/WAVE/WAVE.html
         
+        enum class WaveFormat : uint16_t {
+            PCM =          0x0001, // PCM (Linear quantization, represented using signed values)
+            IEEE_FLOAT =   0x0003, // IEEE float
+            ALAW =         0x0006, // 8-bit ITU-T G.711 A-law
+            MULAW =        0x0007, // 8-bit ITU-T G.711 µ-law
+            EXTENSIBLE =   0xFFFE  // Determined by SubFormat
+        };
+        
         struct WAVPCMHeader {
-            char chunk_id[4];
-            int chunk_size;
-            char format[4];
-            char subchunk1_id[4];
-            int subchunk1_size;
-            short int audio_format;
-            short int num_channels;
-            int sample_rate;            // sample_rate denotes the sampling rate.
-            int byte_rate;
-            short int block_align;
-            short int bits_per_sample;
-            char subchunk2_id[4];
-            int subchunk2_size; // subchunk2_size denotes the number of samples.
+            int8_t chunk_id[4];
+            int32_t chunk_size;
+            int8_t format[4];
+            int8_t subchunk1_id[4];
+            int32_t subchunk1_size;
+            WaveFormat audio_format;
+            int16_t num_channels;
+            int32_t sample_rate;            // sample_rate denotes the sampling rate.
+            int32_t byte_rate;
+            int16_t block_align;
+            int16_t bits_per_sample;
+            int8_t subchunk2_id[4];
+            int32_t subchunk2_size; // subchunk2_size denotes the number of samples.
             
             unsigned int countFrames() const {
                 if(0 == block_align) {
@@ -46,19 +54,62 @@ namespace imajuscule {
             STEREO = 2
         };
         
-        static WAVPCMHeader pcm_(int const num_frames, int const sample_rate,
-                                 NChannels n_channels, int const bytes_per_sample) {
+        enum class WaveFileFormat {
+            BeginSupported,
+            
+            RIFF = BeginSupported,
+            WaveIR,
+            
+            EndSupported,
+            
+            Unknown = EndSupported
+        };
+        
+        constexpr auto getWavChunkId(WaveFileFormat f) {
+            switch(f) {
+                case WaveFileFormat::RIFF:
+                    return "RIFF";
+                case WaveFileFormat::WaveIR:
+                    return "wvIR";
+            }
+            return "XXXX";
+        }
+        constexpr auto getWavWAVEId(WaveFileFormat f) {
+            switch(f) {
+                case WaveFileFormat::RIFF:
+                    return "WAVE";
+                case WaveFileFormat::WaveIR:
+                    return "ver1";
+            }
+            return "XXXX";
+        }
+        
+        static bool isFormatSupported(WaveFormat format) {
+            switch(format) {
+                case WaveFormat::PCM:
+                case WaveFormat::IEEE_FLOAT:
+                    return true;
+                default:
+                    return false;
+            }
+        }
+        
+        static WAVPCMHeader pcm_(WaveFileFormat const file_format,
+                                 WaveFormat const format,
+                                 int const num_frames,
+                                 int const sample_rate,
+                                 NChannels const n_channels,
+                                 int const bytes_per_sample) {
             A(bytes_per_sample);
             auto const num_channels = to_underlying(n_channels);
             auto const size_data = num_frames * num_channels * bytes_per_sample;
-            
-            return {
-                {'R','I','F','F'},
+            WAVPCMHeader ret {
+                {0,0,0,0},
                 static_cast<int32_t>(sizeof(WAVPCMHeader) + size_data),
-                {'W','A','V','E'},
+                {0,0,0,0},
                 {'f','m','t',' '},
                 16,
-                1,
+                format,
                 static_cast<int16_t>(num_channels),
                 sample_rate,
                 sample_rate * bytes_per_sample * num_channels,
@@ -67,15 +118,21 @@ namespace imajuscule {
                 {'d','a','t','a'},
                 size_data
             };
+            
+            memcpy(ret.chunk_id, getWavChunkId(file_format), 4);
+            memcpy(ret.format, getWavWAVEId(file_format), 4);
+            
+            return ret;
         }
         
         enum class SampleFormat {
             signed_16,
             signed_24,
-            signed_32
+            signed_32,
+            float_32,
+            float_64
         };
         
-        // todo test...
         struct int24_t {
             std::array<int8_t, 3> a;
             operator int32_t() const {
@@ -85,48 +142,74 @@ namespace imajuscule {
         };
         
         template<typename T>
-        struct SignedSample;
+        struct AudioSample;
         
         template<>
-        struct SignedSample<int16_t> {
+        struct AudioSample<int16_t> {
             static constexpr auto format = SampleFormat::signed_16;
         };
         
         template<>
-        struct SignedSample<int24_t> {
+        struct AudioSample<int24_t> {
             static constexpr auto format = SampleFormat::signed_24;
         };
         
         template<>
-        struct SignedSample<int32_t> {
+        struct AudioSample<int32_t> {
             static constexpr auto format = SampleFormat::signed_32;
+        };
+
+        template<>
+        struct AudioSample<float> {
+            static constexpr auto format = SampleFormat::float_32;
+        };
+        
+        template<>
+        struct AudioSample<double> {
+            static constexpr auto format = SampleFormat::float_64;
         };
         
         template<int SAMPLE_SIZE>
-        struct TypeForSampleSize;
+        struct SignedTypeForSampleSize;
         
         template <>
-        struct TypeForSampleSize<1> {
+        struct SignedTypeForSampleSize<1> {
             using type = int8_t;
             static_assert(sizeof(type) == 1, "");
         };
         
         template <>
-        struct TypeForSampleSize<2> {
+        struct SignedTypeForSampleSize<2> {
             using type = int16_t;
             static_assert(sizeof(type) == 2, "");
         };
         
         template <>
-        struct TypeForSampleSize<3> {
+        struct SignedTypeForSampleSize<3> {
             using type = int24_t;
             static_assert(sizeof(type) == 3, "");
         };
         
         template <>
-        struct TypeForSampleSize<4> {
+        struct SignedTypeForSampleSize<4> {
             using type = int32_t;
             static_assert(sizeof(type) == 4, "");
+        };
+        
+        
+        template<int SAMPLE_SIZE>
+        struct FloatTypeForSampleSize;
+        
+        template <>
+        struct FloatTypeForSampleSize<4> {
+            using type = float;
+            static_assert(sizeof(type) == 4, "");
+        };
+        
+        template <>
+        struct FloatTypeForSampleSize<8> {
+            using type = double;
+            static_assert(sizeof(type) == 8, "");
         };
         
         constexpr auto bytes_per_sample(SampleFormat f) {
@@ -136,13 +219,66 @@ namespace imajuscule {
                 case SampleFormat::signed_24:
                     return 3;
                 case SampleFormat::signed_32:
+                case SampleFormat::float_32:
                     return 4;
+                case SampleFormat::float_64:
+                    return 8;
             }
             return 0;
         }
         
-        static WAVPCMHeader pcm(int num_frames, int sample_rate, NChannels n_channels, SampleFormat f) {
-            return pcm_(num_frames, sample_rate, n_channels, bytes_per_sample(f));
+        static constexpr bool is_signed(SampleFormat const f) {
+            switch(f) {
+                case SampleFormat::signed_16:
+                case SampleFormat::signed_24:
+                case SampleFormat::signed_32:
+                    return true;
+                case SampleFormat::float_32:
+                case SampleFormat::float_64:
+                    return false;
+            }
+            
+            LG(ERR, "unhandled sample format");
+            return false;
+        }
+        
+        static constexpr bool is_float(SampleFormat const f) {
+            switch(f) {
+                case SampleFormat::signed_16:
+                case SampleFormat::signed_24:
+                case SampleFormat::signed_32:
+                    return false;
+                case SampleFormat::float_32:
+                case SampleFormat::float_64:
+                    return true;
+            }
+
+            LG(ERR, "unhandled sample format");
+            return false;
+        }
+        
+        static bool are_compatible(WaveFormat const format, SampleFormat const sf) {
+            switch(format) {
+                case WaveFormat::PCM:
+                    return is_signed(sf);
+                    
+                case WaveFormat::IEEE_FLOAT:
+                    return is_float(sf);
+                    
+                default:
+                    LG(ERR, "unhandled wave format");
+                    return false;
+            }
+        }
+        
+        static WAVPCMHeader pcm(WaveFormat format, int num_frames, int sample_rate, NChannels n_channels, SampleFormat f) {
+            A(are_compatible(format, f));
+            return pcm_(WaveFileFormat::RIFF,
+                        format,
+                        num_frames,
+                        sample_rate,
+                        n_channels,
+                        bytes_per_sample(f));
         }
         
         struct WAVReader : public ReadableStorage {
@@ -156,6 +292,19 @@ namespace imajuscule {
             int countFrames() const { return header.countFrames(); }
             int getSampleRate() const { return header.sample_rate; }
             float getDuration() const { return countFrames() / (float)getSampleRate(); }
+            WaveFormat getFormat() const { return header.audio_format; }
+            WaveFileFormat getFileFormat() const {
+                auto candidate = WaveFileFormat::BeginSupported;
+                for(;
+                    candidate != WaveFileFormat::EndSupported;
+                    increment(candidate))
+                {
+                    if(!memcmp(header.chunk_id, getWavChunkId(candidate), 4)) {
+                        break;
+                    }
+                }
+                return candidate;
+            }
             
             // 'it' is the begin of the buffer to write to, 'end' is the end.
             // returns the end element
@@ -175,8 +324,9 @@ namespace imajuscule {
                 return it;
             }
 
+            // todo templatize and make wrapper to abstract signed or float encoding
             template<typename ITER>
-            ITER ReadWithLinInterpStrideAsFloat(ITER it, ITER end, float const stride) {
+            ITER ReadSignedWithLinInterpStrideAsFloat(ITER it, ITER end, float const stride) {
                 using VAL = typename ITER::value_type;
 
                 auto n_channels = countChannels();
@@ -197,7 +347,7 @@ namespace imajuscule {
                         i += stride - 1.f;
                         for(int j=0; j<n_channels; ++j) {
                             auto v = prev_ratio * prev[j];
-                            prev[j] = ReadOneFloat<VAL>();
+                            prev[j] = ReadOneSignedAsOneFloat<VAL>();
                             *it = v + (ratio * prev[j]);
                             ++it;
                             ++n_writes;
@@ -206,7 +356,7 @@ namespace imajuscule {
                     else {
                         i -= 1.f;
                         for(int j=0; j<n_channels; ++j) {
-                            prev[j] = ReadOneFloat<VAL>();
+                            prev[j] = ReadOneSignedAsOneFloat<VAL>();
                         }
                     }
                     
@@ -225,7 +375,7 @@ namespace imajuscule {
             bool readHeader();
             
             template<typename FLT>
-            FLT ReadOneFloat() {
+            FLT ReadOneSignedAsOneFloat() {
                 A(audio_bytes_read < header.subchunk2_size);
 
                 if(3 == header.getSampleSize()) {
@@ -269,8 +419,7 @@ namespace imajuscule {
 
             template<typename T>
             void writeSample(T s) {
-                // commented out for int24_t (std::array<int8_t>)
-                //static_assert(std::is_integral<T>::value, "");
+                // T can be integral, int24_t, float, double
                 WriteData(&s, sizeof(T), 1);
             }
             
@@ -292,7 +441,7 @@ namespace imajuscule {
                              pcm(samples.size() / to_underlying(n_channels),
                                  SAMPLE_RATE,
                                  n_channels,
-                                 SignedSample<SIGNED>::format));
+                                 AudioSample<SIGNED>::format));
             auto res = writer.Initialize();
             if(res != ILE_SUCCESS) {
                 throw;
