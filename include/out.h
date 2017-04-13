@@ -156,14 +156,10 @@ namespace imajuscule {
     template<typename T, int nAudioOut>
     struct AudioPolicyImpl<T, nAudioOut, AudioOutPolicy::Master> {
         
-        // "brute force" convolution
         //using ConvolutionReverb = FIRFilter<T>;
-
-        // convolution using FFT
-        using ConvolutionReverb = FFTConvolution<FFT_T>;
+        //using ConvolutionReverb = FFTConvolution<FFT_T>;
         
-        // convolution using overlapp-add FFT:
-        // using ConvolutionReverb = OverlappAddFFTConvolution<T>;
+        using ConvolutionReverb = PartitionnedFFTConvolution<T, 10>;
         
         
         AudioPolicyImpl()
