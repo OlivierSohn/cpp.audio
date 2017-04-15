@@ -146,9 +146,13 @@ namespace imajuscule {
 
         /////////////////////////////// postprocess
         void postprocess(T*buffer, int nFrames) const {}
-        
+        bool isReady() const { return true; }
+
         /////////////////////////////// convolution reverb
-        void setConvolutionReverbIR(std::vector<FFT_T>, int) {
+        void dontUseConvolutionReverbs() {
+        }
+        
+        void setConvolutionReverbIR(std::vector<FFT_T>, int, int) {
             A(0);
         }
     };
@@ -159,9 +163,8 @@ namespace imajuscule {
         //using ConvolutionReverb = FIRFilter<T>;
         //using ConvolutionReverb = FFTConvolution<FFT_T>;
         
-        using ConvolutionReverb = PartitionnedFFTConvolution<T, 10>;
-        
-        
+        using ConvolutionReverb = PartitionnedFFTConvolution<T>;
+
         AudioPolicyImpl()
 #if WITH_DELAY
         : delays{{1000, 0.6f},{4000, 0.2f}, {4300, 0.3f}, {5000, 0.1f}},
@@ -206,8 +209,12 @@ namespace imajuscule {
         }
         
         ///////////////////////////////// convolution reverb
+
+        void dontUseConvolutionReverbs() {
+            ready = true;
+        }
         
-        void setConvolutionReverbIR(std::vector<FFT_T> ir, int stride) {
+        void setConvolutionReverbIR(std::vector<FFT_T> ir, int stride, int n_audiocb_frames) {
             
             // deinterlace the buffer
             
@@ -249,13 +256,34 @@ namespace imajuscule {
             
             // truncate the tail if it is too long
             
+            /*
             constexpr auto max_size = 10000;
             for(auto & v : deinterlaced) {
                 if(v.size() > max_size) {
                     v.resize(max_size);
                     v.shrink_to_fit();
                 }
-            }
+            }*/
+            
+            assert(nAudioOut == conv_reverbs.size());
+            using PartitionAlgo = PartitionAlgo<ConvolutionReverb>;
+            
+            auto size_impulse_response = deinterlaced[0].size();
+            auto optimal_partitionning = PartitionAlgo::run(nAudioOut, n_audiocb_frames, size_impulse_response);
+            constexpr bool use_spread = false; // TODO use spread after
+            auto & part = optimal_partitionning.getWithSpread(use_spread);
+            
+            constexpr auto seconds_to_nanos = 1e9f;
+            
+            constexpr auto theoretical_max_avg_time_per_sample =
+            seconds_to_nanos /
+            (nAudioOut * static_cast<float>(SAMPLE_RATE));
+            
+            auto const ratio = part.avg_time_per_sample / static_cast<float>(theoretical_max_avg_time_per_sample);
+            constexpr auto hard_limit = 1.0f;
+            // because of overhead due to os managing audio, because of "other things running on the device", etc...
+            constexpr auto soft_limit = 0.5f;
+
             
             // symetrically scale
             
@@ -298,6 +326,7 @@ namespace imajuscule {
             auto n = 0;
             for(auto & rev : conv_reverbs)
             {
+                rev.set_partition_size(part.size);
                 {
                     auto & coeffs = deinterlaced[i];
                     if(n < static_cast<int>(conv_reverbs.size()) - static_cast<int>(deinterlaced.size())) {
@@ -313,6 +342,46 @@ namespace imajuscule {
                     i = 0;
                 }
             }
+            
+            // keep at the end, before the logging ...
+            ready = true;
+            
+            // ... do the logging AFTER having set the ready flag to optimize audio initialization time
+            
+            std::cout << std::endl;
+            std::cout << "finished optimizing partition size for " << n_audiocb_frames << " cb frames and an impulse response of size " << size_impulse_response << std::endl;
+            
+            std::cout << "using partition size " << part.size << " with" << (use_spread ? "" : "out") << " spread on " << nAudioOut << " channel(s)." << std::endl;
+            
+            
+            std::cout << "[per sample, with 0-overhead hypothesis] allowed computation time : "
+            << theoretical_max_avg_time_per_sample
+            << " ns" << std::endl;
+            
+            std::cout << "[avg per sample] reverb time computation : "
+            << part.avg_time_per_sample
+            << " ns" << std::endl;
+            
+            std::cout << "ratio : " << ratio;
+            static_assert(soft_limit < hard_limit, "");
+            std::cout << " which will ";
+            if(ratio >= soft_limit) {
+                if(ratio < hard_limit) {
+                    std::cout << "probably";
+                }
+            }
+            else {
+                std::cout << "not";
+            }
+            std::cout << " generate audio dropouts." << std::endl;
+            std::cout << "gradient descent report :" << std::endl;
+            part.gd.debug(true);
+        }
+        
+        bool isReady() const {
+            // no need to synchronize : aligned memory access of 4 bytes,
+            // and only one thread writes it
+            return ready;
         }
         
         private:
@@ -321,6 +390,7 @@ namespace imajuscule {
         std::atomic_bool used{false};
 
         /////////////////////////////// postprocess
+        bool ready = false;
         std::vector<postProcessFunc> post_process = {{ [](float v[nAudioOut]) {
             for(int i=0; i<nAudioOut; ++i) {
                 if(likely(-1.f <= v[i] && v[i] <= 1.f)) {
@@ -440,13 +510,23 @@ namespace imajuscule {
             available_ids.reserve(nChannelsMax);
         }
 
-        void setConvolutionReverbIR(std::vector<FFT_T> resp, int stride) {
-            impl.setConvolutionReverbIR(std::move(resp), stride);
+        void dontUseConvolutionReverbs() {
+            impl.dontUseConvolutionReverbs();
+        }
+
+        void setConvolutionReverbIR(std::vector<FFT_T> impulse_response, int stride, int n_audio_cb_frames) {
+            impl.setConvolutionReverbIR(std::move(impulse_response), stride, n_audio_cb_frames);
         }
         
         // called from audio callback
         void step(SAMPLE *outputBuffer, int nFrames) {
             Locking l(get_lock());
+            
+            if(unlikely(!impl.isReady())) {
+                // impl is being initialized in another thread
+                memset(outputBuffer, 0, nFrames * nAudioOut * sizeof(SAMPLE));
+                return;
+            }
             
             if(consummed_frames != 0) {
                 // finish consuming previous buffers

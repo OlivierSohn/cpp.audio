@@ -272,7 +272,9 @@ namespace imajuscule {
 
             Wrapper(int nOrchestratorsMax) :
             out{n_channels, nOrchestratorsMax}
-            {}
+            {
+                out.dontUseConvolutionReverbs();
+            }
             
             void doProcessing (ProcessData& data) {
                 return plugin.doProcessing(data, out);
