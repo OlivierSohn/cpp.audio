@@ -252,38 +252,57 @@ namespace imajuscule {
                     v.erase(v.begin(), v.begin() + start);
                     v.shrink_to_fit();
                 }
+                sz -= start;
             }
             
             // truncate the tail if it is too long
             
-            /*
-            constexpr auto max_size = 10000;
-            for(auto & v : deinterlaced) {
-                if(v.size() > max_size) {
-                    v.resize(max_size);
-                    v.shrink_to_fit();
-                }
-            }*/
+            constexpr auto ratio_hard_limit = 1.0f;
+            //    because of overhead due to os managing audio, because of "other things running on the device", etc...
+            // at 0.38f on ios release we have glitches when putting the app in the background
+            constexpr auto ratio_soft_limit = 0.3f * ratio_hard_limit;
+            float ratio{};
             
             assert(nAudioOut == conv_reverbs.size());
             using PartitionAlgo = PartitionAlgo<ConvolutionReverb>;
             
-            auto size_impulse_response = deinterlaced[0].size();
-            auto optimal_partitionning = PartitionAlgo::run(nAudioOut, n_audiocb_frames, size_impulse_response);
-            constexpr bool use_spread = false; // TODO use spread after
-            auto & part = optimal_partitionning.getWithSpread(use_spread);
+            PartitionningSpec optimal_part;
             
+            constexpr bool use_spread = false; // TODO use spread after
+
             constexpr auto seconds_to_nanos = 1e9f;
             
             constexpr auto theoretical_max_avg_time_per_sample =
             seconds_to_nanos /
             (nAudioOut * static_cast<float>(SAMPLE_RATE));
             
-            auto const ratio = part.avg_time_per_sample / static_cast<float>(theoretical_max_avg_time_per_sample);
-            constexpr auto hard_limit = 1.0f;
-            // because of overhead due to os managing audio, because of "other things running on the device", etc...
-            constexpr auto soft_limit = 0.5f;
-
+            auto size_impulse_response = deinterlaced[0].size();
+            assert(sz == size_impulse_response);
+            while(1) {
+                auto optimal_partitionning = PartitionAlgo::run(nAudioOut, n_audiocb_frames, size_impulse_response);
+                auto & part = optimal_partitionning.getWithSpread(use_spread);
+                
+                ratio = part.avg_time_per_sample / static_cast<float>(theoretical_max_avg_time_per_sample);
+                
+                if(ratio < ratio_soft_limit) {
+                    optimal_part = std::move(part);
+                    break;
+                }
+                constexpr auto reduce_amount = .5f;
+                auto amount = static_cast<int>(size_impulse_response * reduce_amount);
+                if(!amount) {
+                    throw std::logic_error("I expect the audio system to be able to process small"
+                                           " impulse responses easily");
+                }
+                size_impulse_response -= amount;
+            }
+            
+            for(auto & v : deinterlaced) {
+                if(v.size() > size_impulse_response) {
+                    v.resize(size_impulse_response);
+                    v.shrink_to_fit();
+                }
+            }
             
             // symetrically scale
             
@@ -326,7 +345,7 @@ namespace imajuscule {
             auto n = 0;
             for(auto & rev : conv_reverbs)
             {
-                rev.set_partition_size(part.size);
+                rev.set_partition_size(optimal_part.size);
                 {
                     auto & coeffs = deinterlaced[i];
                     if(n < static_cast<int>(conv_reverbs.size()) - static_cast<int>(deinterlaced.size())) {
@@ -350,8 +369,12 @@ namespace imajuscule {
             
             std::cout << std::endl;
             std::cout << "finished optimizing partition size for " << n_audiocb_frames << " cb frames and an impulse response of size " << size_impulse_response << std::endl;
+            if(sz != size_impulse_response) {
+                std::cout << "reduced impulse response length from " << sz << " to " << size_impulse_response << std::endl;
+                
+            }
             
-            std::cout << "using partition size " << part.size << " with" << (use_spread ? "" : "out") << " spread on " << nAudioOut << " channel(s)." << std::endl;
+            std::cout << "using partition size " << optimal_part.size << " with" << (use_spread ? "" : "out") << " spread on " << nAudioOut << " channel(s)." << std::endl;
             
             
             std::cout << "[per sample, with 0-overhead hypothesis] allowed computation time : "
@@ -359,23 +382,23 @@ namespace imajuscule {
             << " ns" << std::endl;
             
             std::cout << "[avg per sample] reverb time computation : "
-            << part.avg_time_per_sample
+            << optimal_part.avg_time_per_sample
             << " ns" << std::endl;
             
             std::cout << "ratio : " << ratio;
-            static_assert(soft_limit < hard_limit, "");
-            std::cout << " which will ";
-            if(ratio >= soft_limit) {
-                if(ratio < hard_limit) {
-                    std::cout << "probably";
+            static_assert(ratio_soft_limit < ratio_hard_limit, "");
+            std::cout << " which will";
+            if(ratio >= ratio_soft_limit) {
+                if(ratio < ratio_hard_limit) {
+                    std::cout << " probably";
                 }
             }
             else {
-                std::cout << "not";
+                std::cout << " likely not";
             }
             std::cout << " generate audio dropouts." << std::endl;
             std::cout << "gradient descent report :" << std::endl;
-            part.gd.debug(true);
+            optimal_part.gd.debug(true);
         }
         
         bool isReady() const {
