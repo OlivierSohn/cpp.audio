@@ -75,7 +75,7 @@ namespace imajuscule {
                                std::back_inserter(signal),
                                [] (auto value) { return complex<double>{value, 0.};});
 
-                compute_fft(length_fft, signal.begin(), frequencies.begin());
+                forward_fft(length_fft, signal, frequencies);
                 apply_hann_window(frequencies.begin(), frequencies.end());
 
                 std::transform(frequencies.begin(), frequencies.end(),

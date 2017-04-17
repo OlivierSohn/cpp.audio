@@ -215,10 +215,11 @@ namespace imajuscule {
         }
         
         void setConvolutionReverbIR(std::vector<FFT_T> ir, int stride, int n_audiocb_frames) {
+            using namespace std;
             
             // deinterlace the buffer
             
-            std::vector<std::vector<FFT_T>> deinterlaced(stride);
+            vector<vector<FFT_T>> deinterlaced(stride);
             auto sz = ir.size() / stride;
             A(sz * stride == ir.size());
             for(auto & v : deinterlaced) {
@@ -242,9 +243,9 @@ namespace imajuscule {
                                                       v.end(),
                                                       relevant_level,
                                                       sliding_average_size);
-                auto dist = std::distance(v.begin(), it);
+                auto dist = distance(v.begin(), it);
                 LG(INFO, "dist : %d", dist);
-                start = std::min(start, static_cast<size_t>(dist));
+                start = min(start, static_cast<size_t>(dist));
             }
             
             if(start < sz) {
@@ -285,13 +286,13 @@ namespace imajuscule {
                 ratio = part.avg_time_per_sample / static_cast<float>(theoretical_max_avg_time_per_sample);
                 
                 if(ratio < ratio_soft_limit) {
-                    optimal_part = std::move(part);
+                    optimal_part = move(part);
                     break;
                 }
                 constexpr auto reduce_amount = .5f;
                 auto amount = static_cast<int>(size_impulse_response * reduce_amount);
                 if(!amount) {
-                    throw std::logic_error("I expect the audio system to be able to process small"
+                    throw logic_error("I expect the audio system to be able to process small"
                                            " impulse responses easily");
                 }
                 size_impulse_response -= amount;
@@ -313,7 +314,7 @@ namespace imajuscule {
                 //auto sum = abs_integrated(v.begin(), v.end());
                 //LG(INFO, "sum : %f", sum);
                 constexpr auto security_lobe_factor = 3;
-                scale = std::max(scale, security_lobe_factor*lobe);
+                scale = max(scale, security_lobe_factor*lobe);
             }
             
             scale = 1. / scale;
@@ -352,7 +353,7 @@ namespace imajuscule {
                         rev.setCoefficients(coeffs);
                     }
                     else {
-                        rev.setCoefficients(std::move(coeffs));
+                        rev.setCoefficients(move(coeffs));
                     }
                 }
                 ++i;
@@ -367,37 +368,39 @@ namespace imajuscule {
             
             // ... do the logging AFTER having set the ready flag to optimize audio initialization time
             
-            std::cout << std::endl;
-            std::cout << "finished optimizing partition size for " << n_audiocb_frames << " cb frames and an impulse response of size " << size_impulse_response << std::endl;
+            cout << endl;
+            cout << "finished optimizing partition size for " << n_audiocb_frames << " cb frames and an impulse response of size " << size_impulse_response << endl;
             if(sz != size_impulse_response) {
-                std::cout << "reduced impulse response length from " << sz << " to " << size_impulse_response << std::endl;
-                
+                cout << "reduced impulse response length from " << sz << " to " << size_impulse_response << endl;
+            }
+            else {
+                cout << "full impulse response is used" << endl;
             }
             
-            std::cout << "using partition size " << optimal_part.size << " with" << (use_spread ? "" : "out") << " spread on " << nAudioOut << " channel(s)." << std::endl;
+            cout << "using partition size " << optimal_part.size << " with" << (use_spread ? "" : "out") << " spread on " << nAudioOut << " channel(s)." << endl;
             
             
-            std::cout << "[per sample, with 0-overhead hypothesis] allowed computation time : "
+            cout << "[per sample, with 0-overhead hypothesis] allowed computation time : "
             << theoretical_max_avg_time_per_sample
-            << " ns" << std::endl;
+            << " ns" << endl;
             
-            std::cout << "[avg per sample] reverb time computation : "
+            cout << "[avg per sample] reverb time computation : "
             << optimal_part.avg_time_per_sample
-            << " ns" << std::endl;
+            << " ns" << endl;
             
-            std::cout << "ratio : " << ratio;
+            cout << "ratio : " << ratio;
             static_assert(ratio_soft_limit < ratio_hard_limit, "");
-            std::cout << " which will";
+            cout << " which will";
             if(ratio >= ratio_soft_limit) {
                 if(ratio < ratio_hard_limit) {
-                    std::cout << " probably";
+                    cout << " probably";
                 }
             }
             else {
-                std::cout << " likely not";
+                cout << " likely not";
             }
-            std::cout << " generate audio dropouts." << std::endl;
-            std::cout << "gradient descent report :" << std::endl;
+            cout << " generate audio dropouts." << endl;
+            cout << "gradient descent report :" << endl;
             optimal_part.gd.debug(true);
         }
         
