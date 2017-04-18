@@ -219,7 +219,7 @@ namespace imajuscule {
             
             // deinterlace the buffer
             
-            vector<vector<FFT_T>> deinterlaced(stride);
+            vector<cacheline_aligned_allocated::vector<FFT_T>> deinterlaced(stride);
             auto sz = ir.size() / stride;
             A(sz * stride == ir.size());
             for(auto & v : deinterlaced) {
