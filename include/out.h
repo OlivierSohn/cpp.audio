@@ -264,12 +264,11 @@ namespace imajuscule {
             constexpr auto ratio_soft_limit = 0.3f * ratio_hard_limit;
             float ratio{};
             
-            assert(nAudioOut == conv_reverbs.size());
             using PartitionAlgo = PartitionAlgo<ConvolutionReverb>;
+            assert(nAudioOut == conv_reverbs.size());
+            constexpr bool use_spread = true;
             
             PartitionningSpec optimal_part;
-            
-            constexpr bool use_spread = false; // TODO use spread after
 
             constexpr auto seconds_to_nanos = 1e9f;
             
@@ -342,11 +341,13 @@ namespace imajuscule {
             
             // set the coefficients
             
+            auto partition_size = optimal_part.size;
+            
             int i=0;
             auto n = 0;
             for(auto & rev : conv_reverbs)
             {
-                rev.set_partition_size(optimal_part.size);
+                rev.set_partition_size(partition_size);
                 {
                     auto & coeffs = deinterlaced[i];
                     if(n < static_cast<int>(conv_reverbs.size()) - static_cast<int>(deinterlaced.size())) {
@@ -354,6 +355,14 @@ namespace imajuscule {
                     }
                     else {
                         rev.setCoefficients(move(coeffs));
+                    }
+                }
+                if(use_spread) {
+                    // to "dispatch" or "spread" the computations of each channel's convolution reverbs
+                    // on different audio callback calls, we separate them as much as possible using a phase:
+                    auto phase = ( partition_size * n ) / nAudioOut;
+                    for(int j=0; j<phase; ++j) {
+                        rev.step(0);
                     }
                 }
                 ++i;
