@@ -289,6 +289,58 @@ namespace imajuscule {
                         bytes_per_sample(f));
         }
         
+        template<typename Reader>
+        struct MultiChannelDownSampling {
+            MultiChannelDownSampling(Reader & reader) : reader(reader) {}
+
+            // todo templatize and make wrapper to abstract signed or float encoding
+            template<typename ITER>
+            ITER Read(ITER it, ITER end, float stride) {
+                using VAL = typename ITER::value_type;
+                
+                auto n_channels = reader.countChannels();
+                
+                std::vector<float> prev;
+                prev.resize(n_channels, {});
+                
+                int k=0;
+                int n_writes = 0;
+                
+                float i = 0.f;
+                while(it != end && reader.HasMore()) {
+                    if(i <= 0.f) {
+                        A(i > -1.f);
+                        auto prev_ratio = -i;
+                        auto ratio = 1.f - prev_ratio;
+                        
+                        if(stride != 1.f) {
+                            i += stride - 1.f;
+                        }
+                        for(int j=0; j<n_channels; ++j) {
+                            auto v = prev_ratio * prev[j];
+                            prev[j] = reader.template ReadOneSignedAsOneFloat<VAL>();
+                            *it = v + (ratio * prev[j]);
+                            ++it;
+                            ++n_writes;
+                        }
+                    }
+                    else {
+                        i -= 1.f;
+                        for(int j=0; j<n_channels; ++j) {
+                            prev[j] = reader.template ReadOneSignedAsOneFloat<VAL>();
+                        }
+                    }
+                    
+                    ++k;
+                    //LG(INFO, "%d %d", k, n_writes);
+                }
+                return it;
+            }
+        
+        private:
+            Reader & reader;
+        };
+        
         struct WAVReader : public ReadableStorage {
             WAVReader(DirectoryPath const & d, FileName const & f) : ReadableStorage(d, f), header{} {}
             
@@ -332,48 +384,6 @@ namespace imajuscule {
                 return it;
             }
 
-            // todo templatize and make wrapper to abstract signed or float encoding
-            template<typename ITER>
-            ITER ReadSignedWithLinInterpStrideAsFloat(ITER it, ITER end, float const stride) {
-                using VAL = typename ITER::value_type;
-
-                auto n_channels = countChannels();
-                
-                std::vector<float> prev;
-                prev.resize(n_channels, {});
-
-                int k=0;
-                int n_writes = 0;
-                
-                float i = 0.f;
-                while(it != end && HasMore()) {
-                    if(i <= 0.f) {
-                        A(i > -1.f);
-                        auto prev_ratio = -i;
-                        auto ratio = 1.f - prev_ratio;
-                        
-                        i += stride - 1.f;
-                        for(int j=0; j<n_channels; ++j) {
-                            auto v = prev_ratio * prev[j];
-                            prev[j] = ReadOneSignedAsOneFloat<VAL>();
-                            *it = v + (ratio * prev[j]);
-                            ++it;
-                            ++n_writes;
-                        }
-                    }
-                    else {
-                        i -= 1.f;
-                        for(int j=0; j<n_channels; ++j) {
-                            prev[j] = ReadOneSignedAsOneFloat<VAL>();
-                        }
-                    }
-                    
-                    ++k;
-                    //LG(INFO, "%d %d", k, n_writes);
-                }
-                return it;
-            }
-            
             bool HasMore() const;
             
         private:
@@ -381,7 +391,7 @@ namespace imajuscule {
             unsigned int audio_bytes_read = 0;
             
             bool readHeader();
-            
+        public:
             template<typename FLT>
             FLT ReadOneSignedAsOneFloat() {
                 A(audio_bytes_read < header.subchunk2_size);
