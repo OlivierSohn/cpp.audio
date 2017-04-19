@@ -1,13 +1,15 @@
 #define WITH_DELAY 0
 
 namespace imajuscule {
-   
+    
     namespace Sensor {
         
         class RAIILock {
         public:
             RAIILock( std::atomic_bool & l ) : l(l) {
-                while (l.exchange(true)) { }
+                while (l.exchange(true)) {
+                    std::this_thread::yield();
+                }
             }
             ~RAIILock() {
                 auto prev = l.exchange(false);
@@ -40,7 +42,7 @@ namespace imajuscule {
                 }
             }
         }
-
+        
         std::vector<std::array<float, nAudioOut>> delay;
         int32_t it, end;
         float attenuation;
@@ -58,31 +60,31 @@ namespace imajuscule {
     {
         return makeArrayImpl<T, Init>(val, std::make_index_sequence<N>{});
     }
-
+    
     /*
-    struct Compressor {
-        // some parts inspired from https://github.com/audacity/audacity/blob/master/src/effects/Compressor.cpp
-        
-        static constexpr auto length_sliding_avg = 40;
-        
-        Compressor(Compressor&&) = default;
-        Compressor& operator=(Compressor&&) = default;
-        
-        Compressor() : avgs(makeArray<slidingAverage<float, KEEP_INITIAL_VALUES>, nAudioOut>(length_sliding_avg)) {
-        }
-        std::array<slidingAverage<float, KEEP_INITIAL_VALUES>, nAudioOut> avgs;
-        
-        float threshold = 0.5f;
-        static constexpr auto ratio = 3.f;
-        float compression = 1.f-1.f/ratio;
-        float compute(float value, float env)
-        {
-            if(env <= 0.f) {
-                return 0.f;
-            }
-            return value * powf(threshold/env, compression);
-        }
-    };*/
+     struct Compressor {
+     // some parts inspired from https://github.com/audacity/audacity/blob/master/src/effects/Compressor.cpp
+     
+     static constexpr auto length_sliding_avg = 40;
+     
+     Compressor(Compressor&&) = default;
+     Compressor& operator=(Compressor&&) = default;
+     
+     Compressor() : avgs(makeArray<slidingAverage<float, KEEP_INITIAL_VALUES>, nAudioOut>(length_sliding_avg)) {
+     }
+     std::array<slidingAverage<float, KEEP_INITIAL_VALUES>, nAudioOut> avgs;
+     
+     float threshold = 0.5f;
+     static constexpr auto ratio = 3.f;
+     float compression = 1.f-1.f/ratio;
+     float compute(float value, float env)
+     {
+     if(env <= 0.f) {
+     return 0.f;
+     }
+     return value * powf(threshold/env, compression);
+     }
+     };*/
     
     // reserved number to indicate "no channel"
     static constexpr auto AUDIO_CHANNEL_NONE = std::numeric_limits<uint8_t>::max();
@@ -108,7 +110,7 @@ namespace imajuscule {
     struct NoOpLock {
         NoOpLock(bool) {}
     };
-
+    
     template <>
     struct LockIf_<WithLock::Yes> { using type = Sensor::RAIILock; };
     template <>
@@ -132,22 +134,22 @@ namespace imajuscule {
     };
     
     // cooley-tukey leads to error growths of O(log n) (worst case) and O(sqrt(log n)) (mean for random input)
-    // so float should be enough
+    // so float is good enough
     using FFT_T = float;
     
     template<typename T, int nAudioOut, AudioOutPolicy> struct AudioPolicyImpl;
-
+    
     template<typename T, int nAudioOut>
     struct AudioPolicyImpl<T, nAudioOut, AudioOutPolicy::Slave> {
         /////////////////////////////// lock
         static constexpr WithLock useLock = WithLock::No;
         
         bool lock() { return false; }
-
+        
         /////////////////////////////// postprocess
         void postprocess(T*buffer, int nFrames) const {}
         bool isReady() const { return true; }
-
+        
         /////////////////////////////// convolution reverb
         void dontUseConvolutionReverbs() {
         }
@@ -157,6 +159,158 @@ namespace imajuscule {
         }
     };
     
+    constexpr auto seconds_to_nanos = 1e9f;
+    
+    template<typename ConvolutionReverb>
+    struct ImpulseResponseOptimizer {
+        using PartitionAlgo = PartitionAlgo<ConvolutionReverb>;
+        
+        static constexpr bool use_spread = true;
+        
+        ImpulseResponseOptimizer(std::vector<FFT_T> ir, int stride, int n_audiocb_frames, int nAudioOut) :
+        stride(stride),
+        n_audiocb_frames(n_audiocb_frames),
+        nAudioOut(nAudioOut),
+        deinterlaced(stride),
+        initial_size_impulse_response(0)
+        {
+            deinterlace(std::move(ir));
+            
+            truncate_irrelevant_head();
+        }
+        
+    private:
+        std::vector<cacheline_aligned_allocated::vector<FFT_T>> deinterlaced;
+        int stride, n_audiocb_frames, nAudioOut, initial_size_impulse_response, final_size_impulse_response;
+        
+        auto size() const { return deinterlaced.empty()? 0 : deinterlaced[0].size(); }
+        
+        void deinterlace(std::vector<FFT_T> ir) {
+            auto sz = ir.size() / stride;
+            A(sz * stride == ir.size());
+            for(auto & v : deinterlaced) {
+                v.reserve(sz);
+            }
+            for(auto it = ir.begin(), end = ir.end(); it != end;) {
+                for(int i=0; i<stride; ++i) {
+                    deinterlaced[i].push_back(*it);
+                    ++it;
+                }
+            }
+        }
+        
+        void truncate_irrelevant_head() {
+            using namespace std;
+            
+            auto start = size();
+            for(auto const & v : deinterlaced) {
+                constexpr auto sliding_average_size = 15;
+                constexpr auto relevant_level = .1f;
+                
+                auto it = find_relevant_start_relaxed(v.begin(),
+                                                      v.end(),
+                                                      relevant_level,
+                                                      sliding_average_size);
+                auto dist = distance(v.begin(), it);
+                LG(INFO, "dist : %d", dist);
+                start = min(start, static_cast<size_t>(dist));
+            }
+            
+            if(start < size()) {
+                for(auto & v : deinterlaced) {
+                    v.erase(v.begin(), v.begin() + start);
+                    v.shrink_to_fit();
+                }
+            }
+            initial_size_impulse_response = size();
+        }
+    public:
+        void optimize_length(int max_avg_time_per_sample, PartitionningSpec & partitionning) {
+            // truncate the tail if it is too long
+            
+            auto sz = size();
+            
+            optimize_reverb_parameters(use_spread, n_audiocb_frames, max_avg_time_per_sample,
+                                       sz, partitionning); // modified by call
+            
+            if(sz < size()) {
+                for(auto & v : deinterlaced) {
+                    v.resize(sz);
+                    v.shrink_to_fit();
+                }
+                assert(final_size_impulse_response == size());
+            }
+            
+            final_size_impulse_response = size();
+        }
+        
+        auto &editDeinterlaced() {
+            return deinterlaced;
+        }
+        
+    private:
+        void optimize_reverb_parameters(bool use_spread, int n_audiocb_frames, int max_avg_time_per_sample,
+                                        size_t & size_impulse_response, PartitionningSpec & partitionning) const {
+            using namespace std;
+            
+            while(1) {
+                auto partit = PartitionAlgo::run(nAudioOut,
+                                                 n_audiocb_frames,
+                                                 size_impulse_response);
+                auto & part = partit.getWithSpread(use_spread);
+                
+                if(part.avg_time_per_sample < max_avg_time_per_sample) {
+                    partitionning = move(part);
+                    break;
+                }
+                constexpr auto reduce_amount = .5f;
+                auto amount = static_cast<int>(size_impulse_response * reduce_amount);
+                if(!amount) {
+                    throw logic_error("I expect the audio system to be able to process small"
+                                      " impulse responses easily");
+                }
+                size_impulse_response -= amount;
+            }
+        }
+    public:
+        void symetrically_scale() {
+            using namespace std;
+            FFT_T scale = 1;
+            for(auto & v : deinterlaced) {
+                auto lobe = max_abs_integrated_lobe(v.begin(), v.end());
+                LG(INFO, "lobe : %f", lobe);
+                //auto sum = abs_integrated(v.begin(), v.end());
+                //LG(INFO, "sum : %f", sum);
+                constexpr auto security_lobe_factor = 3;
+                scale = max(scale, security_lobe_factor*lobe);
+            }
+            
+            scale = 1. / scale;
+            
+            for(auto & v : deinterlaced) {
+                for(auto &s : v) {
+                    s *= scale;
+                }
+            }
+        }
+
+        void logReport(PartitionningSpec const  & partitionning) const {
+            using namespace std;
+            cout << endl;
+            cout << "finished optimizing partition size for " << n_audiocb_frames << " cb frames" << endl;
+            if(final_size_impulse_response != initial_size_impulse_response) {
+                cout << "reduced impulse response length from " << initial_size_impulse_response << " to " << final_size_impulse_response << endl;
+            }
+            else {
+                cout << "full impulse response is used (size " << final_size_impulse_response << " )" << endl;
+            }
+            
+            cout << "using partition size " << partitionning.size << " with" << (use_spread ? "" : "out") << " spread on " << nAudioOut << " channel(s)." << endl;
+        }
+        
+    };
+    
+    
     template<typename T, int nAudioOut>
     struct AudioPolicyImpl<T, nAudioOut, AudioOutPolicy::Master> {
         
@@ -164,7 +318,7 @@ namespace imajuscule {
         //using ConvolutionReverb = FFTConvolution<FFT_T>;
         
         using ConvolutionReverb = PartitionnedFFTConvolution<T>;
-
+        
         AudioPolicyImpl()
 #if WITH_DELAY
         : delays{{1000, 0.6f},{4000, 0.2f}, {4300, 0.3f}, {5000, 0.1f}},
@@ -172,15 +326,16 @@ namespace imajuscule {
         {}
         
         /////////////////////////////// lock
-        static constexpr WithLock useLock = WithLock::Yes;
+        static constexpr auto useLock = WithLock::Yes;
+        using Locking = LockIf<useLock>;
         
         std::atomic_bool & lock() { return used; }
-
+        
         /////////////////////////////// postprocess
         using postProcessFunc = std::function<void(float*)>;
-
+        
         void postprocess(T*buffer, int nFrames) {
-
+            
             // apply convolution reverbs
             if(nAudioOut && !conv_reverbs[0].empty()) {
                 for(int i=0; i<nFrames; ++i) {
@@ -209,208 +364,55 @@ namespace imajuscule {
         }
         
         ///////////////////////////////// convolution reverb
-
+        
         void dontUseConvolutionReverbs() {
             ready = true;
         }
         
+        static constexpr auto ratio_hard_limit = 1.0f;
+        //    because of overhead due to os managing audio, because of "other things running on the device", etc...
+        // at 0.38f on ios release we have glitches when putting the app in the background
+        static constexpr auto ratio_soft_limit = 0.3f * ratio_hard_limit;
+        
+        static constexpr auto theoretical_max_avg_time_per_sample =
+        seconds_to_nanos /
+        (nAudioOut * static_cast<float>(SAMPLE_RATE));
+        
         void setConvolutionReverbIR(std::vector<FFT_T> ir, int stride, int n_audiocb_frames) {
             using namespace std;
             
-            // deinterlace the buffer
+            ImpulseResponseOptimizer<ConvolutionReverb> algo(std::move(ir),
+                                                             stride,
+                                                             n_audiocb_frames,
+                                                             nAudioOut);
             
-            vector<cacheline_aligned_allocated::vector<FFT_T>> deinterlaced(stride);
-            auto sz = ir.size() / stride;
-            A(sz * stride == ir.size());
-            for(auto & v : deinterlaced) {
-                v.reserve(sz);
-            }
-            for(auto it = ir.begin(), end = ir.end(); it != end;) {
-                for(int i=0; i<stride; ++i) {
-                    deinterlaced[i].push_back(*it);
-                    ++it;
-                }
-            }
-            
-            // truncate the irrelevant head
-            
-            size_t start = sz;
-            for(auto const & v : deinterlaced) {
-                constexpr auto sliding_average_size = 15;
-                constexpr auto relevant_level = .1f;
-                
-                auto it = find_relevant_start_relaxed(v.begin(),
-                                                      v.end(),
-                                                      relevant_level,
-                                                      sliding_average_size);
-                auto dist = distance(v.begin(), it);
-                LG(INFO, "dist : %d", dist);
-                start = min(start, static_cast<size_t>(dist));
-            }
-            
-            if(start < sz) {
-                for(auto & v : deinterlaced) {
-                    v.erase(v.begin(), v.begin() + start);
-                    v.shrink_to_fit();
-                }
-                sz -= start;
-            }
-            
-            // truncate the tail if it is too long
-            
-            constexpr auto ratio_hard_limit = 1.0f;
-            //    because of overhead due to os managing audio, because of "other things running on the device", etc...
-            // at 0.38f on ios release we have glitches when putting the app in the background
-            constexpr auto ratio_soft_limit = 0.3f * ratio_hard_limit;
-            float ratio{};
-            
-            using PartitionAlgo = PartitionAlgo<ConvolutionReverb>;
             assert(nAudioOut == conv_reverbs.size());
-            constexpr bool use_spread = true;
-            
-            PartitionningSpec optimal_part;
-
-            constexpr auto seconds_to_nanos = 1e9f;
-            
-            constexpr auto theoretical_max_avg_time_per_sample =
-            seconds_to_nanos /
-            (nAudioOut * static_cast<float>(SAMPLE_RATE));
-            
-            auto size_impulse_response = deinterlaced[0].size();
-            assert(sz == size_impulse_response);
-            while(1) {
-                auto optimal_partitionning = PartitionAlgo::run(nAudioOut, n_audiocb_frames, size_impulse_response);
-                auto & part = optimal_partitionning.getWithSpread(use_spread);
-                
-                ratio = part.avg_time_per_sample / static_cast<float>(theoretical_max_avg_time_per_sample);
-                
-                if(ratio < ratio_soft_limit) {
-                    optimal_part = move(part);
-                    break;
-                }
-                constexpr auto reduce_amount = .5f;
-                auto amount = static_cast<int>(size_impulse_response * reduce_amount);
-                if(!amount) {
-                    throw logic_error("I expect the audio system to be able to process small"
-                                           " impulse responses easily");
-                }
-                size_impulse_response -= amount;
-            }
-            
-            for(auto & v : deinterlaced) {
-                if(v.size() > size_impulse_response) {
-                    v.resize(size_impulse_response);
-                    v.shrink_to_fit();
-                }
-            }
-            
-            // symetrically scale
-            
-            FFT_T scale = 1;
-            for(auto & v : deinterlaced) {
-                auto lobe = max_abs_integrated_lobe(v.begin(), v.end());
-                LG(INFO, "lobe : %f", lobe);
-                //auto sum = abs_integrated(v.begin(), v.end());
-                //LG(INFO, "sum : %f", sum);
-                constexpr auto security_lobe_factor = 3;
-                scale = max(scale, security_lobe_factor*lobe);
-            }
-            
-            scale = 1. / scale;
-            
-            for(auto & v : deinterlaced) {
-                for(auto &s : v) {
-                    s *= scale;
-                }
-            }
-            
-            // debugging
-            
-            /*
-             for(auto const & v : deinterlaced) {
-                StringPlot plot(40, 100);
-                plot.draw(v);
-                plot.log();
-            }
-            
             {
-                using namespace audio;
-                write_wav("/Users/Olivier/Dev/Audiofiles", "deinterlaced.wav", deinterlaced);
-            }
-             */
-            
-            // set the coefficients
-            
-            auto partition_size = optimal_part.size;
-            
-            int i=0;
-            auto n = 0;
-            for(auto & rev : conv_reverbs)
-            {
-                rev.set_partition_size(partition_size);
-                {
-                    auto & coeffs = deinterlaced[i];
-                    if(n < static_cast<int>(conv_reverbs.size()) - static_cast<int>(deinterlaced.size())) {
-                        rev.setCoefficients(coeffs);
-                    }
-                    else {
-                        rev.setCoefficients(move(coeffs));
-                    }
-                }
-                if(use_spread) {
-                    // to "dispatch" or "spread" the computations of each channel's convolution reverbs
-                    // on different audio callback calls, we separate them as much as possible using a phase:
-                    auto phase = ( partition_size * n ) / nAudioOut;
-                    for(int j=0; j<phase; ++j) {
-                        rev.step(0);
-                    }
-                }
-                ++i;
-                ++n;
-                if(i == stride) {
-                    i = 0;
-                }
+                // having the audio thread compute reverbs at the same time would make our calibration not very reliable
+                // (due to cache effects for roots and possibly other) so we disable them now
+                // (when ready is false, the audio thread doesn't use reverbs)
+                // TODO rename ready !!
+                Locking l(lock());
+                ready = false;
             }
             
-            // keep at the end, before the logging ...
+            PartitionningSpec partitionning;
+            
+            
+            algo.optimize_length(theoretical_max_avg_time_per_sample * ratio_soft_limit,
+                                 partitionning);
+            algo.symetrically_scale();
+            
+            // locking here would possibly incur dropped audio frames due to the time spent setting the coefficients.
+            // we ensured reverbs are not used so we don't need to lock.
+            
+            setCoefficients(partitionning.size,
+                            std::move(algo.editDeinterlaced()), decltype(algo)::use_spread);
+            
             ready = true;
             
-            // ... do the logging AFTER having set the ready flag to optimize audio initialization time
-            
-            cout << endl;
-            cout << "finished optimizing partition size for " << n_audiocb_frames << " cb frames and an impulse response of size " << size_impulse_response << endl;
-            if(sz != size_impulse_response) {
-                cout << "reduced impulse response length from " << sz << " to " << size_impulse_response << endl;
-            }
-            else {
-                cout << "full impulse response is used" << endl;
-            }
-            
-            cout << "using partition size " << optimal_part.size << " with" << (use_spread ? "" : "out") << " spread on " << nAudioOut << " channel(s)." << endl;
-            
-            
-            cout << "[per sample, with 0-overhead hypothesis] allowed computation time : "
-            << theoretical_max_avg_time_per_sample
-            << " ns" << endl;
-            
-            cout << "[avg per sample] reverb time computation : "
-            << optimal_part.avg_time_per_sample
-            << " ns" << endl;
-            
-            cout << "ratio : " << ratio;
-            static_assert(ratio_soft_limit < ratio_hard_limit, "");
-            cout << " which will";
-            if(ratio >= ratio_soft_limit) {
-                if(ratio < ratio_hard_limit) {
-                    cout << " probably";
-                }
-            }
-            else {
-                cout << " likely not";
-            }
-            cout << " generate audio dropouts." << endl;
-            cout << "gradient descent report :" << endl;
-            optimal_part.gd.debug(true);
+            algo.logReport(partitionning);
+            logReport(partitionning);
         }
         
         bool isReady() const {
@@ -419,11 +421,11 @@ namespace imajuscule {
             return ready;
         }
         
-        private:
+    private:
         
         /////////////////////////////// lock
         std::atomic_bool used{false};
-
+        
         /////////////////////////////// postprocess
         bool ready = false;
         std::vector<postProcessFunc> post_process = {{ [](float v[nAudioOut]) {
@@ -452,7 +454,87 @@ namespace imajuscule {
 #endif
         
         //////////////////////////////// convolution reverb
-        std::array<ConvolutionReverb, nAudioOut> conv_reverbs;
+        using Reverbs = std::array<ConvolutionReverb, nAudioOut>;
+        Reverbs conv_reverbs;
+        
+        void setCoefficients(int partition_size,
+                             std::vector<cacheline_aligned_allocated::vector<FFT_T>> deinterlaced_coeffs,
+                             bool use_spread) {
+            
+            // debugging
+            
+            /*
+             for(auto const & v : deinterlaced_coeffs) {
+             StringPlot plot(40, 100);
+             plot.draw(v);
+             plot.log();
+             }
+             
+             {
+             using namespace audio;
+             write_wav("/Users/Olivier/Dev/Audiofiles", "deinterlaced.wav", deinterlaced_coeffs);
+             }
+             */
+            
+            
+            int i=0;
+            auto n = 0;
+            auto stride = deinterlaced_coeffs.size();
+            for(auto & rev : conv_reverbs)
+            {
+                rev.set_partition_size(partition_size);
+                {
+                    auto & coeffs = deinterlaced_coeffs[i];
+                    if(n < static_cast<int>(conv_reverbs.size()) - static_cast<int>(deinterlaced_coeffs.size())) {
+                        rev.setCoefficients(coeffs);
+                    }
+                    else {
+                        rev.setCoefficients(move(coeffs));
+                    }
+                }
+                if(use_spread) {
+                    // to "dispatch" or "spread" the computations of each channel's convolution reverbs
+                    // on different audio callback calls, we separate them as much as possible using a phase:
+                    auto phase = ( partition_size * n ) / nAudioOut;
+                    for(int j=0; j<phase; ++j) {
+                        rev.step(0);
+                    }
+                }
+                ++i;
+                ++n;
+                if(i == stride) {
+                    i = 0;
+                }
+            }
+        }
+        
+        void logReport(PartitionningSpec & partitionning) {
+            using namespace std;
+            cout << "[per sample, with 0-overhead hypothesis] allowed computation time : "
+            << theoretical_max_avg_time_per_sample
+            << " ns" << endl;
+            
+            cout << "[avg per sample] reverb time computation : "
+            << partitionning.avg_time_per_sample
+            << " ns" << endl;
+            
+            auto ratio = partitionning.avg_time_per_sample / static_cast<float>(theoretical_max_avg_time_per_sample);
+            
+            cout << "ratio : " << ratio;
+            static_assert(ratio_soft_limit < ratio_hard_limit, "");
+            cout << " which will";
+            if(ratio >= ratio_soft_limit) {
+                if(ratio < ratio_hard_limit) {
+                    cout << " probably";
+                }
+            }
+            else {
+                cout << " likely not";
+            }
+            cout << " generate audio dropouts." << endl;
+            cout << "gradient descent report :" << endl;
+            partitionning.gd.debug(true);
+        }
     };
     
     template<
@@ -473,11 +555,11 @@ namespace imajuscule {
         using Locking = LockIf<Impl::useLock>;
         
         static constexpr auto nOuts = nAudioOut;
-
+        
         int count_consummed_frames() const { return consummed_frames; }
-
+        
         using OrchestratorFunc = std::function<bool(int)>;
-
+        
         void add_orchestrator(OrchestratorFunc f) {
             A(orchestrators.capacity() > orchestrators.size()); // we are in the audio thread, we shouldn't allocate dynamically
             orchestrators.push_back(std::move(f));
@@ -505,7 +587,7 @@ namespace imajuscule {
         // to group them here (if the lambda owned is small enough to not require dynamic allocation)
         std::vector<OrchestratorFunc> orchestrators;
         std::vector<audioelement::ComputeFunc> computes;
-
+        
     public:
         template<typename F>
         void registerCompute(F f) {
@@ -544,11 +626,11 @@ namespace imajuscule {
             autoclosing_ids.reserve(nChannelsMax);
             available_ids.reserve(nChannelsMax);
         }
-
+        
         void dontUseConvolutionReverbs() {
             impl.dontUseConvolutionReverbs();
         }
-
+        
         void setConvolutionReverbIR(std::vector<FFT_T> impulse_response, int stride, int n_audio_cb_frames) {
             impl.setConvolutionReverbIR(std::move(impulse_response), stride, n_audio_cb_frames);
         }
@@ -579,7 +661,7 @@ namespace imajuscule {
                 }
             }
         }
-
+        
         Channel & editChannel(uint8_t id) { return channels[id]; }
         
         Channel const & getChannel(uint8_t id) const { return channels[id]; }
@@ -599,7 +681,7 @@ namespace imajuscule {
             // or the callback gets unscheduled
             
             Locking l(get_lock());
-
+            
             return playGenericNoLock(channel_id, std::forward<Args>(requests)...);
         }
         
@@ -610,7 +692,7 @@ namespace imajuscule {
             // we enqueue first, so that the buffer has the "queued" state
             // because when registering compute lambdas, they can be executed right away
             // so the buffer needs to be in the right state
-
+            
             bool res = playNolock(channel_id, {std::move(requests.second)...});
             
             auto buffers = std::make_tuple(std::ref(requests.first)...);
@@ -641,7 +723,7 @@ namespace imajuscule {
                 }
             }
         }
-
+        
         template<WithLock lock>
         uint8_t openChannel(float volume, ChannelClosingPolicy l, int xfade_length = 0) {
             uint8_t id = AUDIO_CHANNEL_NONE;
@@ -689,7 +771,7 @@ namespace imajuscule {
                     convert_to_autoclosing(id);
                 }
             }
-
+            
             // no need to lock here : the channel is not playing
             if(!editChannel(id).isActive()) {
                 editChannel(id).reset();
@@ -714,13 +796,13 @@ namespace imajuscule {
                 closeChannel(channel_id, mode, nStepsForXfadeToZeroMode);
             }
         }
-
+        
         void closeChannel(uint8_t channel_id, CloseMode mode, int nStepsForXfadeToZeroMode = -1)
         {
             Locking l(get_lock());
             closeChannelNoLock(channel_id, mode, nStepsForXfadeToZeroMode);
         }
-
+        
         void closeChannelNoLock(uint8_t channel_id, CloseMode mode, int nStepsForXfadeToZeroMode = -1)
         {
             auto & c = editChannel(channel_id);
@@ -767,7 +849,7 @@ namespace imajuscule {
             }
             return res;
         }
-
+        
         void run_computes() {
             A(consummed_frames == 0); // else we skip some unconsummed frames
             clock_ = !clock_; // keep that BEFORE passing clock_ to compute functions (dependency on registerCompute)
@@ -829,12 +911,12 @@ namespace imajuscule {
                 c.step(outputBuffer,
                        nFrames,
                        consummed_frames ); // with that, the channel knows when
-                                           // the next computation of AudioElements will occur
+                // the next computation of AudioElements will occur
                 if(c.shouldReset()) {
                     c.reset();
                 }
             }
-
+            
             impl.postprocess(outputBuffer, nFrames);
         }
     };
