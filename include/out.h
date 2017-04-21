@@ -238,7 +238,6 @@ namespace imajuscule {
                     v.resize(sz);
                     v.shrink_to_fit();
                 }
-                assert(final_size_impulse_response == size());
             }
             
             final_size_impulse_response = size();
