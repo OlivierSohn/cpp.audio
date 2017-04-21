@@ -322,7 +322,7 @@ namespace imajuscule {
                 float where = 0.f;
                 
                 int n_writes = 0;
-                while(it != end && !(the_end && where > 1.f)) {
+                while(it != end && !(the_end && where > 1.f)) {
                     while(where >= 1.f) {
                         where -= 1.f;
                         for(int j=0; j<n_channels; ++j) {
