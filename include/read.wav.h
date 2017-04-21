@@ -290,8 +290,8 @@ namespace imajuscule {
         }
         
         template<typename Reader>
-        struct MultiChannelDownSampling {
-            MultiChannelDownSampling(Reader & reader) : reader(reader) {}
+        struct MultiChannelReSampling {
+            MultiChannelReSampling(Reader & reader) : reader(reader) {}
 
             // todo templatize and make wrapper to abstract signed or float encoding
             template<typename ITER>
@@ -300,39 +300,52 @@ namespace imajuscule {
                 
                 auto n_channels = reader.countChannels();
                 
-                std::vector<float> prev;
-                prev.resize(n_channels, {});
+                bool the_end = false;
+
+                std::array<std::vector<float>, 2> vecs;
                 
-                int k=0;
-                int n_writes = 0;
-                
-                float i = 0.f;
-                while(it != end && reader.HasMore()) {
-                    if(i <= 0.f) {
-                        A(i > -1.f);
-                        auto prev_ratio = -i;
-                        auto ratio = 1.f - prev_ratio;
-                        
-                        if(stride != 1.f) {
-                            i += stride - 1.f;
+                for(auto & v : vecs) {
+                    v.resize(n_channels, {});
+                    for(int j=0; j<n_channels; ++j) {
+                        if(reader.HasMore()) {
+                            v[j] = reader.template ReadOneSignedAsOneFloat<VAL>();
                         }
+                        else {
+                            the_end = true;
+                        }
+                    }
+                }
+
+                auto & cur = vecs[0];
+                auto & next = vecs[1];
+
+                float where = 0.f;
+                
+                int n_writes = 0;
+                while(it != end && !(the_end && where > 1.f)) {
+                    while(where >= 1.f) {
+                        where -= 1.f;
                         for(int j=0; j<n_channels; ++j) {
-                            auto v = prev_ratio * prev[j];
-                            prev[j] = reader.template ReadOneSignedAsOneFloat<VAL>();
-                            *it = v + (ratio * prev[j]);
+                            cur[j] = next[j];
+                            if(reader.HasMore()) {
+                                next[j] = reader.template ReadOneSignedAsOneFloat<VAL>();
+                            }
+                            else {
+                                the_end = true;
+                            }
+                        }
+                    }
+                    if(likely(where <= 1.f)) {
+                        auto cur_ratio = 1.f - where;
+                        auto next_ratio = where;
+                        
+                        for(int j=0; j<n_channels; ++j) {
+                            *it = cur_ratio * cur[j] + (next_ratio * next[j]);
                             ++it;
                             ++n_writes;
                         }
+                        where += stride;
                     }
-                    else {
-                        i -= 1.f;
-                        for(int j=0; j<n_channels; ++j) {
-                            prev[j] = reader.template ReadOneSignedAsOneFloat<VAL>();
-                        }
-                    }
-                    
-                    ++k;
-                    //LG(INFO, "%d %d", k, n_writes);
                 }
                 return it;
             }
@@ -395,7 +408,8 @@ namespace imajuscule {
             template<typename FLT>
             FLT ReadOneSignedAsOneFloat() {
                 A(audio_bytes_read < header.subchunk2_size);
-
+                A(HasMore());
+                
                 if(3 == header.getSampleSize()) {
                     constexpr auto n_bytes = 3;
                     uint8_t d[n_bytes];
