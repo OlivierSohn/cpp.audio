@@ -404,39 +404,44 @@ namespace imajuscule {
             unsigned int audio_bytes_read = 0;
             
             bool readHeader();
+            
+            template<int n_bytes, typename FLT>
+            FLT ReadOneSignedAsOneFloat() {
+                uint8_t d[n_bytes];
+                ReadData(d, n_bytes, 1);
+                
+                audio_bytes_read += n_bytes;
+                A(audio_bytes_read <= header.subchunk2_size);
+                
+                int32_t v = uint8array_to_int32<n_bytes>(d);
+                constexpr int64_t n_different_values = pow2<8 * n_bytes>();
+                constexpr int32_t m = -n_different_values/2;
+                constexpr int32_t M = n_different_values/2 - 1;
+                A(v <= M);
+                A(v >= m);
+                return signed_to_float< FLT, int32_t, M, m >(v);
+            }
+            
         public:
             template<typename FLT>
             FLT ReadOneSignedAsOneFloat() {
+                A(getFormat() == WaveFormat::PCM);
                 A(audio_bytes_read < header.subchunk2_size);
                 A(HasMore());
                 
-                if(3 == header.getSampleSize()) {
-                    constexpr auto n_bytes = 3;
-                    uint8_t d[n_bytes];
-                    ReadData(d, n_bytes, 1);
-                    
-                    audio_bytes_read += n_bytes;
-                    A(audio_bytes_read <= header.subchunk2_size);
-
-                    int32_t v = ((d[2] << 24) | (d[1] << 16) | (d[0] << 8)) >> 8;
-                    constexpr int64_t n_different_values = pow2(8*n_bytes);
-                    constexpr int32_t m = -n_different_values/2;
-                    constexpr int32_t M = n_different_values/2 - 1;
-                    A(v <= M);
-                    A(v >= m);
-                    
-                    return signed_to_float<
-                    FLT,
-                    int32_t,
-                    M,
-                    m
-                    >(v);
+                auto sz = header.getSampleSize();
+                switch(sz) {
+                    case 1:
+                        return ReadOneSignedAsOneFloat<1, FLT>();
+                    case 2:
+                        return ReadOneSignedAsOneFloat<2, FLT>();
+                    case 3:
+                        return ReadOneSignedAsOneFloat<3, FLT>();
+                    case 4:
+                        return ReadOneSignedAsOneFloat<4, FLT>();
                 }
-                else {
-                    A(0); // todo
-                    return 0;
-                }
-
+                A(0); // todo
+                return 0;
             }
         };
         
