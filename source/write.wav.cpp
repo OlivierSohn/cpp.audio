@@ -4,6 +4,8 @@ using namespace imajuscule;
 
 void WAVWriter::DoUpdateFileHeader()
 {
+    header.subchunk2_size = n_sample_bytes_written;
+
     WriteData(&header.chunk_id[0], 4, 1);
     WriteData(&header.chunk_size, sizeof(int32_t), 1);
     WriteData(&header.format[0], 4, 1);

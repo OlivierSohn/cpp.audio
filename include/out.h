@@ -276,6 +276,19 @@ namespace imajuscule {
             using namespace std;
             FFT_T scale = 1;
             for(auto & v : deinterlaced) {
+                //auto res = avg_windowed_abs_integrated(v.begin(), v.end(), 20, [](auto r){ return 1.f; });
+                //auto res = max_auto_corr(v);
+                
+                //scale = max(scale, res);
+                
+                /*auto res = max_freq_amplitude(v.begin(), v.end());
+                
+                LG(INFO,
+                   "max bin: freq %f amplitude %f",
+                   res.relative_freq * SAMPLE_RATE,
+                   res.amplitude);
+                constexpr auto security_factor = 3;
+                scale = max(scale, security_factor * res.amplitude);*/
                 auto lobe = max_abs_integrated_lobe(v.begin(), v.end());
                 LG(INFO, "lobe : %f", lobe);
                 //auto sum = abs_integrated(v.begin(), v.end());
@@ -284,8 +297,9 @@ namespace imajuscule {
                 scale = max(scale, security_lobe_factor*lobe);
             }
             
-            scale = 1. / scale;
+            LG(INFO, "impulse response will be reduced by : %f", scale);
             
+            scale = 1. / scale;
             for(auto & v : deinterlaced) {
                 for(auto &s : v) {
                     s *= scale;
