@@ -738,7 +738,7 @@ namespace imajuscule {
             
             auto size = -1;
             for(auto const & v : deinterlaced) {
-                if(size < 0) {
+                if(size < 0) {
                     size = v.size();
                     continue;
                 }
