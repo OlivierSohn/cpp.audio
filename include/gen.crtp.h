@@ -13,7 +13,7 @@
 
 namespace imajuscule {
     namespace audio {
-        using interleaved_buf_t = cacheline_aligned_allocated::vector<float>;
+        using interleaved_buf_t = a_64::vector<float>;
 
         template<typename T>
         struct ForEach;

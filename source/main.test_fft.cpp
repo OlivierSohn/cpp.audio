@@ -26,7 +26,7 @@ namespace imajuscule {
         
         constexpr auto n_samples = pow2(16);
 
-        cacheline_aligned_allocated::vector<complex<double>> signal;
+        a_64::vector<complex<double>> signal;
         signal.reserve(n_samples);
 
         std::vector<double> real_freq;
@@ -34,8 +34,8 @@ namespace imajuscule {
         for(auto i=1; i<=16; ++i) {
             auto const num_taps = pow2(i);
             
-            cacheline_aligned_allocated::vector<double> real_signal;
-            cacheline_aligned_allocated::vector<complex<double>> signal, frequencies;
+            a_64::vector<double> real_signal;
+            a_64::vector<complex<double>> signal, frequencies;
             signal.reserve(n_samples);
             
             {

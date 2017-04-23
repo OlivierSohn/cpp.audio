@@ -73,7 +73,7 @@ namespace imajuscule {
         using value_type = float;
         using FPT = value_type;
         
-        using buffer = cacheline_aligned_allocated::vector<value_type>;
+        using buffer = a_64::vector<value_type>;
         
         // no copy
         soundBuffer(const soundBuffer &) = delete;
