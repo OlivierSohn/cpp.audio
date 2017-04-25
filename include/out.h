@@ -164,6 +164,7 @@ namespace imajuscule {
     template<typename ConvolutionReverb>
     struct ImpulseResponseOptimizer {
         using PartitionAlgo = PartitionAlgo<ConvolutionReverb>;
+        using PartitionningSpec = typename PartitionAlgo::PartitionningSpec;
         
         static constexpr bool use_spread = true;
         
@@ -258,7 +259,7 @@ namespace imajuscule {
                                                  size_impulse_response);
                 auto & part = partit.getWithSpread(use_spread);
                 
-                if(part.avg_time_per_sample < max_avg_time_per_sample) {
+                if(part.getCost() < max_avg_time_per_sample) {
                     partitionning = move(part);
                     break;
                 }
@@ -329,8 +330,11 @@ namespace imajuscule {
         
         //using ConvolutionReverb = FIRFilter<T>;
         //using ConvolutionReverb = FFTConvolution<FFT_T>;
+        //using ConvolutionReverb = PartitionnedFFTConvolution<T>;
+        using ConvolutionReverb = FinegrainedPartitionnedFFTConvolution<T>;
         
-        using ConvolutionReverb = PartitionnedFFTConvolution<T>;
+        using SetupParam = typename ConvolutionReverb::SetupParam;
+        using PartitionningSpec = PartitionningSpec<SetupParam>;
         
         AudioPolicyImpl()
 #if WITH_DELAY
@@ -419,7 +423,7 @@ namespace imajuscule {
             // locking here would possibly incur dropped audio frames due to the time spent setting the coefficients.
             // we ensured reverbs are not used so we don't need to lock.
             
-            setCoefficients(partitionning.size,
+            setCoefficients(partitionning,
                             std::move(algo.editDeinterlaced()), decltype(algo)::use_spread);
             
             ready = true;
@@ -470,7 +474,7 @@ namespace imajuscule {
         using Reverbs = std::array<ConvolutionReverb, nAudioOut>;
         Reverbs conv_reverbs;
         
-        void setCoefficients(int partition_size,
+        void setCoefficients(PartitionningSpec const & spec,
                              std::vector<a_64::vector<FFT_T>> deinterlaced_coeffs,
                              bool use_spread) {
             
@@ -495,7 +499,7 @@ namespace imajuscule {
             auto stride = deinterlaced_coeffs.size();
             for(auto & rev : conv_reverbs)
             {
-                rev.set_partition_size(partition_size);
+                rev.set_partition_size(spec.size);
                 {
                     auto & coeffs = deinterlaced_coeffs[i];
                     if(n < static_cast<int>(conv_reverbs.size()) - static_cast<int>(deinterlaced_coeffs.size())) {
@@ -505,10 +509,11 @@ namespace imajuscule {
                         rev.setCoefficients(move(coeffs));
                     }
                 }
+                rev.applySetup(spec.cost);
                 if(use_spread) {
                     // to "dispatch" or "spread" the computations of each channel's convolution reverbs
                     // on different audio callback calls, we separate them as much as possible using a phase:
-                    auto phase = ( partition_size * n ) / nAudioOut;
+                    auto phase = ( rev.getGranularMinPeriod() * n ) / nAudioOut;
                     for(int j=0; j<phase; ++j) {
                         rev.step(0);
                     }
@@ -528,10 +533,10 @@ namespace imajuscule {
             << " ns" << endl;
             
             cout << "[avg per sample] reverb time computation : "
-            << partitionning.avg_time_per_sample
+            << partitionning.getCost()
             << " ns" << endl;
             
-            auto ratio = partitionning.avg_time_per_sample / static_cast<float>(theoretical_max_avg_time_per_sample);
+            auto ratio = partitionning.getCost() / static_cast<float>(theoretical_max_avg_time_per_sample);
             
             cout << "ratio : " << ratio;
             static_assert(ratio_soft_limit < ratio_hard_limit, "");
@@ -545,6 +550,7 @@ namespace imajuscule {
                 cout << " likely not";
             }
             cout << " generate audio dropouts." << endl;
+            cout << partitionning.cost << endl;
             cout << "gradient descent report :" << endl;
             partitionning.gd.debug(true);
         }
