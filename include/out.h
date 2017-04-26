@@ -181,7 +181,7 @@ namespace imajuscule {
         }
         
     private:
-        std::vector<a_64::vector<FFT_T>> deinterlaced;
+        std::vector<a64::vector<FFT_T>> deinterlaced;
         int stride, n_audiocb_frames, nAudioOut, initial_size_impulse_response, final_size_impulse_response;
         
         auto size() const { return deinterlaced.empty()? 0 : deinterlaced[0].size(); }
@@ -475,7 +475,7 @@ namespace imajuscule {
         Reverbs conv_reverbs;
         
         void setCoefficients(PartitionningSpec const & spec,
-                             std::vector<a_64::vector<FFT_T>> deinterlaced_coeffs,
+                             std::vector<a64::vector<FFT_T>> deinterlaced_coeffs,
                              bool use_spread) {
             
             // debugging
