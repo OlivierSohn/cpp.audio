@@ -294,7 +294,7 @@ namespace imajuscule {
                 LG(INFO, "lobe : %f", lobe);
                 //auto sum = abs_integrated(v.begin(), v.end());
                 //LG(INFO, "sum : %f", sum);
-                constexpr auto security_lobe_factor = 3;
+                constexpr auto security_lobe_factor = 10; // 3,5 not enough for long reverbs
                 scale = max(scale, security_lobe_factor*lobe);
             }
             
@@ -550,6 +550,25 @@ namespace imajuscule {
                 cout << " likely not";
             }
             cout << " generate audio dropouts." << endl;
+            auto index = 1;
+            for(auto const & r : conv_reverbs)
+            {
+                cout << " reverb " << index << " :" << endl;
+                {
+                    auto lat = r.getLatency();
+                    cout
+                    << "  latency : " << lat << " frames. ("
+                    << lat * 1000.f / SAMPLE_RATE <<  " ms )" << endl;
+                }
+                
+                {
+                    auto per = r.getGranularMinPeriod();
+                    cout
+                    << "  grain compute period : " << per << " frames. ("
+                    << per * 1000.f / SAMPLE_RATE <<  " ms )" << endl;
+                }
+                ++index;
+            }
             cout << partitionning.cost << endl;
             cout << "gradient descent report :" << endl;
             partitionning.gd.debug(true);
