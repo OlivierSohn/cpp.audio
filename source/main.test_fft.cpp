@@ -93,7 +93,7 @@ namespace imajuscule {
                 real_freq.erase(real_freq.begin());
                 
                 auto plot = StringPlot(66, real_freq.size());
-                plot.drawLog(real_freq);
+                plot.drawLog(real_freq, default_curve_char, true);
                 
                 std::string fname = "spectral_density_" + std::to_string(num_taps) + ".txt";
                 

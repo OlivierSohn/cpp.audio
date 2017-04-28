@@ -298,9 +298,8 @@ namespace imajuscule {
                 scale = max(scale, security_lobe_factor*lobe);
             }
             
-            LG(INFO, "impulse response will be reduced by : %f", scale);
-            
             scale = 1. / scale;
+            LG(INFO, "impulse response volume scaled by : %f", scale);
             for(auto & v : deinterlaced) {
                 for(auto &s : v) {
                     s *= scale;
@@ -570,8 +569,11 @@ namespace imajuscule {
                 ++index;
             }
             cout << partitionning.cost << endl;
-            cout << "gradient descent report :" << endl;
-            partitionning.gd.debug(true);
+            constexpr auto debug_gradient_descent = false;
+            if(debug_gradient_descent) {
+                cout << "gradient descent report :" << endl;
+                partitionning.gd.debug(true);                
+            }
         }
     };
     
@@ -675,6 +677,15 @@ namespace imajuscule {
         
         // called from audio callback
         void step(SAMPLE *outputBuffer, int nFrames) {
+            /*
+            static bool first(true);
+            if(first) {
+                first = false;
+                std::cout << "audio thread: " << std::endl;
+                thread::logSchedParams();
+            }*/
+            
+            // todo: locking in the real time thread should be avoided
             Locking l(get_lock());
             
             if(unlikely(!impl.isReady())) {

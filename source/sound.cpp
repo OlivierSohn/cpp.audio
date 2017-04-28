@@ -199,13 +199,10 @@ soundBuffer::soundBuffer( soundId const & id ) {
         if( id.period_length < 20 ) {
             {
                 // center
-                auto avg(0.f);
-                for( auto const & v : values ) {
-                    avg += v;
-                }
-                avg /= (float)values.size();
+                auto avg_ = profiling::avg(values);
+                
                 for( auto & v : values ) {
-                    v -= avg;
+                    v -= avg_;
                 }
             }
             {
