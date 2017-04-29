@@ -315,7 +315,7 @@ namespace imajuscule {
                 cout << "reduced impulse response length from " << initial_size_impulse_response << " to " << final_size_impulse_response << endl;
             }
             else {
-                cout << "full impulse response is used (size " << final_size_impulse_response << " )" << endl;
+                cout << "full impulse response is used (size " << final_size_impulse_response << ")" << endl;
             }
             
             cout << "using partition size " << partitionning.size << " with" << (use_spread ? "" : "out") << " spread on " << nAudioOut << " channel(s)." << endl;
@@ -512,7 +512,7 @@ namespace imajuscule {
                 if(use_spread) {
                     // to "dispatch" or "spread" the computations of each channel's convolution reverbs
                     // on different audio callback calls, we separate them as much as possible using a phase:
-                    auto phase = ( rev.getGranularMinPeriod() * n ) / nAudioOut;
+                    auto phase = n * spec.cost.phase;
                     for(int j=0; j<phase; ++j) {
                         rev.step(0);
                     }
@@ -556,15 +556,15 @@ namespace imajuscule {
                 {
                     auto lat = r.getLatency();
                     cout
-                    << "  latency : " << lat << " frames. ("
-                    << lat * 1000.f / SAMPLE_RATE <<  " ms )" << endl;
+                    << "  latency : " << lat << " frames ("
+                    << lat * 1000.f / SAMPLE_RATE <<  " ms)" << endl;
                 }
                 
                 {
                     auto per = r.getGranularMinPeriod();
                     cout
-                    << "  grain compute period : " << per << " frames. ("
-                    << per * 1000.f / SAMPLE_RATE <<  " ms )" << endl;
+                    << "  grain compute period : " << per << " frames ("
+                    << per * 1000.f / SAMPLE_RATE <<  " ms)" << endl;
                 }
                 ++index;
             }
