@@ -382,6 +382,13 @@ namespace imajuscule {
         ///////////////////////////////// convolution reverb
         
         void dontUseConvolutionReverbs() {
+            {
+                Locking l(lock());
+                ready = false;
+            }
+            for(auto & r : conv_reverbs) {
+                r.clear();
+            }
             ready = true;
         }
         
