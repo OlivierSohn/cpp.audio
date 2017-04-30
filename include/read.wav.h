@@ -12,6 +12,9 @@ namespace imajuscule {
             EXTENSIBLE =   0xFFFE  // Determined by SubFormat
         };
         
+        void makeDescription(std::string &s, int16_t num_channels, float length_in_seconds, int32_t sample_rate);
+        void makeDescription(std::string &s, int16_t num_channels, float length_in_seconds);
+
         struct WAVPCMHeader {
             int8_t chunk_id[4];
             int32_t chunk_size;
@@ -20,7 +23,7 @@ namespace imajuscule {
             int32_t subchunk1_size;
             WaveFormat audio_format;
             int16_t num_channels;
-            int32_t sample_rate;            // sample_rate denotes the sampling rate.
+            int32_t sample_rate;
             int32_t byte_rate;
             int16_t block_align;
             int16_t bits_per_sample;
@@ -45,6 +48,12 @@ namespace imajuscule {
                 A(bits_per_sample % 8 == 0);
                 return bits_per_sample / 8;
             }
+
+            float getLengthInSeconds() const {
+                return countFrames() / static_cast<float>(sample_rate);
+            }
+            
+            void makeDescription(std::string & desc, bool with_sample_rate) const;
         };
         
         enum class NChannels {
@@ -364,12 +373,16 @@ namespace imajuscule {
             
             eResult Initialize();
             
+            void makeDescription(std::string &s, bool with_sample_rate = false) const {
+                return header.makeDescription(s, with_sample_rate);
+            }
+            
             unsigned int getSampleSize() const { return header.getSampleSize(); }
             int countChannels() const { return header.num_channels; }
             int countSamples() const { return header.countSamples(); }
             int countFrames() const { return header.countFrames(); }
             int getSampleRate() const { return header.sample_rate; }
-            float getDuration() const { return countFrames() / (float)getSampleRate(); }
+            float getLengthInSeconds() const { return header.getLengthInSeconds(); }
             WaveFormat getFormat() const { return header.audio_format; }
             WaveFileFormat getFileFormat() const {
                 auto candidate = WaveFileFormat::BeginSupported;
