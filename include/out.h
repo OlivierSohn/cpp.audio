@@ -168,11 +168,11 @@ namespace imajuscule {
         
         static constexpr bool use_spread = true;
         
-        ImpulseResponseOptimizer(std::vector<FFT_T> ir, int stride, int n_audiocb_frames, int nAudioOut) :
-        stride(stride),
+        ImpulseResponseOptimizer(std::vector<FFT_T> ir, int n_channels, int n_audiocb_frames, int nAudioOut) :
+        n_channels(n_channels),
         n_audiocb_frames(n_audiocb_frames),
         nAudioOut(nAudioOut),
-        deinterlaced(stride),
+        deinterlaced(n_channels),
         initial_size_impulse_response(0)
         {
             deinterlace(std::move(ir));
@@ -182,18 +182,18 @@ namespace imajuscule {
         
     private:
         std::vector<a64::vector<FFT_T>> deinterlaced;
-        int stride, n_audiocb_frames, nAudioOut, initial_size_impulse_response, final_size_impulse_response;
+        int n_channels, n_audiocb_frames, nAudioOut, initial_size_impulse_response, final_size_impulse_response;
         
         auto size() const { return deinterlaced.empty()? 0 : deinterlaced[0].size(); }
         
         void deinterlace(std::vector<FFT_T> ir) {
-            auto sz = ir.size() / stride;
-            A(sz * stride == ir.size());
+            auto sz = ir.size() / n_channels;
+            A(sz * n_channels == ir.size());
             for(auto & v : deinterlaced) {
                 v.reserve(sz);
             }
             for(auto it = ir.begin(), end = ir.end(); it != end;) {
-                for(int i=0; i<stride; ++i) {
+                for(int i=0; i<n_channels; ++i) {
                     deinterlaced[i].push_back(*it);
                     ++it;
                 }
@@ -226,12 +226,12 @@ namespace imajuscule {
             initial_size_impulse_response = size();
         }
     public:
-        void optimize_length(int max_avg_time_per_sample, PartitionningSpec & partitionning) {
+        void optimize_length(int n_channels, int max_avg_time_per_sample, PartitionningSpec & partitionning) {
             // truncate the tail if it is too long
             
             auto sz = size();
             
-            optimize_reverb_parameters(use_spread, n_audiocb_frames, max_avg_time_per_sample,
+            optimize_reverb_parameters(n_channels, use_spread, n_audiocb_frames, max_avg_time_per_sample,
                                        sz, partitionning); // modified by call
             
             if(sz < size()) {
@@ -249,12 +249,12 @@ namespace imajuscule {
         }
         
     private:
-        void optimize_reverb_parameters(bool use_spread, int n_audiocb_frames, int max_avg_time_per_sample,
+        void optimize_reverb_parameters(int n_channels, bool use_spread, int n_audiocb_frames, int max_avg_time_per_sample,
                                         size_t & size_impulse_response, PartitionningSpec & partitionning) const {
             using namespace std;
             
             while(1) {
-                auto partit = PartitionAlgo::run(nAudioOut,
+                auto partit = PartitionAlgo::run(n_channels,
                                                  n_audiocb_frames,
                                                  size_impulse_response);
                 auto & part = partit.getWithSpread(use_spread);
@@ -318,7 +318,7 @@ namespace imajuscule {
                 cout << "full impulse response is used (size " << final_size_impulse_response << ")" << endl;
             }
             
-            cout << "using partition size " << partitionning.size << " with" << (use_spread ? "" : "out") << " spread on " << nAudioOut << " channel(s)." << endl;
+            cout << "using partition size " << partitionning.size << " with" << (use_spread ? "" : "out") << " spread on " << n_channels << " channel(s)." << endl;
         }
         
     };
@@ -331,6 +331,7 @@ namespace imajuscule {
         //using ConvolutionReverb = FFTConvolution<FFT_T>;
         //using ConvolutionReverb = PartitionnedFFTConvolution<T>;
         using ConvolutionReverb = FinegrainedPartitionnedFFTConvolution<T>;
+        using Spatializer = audio::Spatializer<nAudioOut, ConvolutionReverb>;
         
         using SetupParam = typename ConvolutionReverb::SetupParam;
         using PartitionningSpec = PartitionningSpec<SetupParam>;
@@ -364,6 +365,14 @@ namespace imajuscule {
                 }
             }
             
+            if(!spatializer.empty()) {
+                for(int i=0; i<nFrames; ++i) {
+                    auto & samples = buffer[i*nAudioOut];
+                    spatializer.step(&samples);
+                    spatializer.get(&samples);
+                }
+            }
+            
             // run delays before hardlimiting...
 #if WITH_DELAY
             for( auto & delay : delays ) {
@@ -389,6 +398,7 @@ namespace imajuscule {
             for(auto & r : conv_reverbs) {
                 r.clear();
             }
+            spatializer.clear();
             ready = true;
         }
         
@@ -397,15 +407,13 @@ namespace imajuscule {
         // at 0.38f on ios release we have glitches when putting the app in the background
         static constexpr auto ratio_soft_limit = 0.3f * ratio_hard_limit;
         
-        static constexpr auto theoretical_max_avg_time_per_sample =
-        seconds_to_nanos /
-        (nAudioOut * static_cast<float>(SAMPLE_RATE));
+        static constexpr auto theoretical_max_avg_time_per_frame = seconds_to_nanos / static_cast<float>(SAMPLE_RATE);
         
-        void setConvolutionReverbIR(std::vector<FFT_T> ir, int stride, int n_audiocb_frames) {
+        void setConvolutionReverbIR(std::vector<FFT_T> ir, int n_channels, int n_audiocb_frames) {
             using namespace std;
             
             ImpulseResponseOptimizer<ConvolutionReverb> algo(std::move(ir),
-                                                             stride,
+                                                             n_channels,
                                                              n_audiocb_frames,
                                                              nAudioOut);
             
@@ -422,7 +430,7 @@ namespace imajuscule {
             PartitionningSpec partitionning;
             
             
-            algo.optimize_length(theoretical_max_avg_time_per_sample * ratio_soft_limit,
+            algo.optimize_length(n_channels, theoretical_max_avg_time_per_frame * ratio_soft_limit / static_cast<float>(n_channels),
                                  partitionning);
             algo.symetrically_scale();
             
@@ -435,7 +443,7 @@ namespace imajuscule {
             ready = true;
             
             algo.logReport(partitionning);
-            logReport(partitionning);
+            logReport(n_channels, partitionning);
         }
         
         bool isReady() const {
@@ -443,6 +451,9 @@ namespace imajuscule {
             // and only one thread writes it
             return ready;
         }
+        
+        
+        bool hasSpatializer() const { return !spatializer.empty(); }
         
     private:
         
@@ -480,6 +491,8 @@ namespace imajuscule {
         using Reverbs = std::array<ConvolutionReverb, nAudioOut>;
         Reverbs conv_reverbs;
         
+        Spatializer spatializer;
+
         void setCoefficients(PartitionningSpec const & spec,
                              std::vector<a64::vector<FFT_T>> deinterlaced_coeffs,
                              bool use_spread) {
@@ -499,50 +512,88 @@ namespace imajuscule {
              }
              */
             
-            
-            int i=0;
-            auto n = 0;
-            auto stride = deinterlaced_coeffs.size();
-            for(auto & rev : conv_reverbs)
-            {
-                rev.set_partition_size(spec.size);
+            spatializer.clear();
+            for(auto & r : conv_reverbs) {
+                r.clear();
+            }
+
+            auto const n_channels = deinterlaced_coeffs.size();
+            auto nSources = n_channels / nAudioOut;
+            if(nSources <= 1) {
+                int i=0;
+                auto n = 0;
+                for(auto & rev : conv_reverbs)
                 {
-                    auto & coeffs = deinterlaced_coeffs[i];
-                    if(n < static_cast<int>(conv_reverbs.size()) - static_cast<int>(deinterlaced_coeffs.size())) {
-                        rev.setCoefficients(coeffs);
+                    rev.set_partition_size(spec.size);
+                    {
+                        auto & coeffs = deinterlaced_coeffs[i];
+                        if(n < static_cast<int>(conv_reverbs.size()) - static_cast<int>(deinterlaced_coeffs.size())) {
+                            rev.setCoefficients(coeffs);
+                        }
+                        else {
+                            rev.setCoefficients(move(coeffs));
+                        }
                     }
-                    else {
-                        rev.setCoefficients(move(coeffs));
+                    rev.applySetup(spec.cost);
+                    if(use_spread) {
+                        // to "dispatch" or "spread" the computations of each channel's convolution reverbs
+                        // on different audio callback calls, we separate them as much as possible using a phase:
+                        auto phase = n * spec.cost.phase;
+                        for(int j=0; j<phase; ++j) {
+                            rev.step(0);
+                        }
+                    }
+                    ++i;
+                    ++n;
+                    if(i == n_channels) {
+                        i = 0;
                     }
                 }
-                rev.applySetup(spec.cost);
+            }
+            else {
+                if(nSources * nAudioOut != n_channels) {
+                    throw std::logic_error("wrong number of channels");
+                }
+                // todo spread
+                assert(spatializer.empty());
+                spatializer.set_partition_size(spec.size);
+                assert(spatializer.empty());
+                for(int i=0; i<nSources; ++i) {
+                    std::array<a64::vector<T>, nAudioOut> a;
+                    for(int j=0; j<nAudioOut; ++j) {
+                        // for wir files of wave, it seems the order is by "ears" then by "source":
+                        
+                        // ear Left source 1
+                        // ...
+                        // ear Left source N
+                        // ear Right source 1
+                        // ...
+                        // ear Right source N
+                        
+                        a[j] = std::move(deinterlaced_coeffs[i+nAudioOut*j]);
+                    }
+                    spatializer.addSourceLocation(std::move(a));
+                    assert(!spatializer.empty());
+                }
+                spatializer.applySetup(spec.cost);
+                assert(!spatializer.empty());
                 if(use_spread) {
-                    // to "dispatch" or "spread" the computations of each channel's convolution reverbs
-                    // on different audio callback calls, we separate them as much as possible using a phase:
-                    auto phase = n * spec.cost.phase;
-                    for(int j=0; j<phase; ++j) {
-                        rev.step(0);
-                    }
-                }
-                ++i;
-                ++n;
-                if(i == stride) {
-                    i = 0;
+                    spatializer.dephaseComputations(spec.cost.phase);
                 }
             }
         }
         
-        void logReport(PartitionningSpec & partitionning) {
+        void logReport(int n_channels, PartitionningSpec & partitionning) {
             using namespace std;
             cout << "[per sample, with 0-overhead hypothesis] allowed computation time : "
-            << theoretical_max_avg_time_per_sample
+            << theoretical_max_avg_time_per_frame / static_cast<float>(n_channels)
             << " ns" << endl;
             
             cout << "[avg per sample] reverb time computation : "
             << partitionning.getCost()
             << " ns" << endl;
             
-            auto ratio = partitionning.getCost() / static_cast<float>(theoretical_max_avg_time_per_sample);
+            auto ratio = partitionning.getCost() * static_cast<float>(n_channels) / static_cast<float>(theoretical_max_avg_time_per_frame);
             
             cout << "ratio : " << ratio;
             static_assert(ratio_soft_limit < ratio_hard_limit, "");
@@ -559,6 +610,9 @@ namespace imajuscule {
             auto index = 1;
             for(auto const & r : conv_reverbs)
             {
+                if(r.empty()) {
+                    continue;
+                }
                 cout << " reverb " << index << " :" << endl;
                 {
                     auto lat = r.getLatency();
@@ -575,6 +629,11 @@ namespace imajuscule {
                 }
                 ++index;
             }
+            
+            if(!spatializer.empty()) {
+                cout <<  "spatializer with '" << spatializer.countSources() << "' sources" << endl;
+            }
+            
             cout << partitionning.cost << endl;
             constexpr auto debug_gradient_descent = false;
             if(debug_gradient_descent) {
@@ -678,9 +737,11 @@ namespace imajuscule {
             impl.dontUseConvolutionReverbs();
         }
         
-        void setConvolutionReverbIR(std::vector<FFT_T> impulse_response, int stride, int n_audio_cb_frames) {
-            impl.setConvolutionReverbIR(std::move(impulse_response), stride, n_audio_cb_frames);
+        void setConvolutionReverbIR(std::vector<FFT_T> impulse_response, int n_channels, int n_audio_cb_frames) {
+            impl.setConvolutionReverbIR(std::move(impulse_response), n_channels, n_audio_cb_frames);
         }
+        
+        bool hasSpatializer() const { return impl.hasSpatializer(); }
         
         // called from audio callback
         void step(SAMPLE *outputBuffer, int nFrames) {
