@@ -295,7 +295,7 @@ namespace imajuscule {
             
             >
             struct Impl_ : public Parent {
-                
+                static constexpr auto use_orchestrators = false;
                 static constexpr auto min_cut_period = Base::min_cut_period;
                 static constexpr auto max_length_ramp_ms = Base::max_length_ramp_ms;
                 static constexpr auto size_interleaved = Base::size_interleaved;

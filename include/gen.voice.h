@@ -1092,6 +1092,7 @@ namespace imajuscule {
             {
                 using Parent = Parent_;
                 
+                static constexpr auto use_orchestrators = true;
                 static constexpr auto n_frames_interleaved = size_interleaved / nAudioOut;
                 static_assert(n_frames_interleaved * nAudioOut == size_interleaved, ""); // make sure we don't waste space
                 

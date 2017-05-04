@@ -785,6 +785,10 @@ namespace imajuscule {
         
         bool empty() const { return channels.empty(); }
         
+        bool hasOrchestrators() const {
+            return !orchestrators.empty();
+        }
+        
         void toVolume(uint8_t channel_id, float volume, int nSteps) {
             Locking l(get_lock());
             editChannel(channel_id).toVolume(volume, nSteps);
