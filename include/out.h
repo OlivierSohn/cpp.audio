@@ -554,7 +554,7 @@ namespace imajuscule {
                 if(nSources * nAudioOut != n_channels) {
                     throw std::logic_error("wrong number of channels");
                 }
-                // todo spread
+
                 assert(spatializer.empty());
                 spatializer.set_partition_size(spec.size);
                 assert(spatializer.empty());
