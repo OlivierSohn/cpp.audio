@@ -644,23 +644,36 @@ namespace imajuscule {
                     if(MODE==Mode::BIRDS) {
                         static ProgramsI ps {{
                             {"Standard & Cute bird",
-                                make_bird(0, 0, 1, 0, itp::EASE_INOUT_CIRC, 0.f, 93.f, 2.f, .5f, 1000, 1301, FreqXfade::No, 6200, itp::EASE_OUT_EXPO)
+                                make_bird(0, 0, 1, 0, itp::EASE_INOUT_CIRC, 0.f, 93.f, 2.f, .5f, 1000, 1301, FreqXfade::No, 6200, itp::EASE_OUT_EXPO),
+                                {32, 48, 69, 180, 218, 240}
                             },{"Scat bird",
-                                make_bird(0, 0, 3, 17, itp::EASE_INOUT_CIRC, 0.015f, 10.f, 2.f, .5f, 1961, 782, FreqXfade::NonTrivial, 1601, itp::EASE_INOUT_EXPO)
+                                make_bird(0, 0, 3, 17, itp::EASE_INOUT_CIRC, 0.015f, 10.f, 2.f, .5f, 1961, 782, FreqXfade::NonTrivial, 1601, itp::EASE_INOUT_EXPO),
+                                {4, 5, 23, 26, 34, 48, 58, 68, 73, 74, 75, 80, 85, 88, 109, 116, 124, 125, 131, 141, 146, 165, 181, 205, 213, 214, 227, 232, 249}
                             },{"Rhythmic bird",
-                                make_bird(1, 0, 3, 11, itp::EASE_INOUT_CIRC, 0.f, 19.8f, 2.f, 0.f, 1406, 502, FreqXfade::All, 801, itp::EASE_INOUT_EXPO)
+                                make_bird(1, 0, 3, 11, itp::EASE_INOUT_CIRC, 0.f, 19.8f, 2.f, 0.f, 1406, 502, FreqXfade::All, 801, itp::EASE_INOUT_EXPO),
+                                { 19, 29, 32, 36, 38, 48, 79, 106, 112, 116, 123, 147, 162, 195, 213, 247, 248, 250 }
                             },{"Slow bird",
-                                make_bird(0, 2, 1, 0, itp::EASE_IN_EXPO, 0.f, 73.7f, 2.f, .5f, 1000, 1301, FreqXfade::No, 6200, itp::EASE_OUT_EXPO)
+                                make_bird(0, 2, 1, 0, itp::EASE_IN_EXPO, 0.f, 73.7f, 2.f, .5f, 1000, 1301, FreqXfade::No, 6200, itp::EASE_OUT_EXPO),
+                                {63, 70, 83, 91, 110, 160, 197}
                             },{"BiTone bird",
-                                make_bird(1, 0, 2, 0, itp::EASE_IN_EXPO, .414f, 78.6f, 2.f, .5f, 4302, 1301, FreqXfade::No, 6200, itp::EASE_OUT_EXPO)
+                                make_bird(1, 0, 2, 0, itp::EASE_IN_EXPO, .414f, 78.6f, 2.f, .5f, 4302, 1301, FreqXfade::No, 6200, itp::EASE_OUT_EXPO),
+                                { 5, 15, 27, 31, 49, 58, 72, 74, 96, 108, 147, 149, 171, 174, 180, 194, 199, 205, 252},
                             },{"Happy bird 1",
-                                make_bird(1, 0, 4, 0, itp::EASE_IN_EXPO, .414f, 78.6f, 2.f, .5f, 5848, 2001, FreqXfade::No, 6200, itp::EASE_OUT_EXPO)
+                                make_bird(1, 0, 4, 0, itp::EASE_IN_EXPO, .414f, 78.6f, 2.f, .5f, 5848, 2001, FreqXfade::No, 6200, itp::EASE_OUT_EXPO),
+                                {
+                                    119, 141, 149, 159, // appel
+                                    88,                 // mélancolie
+                                    32, 45, 168, 206// bien-être
+                                }
                             },{"Happy bird 2",
-                                make_bird(1, 0, 4, 0, itp::EASE_IN_EXPO, .414f, 63.9f, 1.19f, 1.f, 5848, 2001, FreqXfade::No, 6200, itp::EASE_OUT_EXPO)
+                                make_bird(1, 0, 4, 0, itp::EASE_IN_EXPO, .414f, 63.9f, 1.19f, 1.f, 5848, 2001, FreqXfade::No, 6200, itp::EASE_OUT_EXPO),
+                                {8, 20, 23, 60, 76, 113, 143, 168, 169, 178, 180, 208, 217, 231}
                             },{"Laughing bird",
-                                make_bird(1, 0, 2, 0, itp::EASE_IN_EXPO, .414f, 78.6f, 2.f, .5f, 9672, 1301, FreqXfade::All, 3201, itp::EASE_OUT_EXPO)
+                                make_bird(1, 0, 2, 0, itp::EASE_IN_EXPO, .414f, 78.6f, 2.f, .5f, 9672, 1301, FreqXfade::All, 3201, itp::EASE_OUT_EXPO),
+                                {20, 31, 39, 36, 37, 47, 68, 89, 94, 105, 108, 136, 144, 145, 148, 161, 172, 174, 212, 246, 249}
                             },{"Talkative bird",
-                                make_bird(0, 0, 6, 0, itp::EASE_INOUT_CIRC, 0.12f, 93.3f, 2.f, .5f, 6713, 2201, FreqXfade::NonTrivial, 4401, itp::EASE_OUT_EXPO)
+                                make_bird(0, 0, 6, 0, itp::EASE_INOUT_CIRC, 0.12f, 93.3f, 2.f, .5f, 6713, 2201, FreqXfade::NonTrivial, 4401, itp::EASE_OUT_EXPO),
+                                {9, 28, 33, 38, 53, 54, 83, 114, 117, 122, 131, 162, 168, 171, 187, 196, 216, 220}
                             }
                         }};
                         return ps.v;
@@ -729,6 +742,10 @@ namespace imajuscule {
                     return progs[i];
                 }
                 
+                int countPrograms() const override {
+                    return getPrograms().size();
+                }
+
                 static constexpr int index(ImplParams n) {
                     int idx = 0;
                     for(auto p : std::get<MODE>(params_all)) {

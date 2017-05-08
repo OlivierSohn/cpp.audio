@@ -56,6 +56,7 @@ namespace imajuscule {
             static constexpr auto tune_stretch = 1.f;
             
             virtual Program const & getProgram(int i) const = 0;
+            virtual int countPrograms() const = 0;
 
             virtual ~Impl() = default;
 
@@ -86,7 +87,7 @@ namespace imajuscule {
             
             void useProgram(int index) {
                 auto const & p = getProgram(index);
-                MIDI_LG(INFO, "with program %d of %d", index, NPARAMS);
+                MIDI_LG(INFO, "with program %d of %d", index, countPrograms());
                 A(p.params.size() == NPARAMS);
                 for (auto i = 0; i < NPARAMS; i++) {
                     params[i] = p.params[i];
@@ -122,6 +123,7 @@ namespace imajuscule {
             using Base::get_xfade_length;
             using Base::get_gain;
             using Base::onStartNote;
+            using Base::getPrograms;
             
             using Event = typename EventIterator::object;
             

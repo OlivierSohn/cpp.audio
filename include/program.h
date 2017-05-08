@@ -7,7 +7,9 @@ namespace imajuscule {
             
             std::string name;
             ARRAY params;
+            std::vector<int> preferred_seeds;
         };
+        
         using Programs = std::vector<Program>;
         
         struct ProgramsI {

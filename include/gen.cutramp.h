@@ -177,6 +177,8 @@ namespace imajuscule {
                     return progs[i];
                 }
                 
+                int countPrograms() const override { return getPrograms().size(); }
+                
                 static constexpr int index(ImplParams n) {
                     return static_cast<int>(n);
                 }
