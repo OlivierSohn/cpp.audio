@@ -294,7 +294,7 @@ namespace imajuscule {
             }
         }
         
-        static WAVPCMHeader pcm(WaveFormat format, int sample_rate, NChannels n_channels, SampleFormat f) {
+        static inline WAVPCMHeader pcm(WaveFormat format, int sample_rate, NChannels n_channels, SampleFormat f) {
             A(are_compatible(format, f));
             return pcm_(WaveFileFormat::RIFF,
                         format,

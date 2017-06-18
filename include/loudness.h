@@ -136,7 +136,7 @@ namespace imajuscule {
         // using binary search,
         // ratio is the proportion of "returned index",
         // 1-ratio is the proportion of "returned index-1"
-        static int closest_freq(float freq, float & ratio) {
+        static inline int closest_freq(float freq, float & ratio) {
             auto min_ = 0;
             auto max_ = n_freq-1;
             do {
@@ -169,7 +169,7 @@ namespace imajuscule {
             return max_;
         }
 
-        static float compute_equal_loudness_volume(int i, float LN)
+        static inline float compute_equal_loudness_volume(int i, float LN)
         {
             auto alpha_f = alpha_f_[i];
             auto Lu = Lu_[i];
@@ -181,7 +181,7 @@ namespace imajuscule {
             return Lp;
         }
         
-        static auto compute_elv(float level) {
+        static inline auto compute_elv(float level) {
             std::array<float, n_freq> v;
             int i=0;
             for(auto & e : v) {
@@ -191,7 +191,7 @@ namespace imajuscule {
             return v;
         }
 
-        static auto compute_elvs() {
+        static inline auto compute_elvs() {
             std::array<std::array<float, n_freq>, 9> elvs;
             int l = 0;
             for(auto & a : elvs) {
@@ -203,7 +203,7 @@ namespace imajuscule {
         
         static auto elvs = compute_elvs();
         
-        static float equal_loudness_volume_db(float freq, int level) {
+        static inline float equal_loudness_volume_db(float freq, int level) {
             float ratio;
             
             auto & elv = elvs[level];
@@ -218,7 +218,7 @@ namespace imajuscule {
 
         constexpr auto LN_default = 40.f; // unit : phons
 
-        static float equal_loudness_volume(float freq, int index_freq_ref = 0, float log_ratio = 1.f, float level = LN_default) {
+        static inline float equal_loudness_volume(float freq, int index_freq_ref = 0, float log_ratio = 1.f, float level = LN_default) {
             // 20 .. 100 -> 0 .. 8;
             int i = static_cast<int>(level * .1f) - 2;
             i = std::max(0, i);
