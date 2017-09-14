@@ -166,7 +166,7 @@ namespace imajuscule {
             }(mersenne<SEEDED::No>()));
             
             it += add;
-            A(it < end);
+            Assert(it < end);
         }
         
         void forgetPastSignals() {
@@ -186,8 +186,8 @@ namespace imajuscule {
         
         float operator *() const {
             auto v = *it;
-            A(v <=  1.f);
-            A(v >= -1.f);
+            Assert(v <=  1.f);
+            Assert(v >= -1.f);
             return v;
         }
         

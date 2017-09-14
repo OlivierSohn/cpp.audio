@@ -47,7 +47,7 @@ namespace imajuscule {
             int getEventCount () const { return events.size(); }
             
             void getEvent (int32_t index, Event& e /*out*/) {
-                A(index < events.size());
+                Assert(index < events.size());
                 e = events[index];
             }
             

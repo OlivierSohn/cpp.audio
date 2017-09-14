@@ -13,7 +13,7 @@ namespace imajuscule {
             }
             ~RAIILock() {
                 auto prev = l.exchange(false);
-                A(prev); // make sure l was true
+                Assert(prev); // make sure l was true
             }
         private:
             std::atomic_bool & l;
@@ -155,7 +155,7 @@ namespace imajuscule {
         }
         
         void setConvolutionReverbIR(std::vector<FFT_T>, int, int) {
-            A(0);
+            Assert(0);
         }
     };
     
@@ -188,7 +188,7 @@ namespace imajuscule {
         
         void deinterlace(std::vector<FFT_T> ir) {
             auto sz = ir.size() / n_channels;
-            A(sz * n_channels == ir.size());
+            Assert(sz * n_channels == ir.size());
             for(auto & v : deinterlaced) {
                 v.reserve(sz);
             }
@@ -469,15 +469,15 @@ namespace imajuscule {
                 }
                 
                 if(v[i] > 1.f) {
-                    A(0);
+                    Assert(0);
                     v[i] = 1.f;
                 }
                 else if(v[i] < -1.f) {
-                    A(0);
+                    Assert(0);
                     v[i] = -1.f;
                 }
                 else {
-                    A(0);
+                    Assert(0);
                     v[i] = 0.f; // v[i] is NaN
                 }
             }
@@ -667,7 +667,7 @@ namespace imajuscule {
         using OrchestratorFunc = std::function<bool(int)>;
         
         void add_orchestrator(OrchestratorFunc f) {
-            A(orchestrators.capacity() > orchestrators.size()); // we are in the audio thread, we shouldn't allocate dynamically
+            Assert(orchestrators.capacity() > orchestrators.size()); // we are in the audio thread, we shouldn't allocate dynamically
             orchestrators.push_back(std::move(f));
         }
         
@@ -697,7 +697,7 @@ namespace imajuscule {
     public:
         template<typename F>
         void registerCompute(F f) {
-            A(computes.capacity() > computes.size()); // we are in the audio thread, we shouldn't allocate dynamically
+            Assert(computes.capacity() > computes.size()); // we are in the audio thread, we shouldn't allocate dynamically
             computes.push_back(std::move(f));
             if(isInbetweenTwoComputes()) {
                 computes.back()(clock_);
@@ -707,8 +707,8 @@ namespace imajuscule {
         decltype(std::declval<Impl>().lock()) get_lock() { return impl.lock(); }
         
         bool isInbetweenTwoComputes() const {
-            A(consummed_frames >= 0);
-            A(consummed_frames < audioelement::n_frames_per_buffer);
+            Assert(consummed_frames >= 0);
+            Assert(consummed_frames < audioelement::n_frames_per_buffer);
             return 0 != consummed_frames;
         }
         
@@ -717,8 +717,8 @@ namespace imajuscule {
         clock_(false),
         consummed_frames(0)
         {
-            A(nChannelsMax >= 0);
-            A(nChannelsMax <= std::numeric_limits<uint8_t>::max()); // else need to update AUDIO_CHANNEL_NONE
+            Assert(nChannelsMax >= 0);
+            Assert(nChannelsMax <= std::numeric_limits<uint8_t>::max()); // else need to update AUDIO_CHANNEL_NONE
             
             // (almost) worst case scenario : each channel is playing an audiolement crossfading with another audio element
             // "almost" only because the assumption is that requests vector holds at most one audioelement at any time
@@ -879,7 +879,7 @@ namespace imajuscule {
                     LG(WARN, "no more channels available");
                     return AUDIO_CHANNEL_NONE;
                 }
-                A(!editChannel(id).isPlaying());
+                Assert(!editChannel(id).isPlaying());
             }
             else {
                 id = available_ids.Take(channels);
@@ -887,7 +887,7 @@ namespace imajuscule {
                     LG(WARN, "no more channels available");
                     return AUDIO_CHANNEL_NONE;
                 }
-                A(!editChannel(id).isPlaying());
+                Assert(!editChannel(id).isPlaying());
                 if(l == ChannelClosingPolicy::AutoClose) {
                     convert_to_autoclosing(id);
                 }
@@ -902,7 +902,7 @@ namespace imajuscule {
                 editChannel(id).set_xfade(xfade_length);
             }
             else {
-                A(xfade_length == 0); // make sure user is aware xfade will not be used
+                Assert(xfade_length == 0); // make sure user is aware xfade will not be used
             }
             return id;
         }
@@ -938,7 +938,7 @@ namespace imajuscule {
                 else if(mode == CloseMode::WHEN_DONE_PLAYING) {
 #ifndef NDEBUG
                     auto it = std::find(autoclosing_ids.begin(), autoclosing_ids.end(), channel_id);
-                    A(it == autoclosing_ids.end()); // if channel is already autoclosing, this call is redundant
+                    Assert(it == autoclosing_ids.end()); // if channel is already autoclosing, this call is redundant
 #endif
                     convert_to_autoclosing(channel_id);
                 }
@@ -946,7 +946,7 @@ namespace imajuscule {
             }
 #ifndef NDEBUG
             auto it = std::find(autoclosing_ids.begin(), autoclosing_ids.end(), channel_id);
-            A(it == autoclosing_ids.end()); // if channel is autoclosing, we should remove it there?
+            Assert(it == autoclosing_ids.end()); // if channel is autoclosing, we should remove it there?
 #endif
             c.reset();
             available_ids.Return(channel_id);
@@ -954,7 +954,7 @@ namespace imajuscule {
         
     private:
         void convert_to_autoclosing(uint8_t channel_id) {
-            A(autoclosing_ids.size() < autoclosing_ids.capacity());
+            Assert(autoclosing_ids.size() < autoclosing_ids.capacity());
             // else logic error : some users closed manually some autoclosing channels
             autoclosing_ids.push_back(channel_id);
         }
@@ -963,7 +963,7 @@ namespace imajuscule {
             bool res = true;
             auto & c = editChannel(channel_id);
             for( auto & sound : v ) {
-                A(sound.valid());
+                Assert(sound.valid());
                 if(!c.addRequest( std::move(sound) )) {
                     res = false;
                 }
@@ -972,7 +972,7 @@ namespace imajuscule {
         }
         
         void run_computes() {
-            A(consummed_frames == 0); // else we skip some unconsummed frames
+            Assert(consummed_frames == 0); // else we skip some unconsummed frames
             clock_ = !clock_; // keep that BEFORE passing clock_ to compute functions (dependency on registerCompute)
             
             
@@ -995,20 +995,20 @@ namespace imajuscule {
                     ++it;
                 }
             }
-            A(consummed_frames == 0);
+            Assert(consummed_frames == 0);
         }
         
         // returns true if everything was consummed AND there is more frames remaining
         bool consume_buffers(SAMPLE *& buf, int & nFrames) {
-            A(consummed_frames < audioelement::n_frames_per_buffer);
+            Assert(consummed_frames < audioelement::n_frames_per_buffer);
             auto remaining_frames = audioelement::n_frames_per_buffer - consummed_frames;
-            A(remaining_frames <= audioelement::n_frames_per_buffer);
-            A(remaining_frames > 0);
+            Assert(remaining_frames <= audioelement::n_frames_per_buffer);
+            Assert(remaining_frames > 0);
             if(remaining_frames > nFrames) {
                 // partial consume
                 do_consume_buffers(buf, nFrames);
                 consummed_frames += nFrames;
-                A(consummed_frames < audioelement::n_frames_per_buffer);
+                Assert(consummed_frames < audioelement::n_frames_per_buffer);
                 return false;
             }
             // total consume
@@ -1023,8 +1023,8 @@ namespace imajuscule {
         }
         
         void do_consume_buffers(SAMPLE * outputBuffer, int nFrames) {
-            A(nFrames <= audioelement::n_frames_per_buffer); // by design
-            A(consummed_frames < audioelement::n_frames_per_buffer); // by design
+            Assert(nFrames <= audioelement::n_frames_per_buffer); // by design
+            Assert(consummed_frames < audioelement::n_frames_per_buffer); // by design
             
             memset(outputBuffer, 0, nFrames * nAudioOut * sizeof(SAMPLE));
             

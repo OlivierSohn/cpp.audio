@@ -74,21 +74,21 @@ namespace imajuscule {
                 interleaved = std::move(o.interleaved);
                 forEach(interleaved, [](interleaved_buf_t & v) {
                     std::fill(v.begin(), v.end(), 0.f);
-                    A(v.size() == size_interleaved);
+                    Assert(v.size() == size_interleaved);
                 });
                 params = std::move(o.params);
-                A(params.size() == NPARAMS);
+                Assert(params.size() == NPARAMS);
             }
             
             void setParameter(int index, float value, int sampleOffset = 0 /* not supported yet */) {
-                A(index < params.size());
+                Assert(index < params.size());
                 params[index] = value;
             }
             
             void useProgram(int index) {
                 auto const & p = getProgram(index);
                 MIDI_LG(INFO, "with program %d of %d", index, countPrograms());
-                A(p.params.size() == NPARAMS);
+                Assert(p.params.size() == NPARAMS);
                 for (auto i = 0; i < NPARAMS; i++) {
                     params[i] = p.params[i];
                 }
@@ -167,7 +167,7 @@ namespace imajuscule {
 
                 if(e.type == Event::kNoteOnEvent) {
                     // this case is handled by the wrapper... else we need to do a noteOff
-                    A(e.noteOn.velocity > 0.f );
+                    Assert(e.noteOn.velocity > 0.f );
                     {
                         typename OutputData::Locking L(out.get_lock());
                         

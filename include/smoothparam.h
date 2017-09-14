@@ -26,12 +26,12 @@ namespace imajuscule {
         }
         
         T get() {
-            A(initialized);
+            Assert(initialized);
             return cur;
         }
         
         T operator ()() {
-            A(initialized);
+            Assert(initialized);
             return cur;
         }
     };
@@ -45,7 +45,7 @@ namespace imajuscule {
         SmoothedIntegralPolicy() : initialized(false), changed(false) {}
         
         T step() {
-            A(initialized);
+            Assert(initialized);
             if(cur > target) {
                 --cur;
                 changed = true;
@@ -73,7 +73,7 @@ namespace imajuscule {
         SmoothedFloatPolicy() : initialized(false), changed(false) {}
         
         value_type step() {
-            A(initialized);
+            Assert(initialized);
             if(cur > target) {
                 cur -= *increment;
                 if(cur < target) {

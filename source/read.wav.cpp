@@ -177,7 +177,7 @@ void WAVPCMHeader::makeDescription(std::string & desc, bool with_sample_rate) co
 }
 
 bool WAVReader::HasMore() const {
-    A(audio_bytes_read <= header.subchunk2_size);
+    Assert(audio_bytes_read <= header.subchunk2_size);
     //LG(INFO, "%d %d", audio_bytes_read, header.subchunk2_size);
     return audio_bytes_read < header.subchunk2_size;
 }

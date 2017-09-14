@@ -2,10 +2,10 @@
 namespace imajuscule {
     
     constexpr int ms_to_frames(float duration_ms) {
-        A(duration_ms >= 0.f);
+        Assert(duration_ms >= 0.f);
         auto fval = SAMPLE_RATE * 0.001f * duration_ms;
-        A(fval >= 0.f);
-        A(fval < static_cast<float>(std::numeric_limits<int>::max()));
+        Assert(fval >= 0.f);
+        Assert(fval < static_cast<float>(std::numeric_limits<int>::max()));
         return static_cast<int>( fval );
     }
     
@@ -56,9 +56,9 @@ namespace imajuscule {
     constexpr T pulse(T ang, T pulse_width) {
         static_assert(std::is_floating_point<T>::value, "");
         using Tr = NumTraits<T>;
-        A(pulse_width >= 0);
-        A(ang >= 0);
-        A(ang <= 2);
+        Assert(pulse_width >= 0);
+        Assert(ang >= 0);
+        Assert(ang <= 2);
         if( ang < pulse_width ) {
             return Tr::one();
         } else {

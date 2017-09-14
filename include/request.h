@@ -4,14 +4,14 @@ namespace imajuscule {
         template<typename T>
         void onQueued(T * buffer) {
             using AE = AudioElement<T>;
-            A(state(buffer) == AE::inactive()); // to be sure at most one channel uses it
+            Assert(state(buffer) == AE::inactive()); // to be sure at most one channel uses it
             state(buffer) = AE::queued();
         }
         
         template<typename T>
         void onUnqueued(T * buffer) {
             using AE = AudioElement<T>;
-            A(state(buffer) != AE::inactive()); // to be sure at most one channel uses it
+            Assert(state(buffer) != AE::inactive()); // to be sure at most one channel uses it
             // note that if state is AE::queued(), it means no computation occured on this buffer
             // (indicating the channel has been interrupted)
             state(buffer) = AE::inactive();
@@ -42,19 +42,19 @@ namespace imajuscule {
         
         soundBuffer::buffer & asSoundBuffer() const {
             auto ptr = buffer.soundBuffer();
-            A(is32() && !isAudioElement() && ptr);
+            Assert(is32() && !isAudioElement() && ptr);
             return *ptr;
         }
         
         AE32Buffer asAudioElement32() const {
             auto ptr = buffer.audioElement32();
-            A(is32() && isAudioElement() && ptr);
+            Assert(is32() && isAudioElement() && ptr);
             return ptr;
         }
         
         AE64Buffer asAudioElement64() const {
             auto ptr = buffer.audioElement64();
-            A(!is32() && isAudioElement() && ptr);
+            Assert(!is32() && isAudioElement() && ptr);
             return ptr;
         }
         
@@ -87,7 +87,7 @@ namespace imajuscule {
                 return false;
             }
             if(!is32()) {
-                A(0);
+                Assert(0);
                 return false;
             }
             if(!buffer.soundBuffer()) {
@@ -108,23 +108,23 @@ namespace imajuscule {
     private:
         union buffer {
             buffer(std::nullptr_t) : sound(nullptr) {
-                A(as_uintptr_t == ptr());
-                A(!flags.is_32);
-                A(!flags.is_AudioElement);
+                Assert(as_uintptr_t == ptr());
+                Assert(!flags.is_32);
+                Assert(!flags.is_AudioElement);
             }
             buffer(soundBuffer * buf) : sound(buf ? &buf->getBuffer() : nullptr) {
-                A(as_uintptr_t == ptr());
+                Assert(as_uintptr_t == ptr());
                 flags.is_32 = true;
-                A(!flags.is_AudioElement);
+                Assert(!flags.is_AudioElement);
             }
             buffer(AE32Buffer buf) : audioelement_32(buf) {
-                A(buf == audioElement32());
+                Assert(buf == audioElement32());
                 flags.is_32 = true;
                 flags.is_AudioElement = true;
             }
             buffer(AE64Buffer buf) : audioelement_64(buf) {
-                A(buf == audioElement64());
-                A(!flags.is_32);
+                Assert(buf == audioElement64());
+                Assert(!flags.is_32);
                 flags.is_AudioElement = true;
             }
 
@@ -150,7 +150,7 @@ namespace imajuscule {
         
         
         void onQueued() const {
-            A(valid());
+            Assert(valid());
             if(isSoundBuffer()) {
                 return;
             }
@@ -163,7 +163,7 @@ namespace imajuscule {
         }
         
         void onUnqueued() {
-            A(valid());
+            Assert(valid());
             if(isSoundBuffer()) {
                 return;
             }
@@ -270,7 +270,7 @@ namespace imajuscule {
         volumes(vol*chan_base_amplitude),
         buffer(nullptr)
         {
-            A(duration_ms >= 0.f);
+            Assert(duration_ms >= 0.f);
             duration_in_frames = ms_to_frames(duration_ms);
             
             // we silence some sounds instead of just not playing them, in order to keep
@@ -319,7 +319,7 @@ namespace imajuscule {
                         }
                     }
                     
-                    A( 0 == duration_in_frames % period_size);
+                    Assert( 0 == duration_in_frames % period_size);
                 }        
             }
         }
@@ -375,7 +375,7 @@ namespace imajuscule {
         // movable
         QueuedRequest(QueuedRequest && o) : Request(std::move(o)) {
             o.buffer.reset();
-            A(!o.buffer);
+            Assert(!o.buffer);
         }
         
         QueuedRequest& operator =(QueuedRequest && o) {
@@ -385,7 +385,7 @@ namespace imajuscule {
                 volumes = o.volumes;
                 duration_in_frames = o.duration_in_frames;
                 o.buffer.reset();
-                A(!o.buffer);
+                Assert(!o.buffer);
             }
             return *this;
         }

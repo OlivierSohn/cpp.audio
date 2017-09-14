@@ -3,7 +3,7 @@
 namespace imajuscule {
     template<typename CONTAINER>
     void remove_dc(CONTAINER & v) {
-        A(!v.empty());
+        Assert(!v.empty());
         typename CONTAINER::value_type avg = 0.f;
         for(auto e : v) {
             avg += e;

@@ -16,7 +16,7 @@ namespace imajuscule {
         void step(int c, float new_value) {
 #ifndef NDEBUG
             stepped_once = true;
-            A(c == last + 1);
+            Assert(c == last + 1);
 #endif
             update_counter = c;
             prev_value = value;
@@ -29,16 +29,16 @@ namespace imajuscule {
 #endif
         {
 #ifndef NDEBUG
-            A(c == last + 1);
+            Assert(c == last + 1);
             last = c;
 #endif
-            A(c >= update_counter);
+            Assert(c >= update_counter);
             
             auto period = pow2(level);
             
             float interp = (1 + c - update_counter) / (float) period;
-            A(interp >= 0.f);
-            A(interp <= 1.f);
+            Assert(interp >= 0.f);
+            Assert(interp <= 1.f);
             return interp * value + (1.f-interp) * prev_value;
         }
         
@@ -89,7 +89,7 @@ namespace imajuscule {
             
             for(int i=levels.size()-1; i >= 1; --i) {
 #ifndef NDEBUG
-                A(!levels[i].was_stepped_once());
+                Assert(!levels[i].was_stepped_once());
 #endif
                 counter = (1 << (levels.size()-2)) - (1 << (i-1));
 #ifndef NDEBUG
@@ -97,12 +97,12 @@ namespace imajuscule {
 #endif
                 do_step();
 #ifndef NDEBUG
-                A(levels[i].was_stepped_once());
+                Assert(levels[i].was_stepped_once());
 #endif
             }
 
 #ifndef NDEBUG
-            A(!levels[0].was_stepped_once());
+            Assert(!levels[0].was_stepped_once());
 #endif
             
 #ifndef NDEBUG

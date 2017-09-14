@@ -50,8 +50,8 @@ namespace imajuscule {
 using namespace imajuscule;
 
 static float triangle_( float angle_radians ) {
-    A(angle_radians >= 0.f);
-    A(angle_radians <= 2.f * (float)M_PI);
+    Assert(angle_radians >= 0.f);
+    Assert(angle_radians <= 2.f * (float)M_PI);
     
     static const float inv_pi = 1.f / (float)M_PI;
     
@@ -61,13 +61,13 @@ static float triangle_( float angle_radians ) {
     } else if( angle_radians < 1.5f ) { // 0.5 .. 1.5 ->  1 .. -1
         return 2.f - 2.f * angle_radians;
     } else {                            // 1.5 .. 2   ->  -1 .. 0
-        A( angle_radians <= 2.f );
+        Assert( angle_radians <= 2.f );
         return -4.f + 2.f * angle_radians;
     }
 }
 static float saw_( float angle_radians ) {
-    A(angle_radians >= 0.f);
-    A(angle_radians <= 2.f * (float)M_PI);
+    Assert(angle_radians >= 0.f);
+    Assert(angle_radians <= 2.f * (float)M_PI);
     
     constexpr float inv_pi = 1.f / (float)M_PI;
     
@@ -75,14 +75,14 @@ static float saw_( float angle_radians ) {
     if( angle_radians <= 1.f ) {        // 0 .. 1   ->  0 .. 1
         return angle_radians;
     } else {                            // 1 .. 2   ->  -1 .. 0
-        A( angle_radians <= 2.f );
+        Assert( angle_radians <= 2.f );
         return -2.f + angle_radians;
     }
 }
 
 static float square_( float angle_radians ) {
-    A(angle_radians >= 0.f);
-    A(angle_radians <= 2.f * (float)M_PI);
+    Assert(angle_radians >= 0.f);
+    Assert(angle_radians <= 2.f * (float)M_PI);
     
     static const float inv_pi = 1.f / (float)M_PI;
     
@@ -106,7 +106,7 @@ void soundBuffer::generate( int period, F f ) {
         values.emplace_back( f( increment * (float)i ) );
     }
     
-    A( (int)values.size() == period );
+    Assert( (int)values.size() == period );
 }
 
 template<typename F>
@@ -117,7 +117,7 @@ void soundBuffer::generate_with_smooth_transition(int period, F f) {
     auto transition_length = min_transition_length + period / transition_ratio;
     transition_length = std::min(transition_length, period);
     
-    A(transition_length > 0);
+    Assert(transition_length > 0);
     
     generate(transition_length, f);
     auto pre = std::move(values);
@@ -125,8 +125,8 @@ void soundBuffer::generate_with_smooth_transition(int period, F f) {
     generate(period, f);
     for(int i=0; i<transition_length; ++i) {
         auto ratio_pre = (i+1) / (float)(transition_length+1); // we want the ratio to start after 0 and never reach 1
-        A(ratio_pre > 0.f);
-        A(ratio_pre < 1.f);
+        Assert(ratio_pre > 0.f);
+        Assert(ratio_pre < 1.f);
         
         // we consider the two signals are not correlated (this is - hopefully - the case for noises!)
         // and we want to keep an equal power during fade, so the sum of the squared gains should be 1.
@@ -138,7 +138,7 @@ void soundBuffer::generate_with_smooth_transition(int period, F f) {
         
         auto & v = values[values.size()-transition_length+i];
         v = gain_pre * pre[i] + gain_v * v;
-        A(values[values.size()-transition_length+i] == v); // verify we used the right operator [] !
+        Assert(values[values.size()-transition_length+i] == v); // verify we used the right operator [] !
     }
 }
 
@@ -248,7 +248,7 @@ soundBuffer::soundBuffer( soundId const & id ) {
             break;
             
         default:
-            A(0);
+            Assert(0);
             break;
     }
 }
@@ -284,7 +284,7 @@ void soundBuffer::normalize() {
     for(auto v: values) {
         r.extend(v);
     }
-    A(!r.empty());
+    Assert(!r.empty());
     if(r.delta() < 0.f) {
         return;
     }
@@ -305,7 +305,7 @@ soundBuffer & Sounds::get(soundId id ) {
         }
     }
     auto it = sounds.emplace(id, id);
-    A(it.second);
+    Assert(it.second);
     return it.first->second;
 }
 

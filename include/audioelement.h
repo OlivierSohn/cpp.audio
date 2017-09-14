@@ -58,7 +58,7 @@ namespace imajuscule {
             AudioElement() {
                 // assert deactivated as it fails on iphone / iphone simulator. I think I need to implement
                 // a freelist of blocks of cache line size to get around this issue related to overaligned types.
-                //A(0 == reinterpret_cast<unsigned long>(buffer) % buffer_alignment);
+                //Assert(0 == reinterpret_cast<unsigned long>(buffer) % buffer_alignment);
                 state(buffer) = inactive();
             }
             
@@ -113,11 +113,11 @@ namespace imajuscule {
             }
             
             void setLoudnessParams(int low_index, float log_ratio, float loudness_level) {
-                A(low_index >= 0);
-                A(low_index < 16);
+                Assert(low_index >= 0);
+                Assert(low_index < 16);
                 low_index_ = low_index;
-                A(log_ratio >= 0.f);
-                A(log_ratio <= 1.f);
+                Assert(log_ratio >= 0.f);
+                Assert(log_ratio <= 1.f);
                 log_ratio_ = log_ratio;
                 this->loudness_level = loudness_level;
             }
@@ -146,7 +146,7 @@ namespace imajuscule {
             T angle() const { return angle_; }
             
             void setAngleIncrements(T v) {
-                A(std::abs(v) < Tr::two()); // else need to modulo it
+                Assert(std::abs(v) < Tr::two()); // else need to modulo it
                 angle_increments = v;
             }
             T angleIncrements() const { return angle_increments; }
@@ -239,11 +239,11 @@ namespace imajuscule {
             PulseTrainAlgo(T angle_increments, T pulse_width) :
             Phased<T>(angle_increments),
             pulse_width(pulse_width) {
-                A(pulse_width >= angle_increments); // else it's always 0
+                Assert(pulse_width >= angle_increments); // else it's always 0
             }
             
             void set(T angle_increments, T pulse_width_) {
-                A(pulse_width_ >= angle_increments); // else it's always 0
+                Assert(pulse_width_ >= angle_increments); // else it's always 0
                 this->setAngleIncrements(angle_increments);
                 pulse_width = pulse_width_;
             }
@@ -408,7 +408,7 @@ namespace imajuscule {
                 auto inv_mag = sqrt(inv_sq_mag_hp * inv_sq_mag_lp);
                 auto original_compensation = inv_mag;
                 original_compensation = expt<ORDER>(original_compensation);
-                A(std::abs(original_compensation - compensation) / (original_compensation + compensation) < FLOAT_EPSILON);
+                Assert(std::abs(original_compensation - compensation) / (original_compensation + compensation) < FLOAT_EPSILON);
 #endif
             }
 
@@ -494,7 +494,7 @@ namespace imajuscule {
             }
             
             void setAngleIncrements(T inc) {
-                A(inc >= 0.f);
+                Assert(inc >= 0.f);
                 increment = inc;
             }
             
@@ -502,7 +502,7 @@ namespace imajuscule {
                 width.step();
                 T width_factor = pow(Tr::two(), width_range.getAt(std::abs(width.imag())));
                 
-                A(width_factor);
+                Assert(width_factor);
                 auto inv_width_factor = Tr::one() / width_factor;
                 auto low  = increment * inv_width_factor;
                 auto high = increment * width_factor;
@@ -648,11 +648,11 @@ namespace imajuscule {
             void forgetPastSignals() const {}
             void initializeForRun() const {}
             
-            void setFreqRange(range<float> const &) const { A(0); } // use set instead
-            void set_interpolation(itp::interpolation) const {A(0);} // use set instead
-            void set_n_slow_steps(unsigned int) const { A(0); }
+            void setFreqRange(range<float> const &) const { Assert(0); } // use set instead
+            void set_interpolation(itp::interpolation) const {Assert(0);} // use set instead
+            void set_n_slow_steps(unsigned int) const { Assert(0); }
             
-            auto & getUnderlyingIter() { A(0); return *this; }
+            auto & getUnderlyingIter() { Assert(0); return *this; }
             
             void set(T from_increments,
                      T to_increments,
@@ -665,7 +665,7 @@ namespace imajuscule {
                 else {
                     // if start_sample < 0 we adapt it to be at the same ratio in the new range
                     // and we adapt bounds order to the existing bounds
-                    A(duration_in_samples);
+                    Assert(duration_in_samples);
                     cur_sample *= duration_in_samples_ / duration_in_samples;
                     if(from_increments > to_increments) {
                         if(from < to) {
@@ -682,7 +682,7 @@ namespace imajuscule {
                 
                 C = get_linear_proportionality_constant();
                 
-                A(duration_in_samples > 0);
+                Assert(duration_in_samples > 0);
                 interp.setInterpolation(i);
             }
             
@@ -693,7 +693,7 @@ namespace imajuscule {
                 }
                 
                 // we call get_unfiltered_value instead of get_value because we ensure:
-                A(cur_sample <= duration_in_samples);
+                Assert(cur_sample <= duration_in_samples);
                 auto f_result = interp.get_unfiltered_value(cur_sample, duration_in_samples, from, to);
                 // Taking the value at cur_sample means taking the value at the beginning of the step.
                 // The width of the step depends on that value so if we had taken the value in the middle or at the end of the step,
@@ -730,8 +730,8 @@ namespace imajuscule {
                 // to achieve the same effect we add to cur_sample a value proportionnal to
                 // the current frequency. the factor of proportionnality is adjusted to match
                 // the wanted duration_in_samples
-                A(from > 0);
-                A(to > 0);
+                Assert(from > 0);
+                Assert(to > 0);
                 // else computation cannot be done
                 
                 return (to==from) ? 1.f : -std::log(from/to) / (to-from);
@@ -787,17 +787,17 @@ namespace imajuscule {
                 }
                 if(slow_it) {
                     // adapt the iterator
-                    A(n_steps);
+                    Assert(n_steps);
                     auto ratio = (slow_it + .5f) / static_cast<float>(n_steps);
-                    A(ratio < 1.f);
-                    A(ratio > 0.f);
+                    Assert(ratio < 1.f);
+                    Assert(ratio > 0.f);
                     slow_it = ratio * static_cast<float>(n);
                     if(slow_it == n) {
                         onMajorStep();
                     }
                 }
                 n_steps = n;
-                A(n_steps > 0);
+                Assert(n_steps > 0);
             }
             
             void initializeForRun() {
@@ -826,7 +826,7 @@ namespace imajuscule {
             float operator *() const {
                 // todo verify that this is inlined (probably not...)
                 // for performance we may need to have a NormalizedInterpolation class templated for interp
-                A(n_steps >= 1);
+                Assert(n_steps >= 1);
                 return interp.get_unfiltered_value(slow_it, n_steps, prev, *it);
             }
             
@@ -1142,8 +1142,8 @@ namespace imajuscule {
                         ae.algo.step();
                         v = ae.algo.imag();
                     }
-                    A(e.getState() != AE::queued());
-                    A(e.getState() != AE::inactive());
+                    Assert(e.getState() != AE::queued());
+                    Assert(e.getState() != AE::inactive());
                     return true;
                 };
             }

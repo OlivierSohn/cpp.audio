@@ -329,7 +329,7 @@ namespace imajuscule {
             struct SetSlowParams {
                 template<typename CTRL>
                 static void set(CTRL & ctrl, int n_slow_steps_short, int n_slow_steps, float ratio) {
-                    A(0);
+                    Assert(0);
                 }
             };
             
@@ -437,7 +437,7 @@ namespace imajuscule {
                     float gain = 2.f;
                     int itp_index = 0;
                     auto b = itp::interpolation_traversal().valToRealValueIndex(i, itp_index);
-                    A(b);
+                    Assert(b);
                     
                     return {{
                         0.f,
@@ -552,13 +552,13 @@ namespace imajuscule {
                     {
                         int idx = 0;
                         auto b = itp::interpolation_traversal().valToRealValueIndex(i, idx);
-                        A(b);
+                        Assert(b);
                         result[index(FREQ_TRANSITION_INTERPOLATION)] = static_cast<float>(idx);
                     }
                     {
                         int idx = 0;
                         auto b = xfade_freq_traversal().valToRealValueIndex(static_cast<int>(xfade_freq), idx);
-                        A(b);
+                        Assert(b);
                         result[index(MARKOV_XFADE_FREQ)] = static_cast<float>(idx);
                     }
                     result[index(FREQ_TRANSITION_LENGTH)] = normalize<FREQ_TRANSITION_LENGTH>(freq_xfade);
@@ -738,7 +738,7 @@ namespace imajuscule {
                 
                 Program const & getProgram(int i) const override {
                     auto & progs = getPrograms();
-                    A(i < progs.size());
+                    Assert(i < progs.size());
                     return progs[i];
                 }
                 
@@ -754,7 +754,7 @@ namespace imajuscule {
                         }
                         ++idx;
                     }
-                    A(0);
+                    Assert(0);
                     return 0;
                 }
                 
@@ -808,11 +808,11 @@ namespace imajuscule {
                     }
                     
                     auto ex = denorm<LENGTH_EXPONENT>();
-                    A(ex >= 0.f);
+                    Assert(ex >= 0.f);
                     if(MODE != Mode::SWEEP) {
                         auto variation = denorm<LENGTH_EXPONENT_SCATTER>();
-                        A(variation >= 0.f);
-                        A(variation <= 1.f);
+                        Assert(variation >= 0.f);
+                        Assert(variation <= 1.f);
                         c.elem.engine.set_length_exp(ex * (1.f - variation), ex * (1.f + variation));
                         
                         c.elem.engine.set_freq_scatter(denorm<FREQ_SCATTER>());
@@ -825,8 +825,8 @@ namespace imajuscule {
                         thread_local int seed = 0;
                         if(int i_seed = static_cast<int>(value<SEED>() + .5f)) {
                             seed = i_seed;
-                            A(seed <= Limits<SEED>::M);
-                            A(seed > Limits<SEED>::m);
+                            Assert(seed <= Limits<SEED>::M);
+                            Assert(seed > Limits<SEED>::m);
                         }
                         else {
                             // seed is 0, we change the seed at each note
@@ -995,7 +995,7 @@ namespace imajuscule {
             public:
                 void set_gain(float g) {
                     params[index(GAIN)] = normalize<GAIN>(g);
-                    A(std::abs(get_gain()-g) < .001f);
+                    Assert(std::abs(get_gain()-g) < .001f);
                 }
                 
                 void set_loudness_compensation(float c) {
@@ -1142,11 +1142,11 @@ namespace imajuscule {
                 template<typename OutputData>
                 void doProcessing (ProcessData& data, OutputData & out)
                 {
-                    A(data.numSamples);
+                    Assert(data.numSamples);
                     
                     std::array<float *, nAudioOut> outs;
-                    A(1 == data.numOutputs);
-                    A(nAudioOut == data.outputs[0].numChannels);
+                    Assert(1 == data.numOutputs);
+                    Assert(nAudioOut == data.outputs[0].numChannels);
                     for(auto i=0; i<data.outputs[0].numChannels; ++i) {
                         outs[i] = data.outputs[0].channelBuffers32[i];
                     }
@@ -1158,22 +1158,22 @@ namespace imajuscule {
                     auto currentFrame = 0;
                     
                     auto * events = data.inputEvents;
-                    A( events );
+                    Assert( events );
                     
                     EventIterator it(begin(events)), end(end_(events));
                     
                     int nextEventPosition = getNextEventPosition(it, end);
-                    A(nextEventPosition >= currentFrame);
+                    Assert(nextEventPosition >= currentFrame);
                     
                     while(nRemainingFrames) {
-                        A(nRemainingFrames > 0);
+                        Assert(nRemainingFrames > 0);
                         
                         while(nextEventPosition == currentFrame) {
                             onEvent(it, out);
                             ++it;
                             nextEventPosition = getNextEventPosition(it, end);
                         }
-                        A(nextEventPosition > currentFrame);
+                        Assert(nextEventPosition > currentFrame);
                         
                         // compute not more than until next event...
                         auto nFramesToProcess = nextEventPosition - currentFrame;
@@ -1194,7 +1194,7 @@ namespace imajuscule {
                         currentFrame += nFramesToProcess;
                     }
                     
-                    A(nextEventPosition == event_position_infinite); // the events should all have already been processed
+                    Assert(nextEventPosition == event_position_infinite); // the events should all have already been processed
                 }
             };
             

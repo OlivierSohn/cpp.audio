@@ -11,7 +11,7 @@ namespace imajuscule {
             for(auto c : vec) {
                 max_ = std::max(std::abs(c), max_);
             }
-            A(max_);
+            Assert(max_);
             std::transform(vec.begin(), vec.end(),
                            vec.begin(), [max_](auto v){ v/= max_; });
             

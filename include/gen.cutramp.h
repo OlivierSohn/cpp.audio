@@ -173,7 +173,7 @@ namespace imajuscule {
                 
                 Program const & getProgram(int i) const override {
                     auto & progs = getPrograms();
-                    A(i < progs.size());
+                    Assert(i < progs.size());
                     return progs[i];
                 }
                 
@@ -256,7 +256,7 @@ namespace imajuscule {
                 int adjusted(T val) {
                     static_assert(std::is_integral<T>(), "");
                     
-                    A(p > gap());
+                    Assert(p > gap());
                     return static_cast<int>(.5f + val * p / (p-gap()));
                 }
             private:
@@ -264,7 +264,7 @@ namespace imajuscule {
                                                 bool cut_adjust_osc = false, int cut_size = 0, float gain = 2.f) {
                     int itp_index = 0;
                     auto b = itp::interpolation_traversal().valToRealValueIndex(i, itp_index);
-                    A(b);
+                    Assert(b);
                     return {{
 #include "loudness_init_values.h"
                         static_cast<float>(!cut_adjust_osc),
@@ -346,13 +346,13 @@ namespace imajuscule {
                     auto g_ = static_cast<int>(params[CUT_SIZE] + 0.5f);
                     auto x_ = static_cast<int>(params[CUT_XFADE_AMOUNT] + 0.5f);
                     
-                    A(g_ >= 0);
-                    A(p_ >= min_cut_period);
-                    A(x_ >= 0);
+                    Assert(g_ >= 0);
+                    Assert(p_ >= min_cut_period);
+                    Assert(x_ >= 0);
                     
-                    A(g_ < max_cut_period);
-                    A(p_ <= max_cut_period);
-                    A(x_ <= max_cut_period);
+                    Assert(g_ < max_cut_period);
+                    Assert(p_ <= max_cut_period);
+                    Assert(x_ <= max_cut_period);
                     
                     bool first = !period.hasValue();
                     
@@ -368,18 +368,18 @@ namespace imajuscule {
                     
                     if(first) {
                         compute_state();
-                        A(gap() < p);
+                        Assert(gap() < p);
                     }
                 }
                 
                 template<typename OutputData>
                 void doProcessing (ProcessData& data, OutputData & out)
                 {
-                    A(data.numSamples);
+                    Assert(data.numSamples);
                     
                     std::array<float *, nAudioOut> outs;
-                    A(1 == data.numOutputs);
-                    A(nAudioOut == data.outputs[0].numChannels);
+                    Assert(1 == data.numOutputs);
+                    Assert(nAudioOut == data.outputs[0].numChannels);
                     for(auto i=0; i<data.outputs[0].numChannels; ++i) {
                         outs[i] = data.outputs[0].channelBuffers32[i];
                     }
@@ -394,15 +394,15 @@ namespace imajuscule {
                     auto currentFrame = 0;
                     
                     auto * events = data.inputEvents;
-                    A( events );
+                    Assert( events );
                     
                     EventIterator it(begin(events)), end(end_(events));
                     
                     int nextEventPosition = getNextEventPosition(it, end);
-                    A(nextEventPosition >= currentFrame);
+                    Assert(nextEventPosition >= currentFrame);
                     
                     while(nRemainingFrames) {
-                        A(nRemainingFrames > 0);
+                        Assert(nRemainingFrames > 0);
                         
                         if(c == p) {
                             c = 0;
@@ -414,7 +414,7 @@ namespace imajuscule {
                             // and a good location to change the period (because of the end of the buffer).
                             onEndBufferStepParamChanges();
                             compute_state();
-                            A(gap() < p);
+                            Assert(gap() < p);
                             middle = get_middle(p,gap());
                         }
                         
@@ -425,7 +425,7 @@ namespace imajuscule {
                             ++it;
                             nextEventPosition = getNextEventPosition(it, end);
                         }
-                        A(nextEventPosition > currentFrame);
+                        Assert(nextEventPosition > currentFrame);
                         
                         // compute not more than until next event...
                         auto nFramesToProcess = nextEventPosition - currentFrame;
@@ -466,7 +466,7 @@ namespace imajuscule {
                         else {
                             auto fp = static_cast<float>(p-gap());
                             auto nRealFramesWritten = 0;
-                            A(c < last);
+                            Assert(c < last);
                             auto xfade_amount = xfade() ? (max_cut_period / static_cast<float>(xfade())) : 0.f;
                             
                             while(true) {
@@ -505,7 +505,7 @@ namespace imajuscule {
                                 }
                                 else {
                                     auto b = c-gap();
-                                    A(b >= 0);
+                                    Assert(b >= 0);
                                     for(unsigned int i=0; i<nAudioOut; ++i) {
                                         *outs[i] =
                                         ratio_b * interleaved[most_recent_buf_idx][i + nAudioOut*b] +
@@ -522,14 +522,14 @@ namespace imajuscule {
                                 if(c == last) {
                                     break;
                                 }
-                                A(c < last);
+                                Assert(c < last);
                             }
                             nRemainingFrames -= nRealFramesWritten;
                             currentFrame += nRealFramesWritten;
                         }
                     }
                     
-                    A(nextEventPosition == event_position_infinite); // the events should all have already been processed
+                    Assert(nextEventPosition == event_position_infinite); // the events should all have already been processed
                 }
                 
             private:
@@ -549,7 +549,7 @@ namespace imajuscule {
                         // since g is 0, any positive period value will give the same output
                         // so we chose the one that uses the most out of the cacheline on which
                         // interleaved buffers sit.
-                        A(p > 0);
+                        Assert(p > 0);
                         p = cut_period_one_cache_line;
                     }
                     else if(gap() >= p) {

@@ -35,8 +35,8 @@ namespace imajuscule {
                     // header has not been read yet
                     return 0;
                 }
-                A(0 == subchunk2_size % block_align);
-                A(block_align);
+                Assert(0 == subchunk2_size % block_align);
+                Assert(block_align);
                 return subchunk2_size / block_align;
             }
             
@@ -45,7 +45,7 @@ namespace imajuscule {
             }
             
             unsigned int getSampleSize() const {
-                A(bits_per_sample % 8 == 0);
+                Assert(bits_per_sample % 8 == 0);
                 return bits_per_sample / 8;
             }
 
@@ -109,7 +109,7 @@ namespace imajuscule {
                                  int const sample_rate,
                                  NChannels const n_channels,
                                  int const bytes_per_sample) {
-            A(bytes_per_sample);
+            Assert(bytes_per_sample);
             auto const num_channels = to_underlying(n_channels);
             auto const size_data = num_frames * num_channels * bytes_per_sample;
             WAVPCMHeader ret {
@@ -257,7 +257,7 @@ namespace imajuscule {
                     return false;
             }
    
-            A(0);
+            Assert(0);
             return false;
         }
         
@@ -276,7 +276,7 @@ namespace imajuscule {
                     return true;
             }
 
-            A(0);
+            Assert(0);
             return false;
         }
         
@@ -295,7 +295,7 @@ namespace imajuscule {
         }
         
         static inline WAVPCMHeader pcm(WaveFormat format, int sample_rate, NChannels n_channels, SampleFormat f) {
-            A(are_compatible(format, f));
+            Assert(are_compatible(format, f));
             return pcm_(WaveFileFormat::RIFF,
                         format,
                         0, // number of bytes for samples will be deduced later
@@ -403,10 +403,10 @@ namespace imajuscule {
             template<typename ITER>
             ITER Read(ITER it, ITER end) {
                 constexpr auto n_reads = sizeof(decltype(*it));
-                A(n_reads == header.getSampleSize());
+                Assert(n_reads == header.getSampleSize());
                 auto dist = std::distance(it, end);
                 auto bytes_to_read = dist * n_reads;
-                A((audio_bytes_read + bytes_to_read) <= header.subchunk2_size);
+                Assert((audio_bytes_read + bytes_to_read) <= header.subchunk2_size);
                 audio_bytes_read += bytes_to_read;
                 while(it < end) {
                     ReadData(&*it, n_reads, 1);
@@ -418,9 +418,9 @@ namespace imajuscule {
             template<typename T>
             void ReadOne(T& val) {
                 constexpr auto n_reads = sizeof(T);
-                A(n_reads == header.getSampleSize());
+                Assert(n_reads == header.getSampleSize());
                 auto bytes_to_read = n_reads;
-                A((audio_bytes_read + bytes_to_read) <= header.subchunk2_size);
+                Assert((audio_bytes_read + bytes_to_read) <= header.subchunk2_size);
                 audio_bytes_read += bytes_to_read;
                 ReadData(&val, n_reads, 1);
             }
@@ -439,22 +439,22 @@ namespace imajuscule {
                 ReadData(d, n_bytes, 1);
                 
                 audio_bytes_read += n_bytes;
-                A(audio_bytes_read <= header.subchunk2_size);
+                Assert(audio_bytes_read <= header.subchunk2_size);
                 
                 int32_t v = uint8array_to_int32<n_bytes>(d);
                 constexpr int64_t n_different_values = pow2<8 * n_bytes>();
                 constexpr int32_t m = -n_different_values/2;
                 constexpr int32_t M = n_different_values/2 - 1;
-                A(v <= M);
-                A(v >= m);
+                Assert(v <= M);
+                Assert(v >= m);
                 return signed_to_float< FLT, int32_t, M, m >(v);
             }
             
         public:
             template<typename FLT>
             FLT ReadAsOneFloat() {
-                A(audio_bytes_read < header.subchunk2_size);
-                A(HasMore());
+                Assert(audio_bytes_read < header.subchunk2_size);
+                Assert(HasMore());
                 
                 auto const sz = header.getSampleSize();
                 
@@ -589,7 +589,7 @@ namespace imajuscule {
             
             auto sz = v_samples[0].size();
             for(auto const & v : v_samples) {
-                A(sz == v.size());
+                Assert(sz == v.size());
             }
             
             auto n_channels = v_samples.size();
@@ -617,7 +617,7 @@ namespace imajuscule {
             using T = typename TypeFor<FMT, SAMPLE_SIZE>::type;
             static_assert(sizeof(T) == SAMPLE_SIZE, "");
             
-            A(FMT == reader.getFormat());
+            Assert(FMT == reader.getFormat());
             
             auto header = pcm(FMT,
                               reader.getSampleRate(),
@@ -651,7 +651,7 @@ namespace imajuscule {
                 }
             }
             
-            A(!reader.HasMore());
+            Assert(!reader.HasMore());
         }
         
         template<typename FILTER>
@@ -733,7 +733,7 @@ namespace imajuscule {
             using T = typename TypeFor<FMT, SAMPLE_SIZE>::type;
             static_assert(sizeof(T) == SAMPLE_SIZE, "");
             
-            A(FMT == reader.getFormat());
+            Assert(FMT == reader.getFormat());
             
             std::vector<std::vector<float>> deinterlaced(n_channels);
             for(auto & v : deinterlaced) {
@@ -745,7 +745,7 @@ namespace imajuscule {
                     deinterlaced[i].push_back(reader.template ReadAsOneFloat<float>());
                 }
             }
-            A(!reader.HasMore());
+            Assert(!reader.HasMore());
 
             rewrite(deinterlaced);
             

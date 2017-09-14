@@ -3,8 +3,8 @@ namespace imajuscule {
     namespace {
         
         Note parse(Note note, std::string const & str, size_t pos) {
-            A(note != NOTE_ERROR);
-            A(note != Silence);
+            Assert(note != NOTE_ERROR);
+            Assert(note != Silence);
             if(str.size() <= pos) {
                 return note;
             }
@@ -88,7 +88,7 @@ namespace imajuscule {
                                 ++ current.duration;
                                 break;
                             default:
-                                A(0);
+                                Assert(0);
                                 LG(ERR, "logic error");
                                 return false;
                         }
@@ -103,7 +103,7 @@ namespace imajuscule {
                         if(str.empty()) {
                             return false;
                         }
-                        A(current.duration == 0);
+                        Assert(current.duration == 0);
                         current.loud = isupper(str[0]);
                         current.note = parseNote(std::move(str));
                         if(current.note == NOTE_ERROR) {
@@ -146,7 +146,7 @@ namespace imajuscule {
             }
             
             bool make_silence() {
-                A(current.note == Silence);
+                Assert(current.note == Silence);
                 notespecs.emplace_back(current);
                 resetCurrent();
                 return true;

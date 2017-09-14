@@ -142,26 +142,26 @@ namespace imajuscule {
             do {
                 auto center = (min_ + max_) / 2;
                 if(freq < freqs[center]) {
-                    A(max_ != center);
+                    Assert(max_ != center);
                     max_ = center;
                 }
                 else {
-                    A(min_ != center);
+                    Assert(min_ != center);
                     min_ = center;
                 }
             }
             while(max_ - min_ >= 2);
 
-            A(max_ == min_ + 1);
-            A(freq >= freqs[min_] || min_ == 0);
-            A(freq <= freqs[max_] || max_ == n_freq - 1);
+            Assert(max_ == min_ + 1);
+            Assert(freq >= freqs[min_] || min_ == 0);
+            Assert(freq <= freqs[max_] || max_ == n_freq - 1);
             if(freq <= freqs[min_]) {
-                A(min_==0 || freq == freqs[min_]);
+                Assert(min_==0 || freq == freqs[min_]);
                 ratio = 1.f;
                 return min_;
             }
             if(freq >= freqs[max_]) {
-                A(max_ == n_freq-1);
+                Assert(max_ == n_freq-1);
                 ratio = 1.f;
                 return max_;
             }
@@ -211,8 +211,8 @@ namespace imajuscule {
             if(ratio == 1.f) {
                 return elv[i];
             }
-            A(ratio < 1.f);
-            A(ratio >= 0.f);
+            Assert(ratio < 1.f);
+            Assert(ratio >= 0.f);
             return ratio * elv[i] + (1.f-ratio) * elv[i-1];
         }
 

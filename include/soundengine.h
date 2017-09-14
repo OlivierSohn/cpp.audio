@@ -58,11 +58,11 @@ namespace imajuscule {
 
                 void setFreqRange(range<float> const & r) {
                     this->fmax = r.getMax();
-                    A(this->fmax);
+                    Assert(this->fmax);
                     invApproxRange = 1.f / (2.f * ctrl.getAbsMean());
                     x = std::log(r.getMin()) / std::log(fmax);
-                    A(x > 0.f);
-                    A(x <= 1.f);
+                    Assert(x > 0.f);
+                    Assert(x <= 1.f);
                 }
                 
                 void initializeForRun() {
@@ -82,10 +82,10 @@ namespace imajuscule {
                 }
                 
                 T step() {
-                    A(fmax && x);
+                    Assert(fmax && x);
                     ctrl.step();
                     auto v = ctrl.imag() * invApproxRange;
-                    A(v >= 0.f); // else, use AbsIter
+                    Assert(v >= 0.f); // else, use AbsIter
                     auto exponent = x + (1.f-x) * v;
                     /*
                     static auto deb = 0;
@@ -136,8 +136,8 @@ namespace imajuscule {
                 
                 T step() {
                     auto long_term_freq = ctrl.step();
-                    A(long_term_freq > 0.f);
-                    A(ratio >= 0.f);
+                    Assert(long_term_freq > 0.f);
+                    Assert(ratio >= 0.f);
                     // keep short term noise rate inv. proportional to long term frequency
                     noise.set_n_slow_steps(1 + ratio / long_term_freq);
                     ++noise;
@@ -157,21 +157,21 @@ namespace imajuscule {
                          T duration_in_samples_,
                          T start_sample,
                          itp::interpolation i) {
-                    A(0);
+                    Assert(0);
                 }
                 void set_by_increments(T from_,
                                        T to_,
                                        T duration_in_samples_,
                                        T start_sample,
                                        itp::interpolation i) {
-                    A(0);
+                    Assert(0);
                 }
                 float getFrom() const {
-                    A(0);
+                    Assert(0);
                     return 0.f;
                 }
                 float getTo() const {
-                    A(0);
+                    Assert(0);
                     return 0.f;
                 }
 
@@ -299,7 +299,7 @@ namespace imajuscule {
                     }
                 }
                 else {
-                    A(0);
+                    Assert(0);
                 }
             }
             
@@ -539,7 +539,7 @@ namespace imajuscule {
 
                 while(auto new_spec = ramp_specs.get_next_ramp_for_run()) {
                     auto new_ramp = get_inactive_ramp();
-                    A(new_ramp); // might be null if length of ramp is too small
+                    Assert(new_ramp); // might be null if length of ramp is too small
                     new_ramp->algo.getCtrl() = new_spec->get();
                     new_ramp->algo.getCtrl().initializeForRun();
                     
@@ -568,7 +568,7 @@ namespace imajuscule {
 
                 auto & channel = out.editChannel(c1);
                 
-                A(articulative_pause_length > 2*channel.get_size_xfade());
+                Assert(articulative_pause_length > 2*channel.get_size_xfade());
                 
                 auto res = out.playGenericNoLock(c1,
                                                  std::make_pair(std::ref(silence),
@@ -579,7 +579,7 @@ namespace imajuscule {
                                                                     articulative_pause_length
                                                                 })
                                                  );
-                A(res); // because length was checked
+                Assert(res); // because length was checked
             }
             
             void set_xfade(int xfade_) {
@@ -851,12 +851,12 @@ namespace imajuscule {
                     void silenceFollows(bool b) { silenceAfter = b; }
                     
                     void setVolume(float vol) {
-                        A(vol > 0.f);
+                        Assert(vol > 0.f);
                         this->vol = vol;
                     }
                     
                     float volume() const {
-                        A(vol > 0.f);
+                        Assert(vol > 0.f);
                         return vol;
                     }
                     
@@ -870,7 +870,7 @@ namespace imajuscule {
                 
                 Ctrl * get_next_ramp_for_build() {
                     ++it;
-                    A(it==end);
+                    Assert(it==end);
                     if(it == n_specs) {
                         --it;
                         return nullptr;
@@ -891,12 +891,12 @@ namespace imajuscule {
                     return &a[it];
                 }
                 void finalize() {
-                    A(0 == (it+1-end) % iter_cycle_length);
+                    Assert(0 == (it+1-end) % iter_cycle_length);
                     it=-1;
                 }
                 
                 Ctrl * get_next_ramp_for_run() {
-                    A(it != end);
+                    Assert(it != end);
                     ++it;
                     if(it == end) {
                         return nullptr;
