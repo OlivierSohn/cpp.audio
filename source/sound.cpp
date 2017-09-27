@@ -22,10 +22,11 @@ namespace imajuscule {
     
     float getAbsMean(soundBuffer const & b) {
         auto sum = 0.f;
-        float inv_sz = 1.f/b.size();
         for(auto v : b) {
-            sum += std::abs(v) * inv_sz;
+            sum += std::abs(v);
         }
+        assert(!b.empty());
+        sum /= b.size();
         LG(INFO, "abs mean: %f", sum);
         return sum;
     }

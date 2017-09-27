@@ -1,8 +1,8 @@
 
 namespace imajuscule {
     namespace audio {
-        template<SoundEngineMode M, typename Logger>
-        enumTraversal SoundEngine<M, Logger>::ModeTraversal(
+        template<SoundEngineMode M, typename Logger, typename Mix>
+        enumTraversal SoundEngine<M, Logger, Mix>::ModeTraversal(
                                                             static_cast<unsigned int>(SoundEngineMode::BEGIN),
                                                             static_cast<unsigned int>(SoundEngineMode::END),
                                                             [](int val)->const char* {

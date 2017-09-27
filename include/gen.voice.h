@@ -343,8 +343,73 @@ namespace imajuscule {
                 }
             };
             
-            template <
+            template<SoundEngineMode>
+            struct SetFilterWidths {
+                template<typename CTRL>
+                static void set(CTRL & ctrl, range<float> const & width_factor_range) {
+                    Assert(0);
+                }
+            };
             
+            template<>
+            struct SetFilterWidths<SoundEngineMode::WIND> {
+                template<typename CTRL>
+                static void set(CTRL & ctrl, range<float> const & width_factor_range) {
+                    std::get<1>(ctrl.get()).getOsc().setWidthRange(width_factor_range);
+                    std::get<2>(ctrl.get()).getOsc().setWidthRange(width_factor_range);
+                }
+            };
+            
+            template<SoundEngineMode>
+            struct ConfigureFilters {
+                template<typename CTRL>
+                static void configure(CTRL & ctrl, unsigned int n_slow_steps, range<float> const & ra) {
+                    Assert(0);
+                }
+            };
+            
+            template<>
+            struct ConfigureFilters<SoundEngineMode::WIND> {
+                template<typename CTRL>
+                static void configure(CTRL & ctrl, unsigned int n_slow_steps, range<float> const & ra) {
+                    // those control the width of the band algorithms
+                    auto & bpf_width = std::get<1>(ctrl.get()).getOsc().getWidth();
+                    auto & bpr_width = std::get<2>(ctrl.get()).getOsc().getWidth();
+                    
+                    // those control the center frequencies of the band algorithms
+                    auto & bpf_center_ctrl = std::get<1>(ctrl.get()).getCtrl();
+                    auto & bpr_center_ctrl = std::get<2>(ctrl.get()).getCtrl();
+                    
+                    bpf_center_ctrl.getUnderlyingIter().set_n_slow_steps(n_slow_steps);
+                    bpf_center_ctrl.setFreqRange(ra);
+                    bpf_width.getUnderlyingIter().set_n_slow_steps(n_slow_steps);
+                    
+                    bpr_center_ctrl.getUnderlyingIter().set_n_slow_steps(n_slow_steps);
+                    bpr_center_ctrl.setFreqRange(ra);
+                    bpr_width.getUnderlyingIter().set_n_slow_steps(n_slow_steps);
+                }
+            };
+            
+            template<SoundEngineMode>
+            struct SetGains {
+                template<typename CTRL>
+                static void set(CTRL & ctrl, std::array<float, 4> arr) {
+                    ctrl.setGains(std::array<float, 1>{{
+                        arr[3]
+                    }});
+                }
+            };
+            
+            template<>
+            struct SetGains<SoundEngineMode::WIND> {
+                template<typename CTRL>
+                static void set(CTRL & ctrl, std::array<float, 4> arr) {
+                    ctrl.setGains(std::move(arr));
+                }
+            };
+            
+            template <
+
             Mode MODE,
             typename Parameters,
             typename ProcessData,
@@ -858,26 +923,24 @@ namespace imajuscule {
                                              denorm<LOUDNESS_LEVEL>());
                     c.elem.setFiltersOrder(value<ORDER_FILTERS>());
 
+                    if(MODE == Mode::WIND)
                     {
                         auto m = denorm<PINK_NOISE_BP_OCTAVE_WIDTH_MIN>();
                         auto M = denorm<PINK_NOISE_BP_OCTAVE_WIDTH_MAX>();
                         auto width_factor_range = range<float>(std::min(m,M),
                                                                std::max(m,M));
                         for(auto & r : c.elem.getRamps()) {
-                            auto & mix = r.algo.getOsc();
-                            std::get<1>(mix.get()).getOsc().setWidthRange(width_factor_range);
-                            std::get<2>(mix.get()).getOsc().setWidthRange(width_factor_range);
+                            SetFilterWidths<MODE>::set(r.algo.getOsc(), width_factor_range);
                         }
                     }
-                    
-                    c.elem.setGains(std::array<float,4>{{
+                    SetGains<MODE>::set(c.elem, std::array<float,4>{{
                         denorm<PINK_NOISE_LP_GAIN>(),
                         denorm<PINK_NOISE_BP_GAIN>(),
                         denorm<PINK_NOISE_BR_GAIN>(),
                         denorm<SINE_GAIN>()
                     }});
                     
-                    {
+                    if(MODE == Mode::WIND) {
                         auto ra = octaveRangeToFreqRange<
                         CENTER_OCTAVE_MIN_LONG_TERM,
                         CENTER_OCTAVE_MAX_LONG_TERM
@@ -887,40 +950,22 @@ namespace imajuscule {
                         // but we call it with value 1 to be sure that all objects
                         // that we need to call for WIND are called (the value is initialized to
                         // -1 in constructor and makes an assert fail if the method is not called)
-                        float n_slow_steps(1.f); // not used
-                        if(MODE == Mode::WIND) {
-                            n_slow_steps = std::pow(max_n_slow_iter, denorm<N_SLOW_ITER_LONG_TERM>());
-                        }
+                        float n_slow_steps = std::pow(max_n_slow_iter, denorm<N_SLOW_ITER_LONG_TERM>());
+                        
                         for(auto & r : c.elem.getRamps()) {
                             auto & mix = r.algo.getOsc();
-                            
-                            // those control the width of the band algorithms
-                            auto & bpf_width = std::get<1>(mix.get()).getOsc().getWidth();
-                            auto & bpr_width = std::get<2>(mix.get()).getOsc().getWidth();
-                            
-                            // those control the center frequencies of the band algorithms
-                            auto & bpf_center_ctrl = std::get<1>(mix.get()).getCtrl();
-                            auto & bpr_center_ctrl = std::get<2>(mix.get()).getCtrl();
-
-                            bpf_center_ctrl.getUnderlyingIter().set_n_slow_steps(n_slow_steps);
-                            bpf_center_ctrl.setFreqRange(ra);
-                            bpf_width.getUnderlyingIter().set_n_slow_steps(n_slow_steps);
-                            
-                            bpr_center_ctrl.getUnderlyingIter().set_n_slow_steps(n_slow_steps);
-                            bpr_center_ctrl.setFreqRange(ra);
-                            bpr_width.getUnderlyingIter().set_n_slow_steps(n_slow_steps);
+                            ConfigureFilters<MODE>::configure(mix, n_slow_steps, ra);
                         }
-                        if(MODE == Mode::WIND) {
-                            auto n_slow_steps_short = std::pow(max_n_slow_iter, denorm<N_SLOW_ITER_SHORT_TERM>());
-                            auto ratio = denorm<CENTER_SHORT_TERM_RATIO>();
-                            for(auto & f_control : c.elem.engine.getRamps().a) {
-                                // f_control controls the frequency of the Mix (has an effect only for sinus and low pass)
-                                SetSlowParams<MODE>::set(f_control.get(), n_slow_steps_short, n_slow_steps, ratio);
-                                // needs to be after the previous call
-                                f_control.get().setFreqRange(ra);
-                            }
+                        auto n_slow_steps_short = std::pow(max_n_slow_iter, denorm<N_SLOW_ITER_SHORT_TERM>());
+                        auto ratio = denorm<CENTER_SHORT_TERM_RATIO>();
+                        for(auto & f_control : c.elem.engine.getRamps().a) {
+                            // f_control controls the frequency of the Mix (has an effect only for sinus and low pass)
+                            SetSlowParams<MODE>::set(f_control.get(), n_slow_steps_short, n_slow_steps, ratio);
+                            // needs to be after the previous call
+                            f_control.get().setFreqRange(ra);
                         }
                     }
+                    
                     {
                         float pan;
                         {

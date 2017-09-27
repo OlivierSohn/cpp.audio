@@ -209,20 +209,35 @@ namespace imajuscule {
                 using type = audioelement::FreqCtrl_< T, CTRL >;                
             };
             
-        template<SoundEngineMode M, typename Logger>
-        struct SoundEngine {
             static constexpr auto Order = VariableOrder;
-            
             using GreyNoiseAlgo = audioelement::soundBufferWrapperAlgo<Sound::GREY_NOISE>;
             using PinkNoiseAlgo = audioelement::soundBufferWrapperAlgo<Sound::PINK_NOISE>;
             
-            // should we chose pink or grey here? todo audio tests... maybe the right answer is neither, or pink filtered to model wind
-            using Mix = audioelement::Mix <
-            audioelement::LowPassAlgo<PinkNoiseAlgo, Order>,
-            AsymBandPassAlgo<PinkNoiseAlgo, Order, audioelement::SlowIter<audioelement::AbsIter<PinkNoiseIter>>>,
-            AsymBandRejectAlgo<PinkNoiseAlgo, Order, audioelement::SlowIter<audioelement::AbsIter<PinkNoiseIter>>>,
-            audioelement::AdjustableVolumeOscillatorAlgo<audioelement::VolumeAdjust::Yes, float>
-            >;
+            template<SoundEngineMode M>
+            struct MixOf {
+                using type =
+                audioelement::Mix
+                <
+                audioelement::AdjustableVolumeOscillatorAlgo<audioelement::VolumeAdjust::Yes, float>
+                >;
+            };
+            
+            template<> struct MixOf<SoundEngineMode::WIND> {
+                using type = audioelement::Mix
+                <
+                audioelement::LowPassAlgo<PinkNoiseAlgo, Order>,
+                AsymBandPassAlgo<PinkNoiseAlgo, Order, audioelement::SlowIter<audioelement::AbsIter<PinkNoiseIter>>>,
+                AsymBandRejectAlgo<PinkNoiseAlgo, Order, audioelement::SlowIter<audioelement::AbsIter<PinkNoiseIter>>>,
+                audioelement::AdjustableVolumeOscillatorAlgo<audioelement::VolumeAdjust::Yes, float>
+                >;
+            };
+                        
+            template<
+            SoundEngineMode M,
+            typename Logger,
+            typename Mix = typename MixOf<M>::type
+            >
+        struct SoundEngine {
             
             using Algo = typename SoundEngineAlgo_<Mix, M>::type;
             
