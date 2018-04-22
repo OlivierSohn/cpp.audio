@@ -1,4 +1,4 @@
-#include "public.h"
+#include "../include/public.h"
 
 #define  _USE_MATH_DEFINES
 #include <cmath>

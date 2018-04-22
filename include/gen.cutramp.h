@@ -161,7 +161,7 @@ namespace imajuscule {
                 bool adjustRamp : 1;
                 
                 // the first index in "most recent buffer" that contains an out-of-date value
-                uint8_t c : relevantBits( size_interleaved - 1 );
+                uint32_t c : relevantBits( size_interleaved - 1 );
                 
                 // methods
             public:
