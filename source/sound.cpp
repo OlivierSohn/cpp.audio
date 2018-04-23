@@ -1,25 +1,25 @@
 
 namespace imajuscule {
-    
+
     constexpr auto noise_duration = .05f;
     // take into account the fact that to compute gray noise, a filter needs to be initialized using some pink noise samples
     constexpr auto grey_noise_duration = 2.f * noise_duration;
-    
+
     soundBuffer const & getPinkNoise() {
         static soundBuffer n(soundId{Sound::PINK_NOISE, noise_duration});
         return n;
     }
-    
+
     soundBuffer const & getGreyNoise() {
         static soundBuffer n(soundId{Sound::GREY_NOISE, grey_noise_duration});
         return n;
     }
-    
+
     soundBuffer const & getWhiteNoise() {
         static soundBuffer n(soundId{Sound::NOISE, noise_duration});
         return n;
     }
-    
+
     float getAbsMean(soundBuffer const & b) {
         auto sum = 0.f;
         for(auto v : b) {
@@ -30,17 +30,17 @@ namespace imajuscule {
         LG(INFO, "abs mean: %f", sum);
         return sum;
     }
-    
+
     float getWhiteNoiseAbsMean() {
         static auto val = getAbsMean(getWhiteNoise());
         return val;
     }
-    
+
     float getPinkNoiseAbsMean() {
         static auto val = getAbsMean(getPinkNoise());
         return val;
     }
-    
+
     float getGreyNoiseAbsMean() {
         static auto val = getAbsMean(getGreyNoise());
         return val;
@@ -53,9 +53,9 @@ using namespace imajuscule;
 static float triangle_( float angle_radians ) {
     Assert(angle_radians >= 0.f);
     Assert(angle_radians <= 2.f * (float)M_PI);
-    
+
     static const float inv_pi = 1.f / (float)M_PI;
-    
+
     angle_radians *= inv_pi;
     if( angle_radians < 0.5f ) {        // 0 .. 0.5   ->  0 .. 1
         return 2.f * angle_radians;
@@ -69,9 +69,9 @@ static float triangle_( float angle_radians ) {
 static float saw_( float angle_radians ) {
     Assert(angle_radians >= 0.f);
     Assert(angle_radians <= 2.f * (float)M_PI);
-    
+
     constexpr float inv_pi = 1.f / (float)M_PI;
-    
+
     angle_radians *= inv_pi;
     if( angle_radians <= 1.f ) {        // 0 .. 1   ->  0 .. 1
         return angle_radians;
@@ -84,9 +84,9 @@ static float saw_( float angle_radians ) {
 static float square_( float angle_radians ) {
     Assert(angle_radians >= 0.f);
     Assert(angle_radians <= 2.f * (float)M_PI);
-    
+
     static const float inv_pi = 1.f / (float)M_PI;
-    
+
     angle_radians *= inv_pi;
 
     return square(angle_radians);
@@ -95,18 +95,18 @@ static float square_( float angle_radians ) {
 
 template < typename F >
 void soundBuffer::generate( int period, F f ) {
-    
+
     // Let's compute the waveform. First sample is non zero, last sample is zero, so the mapping is:
     //
     //  sample(int) [0 .. period - 1]  ->  radian(float) [2*pi/period .. 2*pi]
     //
     float increment = 2.f * (float)M_PI / (float) period;
-    
+
     for( int i=0; i<period;) {
         i++;
         values.emplace_back( f( increment * (float)i ) );
     }
-    
+
     Assert( (int)values.size() == period );
 }
 
@@ -114,12 +114,12 @@ template<typename F>
 void soundBuffer::generate_with_smooth_transition(int period, F f) {
     constexpr auto min_transition_length = 10;
     constexpr auto transition_ratio = 10;
-    
+
     auto transition_length = min_transition_length + period / transition_ratio;
     transition_length = std::min(transition_length, period);
-    
+
     Assert(transition_length > 0);
-    
+
     generate(transition_length, f);
     auto pre = std::move(values);
     values.clear();
@@ -128,15 +128,15 @@ void soundBuffer::generate_with_smooth_transition(int period, F f) {
         auto ratio_pre = (i+1) / (float)(transition_length+1); // we want the ratio to start after 0 and never reach 1
         Assert(ratio_pre > 0.f);
         Assert(ratio_pre < 1.f);
-        
+
         // we consider the two signals are not correlated (this is - hopefully - the case for noises!)
         // and we want to keep an equal power during fade, so the sum of the squared gains should be 1.
         // throughout the fade. We use sin / cos instead of sqrt to have a smoother start and end.
-        
+
         auto angle = ratio_pre * (float)M_PI_2;
         auto gain_pre = std::sin(angle);
         auto gain_v = std::cos(angle);
-        
+
         auto & v = values[values.size()-transition_length+i];
         v = gain_pre * pre[i] + gain_v * v;
         Assert(values[values.size()-transition_length+i] == v); // verify we used the right operator [] !
@@ -196,12 +196,16 @@ soundBuffer::soundBuffer( soundId const & id ) {
                 logSummary();
                 break;
             }
+            
+            default:
+              Assert(0);
+              break;
         }
         if( id.period_length < 20 ) {
             {
                 // center
                 auto avg_ = profiling::avg(values);
-                
+
                 for( auto & v : values ) {
                     v -= avg_;
                 }
@@ -227,27 +231,27 @@ soundBuffer::soundBuffer( soundId const & id ) {
         case Sound::SINE:
             generate( id.period_length, sinf ); // todo measure if it is faster to use a temporary oscillator to generate the values
             break;
-            
+
         case Sound::TRIANGLE:
             generate( id.period_length, triangle_ );
             break;
-            
+
         case Sound::SAW:
             generate( id.period_length, saw_ );
             break;
-            
+
         case Sound::SQUARE:
             generate( id.period_length, square_ );
             break;
-            
+
         case Sound::SILENCE:
             generate( id.period_length, [](float){ return 0.f; } );
             break;
-            
+
         case Sound::ONE:
             generate( id.period_length, [](float){ return 1.f; } );
             break;
-            
+
         default:
             Assert(0);
             break;
@@ -289,7 +293,7 @@ void soundBuffer::normalize() {
     if(r.delta() < 0.f) {
         return;
     }
-    
+
     auto M = std::max(-r.getMin(), r.getMax());
     float just_below_one = 1.f - FLOAT_EPSILON;
     M = just_below_one / M; // just_below_one is to be sure the signal doesn't go over 1 with numerical errors
@@ -309,4 +313,3 @@ soundBuffer & Sounds::get(soundId id ) {
     Assert(it.second);
     return it.first->second;
 }
-
