@@ -291,7 +291,7 @@ void soundBuffer::normalize() {
     }
     
     auto M = std::max(-r.getMin(), r.getMax());
-    constexpr auto just_below_one = 1.f - FLOAT_EPSILON;
+    float just_below_one = 1.f - FLOAT_EPSILON;
     M = just_below_one / M; // just_below_one is to be sure the signal doesn't go over 1 with numerical errors
     for(auto & v: values) {
         v *= M;
