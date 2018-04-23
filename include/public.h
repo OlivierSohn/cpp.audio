@@ -10,9 +10,9 @@
 #include <type_traits>
 #include <vector>
 
-#include "../../algorithms/include/public.h"
-#include "../../os.log/include/public.h"
-#include "../../os.storage/include/public.h"
+#include "../../cpp.algorithms/include/public.h"
+#include "../../cpp.os.logs/include/public.h"
+#include "../../cpp.os.storage/include/public.h"
 
 #include "samples.h"
 #include "loudness_filter_coefficients.h"
