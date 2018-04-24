@@ -117,8 +117,7 @@ namespace imajuscule {
             Event e;
             e.type = Event::kNoteOnEvent;
             e.noteOn = NoteOnEvent{0,b.midiPitch,0,1,0,0};
-            IEventList l{{e}};
-            v.onEvent(begin(&l), out);
+            v.onEvent(e, out);
         }
     }
 }

@@ -324,6 +324,8 @@ namespace imajuscule {
 
                 using Parent::channels;
                 using Parent::onEvent;
+
+                using Event = typename Parent::Event;
                 
                 static constexpr auto cut_period_one_cache_line = size_interleaved_one_cache_line / nAudioOut;
                 static_assert(cut_period_one_cache_line <= max_cut_period, "");
@@ -331,13 +333,13 @@ namespace imajuscule {
             public:
                 
                 template<typename OutputData>
-                onEventResult onEvent(EventIterator it, OutputData & out)
+                onEventResult onEvent(Event const & e, OutputData & out)
                 {
                     // in case this is called before the first doProcessing:
                     if(!period.hasValue()) {
                         updateParams();
                     }
-                    return onEvent(it, [](auto & c) { return c.elem.isInactive(); }, out);
+                    return onEvent(e, [](auto & c) { return c.elem.isInactive(); }, out);
                 }
                 
                 void updateParams()
@@ -421,7 +423,9 @@ namespace imajuscule {
                         // keep this loop after onEndBufferStepParamChanges()/compute_state(),
                         // so that new notes have the correct adjusted frequency
                         while(nextEventPosition == currentFrame) {
-                            this->onEvent(it, out);
+                            Event e;
+                            it.dereference(e);
+                            this->onEvent(e, out);
                             ++it;
                             nextEventPosition = getNextEventPosition(it, end);
                         }

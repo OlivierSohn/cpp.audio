@@ -1164,12 +1164,14 @@ namespace imajuscule {
                 using Parent::onEvent;
                 using Parent::channels;
                 
+                using Event = typename Parent::Event;
+
             public:
                 
                 template<typename OutputData>
-                onEventResult onEvent(EventIterator it, OutputData & out)
+                onEventResult onEvent(Event const & e, OutputData & out)
                 {
-                    return onEvent(it, [](auto & c) -> bool {
+                    return onEvent(e, [](auto & c) -> bool {
                         for(auto const & r : c.elem.getRamps()) {
                             if(!r.isInactive()) {
                                 return false;
@@ -1214,7 +1216,9 @@ namespace imajuscule {
                         Assert(nRemainingFrames > 0);
                         
                         while(nextEventPosition == currentFrame) {
-                            onEvent(it, out);
+                            Event e;
+                            it.dereference(e);
+                            onEvent(e, out);
                             ++it;
                             nextEventPosition = getNextEventPosition(it, end);
                         }

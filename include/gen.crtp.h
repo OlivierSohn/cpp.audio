@@ -161,10 +161,7 @@ namespace imajuscule {
             }
             
             template<typename FILTER_MONO_NOTE_CHANNELS, typename OutputData>
-            onEventResult onEvent(EventIterator it, FILTER_MONO_NOTE_CHANNELS filter, OutputData & out) {
-                Event e;
-                it.dereference(e);
-
+            onEventResult onEvent(Event const & e, FILTER_MONO_NOTE_CHANNELS filter, OutputData & out) {
                 if(e.type == Event::kNoteOnEvent) {
                     // this case is handled by the wrapper... else we need to do a noteOff
                     Assert(e.noteOn.velocity > 0.f );
