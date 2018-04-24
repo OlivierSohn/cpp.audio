@@ -123,7 +123,6 @@ namespace imajuscule {
             using Base::get_xfade_length;
             using Base::get_gain;
             using Base::onStartNote;
-            using Base::getPrograms;
             
             using Event = typename EventIterator::object;
             
@@ -209,6 +208,7 @@ namespace imajuscule {
                     xf_len = get_xfade_length();
                 }
                 
+                // using WithLock::No : if needed, the caller is responsible to take the out lock.
                 if(!c.template open<WithLock::No>(out, initial_volume, xf_len)) {
                     return onDroppedNote(e.pitch);
                 }
