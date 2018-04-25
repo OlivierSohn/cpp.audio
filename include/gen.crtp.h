@@ -113,8 +113,8 @@ namespace imajuscule {
           bool deterministic;
           float value;
         };
-        Phase mkDeterministicPhase(float v) { return Phase{true,v}; }
-        Phase mkNonDeterministicPhase() { return Phase{false,{}}; }
+        static inline Phase mkDeterministicPhase(float v) { return Phase{true,v}; }
+        static inline Phase mkNonDeterministicPhase() { return Phase{false,{}}; }
 
         template<typename T>
         void setPhase (Phase const & phase, T&algo) {
