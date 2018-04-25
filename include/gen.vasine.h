@@ -1,6 +1,8 @@
+// 'va' in the name 'vasine' stand for "Volume-adjusted" sine
+
 namespace imajuscule {
     namespace audio {
-        namespace sine {
+        namespace vasine {
 
             struct SynthImpl {
 
@@ -17,6 +19,9 @@ namespace imajuscule {
                     auto channel = c.channels[0];
 
                     auto & osc = c.elem;
+                    osc.algo.setLoudnessParams(5,
+                                               1.f,
+                                               30.f);
                     osc.algo.setAngleIncrements(freq_to_angle_increment(freq));
 
                     // the caller is responsible for taking the out lock if needed
