@@ -1,28 +1,28 @@
 namespace imajuscule {
     namespace audioelement {
-        
+
         constexpr auto n_frames_per_buffer = 16;
 
         struct AudioElementBase  {
             AudioElementBase() = default;
-            
+
             // no copy or move because the lambda returned by fCompute() captures 'this'
             AudioElementBase(const AudioElementBase &) = delete;
             AudioElementBase & operator=(const AudioElementBase&) = delete;
             AudioElementBase(AudioElementBase &&) = delete;
             AudioElementBase& operator = (AudioElementBase &&) = delete;
-            
+
             // AudioComponent<float> has a buffer of size 1 cache line
             // AudioComponent<double> has a buffer of size 2 cache lines
             // each of them have 16 frames worth of data in their buffer
             static constexpr auto buffer_alignment = cache_line_n_bytes; // 64 or 32
-            
+
             static constexpr auto index_state = 0;
         };
-        
+
         template<typename T>
         auto & state(T * buffer) { return buffer[AudioElementBase::index_state]; }
-        
+
         // lifecycle :
         // upon creation, state is inactive()
         // when in a queue state is queued()
@@ -32,78 +32,79 @@ namespace imajuscule {
         struct AudioElement : public AudioElementBase {
             using buffer_placeholder_t = std::aligned_storage_t<n_frames_per_buffer * sizeof(T), buffer_alignment>;
             static_assert(alignof(buffer_placeholder_t) == buffer_alignment,"");
-            
+
             // state values must be distinct from every possible valid value
             static constexpr auto queued() { return -std::numeric_limits<T>::infinity(); } // in *** at most *** one queue
             static constexpr auto inactive() { return std::numeric_limits<T>::infinity(); }// not active in any queue
-            
-            
+
+
             ////// [AudioElement] beginning of the 1st cache line
-            
+
             union {
                 buffer_placeholder_t for_alignment;
                 T buffer[n_frames_per_buffer];
             };
-            
+
             ////// [AudioElement<float>] beginning of the 2nd cache line
             ////// [AudioElement<double>] beginning of the 3rd cache line
-            
+
             bool clock_ : 1; // could be removed since we don't have any AudioElement
             // depend on another
-            
+
             using FPT = T;
             static_assert(std::is_floating_point<FPT>::value, "");
             using Tr = NumTraits<T>;
-            
+
             AudioElement() {
                 // assert deactivated as it fails on iphone / iphone simulator. I think I need to implement
                 // a freelist of blocks of cache line size to get around this issue related to overaligned types.
                 //Assert(0 == reinterpret_cast<unsigned long>(buffer) % buffer_alignment);
                 state(buffer) = inactive();
             }
-            
+
             auto getState() const { return state(buffer); }
             constexpr bool isInactive() const { return getState() == inactive(); }
             constexpr bool isActive() const { return getState() != inactive(); }
         };
-        
+
         template<typename ALGO>
         struct FinalAudioElement : public AudioElement<typename ALGO::FPT>{
             using FPT = typename ALGO::FPT;
             static_assert(std::is_floating_point<FPT>::value, "");
-            
+
             template <class... Args>
             FinalAudioElement(Args&&... args) : algo(std::forward<Args>(args)...) {}
-            
+
             void forgetPastSignals() {
                 algo.forgetPastSignals();
             }
 
             ALGO algo;
         };
-                
-        
+
+
         template<typename ALGO>
         struct VolumeAdjusted {
             using T = typename ALGO::FPT;
             using FPT = T;
             static_assert(std::is_floating_point<FPT>::value, "");
-            
+
             T real() const { return volume * osc.real(); }
             T imag() const { return volume * osc.imag(); }
-            
+
             T angleIncrements() const { return osc.angleIncrements(); }
-            
+            T angle() const { return osc.angle(); }
+
             VolumeAdjusted() : log_ratio_(1.f), low_index_(0) {}
-            
+
             void forgetPastSignals() {
                 osc.forgetPastSignals();
             }
-            
+
             void setFiltersOrder(int order) {
                 osc.setFiltersOrder(order);
             }
-            
+
             void setAngleIncrements(T ai) {
                 volume = loudness::equal_loudness_volume(angle_increment_to_freq(ai),
                                                          low_index_,
@@ -111,7 +112,11 @@ namespace imajuscule {
                                                          loudness_level);
                 osc.setAngleIncrements(ai);
             }
-            
+
+            void setAngle(T ai) {
+                osc.setAngle(ai);
+            }
+
             void setLoudnessParams(int low_index, float log_ratio, float loudness_level) {
                 Assert(low_index >= 0);
                 Assert(low_index < 16);
@@ -121,8 +126,9 @@ namespace imajuscule {
                 log_ratio_ = log_ratio;
                 this->loudness_level = loudness_level;
             }
-            
+
             void step() { osc.step(); }
+
         private:
             unsigned int low_index_ : 4;
             float loudness_level;
@@ -130,27 +136,27 @@ namespace imajuscule {
             float volume;
             ALGO osc;
         };
-        
+
         // the unit of angle increments is "radian / pi"
-        
+
         template<typename T>
         struct Phased {
             using FPT = T;
             static_assert(std::is_floating_point<FPT>::value, "");
             using Tr = NumTraits<T>;
-            
+
             Phased() = default;
             Phased(T angle_increments) { setAngleIncrements(angle_increments); }
-            
+
             void setAngle( T angle ) { angle_ = angle; }
             T angle() const { return angle_; }
-            
+
             void setAngleIncrements(T v) {
                 Assert(std::abs(v) < Tr::two()); // else need to modulo it
                 angle_increments = v;
             }
             T angleIncrements() const { return angle_increments; }
-            
+
             void step() {
                 angle_ += angle_increments;
                 if(angle_ > Tr::two()) {
@@ -160,148 +166,148 @@ namespace imajuscule {
                     angle_ += Tr::two();
                 }
             }
-            
+
             protected:
             T angle_ = Tr::zero();
             T angle_increments;
         };
-        
+
         /*
          * Phase controlled oscillator
          */
         template<typename T>
         struct PCOscillatorAlgo : public Phased<T> {
             using Phased<T>::angle_;
-            
+
             PCOscillatorAlgo() = default;
             PCOscillatorAlgo(T angle_increments) : Phased<T>(angle_increments) {}
-            
+
             T real() const { return std::cos(static_cast<T>(M_PI) * angle_); }
             T imag() const { return std::sin(static_cast<T>(M_PI) * angle_); }
         };
-        
+
         template<typename T>
         using PCOscillator = FinalAudioElement<PCOscillatorAlgo<T>>;
-  
+
         template<Sound::Type SOUND>
         struct soundBufferWrapperAlgo {
             using F_GET_BUFFER = FGetBuffer<SOUND>;
             using T = soundBuffer::FPT;
             using FPT = T;
             static_assert(std::is_floating_point<FPT>::value, "");
-            
+
             soundBufferWrapperAlgo() {
                 F_GET_BUFFER().getAbsMean(); // just to initialize the static in it
             }
-            
+
             void forgetPastSignals() const {
             }
-            
+
             T imag() const { return sb[index]; }
-            
+
             void step() {
                 ++index;
                 if(index == sb.size()) {
                     index = 0;
                 }
             }
-            
+
             int index = -1;
             soundBuffer const & sb = F_GET_BUFFER()();
         };
-        
+
         template<typename T>
         using WhiteNoise = FinalAudioElement< soundBufferWrapperAlgo<Sound::NOISE> >;
-        
+
         template<typename T>
         struct SquareAlgo : public Phased<T> {
             using Phased<T>::angle_;
-            
+
             SquareAlgo() = default;
             SquareAlgo(T angle_increments) : Phased<T>(angle_increments) {}
-            
+
             T imag() const { return square(angle_); }
         };
 
         template<typename T>
         using Square = FinalAudioElement<SquareAlgo<T>>;
-        
+
         /*
          * first pulse happends at angle = 0
          */
         template<typename T>
         struct PulseTrainAlgo : public Phased<T> {
-            
+
             using Tr = NumTraits<T>;
             using Phased<T>::angle_;
-            
+
             PulseTrainAlgo() = default;
             PulseTrainAlgo(T angle_increments, T pulse_width) :
             Phased<T>(angle_increments),
             pulse_width(pulse_width) {
                 Assert(pulse_width >= angle_increments); // else it's always 0
             }
-            
+
             void set(T angle_increments, T pulse_width_) {
                 Assert(pulse_width_ >= angle_increments); // else it's always 0
                 this->setAngleIncrements(angle_increments);
                 pulse_width = pulse_width_;
             }
-            
+
             T imag() const { return pulse(angle_, pulse_width); }
         private:
             T pulse_width{};
         };
-        
+
         template<typename T>
         using PulseTrain = FinalAudioElement<PulseTrainAlgo<T>>;
-        
-        
+
+
         template<class...AEs>
         struct Mix {
             using T = typename NthTypeOf<0, AEs...>::FPT;
             using FPT = T;
             static_assert(std::is_floating_point<FPT>::value, "");
-            
+
             static constexpr auto n_aes = sizeof...(AEs);
-            
+
         private:
             std::tuple<AEs...> aes;
             std::array<float, n_aes> gains;
-            
+
         public:
             Mix() { gains.fill( 1.f ); }
-            
+
             auto & get() {
                 return aes;
             }
-            
+
             void setGains(decltype(gains) g) { gains = g; }
-            
+
             void setFiltersOrder(int order) {
                 for_each(aes, [order](auto & ae) {
                     ae.setFiltersOrder(order);
                 });
             }
-            
+
             void forgetPastSignals() {
                 for_each(aes, [](auto & ae) {
                     ae.forgetPastSignals();
                 });
             }
-            
+
             void step() {
                 for_each(aes, [](auto & ae) {
                     ae.step();
                 });
             }
-            
+
             void setAngleIncrements(T v) {
                 for_each(aes, [v](auto & ae) {
                     ae.setAngleIncrements(v);
                 });
             }
-            
+
             T imag() const {
                 T sum = 0.f;
                 int index = 0;
@@ -312,34 +318,34 @@ namespace imajuscule {
                 });
                 return sum;
             }
-            
+
             void setLoudnessParams(int low_index, float log_ratio, float loudness_level) {
                 for_each(aes, [=](auto & ae) {
                     ae.setLoudnessParams(low_index, log_ratio, loudness_level);
                 });
             }
         };
-        
+
         template<class...AEs>
         struct Chain {
             using T = typename NthTypeOf<0, AEs...>::FPT;
             using FPT = T;
             static_assert(std::is_floating_point<FPT>::value, "");
-            
+
         private:
             std::tuple<AEs...> aes;
         };
-        
+
         template<int ORDER, typename T>
         struct InternalFilterFPTFromOrder {
             using type = double; // for order >= 2 and 0(adjustable), we use double
         };
-        
+
         template<typename T>
         struct InternalFilterFPTFromOrder<1,T> {
             using type = T;
         };
-        
+
         template<typename AEAlgo, FilterType KIND, int ORDER>
         struct FilterAlgo {
             using T = typename AEAlgo::FPT;
@@ -365,42 +371,42 @@ namespace imajuscule {
                 FilterFPT val = static_cast<FilterFPT>(audio_element.imag());
                 filter_.feed(&val);
             }
-            
+
             // sets the filter frequency
             void setAngleIncrements(T v) {
                 filter_.initWithAngleIncrement(v);
             }
-            
+
             T imag() const {
                 return *filter_.filtered();
             }
-            
+
             auto & get_element() { return audio_element; }
             auto & get_element() const { return audio_element; }
             auto & filter() { return filter_; }
-            
+
             void setLoudnessParams(int low_index, float log_ratio, float loudness_level) {}
         };
-        
+
         template<typename T, int ORDER>
         using LowPassAlgo = FilterAlgo<T, FilterType::LOW_PASS, ORDER>;
-        
+
         template<typename T, int ORDER>
         using HighPassAlgo = FilterAlgo<T, FilterType::HIGH_PASS, ORDER>;
-        
+
         template<typename AEAlgo, int ORDER>
         struct BandPassAlgo_ {
             using FPT = typename AEAlgo::FPT;
             using T = FPT;
             static constexpr auto low_index = 0;
             static constexpr auto high_index = 1;
-            
+
             void setCompensation(T sq_inv_width_factor) {
                 // gain compensation to have an equal power of the central frequency for all widths
                 compensation = expt<ORDER>(1 + sq_inv_width_factor);
 #ifndef NDEBUG
                 // verify accuracy of above simplification
-                
+
                 // inc / low == width_factor
                 // inc / high == 1 / width_factor
                 auto inv_sq_mag_hp = get_inv_square_filter_magnitude<FilterType::HIGH_PASS>(1/sq_inv_width_factor);
@@ -428,17 +434,17 @@ namespace imajuscule {
             void onWidthFactor(float inv_width_factor) {
                 setCompensation(inv_width_factor * inv_width_factor);
             }
-        
+
             void doStep() {
                 cascade.step();
             }
         };
-        
+
         template<typename AEAlgo, int ORDER>
         struct BandRejectAlgo_ {
             using FPT = typename AEAlgo::FPT;
             using T = FPT;
-            
+
             T imag() const { return lp.imag() + hp.imag(); }
 
         private:
@@ -446,15 +452,15 @@ namespace imajuscule {
             HighPassAlgo<AEAlgo, ORDER> hp;
         protected:
             using Tr = NumTraits<T>;
-            
+
             static constexpr auto compensation = Tr::one();
-            
+
             static constexpr auto low_index = 1;
             static constexpr auto high_index = 0;
-            
+
             auto & getHP() { return hp; }
             auto & getLP() { return lp; }
-            
+
             void onWidthFactor(float) const {}
 
             void doStep() {
@@ -462,7 +468,7 @@ namespace imajuscule {
                 hp.step();
             }
         };
-        
+
         template<typename AEAlgoWidth, typename Base>
         struct BandAlgo_ : public Base {
             using FPT = typename Base::FPT;
@@ -476,32 +482,32 @@ namespace imajuscule {
             using Base::getHP;
             using Base::getLP;
             using Base::doStep;
-            
+
 
             void forgetPastSignals() {
                 getHP().forgetPastSignals();
                 getLP().forgetPastSignals();
                 width.forgetPastSignals();
             }
-            
+
             void setFiltersOrder(int order) {
                 getHP().setFiltersOrder(order);
                 getLP().setFiltersOrder(order);
             }
-            
+
             void setWidthRange(range<float> const & r) {
                 width_range = r;
             }
-            
+
             void setAngleIncrements(T inc) {
                 Assert(inc >= 0.f);
                 increment = inc;
             }
-            
+
             void step() {
                 width.step();
                 T width_factor = pow(Tr::two(), width_range.getAt(std::abs(width.imag())));
-                
+
                 Assert(width_factor);
                 auto inv_width_factor = Tr::one() / width_factor;
                 auto low  = increment * inv_width_factor;
@@ -512,17 +518,17 @@ namespace imajuscule {
 
                 doStep();
             }
-            
+
             void setLoudnessParams(int low_index, float log_ratio, float loudness_level) const {}
-            
+
             AEWidth & getWidth() { return width; }
-            
+
         protected:
             T increment;
             AEAlgoWidth width;
             range<float> width_range;
-            
-            
+
+
             void doSetAngleIncrements(std::array<T, 2> incs) {
                 /*
                 static auto deb = 0;
@@ -538,7 +544,7 @@ namespace imajuscule {
                 getLP().setAngleIncrements(incs[high_index]);
             }
         };
-        
+
         template<typename AEAlgo, typename AEAlgoWidth, int ORDER>
         using BandPassAlgo = BandAlgo_<AEAlgoWidth, BandPassAlgo_<AEAlgo, ORDER>>;
 
@@ -550,27 +556,27 @@ namespace imajuscule {
             LoudnessCompensationFilter(unsigned int fft_length, unsigned int NumTaps) :
             filter(imajuscule::loudness::getLoudnessCompensationFIRCoefficients<T>(fft_length, NumTaps))
             {}
-            
+
             void step(T val) {
                 filter.step(val);
             }
-            
+
             T get() const { return filter.get(); }
-            
+
             auto size() const { return filter.size(); }
         private:
             FIRFilter<T> filter;
         };
-        
+
         template<typename T, int ORDER>
         using LPWhiteNoiseAlgo = LowPassAlgo<soundBufferWrapperAlgo<Sound::NOISE>, ORDER>;
-        
+
         template<typename T, int ORDER>
         using LPWhiteNoise = FinalAudioElement<LPWhiteNoiseAlgo<T, ORDER>>;
-        
+
         template<typename AEAlgo, int ORDER>
         using LowPass = FinalAudioElement<LowPassAlgo<AEAlgo, ORDER>>;
-        
+
         enum class eNormalizePolicy {
             FAST,
             ACCURATE
@@ -580,23 +586,23 @@ namespace imajuscule {
         struct OscillatorAlgo {
             using Tr = NumTraits<T>;
             using FPT = T;
-            
+
             constexpr OscillatorAlgo(T angle_increments) { setAngleIncrements(angle_increments); }
             constexpr OscillatorAlgo() : mult(Tr::one(), Tr::zero()) {}
-            
+
             void forgetPastSignals() const {
             }
-            
+
             void setFiltersOrder(int order) const {
             }
-            
+
             void setAngle(T f) {
                 cur = polar(static_cast<T>(M_PI)*f);
             }
             void setAngleIncrements(T f) {
                 mult = polar(static_cast<T>(M_PI)*f);
             }
-            
+
             void step() {
                 cur *= mult;
                 if(NormPolicy == eNormalizePolicy::FAST) {
@@ -606,54 +612,54 @@ namespace imajuscule {
                     normalize();
                 }
             }
-            
+
             T real() const { return cur.real(); }
             T imag() const { return cur.imag(); }
-            
+
             T angle() const { return arg(cur)/M_PI; }
             T angleIncrements() const { return arg(mult)/M_PI; }
-            
+
             private:
             complex<T> cur = {Tr::one(), Tr::zero()};
             complex<T> mult;
-            
+
             void approx_normalize() {
                 // http://dsp.stackexchange.com/questions/971/how-to-create-a-sine-wave-generator-that-can-smoothly-transition-between-frequen
-                
+
                 cur *= Tr::half() * (Tr::three() - norm(cur));
             }
-            
+
             void normalize() {
                 cur *= 1/abs(cur);
             }
         };
-        
+
         template<typename T, eNormalizePolicy NormPolicy = eNormalizePolicy::FAST>
         using Oscillator = FinalAudioElement<OscillatorAlgo<T, NormPolicy>>;
-        
+
         template<typename T>
         struct LogRamp {
             static_assert(std::is_same<T,float>::value, "non-float interpolation is not supported");
-            
+
             using Tr = NumTraits<T>;
             using FPT = T;
-            
+
             // offsets because we use the value at the beginning of the timestep
             static constexpr auto increasing_integration_offset = 0;
             static constexpr auto decreasing_integration_offset = 1;
-            
+
             LogRamp() : cur_sample(Tr::zero()), from{}, to{}, duration_in_samples{}
             {}
-            
+
             void forgetPastSignals() const {}
             void initializeForRun() const {}
-            
+
             void setFreqRange(range<float> const &) const { Assert(0); } // use set instead
             void set_interpolation(itp::interpolation) const {Assert(0);} // use set instead
             void set_n_slow_steps(unsigned int) const { Assert(0); }
-            
+
             auto & getUnderlyingIter() { Assert(0); return *this; }
-            
+
             void set(T from_increments,
                      T to_increments,
                      T duration_in_samples_,
@@ -679,50 +685,50 @@ namespace imajuscule {
                 from = from_increments;
                 to = to_increments;
                 duration_in_samples = duration_in_samples_;
-                
+
                 C = get_linear_proportionality_constant();
-                
+
                 Assert(duration_in_samples > 0);
                 interp.setInterpolation(i);
             }
-            
+
             T do_step(T proportionality) {
                 if(cur_sample + .5f > duration_in_samples) {
                     cur_sample = Tr::zero();
                     std::swap(from, to);
                 }
-                
+
                 // we call get_unfiltered_value instead of get_value because we ensure:
                 Assert(cur_sample <= duration_in_samples);
                 auto f_result = interp.get_unfiltered_value(cur_sample, duration_in_samples, from, to);
                 // Taking the value at cur_sample means taking the value at the beginning of the step.
                 // The width of the step depends on that value so if we had taken the value in the middle or at the end of the step,
                 // not only would the value be different, but also the step width!
-                
+
                 // we could take the value in the middle and adjust "value + step width" accordingly
-                
+
                 // linear interpolation for parameter
                 auto f = from + (to-from) * (cur_sample + .5f) / duration_in_samples;
                 cur_sample += proportionality * f;
-                
+
                 return f_result;
             }
-            
+
             T step() {
                 return do_step(C);
             }
-            
+
             T getFrom() const { return from; }
             T getTo() const { return to; }
-            
+
             T get_duration_in_samples() const { return duration_in_samples; }
-            
+
         private:
             NormalizedInterpolation<T> interp;
             T from, to, cur_sample;
             T duration_in_samples;
             T C;
-            
+
             // do not make it public : if bounds are swapped afterwards, using this value can lead to bugs
             T get_linear_proportionality_constant() const {
                 // we want to achieve the same effect as PROPORTIONAL_VALUE_DERIVATIVE
@@ -733,7 +739,7 @@ namespace imajuscule {
                 Assert(from > 0);
                 Assert(to > 0);
                 // else computation cannot be done
-                
+
                 return (to==from) ? 1.f : -std::log(from/to) / (to-from);
             }
         };
@@ -744,7 +750,7 @@ namespace imajuscule {
         template<typename Iterator>
         struct AbsIter {
             using FPT = typename Iterator::FPT;
-            
+
             void initializeForRun() {
                 it.initializeForRun();
             }
@@ -752,11 +758,11 @@ namespace imajuscule {
             void forgetPastSignals() {
                 it.forgetPastSignals();
             }
-            
+
             void operator ++() {
                 ++it;
             }
-            
+
             auto operator *() const {
                 return std::abs(*it);
             }
@@ -765,21 +771,21 @@ namespace imajuscule {
         private:
             Iterator it;
         };
-        
+
         /*
          * Slow down iteration by an integer factor and chose interpolation.
          */
         template<typename Iterator>
         struct SlowIter {
             using FPT = typename Iterator::FPT;
-            
+
             using uint_steps = int32_t;
-            
+
             SlowIter(itp::interpolation interp) : interp(interp) {
             }
             SlowIter() : SlowIter(itp::LINEAR) {
             }
-            
+
             void set_interpolation(itp::interpolation i) { interp.setInterpolation(i); }
             void set_n_slow_steps(uint_steps n) {
                 if(n == n_steps) {
@@ -799,12 +805,12 @@ namespace imajuscule {
                 n_steps = n;
                 Assert(n_steps > 0);
             }
-            
+
             void initializeForRun() {
                 it.initializeForRun();
                 onMajorStep();
             }
-            
+
             void forgetPastSignals() {
                 it.forgetPastSignals();
                 onMajorStep();
@@ -829,7 +835,7 @@ namespace imajuscule {
                 Assert(n_steps >= 1);
                 return interp.get_unfiltered_value(slow_it, n_steps, prev, *it);
             }
-            
+
             bool isDiminishing() const {
                 return prev > *it;
             }
@@ -837,7 +843,7 @@ namespace imajuscule {
             bool isAugmenting() const {
                 return !isDiminishing();
             }
-            
+
             auto const & getUnderlyingIterator() const { return it; }
 
             float getAbsMean() const { return it.getAbsMean(); }
@@ -848,7 +854,7 @@ namespace imajuscule {
             NormalizedInterpolation<> interp;
             float prev;
             Iterator it;
-            
+
             void onMajorStep() {
                 slow_it = 0;
                 prev = *it;
@@ -856,9 +862,9 @@ namespace imajuscule {
 //                LG(INFO, "++it:");
 //                it.log();
             }
-            
+
         };
-        
+
         /*
          * Makes ascending iteration faster than descending.
          */
@@ -874,7 +880,7 @@ namespace imajuscule {
             void forgetPastSignals() {
                 it.forgetPastSignals();
             }
-            
+
             void operator ++() {
                 auto const n = [this]() {
                     if(it.isDiminishing()) {
@@ -882,14 +888,14 @@ namespace imajuscule {
                     }
                     return SCALE_UP;
                 }();
-                
+
                 for(int i=0; i<n; ++i) {
                     if(it.increment()) {
                         return;
                     }
                 }
             }
-            
+
             auto operator *() const {
                 return *it;
             }
@@ -899,11 +905,11 @@ namespace imajuscule {
             auto & getUnderlyingIter() {
                 return it;
             }
-            
+
         private:
             UnderlyingIt it;
         };
-        
+
         template<typename ITER>
         struct Ctrl {
             using FPT = typename ITER::FPT;
@@ -913,25 +919,25 @@ namespace imajuscule {
             void initializeForRun() {
                 it.initializeForRun();
             }
-            
+
             void forgetPastSignals() {
                 it.forgetPastSignals();
             }
             void setFiltersOrder(int ) const {}
             void setAngleIncrements(T ) const {}
-            
+
             void step() { ++it; }
             T imag() const { return *it; }
-            
+
             auto & getUnderlyingIter() {
                 return it.getUnderlyingIter();
             }
-            
+
             float getAbsMean() const { return it.getAbsMean(); }
         private:
             WindFreqIter<ITER> it = { itp::LINEAR };
         };
-        
+
         enum class VolumeAdjust {
             Yes,
             No
@@ -939,24 +945,24 @@ namespace imajuscule {
 
         template<VolumeAdjust V, typename T>
         struct OscillatorAlgo_;
-        
+
         template<typename T>
         struct OscillatorAlgo_<VolumeAdjust::No, T> {
             using type = OscillatorAlgo<T>;
         };
-        
+
         template<typename T>
         struct OscillatorAlgo_<VolumeAdjust::Yes, T> {
             using type = VolumeAdjusted<OscillatorAlgo<T>>;
         };
-        
+
         template<VolumeAdjust V, typename T>
         using AdjustableVolumeOscillatorAlgo = typename OscillatorAlgo_<V,T>::type;
-        
+
         template<typename T>
         static int steps_to_swap(LogRamp<T> & spec) {
             bool order = spec.getTo() < spec.getFrom();
-            
+
             int count = 0;
             while(order == spec.getTo() < spec.getFrom()) {
                 spec.step();
@@ -965,7 +971,7 @@ namespace imajuscule {
             --count; // because swap occurs at the beginning of step method, before current step is modified
             return count;
         }
-        
+
         template<typename ALGO, typename CTRLS, int N>
         struct SetFreqs {
             void operator()(CTRLS & ctrls, ALGO & osc) {
@@ -979,7 +985,7 @@ namespace imajuscule {
                 osc.setAngleIncrements(std::move(increments));
             }
         };
-        
+
         template<typename ALGO, typename CTRLS>
         struct SetFreqs<ALGO, CTRLS, 1> {
             void operator()(CTRLS & ctrls, ALGO & osc) {
@@ -987,18 +993,18 @@ namespace imajuscule {
                 osc.setAngleIncrements(freq_to_angle_increment(f));
             }
         };
-        
+
         template<typename ALGO, typename CTRLS>
         void setFreqs(CTRLS & ctrls, ALGO & osc) {
             SetFreqs<ALGO,CTRLS, std::tuple_size<CTRLS>::value>{}(ctrls, osc);
         }
-        
+
         template<typename ALGO, typename ...CTRLS>
         struct FreqCtrl_ {
             using Ctrl = std::tuple<CTRLS...>;
             using T = typename ALGO::FPT;
             using FPT = T;
-            
+
             using Tr = NumTraits<T>;
 
             void setLoudnessParams(int low_index, float log_ratio, float loudness_level) {
@@ -1011,7 +1017,7 @@ namespace imajuscule {
                 });
                 osc.setFiltersOrder(order);
             }
-            
+
             void forgetPastSignals() {
                 for_each(ctrls, [](auto & c) {
                     c.forgetPastSignals();
@@ -1025,17 +1031,17 @@ namespace imajuscule {
                 });
                 // not for osc : it will be done in step()
             }
-            
+
             void step() {
 
                 setFreqs(ctrls, osc);
-                
+
                 osc.step();
             }
-            
+
             T real() const { return osc.real(); }
             T imag() const { return osc.imag(); }
-            
+
             auto & getOsc() { return osc; }
 
             auto & getCtrl() {
@@ -1047,35 +1053,35 @@ namespace imajuscule {
             Ctrl ctrls;
             ALGO osc;
         };
-        
+
         template<typename T, VolumeAdjust V>
         using FreqRampOscillatorAlgo_ = FreqCtrl_<AdjustableVolumeOscillatorAlgo<V,T>, LogRamp<T>>;
-        
+
         template<typename T>
         using FreqRampAlgo = FreqRampOscillatorAlgo_<T, VolumeAdjust::Yes>;
-        
+
         template<typename T>
         using FreqRamp = FinalAudioElement<FreqRampAlgo<T>>;
-        
+
 
         template<typename T, int ORDER>
         using FreqRampLPWhiteNoiseAlgo_ = FreqCtrl_<LPWhiteNoiseAlgo<T, ORDER>, LogRamp<T>>;
-        
+
         template<typename T, int ORDER>
         using FreqRampLPWhiteNoise = FinalAudioElement<FreqRampLPWhiteNoiseAlgo_<T, ORDER>>;
 
-                
+
         template<typename A1, typename A2>
         struct RingModulationAlgo {
             using T = typename A1::FPT;
             using FPT = T;
-            
+
             static_assert(std::is_same<typename A1::FPT, typename A2::FPT>::value, ""); // else choice for T is arbitrary
-            
+
             using Tr = NumTraits<T>;
-            
+
             RingModulationAlgo() = default;
-            
+
             void set(T angle_increments1, T angle_increments2, bool reset = true) {
                 osc1.setAngleIncrements(angle_increments1);
                 if(reset) {
@@ -1086,30 +1092,30 @@ namespace imajuscule {
                     osc1.setAngle(0.f);
                 }
             }
-            
+
             void step() {
                 osc1.step();
                 osc2.step();
             }
-            
+
             T real() const { return osc1.real() * osc2.real(); }
             T imag() const { return osc1.imag() * osc2.imag(); }
-            
+
             auto & get_element_1() { return osc1; }
             auto & get_element_2() { return osc2; }
         private:
             A1 osc1;
             A2 osc2;
         };
-        
+
         template<typename A1, typename A2>
         using RingModulation = FinalAudioElement<RingModulationAlgo<A1,A2>>;
-        
+
         /*
          * returns false when the buffer is done being used
          */
         using ComputeFunc = std::function<bool(bool)>;
-        
+
         template<typename T>
         struct FCompute {
             template<typename U=T>
@@ -1122,7 +1128,7 @@ namespace imajuscule {
                 return [&ae](bool sync_clock) {
                     using AE = AudioElement<typename T::FPT>;
                     auto & e = safe_cast<AE&>(ae);
-                    
+
                     if(e.getState() == AE::inactive()) {
                         // Issue : if the buffer just got marked inactive,
                         // but no new AudioElementCompute happends
@@ -1147,7 +1153,7 @@ namespace imajuscule {
                     return true;
                 };
             }
-            
+
             template<typename U=T>
             static auto get(U & e)
             -> std::enable_if_t<
@@ -1158,11 +1164,11 @@ namespace imajuscule {
                 return {};
             }
         };
-        
+
         template<typename T>
         ComputeFunc fCompute(T & e) {
             return FCompute<T>::get(e);
         }
-        
+
     } // NS audioelement
 } // NS imajuscule

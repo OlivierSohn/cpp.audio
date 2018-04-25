@@ -1,10 +1,10 @@
 namespace imajuscule {
     namespace audio {
-        
+
         namespace voice {
-            
+
             enum ImplParams {
-                
+
                 // Common
                 PINK_NOISE_LP_GAIN,
                 PINK_NOISE_BP_GAIN,
@@ -23,13 +23,13 @@ namespace imajuscule {
                 PAN,
 
 #include "loudness_enum_names.h"
-                
+
                 MARKOV_START_NODE,
                 MARKOV_PRE_TRIES,
                 MARKOV_MIN_PATH_LENGTH,
                 MARKOV_ADDITIONAL_TRIES,
                 MARKOV_ARTICULATIVE_PAUSE_LENGTH,
-                
+
                 INTERPOLATION,
                 FREQ_SCATTER,
                 LENGTH,
@@ -38,23 +38,23 @@ namespace imajuscule {
                 XFADE_LENGTH,
                 PHASE_RATIO1,
                 PHASE_RATIO2,
-                
+
                 // Robot
                 D1,
                 D2,
                 HARMONIC_ATTENUATION,
-                
+
                 // Birds
                 MARKOV_XFADE_FREQ,
-                
+
                 FREQ_TRANSITION_LENGTH,
                 FREQ_TRANSITION_INTERPOLATION,
-                
+
                 // Sweep
                 LOW_FREQ,
                 HIGH_FREQ
             };
-            
+
             constexpr std::array<ImplParams, 32> params_birds
             {{
                 PINK_NOISE_LP_GAIN,
@@ -68,37 +68,37 @@ namespace imajuscule {
                 SINE_GAIN,
 
                 SEED,
-                
+
                 RANDOM_PAN,
                 PAN,
-                
+
                 GAIN,
                 LOUDNESS_LEVEL,
                 LOUDNESS_COMPENSATION_AMOUNT,
                 LOUDNESS_REF_FREQ_INDEX,
-                
+
                 MARKOV_START_NODE,
                 MARKOV_PRE_TRIES,
                 MARKOV_MIN_PATH_LENGTH,
                 MARKOV_ADDITIONAL_TRIES,
                 MARKOV_ARTICULATIVE_PAUSE_LENGTH,
-                
+
                 INTERPOLATION,
                 FREQ_SCATTER,
                 LENGTH,
                 LENGTH_EXPONENT,
                 LENGTH_EXPONENT_SCATTER,
                 XFADE_LENGTH,
-                
+
                 MARKOV_XFADE_FREQ,
                 FREQ_TRANSITION_LENGTH,
                 FREQ_TRANSITION_INTERPOLATION,
-                
+
                 PHASE_RATIO1,
                 PHASE_RATIO2
-                
+
             }};
-            
+
             constexpr std::array<ImplParams, 32> params_robots
             {{
                 PINK_NOISE_LP_GAIN,
@@ -112,36 +112,36 @@ namespace imajuscule {
                 SINE_GAIN,
 
                 SEED,
-                
+
                 RANDOM_PAN,
                 PAN,
-                
+
                 GAIN,
                 LOUDNESS_LEVEL,
                 LOUDNESS_COMPENSATION_AMOUNT,
                 LOUDNESS_REF_FREQ_INDEX,
-                
+
                 MARKOV_START_NODE,
                 MARKOV_PRE_TRIES,
                 MARKOV_MIN_PATH_LENGTH,
                 MARKOV_ADDITIONAL_TRIES,
                 MARKOV_ARTICULATIVE_PAUSE_LENGTH,
-                
+
                 D1,
                 D2,
                 HARMONIC_ATTENUATION,
-                
+
                 INTERPOLATION,
                 FREQ_SCATTER,
                 LENGTH,
                 LENGTH_EXPONENT,
                 LENGTH_EXPONENT_SCATTER,
                 XFADE_LENGTH,
-                
+
                 PHASE_RATIO1,
                 PHASE_RATIO2
             }};
-            
+
             constexpr std::array<ImplParams, 29> params_wind
             {{
                 PINK_NOISE_LP_GAIN,
@@ -156,17 +156,17 @@ namespace imajuscule {
                 N_SLOW_ITER_LONG_TERM,
                 ORDER_FILTERS,
                 SINE_GAIN,
-                
+
                 SEED,
-                
+
                 RANDOM_PAN,
                 PAN,
-                
+
                 GAIN,
                 LOUDNESS_LEVEL,
                 LOUDNESS_COMPENSATION_AMOUNT,
                 LOUDNESS_REF_FREQ_INDEX,
-                
+
                 MARKOV_START_NODE,
                 MARKOV_PRE_TRIES,
                 MARKOV_MIN_PATH_LENGTH,
@@ -179,7 +179,7 @@ namespace imajuscule {
                 LENGTH_EXPONENT_SCATTER,
                 XFADE_LENGTH
             }};
-            
+
             constexpr std::array<ImplParams, 21> params_sweep
             {{
                 PINK_NOISE_LP_GAIN,
@@ -194,51 +194,51 @@ namespace imajuscule {
 
                 RANDOM_PAN,
                 PAN,
-                
+
                 GAIN,
                 LOUDNESS_LEVEL,
                 LOUDNESS_COMPENSATION_AMOUNT,
                 LOUDNESS_REF_FREQ_INDEX,
-                
+
                 INTERPOLATION,
-                
+
                 LENGTH,
                 LENGTH_EXPONENT,
                 XFADE_LENGTH,
-                
+
                 LOW_FREQ,
                 HIGH_FREQ
             }};
-            
+
             constexpr auto params_all = make_tuple(params_birds, params_robots, params_sweep, params_wind);
-            
+
 #include "pernamespace.implparams.h"
-            
+
 #include "loudness_enum_limits.h"
-            
+
             template<> struct NoLimits<INTERPOLATION> {static constexpr auto zero = 0;};
             template<> struct NoLimits<LOUDNESS_COMPENSATION_AMOUNT> {static constexpr auto zero = 0;};
             template<> struct NoLimits<RANDOM_PAN> {static constexpr auto zero = 0;};
             template<> struct NoLimits<FREQ_TRANSITION_INTERPOLATION> {static constexpr auto zero = 0;};
             template<> struct NoLimits<MARKOV_XFADE_FREQ> {static constexpr auto zero = 0;};
-            
-            
+
+
             template<> struct Limits<ORDER_FILTERS> {
                 static constexpr auto m = 1;
                 static constexpr auto M = 258; };
-            
+
             template<> struct Limits<SEED> {
                 static constexpr auto m = 0;
                 static constexpr auto M = 257; };
-            
+
             template<> struct Limits<XFADE_LENGTH> {
                 static constexpr auto m = 101;
                 static constexpr auto M = 2001; };
-            
+
             template<> struct Limits<FREQ_TRANSITION_LENGTH> {
                 static constexpr auto m = 1;
                 static constexpr auto M = 20001; };
-            
+
             template<> struct Limits<MARKOV_ARTICULATIVE_PAUSE_LENGTH> {
                 static constexpr auto m = 0;
                 static constexpr auto M = 20001; };
@@ -251,80 +251,80 @@ namespace imajuscule {
             template<> struct Limits<PHASE_RATIO1> : public NormalizedParamLimits {};
             template<> struct Limits<PHASE_RATIO2> : public NormalizedParamLimits {};
             template<> struct Limits<SINE_GAIN> : public NormalizedParamLimits {};
-            
+
             template<> struct Limits<D1> {
                 static constexpr auto m = 0;
                 static constexpr auto M = 47; };
             template<> struct Limits<D2> {
                 static constexpr auto m = 0;
                 static constexpr auto M = 47; };
-            
+
             template<> struct Limits<HARMONIC_ATTENUATION> {
                 static const float m;
                 static const float M; };
-            
+
             template<> struct Limits<PINK_NOISE_BP_OCTAVE_WIDTH_MIN> {
                 static const float m;
                 static const float M; };
-            
+
             template<> struct Limits<PINK_NOISE_BP_OCTAVE_WIDTH_MAX> {
                 static const float m;
                 static const float M; };
-            
+
             template<> struct Limits<CENTER_OCTAVE_MIN_LONG_TERM> {
                 static const float m;
                 static const float M; };
-            
+
             template<> struct Limits<CENTER_OCTAVE_MAX_LONG_TERM> {
                 static const float m;
                 static const float M; };
-            
+
             template<> struct Limits<PAN> {
                 static const float m;
                 static const float M; };
-            
+
             template<> struct Limits<CENTER_SHORT_TERM_RATIO> : public NormalizedParamLimits {};
             template<> struct Limits<N_SLOW_ITER_SHORT_TERM> : public NormalizedParamLimits {};
             template<> struct Limits<N_SLOW_ITER_LONG_TERM> : public NormalizedParamLimits {};
-            
+
             template<> struct Limits<LENGTH> {
                 static const float m;
                 static const float M; };
-            
+
             template<> struct Limits<LENGTH_EXPONENT> {
                 static const float m;
                 static const float M; };
-            
+
             template<> struct Limits<MARKOV_START_NODE> {
                 static constexpr auto m = 0;
                 static constexpr auto M = 2; };
-            
+
             template<> struct Limits<MARKOV_PRE_TRIES> {
                 static constexpr auto m = 0;
                 static constexpr auto M = 20; };
-            
+
             template<> struct Limits<MARKOV_MIN_PATH_LENGTH> {
                 static constexpr auto m = 0;
                 static constexpr auto M = 20; };
-            
+
             template<> struct Limits<MARKOV_ADDITIONAL_TRIES> {
                 static constexpr auto m = 0;
                 static constexpr auto M = 20; };
-            
+
             template<> struct Limits<LOW_FREQ> {
                 static const float m;
                 static const float M; };
-    
+
             template<> struct Limits<HIGH_FREQ> {
                 static const float m;
                 static const float M; };
-        
+
             constexpr auto size_interleaved_one_cache_line = cache_line_n_bytes / sizeof(interleaved_buf_t::value_type);
             constexpr auto size_interleaved = size_interleaved_one_cache_line;
-            
+
             using Mode = SoundEngineMode;
-            
-            
+
+
             template<SoundEngineMode>
             struct SetSlowParams {
                 template<typename CTRL>
@@ -332,7 +332,7 @@ namespace imajuscule {
                     Assert(0);
                 }
             };
-            
+
             template<>
             struct SetSlowParams<SoundEngineMode::WIND> {
                 template<typename CTRL>
@@ -342,7 +342,7 @@ namespace imajuscule {
                     ctrl.set_short_term_noise_amplitude(ratio);
                 }
             };
-            
+
             template<SoundEngineMode>
             struct SetFilterWidths {
                 template<typename CTRL>
@@ -350,7 +350,7 @@ namespace imajuscule {
                     Assert(0);
                 }
             };
-            
+
             template<>
             struct SetFilterWidths<SoundEngineMode::WIND> {
                 template<typename CTRL>
@@ -359,7 +359,7 @@ namespace imajuscule {
                     std::get<2>(ctrl.get()).getOsc().setWidthRange(width_factor_range);
                 }
             };
-            
+
             template<SoundEngineMode>
             struct ConfigureFilters {
                 template<typename CTRL>
@@ -367,7 +367,7 @@ namespace imajuscule {
                     Assert(0);
                 }
             };
-            
+
             template<>
             struct ConfigureFilters<SoundEngineMode::WIND> {
                 template<typename CTRL>
@@ -375,21 +375,21 @@ namespace imajuscule {
                     // those control the width of the band algorithms
                     auto & bpf_width = std::get<1>(ctrl.get()).getOsc().getWidth();
                     auto & bpr_width = std::get<2>(ctrl.get()).getOsc().getWidth();
-                    
+
                     // those control the center frequencies of the band algorithms
                     auto & bpf_center_ctrl = std::get<1>(ctrl.get()).getCtrl();
                     auto & bpr_center_ctrl = std::get<2>(ctrl.get()).getCtrl();
-                    
+
                     bpf_center_ctrl.getUnderlyingIter().set_n_slow_steps(n_slow_steps);
                     bpf_center_ctrl.setFreqRange(ra);
                     bpf_width.getUnderlyingIter().set_n_slow_steps(n_slow_steps);
-                    
+
                     bpr_center_ctrl.getUnderlyingIter().set_n_slow_steps(n_slow_steps);
                     bpr_center_ctrl.setFreqRange(ra);
                     bpr_width.getUnderlyingIter().set_n_slow_steps(n_slow_steps);
                 }
             };
-            
+
             template<SoundEngineMode>
             struct SetGains {
                 template<typename CTRL>
@@ -399,7 +399,7 @@ namespace imajuscule {
                     }});
                 }
             };
-            
+
             template<>
             struct SetGains<SoundEngineMode::WIND> {
                 template<typename CTRL>
@@ -407,22 +407,22 @@ namespace imajuscule {
                     ctrl.setGains(std::move(arr));
                 }
             };
-            
+
             template <
 
             Mode MODE,
             typename Parameters,
             typename ProcessData,
             typename Parent = Impl <
-            
+
             std::get<MODE>(params_all).size(), Parameters, interleaved_buf_t, size_interleaved, ProcessData
-            
+
             >
-            
+
             >
             struct ImplBase : public Parent {
                 static constexpr auto n_max_orchestrator_per_channel = 1;
-                
+
                 using Parent::params;
                 using Parent::half_tone;
 
@@ -430,7 +430,7 @@ namespace imajuscule {
 
             public:
                 static std::vector<ParamSpec> const & getParamSpecs() {
-                    
+
                     static std::vector<ParamSpec> params_spec = {
                         {"[1/f Noise] LPF Gain", Limits<PINK_NOISE_LP_GAIN>::m, Limits<PINK_NOISE_LP_GAIN>::M},
                         {"[1/f Noise] BPF Gain", Limits<PINK_NOISE_BP_GAIN>::m, Limits<PINK_NOISE_BP_GAIN>::M},
@@ -470,7 +470,7 @@ namespace imajuscule {
                         {"[Sweep] Low freq.", Limits<LOW_FREQ>::m, Limits<LOW_FREQ>::M },
                         {"[Sweep] High freq.", Limits<HIGH_FREQ>::m, Limits<HIGH_FREQ>::M },
                     };
-                    
+
                     static std::vector<ParamSpec> filtered;
                     if(filtered.empty()) {
                         filtered.reserve(std::get<MODE>(params_all).size());
@@ -480,7 +480,7 @@ namespace imajuscule {
                     }
                     return filtered;
                 }
-                
+
                 static std::array<float,35> make_common(int start_node,
                                                         int pre_tries,
                                                         int min_path_length,
@@ -503,7 +503,7 @@ namespace imajuscule {
                     int itp_index = 0;
                     auto b = itp::interpolation_traversal().valToRealValueIndex(i, itp_index);
                     Assert(b);
-                    
+
                     return {{
                         0.f,
                         0.f,
@@ -539,7 +539,7 @@ namespace imajuscule {
                         normalize<HARMONIC_ATTENUATION>(harmonic_attenuation),
                     }};
                 }
-                
+
                 static Program::ARRAY make_robot(int start_node,
                                                  int pre_tries,
                                                  int min_path_length,
@@ -566,7 +566,7 @@ namespace imajuscule {
                     }
                     return result;
                 }
-                
+
                 static Program::ARRAY make_sweep(itp::interpolation i,
                                                  float length,
                                                  float length_med_exp,
@@ -582,13 +582,13 @@ namespace imajuscule {
                         }
                         result[index(e)] = a[idx];
                     }
-                    
+
                     result[index(LOW_FREQ)] = normalize<LOW_FREQ>(low);
                     result[index(HIGH_FREQ)] = normalize<HIGH_FREQ>(high);
-                    
+
                     return result;
                 }
-                
+
                 static Program::ARRAY make_bird(int start_node,
                                                   int pre_tries,
                                                   int min_path_length,
@@ -629,9 +629,9 @@ namespace imajuscule {
                     result[index(FREQ_TRANSITION_LENGTH)] = normalize<FREQ_TRANSITION_LENGTH>(freq_xfade);
                     return result;
                 }
-                
+
                 static constexpr auto max_n_slow_iter = 100000.f;
-                
+
                 static Program::ARRAY make_noise_wind(int filter_order,
                                                 range<float> bp_width,
                                                 range<float> bp_center,
@@ -652,10 +652,10 @@ namespace imajuscule {
                     result[index(CENTER_OCTAVE_MIN_LONG_TERM)] = normalize<CENTER_OCTAVE_MIN_LONG_TERM>(bp_center.getMin()),
                     result[index(CENTER_OCTAVE_MAX_LONG_TERM)] = normalize<CENTER_OCTAVE_MAX_LONG_TERM>(bp_center.getMax()),
                     result[index(N_SLOW_ITER_LONG_TERM)] = std::log(n_slow_iter) / std::log(max_n_slow_iter);
-                    
+
                     return result;
                 }
-                
+
                 static Program::ARRAY make_sine_wind(range<float> bp_center,
                                                      float short_center_ratio,
                                                      float n_slow_iter_long_term,
@@ -677,10 +677,10 @@ namespace imajuscule {
                     result[index(N_SLOW_ITER_LONG_TERM)] = std::log(n_slow_iter_long_term) / std::log(max_n_slow_iter);
                     result[index(N_SLOW_ITER_SHORT_TERM)] = std::log(n_slow_iter_short_term) / std::log(max_n_slow_iter);
                     result[index(CENTER_SHORT_TERM_RATIO)] = short_center_ratio;
-                    
+
                     return result;
                 }
-                
+
                 static Program::ARRAY make_mixed_wind(int filter_order,
                                                       range<float> bp_width,
                                                       range<float> bp_center,
@@ -702,7 +702,7 @@ namespace imajuscule {
                     result[index(CENTER_OCTAVE_MIN_LONG_TERM)] = normalize<CENTER_OCTAVE_MIN_LONG_TERM>(bp_center.getMin()),
                     result[index(CENTER_OCTAVE_MAX_LONG_TERM)] = normalize<CENTER_OCTAVE_MAX_LONG_TERM>(bp_center.getMax()),
                     result[index(N_SLOW_ITER_LONG_TERM)] = std::log(n_slow_iter) / std::log(max_n_slow_iter);
-                    
+
                     return result;
                 }
                 static Programs const & getPrograms() {
@@ -798,15 +798,15 @@ namespace imajuscule {
                         return ps.v;
                     }
                 }
-                
+
             public:
-                
+
                 Program const & getProgram(int i) const override {
                     auto & progs = getPrograms();
                     Assert(i < progs.size());
                     return progs[i];
                 }
-                
+
                 int countPrograms() const override {
                     return getPrograms().size();
                 }
@@ -822,7 +822,7 @@ namespace imajuscule {
                     Assert(0);
                     return 0;
                 }
-                
+
                 static constexpr bool has(ImplParams n) {
                     for(auto p : std::get<MODE>(params_all)) {
                         if(p==n) {
@@ -831,24 +831,24 @@ namespace imajuscule {
                     }
                     return false;
                 }
-                
+
                 template<ImplParams N>
                 float value() const {
                     return valueof<N>(params[index(N)]);
                 }
-                
+
                 template<ImplParams N>
                 float denorm() const {
                     return denormalize<N>(params[index(N)]);
                 }
-                
+
                 template<ImplParams N>
                 float octaveToFreq() const {
                     constexpr auto lowest_f = 10.f;
                     auto m = denorm<N>();
                     return lowest_f * pow(2.f, m);
                 }
-                
+
                 template<ImplParams N1, ImplParams N2>
                 range<float> octaveRangeToFreqRange() const {
                     auto m = octaveToFreq<N1>();
@@ -858,20 +858,20 @@ namespace imajuscule {
                     }
                     return { m, M };
                 }
-                
+
             protected:
                 template<typename MonoNoteChannel, typename OutputData>
                 void onStartNote(float velocity, MonoNoteChannel & c, OutputData & out) {
-                    
+
                     c.elem.engine.set_active(true);
                     c.elem.engine.set_channels(c.channels[0], c.channels[0]);
-                    
+
                     {
                         auto interp = static_cast<itp::interpolation>(itp::interpolation_traversal().realValues()[static_cast<int>(.5f + value<INTERPOLATION>())]);
-                        
+
                         c.elem.engine.set_itp(interp);
                     }
-                    
+
                     auto ex = denorm<LENGTH_EXPONENT>();
                     Assert(ex >= 0.f);
                     if(MODE != Mode::SWEEP) {
@@ -879,14 +879,14 @@ namespace imajuscule {
                         Assert(variation >= 0.f);
                         Assert(variation <= 1.f);
                         c.elem.engine.set_length_exp(ex * (1.f - variation), ex * (1.f + variation));
-                        
+
                         c.elem.engine.set_freq_scatter(denorm<FREQ_SCATTER>());
-                        
+
                         if(MODE != Mode::WIND) {
                             c.elem.engine.set_phase_ratio1(denorm<PHASE_RATIO1>());
                             c.elem.engine.set_phase_ratio2(denorm<PHASE_RATIO2>());
                         }
-                        
+
                         thread_local int seed = 0;
                         if(int i_seed = static_cast<int>(value<SEED>() + .5f)) {
                             seed = i_seed;
@@ -907,17 +907,17 @@ namespace imajuscule {
                     else {
                         c.elem.engine.set_length_exp(ex, ex);
                     }
-                    
+
                     {
                         auto tunedNote = midi::tuned_note(c.pitch, c.tuning);
                         auto f = to_freq(tunedNote-Do_midi, half_tone);
                         c.elem.engine.set_base_freq(f);
                     }
-                    
+
                     c.elem.engine.set_length(denorm<LENGTH>());
-                    
+
                     c.elem.engine.set_xfade(get_xfade_length()); // useless in case of Birds (xfade already set in the channel by caller, and this value will not be used)
-                    
+
                     c.elem.setLoudnessParams(value<LOUDNESS_REF_FREQ_INDEX>(),
                                              value<LOUDNESS_COMPENSATION_AMOUNT>(),
                                              denorm<LOUDNESS_LEVEL>());
@@ -939,19 +939,19 @@ namespace imajuscule {
                         denorm<PINK_NOISE_BR_GAIN>(),
                         denorm<SINE_GAIN>()
                     }});
-                    
+
                     if(MODE == Mode::WIND) {
                         auto ra = octaveRangeToFreqRange<
                         CENTER_OCTAVE_MIN_LONG_TERM,
                         CENTER_OCTAVE_MAX_LONG_TERM
                         >();
-                        
+
                         // we could omit calling set_n_slow_steps when not in mode WIND,
                         // but we call it with value 1 to be sure that all objects
                         // that we need to call for WIND are called (the value is initialized to
                         // -1 in constructor and makes an assert fail if the method is not called)
                         float n_slow_steps = std::pow(max_n_slow_iter, denorm<N_SLOW_ITER_LONG_TERM>());
-                        
+
                         for(auto & r : c.elem.getRamps()) {
                             auto & mix = r.algo.getOsc();
                             ConfigureFilters<MODE>::configure(mix, n_slow_steps, ra);
@@ -965,7 +965,7 @@ namespace imajuscule {
                             f_control.get().setFreqRange(ra);
                         }
                     }
-                    
+
                     {
                         float pan;
                         {
@@ -977,7 +977,7 @@ namespace imajuscule {
                                 pan = denorm<PAN>();
                             }
                         }
-                    
+
                         if(MODE == Mode::SWEEP) {
                             c.elem.engine.initialize_sweep(out,
                                                            c,
@@ -990,7 +990,7 @@ namespace imajuscule {
                             auto interp_freq = static_cast<itp::interpolation>(itp::interpolation_traversal().realValues()[static_cast<int>(.5f + value<FREQ_TRANSITION_INTERPOLATION>())]);
                             c.elem.engine.set_freq_interpolation(interp_freq);
                             auto xfade_freq = static_cast<FreqXfade>(xfade_freq_traversal().realValues()[static_cast<int>(.5f + value<MARKOV_XFADE_FREQ>())]);
-                            
+
                             c.elem.engine.initialize_birds(out,
                                                             c,
                                                             value<MARKOV_START_NODE>(),
@@ -1028,13 +1028,13 @@ namespace imajuscule {
                         }
                     }
                 }
-                
+
                 int get_xfade_length() const {
                     auto d = denorm<XFADE_LENGTH>();
                     // make it odd
                     return 1 + ( static_cast<int>( .5f + d ) / 2 ) * 2;
                 }
-                
+
                 float get_gain() const { return denorm<GAIN>(); }
 
             public:
@@ -1042,19 +1042,19 @@ namespace imajuscule {
                     params[index(GAIN)] = normalize<GAIN>(g);
                     Assert(std::abs(get_gain()-g) < .001f);
                 }
-                
+
                 void set_loudness_compensation(float c) {
                     params[index(LOUDNESS_COMPENSATION_AMOUNT)] = normalize<LOUDNESS_COMPENSATION_AMOUNT>(c);
                 }
-                
+
                 void set_pan(float pan) {
                     params[index(PAN)] = normalize<PAN>(pan);
                 }
-                
+
                 void set_random_pan(bool is_random) {
                     params[index(RANDOM_PAN)] = static_cast<float>(!is_random);
                 }
-                
+
                 void set_random(bool is_random) {
                     if(!has(SEED)) {
                         return;
@@ -1069,7 +1069,7 @@ namespace imajuscule {
                         params[index(SEED)] = static_cast<float>(seed_fixed);
                     }
                 }
-                
+
                 void set_seed(int seed) {
                     if(!has(SEED)) {
                         return;
@@ -1077,7 +1077,7 @@ namespace imajuscule {
                     params[index(SEED)] = static_cast<float>(seed);
                 }
             };
-            
+
             template<typename SoundEngine>
             struct EngineAndRamps {
                 using audioElt = typename SoundEngine::audioElt;
@@ -1090,19 +1090,19 @@ namespace imajuscule {
                     }
                     return nullptr;
                 }} {}
-                
+
                 void forgetPastSignals() {
                     for(auto & r : ramps) {
                         r.algo.forgetPastSignals();
                     }
                 }
-                
+
                 void setLoudnessParams(int low_index, float log_ratio, float loudness_level) {
                     for(auto & r : ramps) {
                         r.algo.getOsc().setLoudnessParams(low_index, log_ratio, loudness_level);
                     }
                 }
-                
+
                 template<typename T>
                 void setGains(T&& gains) {
                     for(auto & r : ramps) {
@@ -1119,59 +1119,59 @@ namespace imajuscule {
                 auto & getRamps() {
                     return ramps;
                 }
-                
+
                 SoundEngine engine;
-                
+
             private:
                 // 3 because there is 'before', 'current' and the inactive one
                 std::array<audioElt, 3> ramps;
-                
+
             public:
                 auto const & getRamps() const { return ramps; }
-                
+
             };
-            
+
             template<
-            
+
             int nAudioOut,
             Mode MODE,
-            
+
             typename Parameters,
             typename EventIterator,
             typename NoteOnEvent,
             typename NoteOffEvent,
             typename ProcessData,
-            
+
             typename Base = ImplBase<MODE, Parameters, ProcessData>,
-            
+
             typename Parent_ = ImplCRTP <
             nAudioOut, XfadePolicy::UseXfade,
             MonoNoteChannel< 1, EngineAndRamps<typename Base::SoundEngine> >, false,
             EventIterator, NoteOnEvent, NoteOffEvent, Base >
-            
+
             >
             struct Impl_ : public Parent_
             {
                 using Parent = Parent_;
-                
+
                 static constexpr auto use_orchestrators = true;
                 static constexpr auto n_frames_interleaved = size_interleaved / nAudioOut;
                 static_assert(n_frames_interleaved * nAudioOut == size_interleaved, ""); // make sure we don't waste space
-                
+
                 using Base::interleaved;
                 using Base::get_xfade_length;
-                
+
                 using Parent::onEvent;
                 using Parent::channels;
-                
+
                 using Event = typename Parent::Event;
 
             public:
-                
+
                 template<typename OutputData>
                 onEventResult onEvent(Event const & e, OutputData & out)
                 {
-                    return onEvent(e, [](auto & c) -> bool {
+                    return onEvent(e, [](auto & c) {
                         for(auto const & r : c.elem.getRamps()) {
                             if(!r.isInactive()) {
                                 return false;
@@ -1185,36 +1185,36 @@ namespace imajuscule {
                         return c.closed();
                     }, out);
                 }
-                
+
                 template<typename OutputData>
                 void doProcessing (ProcessData& data, OutputData & out)
                 {
                     Assert(data.numSamples);
-                    
+
                     std::array<float *, nAudioOut> outs;
                     Assert(1 == data.numOutputs);
                     Assert(nAudioOut == data.outputs[0].numChannels);
                     for(auto i=0; i<data.outputs[0].numChannels; ++i) {
                         outs[i] = data.outputs[0].channelBuffers32[i];
                     }
-                    
+
                     auto nRemainingFrames = data.numSamples;
-                    
+
                     static_assert((size_interleaved / nAudioOut) * nAudioOut == size_interleaved, "");
-                    
+
                     auto currentFrame = 0;
-                    
+
                     auto * events = data.inputEvents;
                     Assert( events );
-                    
+
                     EventIterator it(begin(events)), end(end_(events));
-                    
+
                     int nextEventPosition = getNextEventPosition(it, end);
                     Assert(nextEventPosition >= currentFrame);
-                    
+
                     while(nRemainingFrames) {
                         Assert(nRemainingFrames > 0);
-                        
+
                         while(nextEventPosition == currentFrame) {
                             Event e;
                             it.dereference(e);
@@ -1223,16 +1223,16 @@ namespace imajuscule {
                             nextEventPosition = getNextEventPosition(it, end);
                         }
                         Assert(nextEventPosition > currentFrame);
-                        
+
                         // compute not more than until next event...
                         auto nFramesToProcess = nextEventPosition - currentFrame;
                         // ... not more than the number of frames remaining
                         nFramesToProcess = std::min(nFramesToProcess, nRemainingFrames);
                         // ... not more than the buffer
                         nFramesToProcess = std::min<int>(nFramesToProcess, n_frames_interleaved);
-                        
+
                         out.step(&interleaved[0], nFramesToProcess);
-                        
+
                         for(auto c = 0; c < nFramesToProcess; ++c) {
                             for(unsigned int i=0; i<nAudioOut; ++i) {
                                 *outs[i] = interleaved[nAudioOut*c + i];
@@ -1242,11 +1242,11 @@ namespace imajuscule {
                         nRemainingFrames -= nFramesToProcess;
                         currentFrame += nFramesToProcess;
                     }
-                    
+
                     Assert(nextEventPosition == event_position_infinite); // the events should all have already been processed
                 }
             };
-            
+
         }
     }
 } // namespaces

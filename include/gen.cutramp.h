@@ -217,7 +217,7 @@ namespace imajuscule {
 
                 // The caller is responsible for taking the out lock if needed.
                 template<typename MonoNoteChannel, typename OutputData>
-                void onStartNote(float velocity, MonoNoteChannel & c, OutputData & out) {
+                void onStartNote(float velocity, Phase phase, MonoNoteChannel & c, OutputData & out) {
                     using Request = typename OutputData::Request;
 
                     auto tunedNote = midi::tuned_note(c.pitch, c.tuning);
@@ -237,6 +237,7 @@ namespace imajuscule {
                     osc.algo.getOsc().setLoudnessParams(value<LOUDNESS_REF_FREQ_INDEX>(),
                                           value<LOUDNESS_COMPENSATION_AMOUNT>(),
                                           denorm<LOUDNESS_LEVEL>());
+                    setPhase(phase, osc.algo.getOsc());
 
                     osc.algo.getCtrl().set(freq - ramp_amount() * (freq-start_freq),
                                       freq,
@@ -341,7 +342,7 @@ namespace imajuscule {
                     if(!period.hasValue()) {
                         updateParams();
                     }
-                    return onEvent(e, [](auto & c) { return c.elem.isInactive(); }, out);
+                    return onEvent(e, [](auto & c) { return c.elem.isInactive() && c.closed(); }, out);
                 }
 
                 void updateParams()

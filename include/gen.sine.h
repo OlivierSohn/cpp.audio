@@ -9,7 +9,7 @@ namespace imajuscule {
 
                 // the caller is responsible for taking the out lock if needed
                 template<typename MonoNoteChannel, typename OutputData>
-                void onStartNote(float velocity, MonoNoteChannel & c, OutputData & out) {
+                void onStartNote(float velocity, Phase phase, MonoNoteChannel & c, OutputData & out) {
                     using Request = typename OutputData::Request;
 
                     auto tunedNote = midi::tuned_note(c.pitch, c.tuning);
@@ -18,6 +18,7 @@ namespace imajuscule {
 
                     auto & osc = c.elem;
                     osc.algo.setAngleIncrements(freq_to_angle_increment(freq));
+                    setPhase(phase, osc.algo);
 
                     // the caller is responsible for taking the out lock if needed
                     out.playGenericNoLock(channel,
