@@ -861,8 +861,8 @@ namespace imajuscule {
 
             protected:
                 template<typename MonoNoteChannel, typename OutputData>
-                void onStartNote(float velocity, MonoNoteChannel & c, OutputData & out) {
-
+                // it's unclear if we should use phase at all here.
+                void onStartNote(float velocity, Phase phase, MonoNoteChannel & c, OutputData & out) {
                     c.elem.engine.set_active(true);
                     c.elem.engine.set_channels(c.channels[0], c.channels[0]);
 
@@ -1081,6 +1081,7 @@ namespace imajuscule {
             template<typename SoundEngine>
             struct EngineAndRamps {
                 using audioElt = typename SoundEngine::audioElt;
+                using T = typename audioElt::FPT;
 
                 EngineAndRamps() : engine{[this]()-> audioElt* {
                     for(auto & r: ramps) {
@@ -1122,6 +1123,17 @@ namespace imajuscule {
 
                 SoundEngine engine;
 
+                bool isInactive() const {
+                  for(auto const & r: ramps) {
+                      if(!r.isInactive()) {
+                          return false;
+                      }
+                  }
+                  return true;
+                }
+
+                T angle() const { return {}; }
+
             private:
                 // 3 because there is 'before', 'current' and the inactive one
                 std::array<audioElt, 3> ramps;
@@ -1135,6 +1147,7 @@ namespace imajuscule {
 
             int nAudioOut,
             Mode MODE,
+            bool withNoteOff,
 
             typename Parameters,
             typename EventIterator,
@@ -1146,10 +1159,11 @@ namespace imajuscule {
 
             typename Parent_ = ImplCRTP <
             nAudioOut, XfadePolicy::UseXfade,
-            MonoNoteChannel< 1, EngineAndRamps<typename Base::SoundEngine> >, false,
+            MonoNoteChannel< 1, EngineAndRamps<typename Base::SoundEngine> >,
+            withNoteOff,
             EventIterator, NoteOnEvent, NoteOffEvent, Base >
-
             >
+
             struct Impl_ : public Parent_
             {
                 using Parent = Parent_;
@@ -1171,19 +1185,7 @@ namespace imajuscule {
                 template<typename OutputData>
                 onEventResult onEvent(Event const & e, OutputData & out)
                 {
-                    return onEvent(e, [](auto & c) {
-                        for(auto const & r : c.elem.getRamps()) {
-                            if(!r.isInactive()) {
-                                return false;
-                            }
-                        }
-                        // here we know that all elements are inactive
-                        // but if the channel has not been closed yet
-                        // we cannot use it (if we want to enable that,
-                        // we should review the way note on/off are detected,
-                        // because it would probably cause bugs)
-                        return c.closed();
-                    }, out);
+                    return onEvent(e, [](auto & c) { return c.elem.isInactive() && c.closed(); }, out);
                 }
 
                 template<typename OutputData>

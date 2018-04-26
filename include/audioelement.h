@@ -79,6 +79,8 @@ namespace imajuscule {
                 algo.forgetPastSignals();
             }
 
+            FPT angle() const { return algo.angle(); }
+
             ALGO algo;
         };
 

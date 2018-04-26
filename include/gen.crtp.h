@@ -183,7 +183,8 @@ namespace imajuscule {
                 }
             }
 
-            // TODO can we simplify? we own the channels that are filtered.
+            // TODO can we remove filter argument? we own the channels that are filtered so maybe we could
+            // check if they are ready or not.
             template<typename FILTER_MONO_NOTE_CHANNELS, typename OutputData>
             onEventResult onEvent(Event const & e, FILTER_MONO_NOTE_CHANNELS filter, OutputData & out) {
                 if(e.type == Event::kNoteOnEvent) {
@@ -239,7 +240,7 @@ namespace imajuscule {
                 auto phase = mkNonDeterministicPhase();
                 for(auto const & o:channels) {
                   if(o.pitch == e.pitch && o.tuning==e.tuning && !o.closed() && !o.elem.isInactive()) {
-                    phase = mkDeterministicPhase(o.elem.algo.angle());
+                    phase = mkDeterministicPhase(o.elem.angle());
                     break;
                   }
                 }
@@ -263,13 +264,14 @@ namespace imajuscule {
 
             template<typename OutputData>
             onEventResult noteOff(uint8_t pitch, OutputData & out) {
-                MIDI_LG(INFO, "off %d", pitch);
                 if(!close_channel_on_note_off) {
+                    MIDI_LG(INFO, "off (ignored) %d", pitch);
                     // the initial implementation was using CloseMode::WHEN_DONE_PLAYING for that case
                     // but close method sets the channel to -1 so it's impossible to fade it to zero
                     // afterwards using close(), so instead we don't do anything here
                     return onEventResult::OK;
                 }
+                MIDI_LG(INFO, "off %d", pitch);
                 auto len = get_xfade_length();
                 for(auto & c : channels) {
                     if(c.pitch != pitch) {
