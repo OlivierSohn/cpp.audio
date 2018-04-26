@@ -326,7 +326,7 @@ namespace imajuscule {
                 using Base::xfade;
 
                 using Parent::channels;
-                using Parent::onEvent;
+                using Parent::onEvent2;
 
                 using Event = typename Parent::Event;
 
@@ -342,7 +342,7 @@ namespace imajuscule {
                     if(!period.hasValue()) {
                         updateParams();
                     }
-                    return onEvent(e, [](auto & c) { return c.elem.isInactive() && c.closed(); }, out);
+                    return onEvent2(e, out);
                 }
 
                 void updateParams()

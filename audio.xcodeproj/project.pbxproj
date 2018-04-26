@@ -299,6 +299,7 @@
 		099E06F61E36ECE50012348E /* Project.Release.xcconfig */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.xcconfig; name = Project.Release.xcconfig; path = xcode.config/Project.Release.xcconfig; sourceTree = "<group>"; };
 		099E06F71E36ECE50012348E /* Project.Shared.xcconfig */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.xcconfig; name = Project.Shared.xcconfig; path = xcode.config/Project.Shared.xcconfig; sourceTree = "<group>"; };
 		09A8F2291E442C3A0071C141 /* soundengine.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = soundengine.cpp; path = source/soundengine.cpp; sourceTree = "<group>"; };
+		09B839AD2092468B00D776E1 /* gen.vasine.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = gen.vasine.h; path = include/gen.vasine.h; sourceTree = "<group>"; };
 		09BA14861E3877BD00A05F83 /* libaudio.ios.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = libaudio.ios.a; sourceTree = BUILT_PRODUCTS_DIR; };
 		09C02B0B1E9A64BD00E570F5 /* read.wav.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; lineEnding = 0; name = read.wav.cpp; path = source/read.wav.cpp; sourceTree = "<group>"; xcLanguageSpecificationIdentifier = xcode.lang.cpp; };
 		09C02B0C1E9A64BD00E570F5 /* write.wav.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; lineEnding = 0; name = write.wav.cpp; path = source/write.wav.cpp; sourceTree = "<group>"; xcLanguageSpecificationIdentifier = xcode.lang.cpp; };
@@ -489,6 +490,7 @@
 				091E76EC1E46D03B009CFBA5 /* gen.crtp.h */,
 				094562341E43E475006E7076 /* gen.cutramp.h */,
 				09DC9A0B208F4CDC0057F6EE /* gen.sine.h */,
+				09B839AD2092468B00D776E1 /* gen.vasine.h */,
 				09529DF81E439D8D00705B99 /* gen.voice.h */,
 				090B14C21E75CCAE005A47C5 /* loudness_enum_limits_impl.h */,
 				090B14C01E75CC2C005A47C5 /* loudness_enum_limits.h */,

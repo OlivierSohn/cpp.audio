@@ -185,15 +185,16 @@ namespace imajuscule {
 
             // TODO can we remove filter argument? we own the channels that are filtered so maybe we could
             // check if they are ready or not.
-            template<typename FILTER_MONO_NOTE_CHANNELS, typename OutputData>
-            onEventResult onEvent(Event const & e, FILTER_MONO_NOTE_CHANNELS filter, OutputData & out) {
+            template<typename OutputData>
+            onEventResult onEvent2(Event const & e, OutputData & out) {
                 if(e.type == Event::kNoteOnEvent) {
                     // this case is handled by the wrapper... else we need to do a noteOff
                     Assert(e.noteOn.velocity > 0.f );
                     {
                         typename OutputData::Locking L(out.get_lock());
 
-                        if(auto c = editAudioElementContainer_if(channels, filter))
+                        if(auto c = editAudioElementContainer_if(channels
+                                                                 , [](auto & c) { return c.elem.isInactive() && c.closed(); }))
                         {
                             return this->template startNote(*c, e.noteOn, out);
                         }

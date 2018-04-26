@@ -1175,7 +1175,7 @@ namespace imajuscule {
                 using Base::interleaved;
                 using Base::get_xfade_length;
 
-                using Parent::onEvent;
+                using Parent::onEvent2;
                 using Parent::channels;
 
                 using Event = typename Parent::Event;
@@ -1185,7 +1185,7 @@ namespace imajuscule {
                 template<typename OutputData>
                 onEventResult onEvent(Event const & e, OutputData & out)
                 {
-                    return onEvent(e, [](auto & c) { return c.elem.isInactive() && c.closed(); }, out);
+                    return onEvent2(e, out);
                 }
 
                 template<typename OutputData>
