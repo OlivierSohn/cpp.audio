@@ -1009,6 +1009,8 @@ namespace imajuscule {
 
             using Tr = NumTraits<T>;
 
+            T angle() const { return {}; }
+
             void setLoudnessParams(int low_index, float log_ratio, float loudness_level) {
                 osc.setLoudnessParams(low_index, log_ratio, loudness_level);
             }
