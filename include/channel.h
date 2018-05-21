@@ -65,7 +65,7 @@ namespace imajuscule {
         UseXfade // use internal fades
     };
 
-    template<int nAudioOut, XfadePolicy XF = XfadePolicy::UseXfade>
+    template<int nAudioOut, XfadePolicy XF>
     struct Channel : public NonCopyable {
         using Volumes = Volumes<nAudioOut>;
         using QueuedRequest = QueuedRequest<nAudioOut>;

@@ -645,7 +645,7 @@ namespace imajuscule {
 
     template<
     int nAudioOut,
-    XfadePolicy XF = XfadePolicy::UseXfade,
+    XfadePolicy XF,
     AudioOutPolicy policy = AudioOutPolicy::Master
     >
     struct outputDataBase {
@@ -1044,5 +1044,5 @@ namespace imajuscule {
         }
     };
 
-    using outputData = outputDataBase<2>;
+    using outputData = outputDataBase<2, XfadePolicy::UseXfade>;
 }

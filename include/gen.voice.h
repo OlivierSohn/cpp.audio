@@ -1183,7 +1183,7 @@ namespace imajuscule {
             typename Base = ImplBase<MODE, Parameters, ProcessData>,
 
             typename Parent_ = ImplCRTP <
-            nAudioOut, XfadePolicy::UseXfade,
+            nAudioOut, XfadePolicy::UseXfade, // TODO reassess the use of xfades, now that we have enveloppes
             MonoNoteChannel< EngineAndRamps<typename Base::SoundEngine> >,
             withNoteOff,
             EventIterator, NoteOnEvent, NoteOffEvent, Base >
