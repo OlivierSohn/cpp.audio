@@ -241,7 +241,7 @@ namespace imajuscule {
 
             using Algo = typename SoundEngineAlgo_<Mix, M>::type;
 
-            using audioElt = audioelement::FinalAudioElement< Algo >;
+            using audioElt = audioelement::FinalAudioElement< audioelement::SimplyEnvelopped < Algo > >;
 
             static enumTraversal ModeTraversal;
 
@@ -499,7 +499,7 @@ namespace imajuscule {
                 if(onAfterCompute(out, max_frame_compute, done)) {
                     return !done;
                 }
-                c.template close<WithLock::No>(out, CloseMode::XFADE_ZERO, xfade);
+                c.elem.onKeyReleased(); // TODO this should be done differently, see other TODOs in onAfterCompute
                 return false;
             }
 
@@ -521,6 +521,7 @@ namespace imajuscule {
                 }
 
                 // is current request soon xfading?
+                // TODO this should be reworked to use the Envelope fade out instead of the channel's fade out.
                 if(channel.get_remaining_samples_count() < max_frame_compute + 1 + channel.get_size_half_xfade())
                 {
                     if(state_silence) {
@@ -555,9 +556,10 @@ namespace imajuscule {
                 while(auto new_spec = ramp_specs.get_next_ramp_for_run()) {
                     auto new_ramp = get_inactive_ramp();
                     Assert(new_ramp); // might be null if length of ramp is too small
-                    new_ramp->algo.getCtrl() = new_spec->get();
-                    new_ramp->algo.getCtrl().initializeForRun();
-
+                    new_ramp->algo.getAlgo().getCtrl() = new_spec->get();
+                    new_ramp->algo.getAlgo().getCtrl().initializeForRun();
+                    new_ramp->algo.forgetPastSignals();
+                    new_ramp->algo.onKeyPressed();
 
                     auto v = MakeVolume::run<nAudioOut>(1.f, pan) * (new_spec->volume()/Request::chan_base_amplitude);
                     // no lock : the caller is responsible for taking the out lock
@@ -566,7 +568,8 @@ namespace imajuscule {
                                                             Request{
                                                                 &new_ramp->buffer[0],
                                                                 v,
-                                                                static_cast<int>(.5f + new_ramp->algo.getCtrl().get_duration_in_samples())
+                                                                // TODO this should probably be reworked, as now, the enveloppe is responsible for fading out.
+                                                                static_cast<int>(.5f + new_ramp->algo.getAlgo().getCtrl().get_duration_in_samples())
                                                             })
                                              ))
                     {

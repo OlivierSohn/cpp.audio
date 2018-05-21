@@ -14,14 +14,13 @@ namespace imajuscule {
 
                     auto tunedNote = midi::tuned_note(c.pitch, c.tuning);
                     auto freq = to_freq(tunedNote-Do_midi, half_tone);
-                    auto channel = c.channels[0];
 
                     auto & osc = c.elem;
                     osc.algo.setAngleIncrements(freq_to_angle_increment(freq));
                     setPhase(phase, osc.algo);
 
                     // the caller is responsible for taking the out lock if needed
-                    out.playGenericNoLock(channel,
+                    out.playGenericNoLock(c.channel,
                                     std::make_pair(std::ref(osc),
                                                    Request{
                                                        &osc.buffer[0],

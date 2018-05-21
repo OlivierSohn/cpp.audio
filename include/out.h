@@ -793,6 +793,9 @@ namespace imajuscule {
             Locking l(get_lock());
             editChannel(channel_id).toVolume(volume, nSteps);
         }
+        void setVolume(uint8_t channel_id, float volume) {
+            editChannel(channel_id).setVolume(volume);
+        }
 
         template<class... Args>
         bool playGeneric( uint8_t channel_id, Args&&... requests) {

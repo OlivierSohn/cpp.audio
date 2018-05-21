@@ -6,7 +6,9 @@ namespace imajuscule {
 
             struct SynthImpl {
 
-                static constexpr int get_xfade_length() { return 401; }
+                int get_xfade_length() const { return xfade_length; }
+                void set_xfade_length(int l) { xfade_length = l; }
+
                 static constexpr float get_gain() { return 1.f; };
 
                 // the caller is responsible for taking the out lock if needed
@@ -16,7 +18,6 @@ namespace imajuscule {
 
                     auto tunedNote = midi::tuned_note(c.pitch, c.tuning);
                     auto freq = to_freq(tunedNote-Do_midi, half_tone);
-                    auto channel = c.channels[0];
 
                     auto & osc = c.elem;
                     osc.algo.setLoudnessParams(5,
@@ -26,7 +27,7 @@ namespace imajuscule {
                     setPhase(phase, osc.algo);
 
                     // the caller is responsible for taking the out lock if needed
-                    out.playGenericNoLock(channel,
+                    out.playGenericNoLock(c.channel,
                                     std::make_pair(std::ref(osc),
                                                    Request{
                                                        &osc.buffer[0],
@@ -36,6 +37,7 @@ namespace imajuscule {
                                                    }));
                 }
               private:
+                int xfade_length = 401;
                 float half_tone = compute_half_tone(1.f);
             };
 

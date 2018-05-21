@@ -130,7 +130,7 @@ namespace imajuscule {
         int nOuts,
         XfadePolicy xfade_policy_,
         typename MNC,
-        bool close_channel_on_note_off,
+        bool handle_note_off,
         typename EventIterator,
         typename NoteOnEvent,
         typename NoteOffEvent,
@@ -151,7 +151,7 @@ namespace imajuscule {
             using Event = typename EventIterator::object;
 
             static constexpr auto n_max_voices = 8;
-            static constexpr auto n_channels_per_note = MonoNoteChannel::n_channels_per_note;
+            static constexpr auto n_channels_per_note = 1;
 
             // notes played in rapid succession can have a common audio interval during xfades
             // even if their noteOn / noteOff intervals are disjoint.
@@ -159,32 +159,36 @@ namespace imajuscule {
             static constexpr auto n_max_simultaneous_notes_per_voice = 2;
             static constexpr auto n_channels = n_channels_per_note * n_max_voices * n_max_simultaneous_notes_per_voice;
 
+            template<typename OutputData>
+            bool initialize(OutputData & out) {
+                for(auto & c : channels) {
+                    // using WithLock::No : if needed, the caller is responsible to take the out lock.
+                    if(!c.template open<WithLock::No>(out, 0.f)) {
+                        return false;
+                    }
+                }
+                return true;
+            }
+
             // Note: Logic Audio Express 9 calls this when two projects are opened and
             // the second project starts playing, so we are not in an "initialized" state.
             template<WithLock l, typename OutputData>
             void allNotesOff(OutputData & out) {
-                MIDI_LG(INFO, "all notes off :");
+                MIDI_LG(INFO, "all notes off");
 
-                constexpr auto allNotesOff_xfade_len = 1401;
                 for(auto & c : channels) {
-                    if(c.template close<l>(out, CloseMode::XFADE_ZERO, allNotesOff_xfade_len)) {
-                        LG(INFO, " x %d", c.pitch);
-                    }
+                    c.template onKeyReleased();
                 }
             }
 
             template<WithLock l, typename OutputData>
             void allSoundsOff(OutputData & out) {
-                MIDI_LG(INFO, "all sounds off :");
+                MIDI_LG(INFO, "all sounds off");
                 for(auto & c : channels) {
-                    if(c.template close<l>(out, CloseMode::NOW)) {
-                        LG(INFO, " x %d", c.pitch);
-                    }
+                    c.template onKeyReleased();
                 }
             }
 
-            // TODO can we remove filter argument? we own the channels that are filtered so maybe we could
-            // check if they are ready or not.
             template<typename OutputData>
             onEventResult onEvent2(Event const & e, OutputData & out) {
                 if(e.type == Event::kNoteOnEvent) {
@@ -194,7 +198,7 @@ namespace imajuscule {
                         typename OutputData::Locking L(out.get_lock());
 
                         if(auto c = editAudioElementContainer_if(channels
-                                                                 , [](auto & c) { return c.elem.isInactive() && c.closed(); }))
+                                                                , [](auto & c) { return c.elem.isEnveloppeFinished(); }))
                         {
                             return this->template startNote(*c, e.noteOn, out);
                         }
@@ -207,57 +211,30 @@ namespace imajuscule {
                 return onEventResult::UNHANDLED;
             }
 
-            bool opened() const {
-                for(auto const & c : channels) {
-                    if(c.opened()) {
-                        return true;
-                    }
-                }
-                return false;
-            }
         private:
             // precondition : if needed the lock of out was taken by a caller
             template<typename OutputData>
             onEventResult startNote(MonoNoteChannel & c, NoteOnEvent const & e, OutputData & out) {
-
                 MIDI_LG(INFO, "on  %d", e.pitch);
 
-                int xf_len;
-                float initial_volume;
-                bool gain_is_set = true;
-                if(xfade_policy==XfadePolicy::SkipXfade) {
-                    initial_volume = 0.f;
-                    xf_len= 0 ;
-                    gain_is_set = false;
-                }
-                else {
-                    initial_volume = get_gain();
-                    xf_len = get_xfade_length();
-                }
-
-                // TODO check if any other active channel has the same freqency, and if so,
-                // pass the phase information to 'startNote'.
-                //findPhaseForFrequency
+                // To prevent phase cancellation, if any other active channel has the same frequency,
+                // we pass the phase information to 'startNote', so as to create a new wave
+                // that is coherent w.r.t the existing ones of same frequency.
                 auto phase = mkNonDeterministicPhase();
                 for(auto const & o:channels) {
-                  if(o.pitch == e.pitch && o.tuning==e.tuning && !o.closed() && !o.elem.isInactive()) {
+                  if(o.pitch == e.pitch && o.tuning==e.tuning && !o.elem.isEnveloppeFinished()) {
                     phase = mkDeterministicPhase(o.elem.angle());
                     break;
                   }
                 }
 
-                // using WithLock::No : if needed, the caller is responsible to take the out lock.
-                if(!c.template open<WithLock::No>(out, initial_volume, xf_len)) {
-                    return onDroppedNote(e.pitch);
-                }
+                c.elem.setEnveloppeCharacTime(get_xfade_length());
+                c.elem.forgetPastSignals();
+                c.elem.onKeyPressed();
+
                 c.pitch = e.pitch;
                 c.tuning = e.tuning;
-
-                c.elem.forgetPastSignals();
-
-                if(!gain_is_set) {
-                    c.toVolume(out, get_gain(), get_xfade_length());
-                }
+                c.setVolume(out, get_gain());
 
                 onStartNote(e.velocity, phase, c, out);
                 return onEventResult::OK;
@@ -265,7 +242,7 @@ namespace imajuscule {
 
             template<typename OutputData>
             onEventResult noteOff(uint8_t pitch, OutputData & out) {
-                if(!close_channel_on_note_off) {
+                if(!handle_note_off) {
                     MIDI_LG(INFO, "off (ignored) %d", pitch);
                     // the initial implementation was using CloseMode::WHEN_DONE_PLAYING for that case
                     // but close method sets the channel to -1 so it's impossible to fade it to zero
@@ -274,19 +251,26 @@ namespace imajuscule {
                 }
                 MIDI_LG(INFO, "off %d", pitch);
                 auto len = get_xfade_length();
+
+                // In theory (and in practice, too, see the imj-game-synths use case)
+                // we can have multiple notes with the same pitch, and different durations.
+                // Hence, here we just close the first opened channel with matching pitch.
                 for(auto & c : channels) {
                     if(c.pitch != pitch) {
                         continue;
                     }
-                    if(!c.template close<OutputData::DefLock>(out, CloseMode::XFADE_ZERO, len)) {
+
+                    if(!c.elem.onKeyReleased()) {
+                        // the element had already been sent a key released.
                         continue;
                     }
+
                     // the oscillator is still used for the crossfade,
                     // it will stop being used in the call to openChannel when that channel is finished closing
                     return onEventResult::OK;
                 }
-                // it could be that the corresponding noteOn was skipped
-                // because too many notes where played at that time
+                // Happens when the corresponding noteOn was skipped
+                // because too many notes were being played at the same time
                 return onDroppedNote(pitch);
             }
 
@@ -313,6 +297,7 @@ namespace imajuscule {
             out{n_channels, nOrchestratorsMax}
             {
                 out.dontUseConvolutionReverbs();
+                plugin.template initialize<with_lock>(out);
             }
 
             void doProcessing (ProcessData& data) {

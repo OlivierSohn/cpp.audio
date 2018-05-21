@@ -69,14 +69,28 @@ namespace imajuscule {
 
         template<typename ALGO>
         struct FinalAudioElement : public AudioElement<typename ALGO::FPT>{
+            static constexpr auto hasEnveloppe = ALGO::hasEnveloppe;
             using FPT = typename ALGO::FPT;
             static_assert(std::is_floating_point<FPT>::value, "");
+
+            bool isEnveloppeFinished() const {
+              return algo.isEnveloppeFinished();
+            }
 
             template <class... Args>
             FinalAudioElement(Args&&... args) : algo(std::forward<Args>(args)...) {}
 
             void forgetPastSignals() {
                 algo.forgetPastSignals();
+            }
+            void setEnveloppeCharacTime(int len) {
+              algo.setEnveloppeCharacTime(len);
+            }
+            void onKeyPressed() {
+                algo.onKeyPressed();
+            }
+            bool onKeyReleased() {
+                return algo.onKeyReleased();
             }
 
             FPT angle() const { return algo.angle(); }
@@ -85,8 +99,160 @@ namespace imajuscule {
         };
 
 
+        enum class EnveloppeState {
+            KeyPressed
+          , KeyReleased
+          , EnvelopeDone
+        };
+
+        // Similar to RingModulationAlgo except the modulator has equal real and imaginary parts.
+        template <typename ALGO, typename Enveloppe>
+        struct Envelopped {
+          static constexpr auto hasEnveloppe = true;
+          using FPT = typename ALGO::FPT;
+          static_assert(std::is_same<typename ALGO::FPT, typename Enveloppe::FPT>::value, "");
+
+          void forgetPastSignals() {
+            env.forgetPastSignals();
+            algo.forgetPastSignals();
+          }
+          void setEnveloppeCharacTime(int len) {
+            env.setEnveloppeCharacTime(len);
+          }
+
+          void step() {
+              env.step();
+              algo.step();
+          }
+
+          void setAngle(FPT a) {
+              algo.setAngle(a);
+          }
+          FPT angle() const { return algo.angle(); }
+
+          void setAngleIncrements(FPT a) {
+              algo.setAngleIncrements(a);
+          }
+
+          FPT real() const { return algo.real() * env.value(); }
+          FPT imag() const { return algo.imag() * env.value(); }
+
+          bool isEnveloppeFinished() const {
+              return env.getState() == EnveloppeState::EnvelopeDone;
+          }
+          void onKeyPressed() {
+              env.onKeyPressed();
+          }
+          bool onKeyReleased() {
+              return env.onKeyReleased();
+          }
+
+          auto & getOsc() { return algo.getOsc(); }
+          auto & getAlgo() { return algo; }
+
+          void setLoudnessParams(int low_index, float log_ratio, float loudness_level) {
+              algo.setLoudnessParams(low_index, log_ratio, loudness_level);
+          }
+
+        private:
+          Enveloppe env;
+          ALGO algo;
+        };
+
+        template <typename T>
+        struct SimpleEnveloppe {
+          using FPT = T;
+
+          // len is in samples
+          void setEnveloppeCharacTime(int len) {
+            if(unlikely (len <= 100)) {
+              len = 100;
+            }
+            increment = static_cast<T>(1) / static_cast<T>(len);
+          }
+
+          void forgetPastSignals() {
+            state = EnveloppeState::EnvelopeDone;
+            lastObservedState = EnveloppeState::EnvelopeDone;
+            counter = 0;
+          }
+
+          void step() {
+            switch(state) {
+              case EnveloppeState::KeyPressed:
+                if(lastObservedState != EnveloppeState::KeyPressed) {
+                  counter = 0;
+                }
+                ++counter;
+                _value = std::min
+                  (static_cast<T>(1)
+                  ,static_cast<T>(counter) * increment);
+                break;
+              case EnveloppeState::KeyReleased:
+              {
+                if(lastObservedState != EnveloppeState::KeyReleased) {
+                  counter = 0;
+                  _topValue = _value;
+                }
+                ++counter;
+                auto ratio = static_cast<T>(1) - static_cast<T>(counter) * increment;
+                // when ratio becomes 0 or negative, we consider the enveloppe is done.
+                if(ratio <= static_cast<T>(0)) {
+                  state = EnveloppeState::EnvelopeDone;
+                  _value = static_cast<T>(0);
+                }
+                else {
+                  _value = _topValue * ratio;
+                }
+                break;
+              }
+              case EnveloppeState::EnvelopeDone:
+                _value = static_cast<T>(0);
+                break;
+            }
+            lastObservedState = state;
+          }
+
+          T value () const {
+            return _value;
+          }
+
+          // can be called from the main thread
+          void onKeyPressed() {
+              state = EnveloppeState::KeyPressed;
+          }
+          // can be called from the main thread
+          bool onKeyReleased() {
+              if(state == EnveloppeState::KeyPressed) {
+                  state = EnveloppeState::KeyReleased;
+                  return true;
+              }
+              return false;
+          }
+
+          EnveloppeState getState() const {
+            return state;
+          }
+
+        private:
+          // between 0 and 1.
+          FPT _value = static_cast<T>(0);
+          FPT _topValue = static_cast<T>(0);
+          FPT increment = 0.0025;
+
+          // 'state' will be set to 'KeyReleased' when the key is released.
+          // reads / writes to this are atomic so we don't need to lock.
+          EnveloppeState state = EnveloppeState::EnvelopeDone;
+          EnveloppeState lastObservedState = EnveloppeState::EnvelopeDone;
+          unsigned int counter = 0;
+        };
+
+        template <typename ALGO>
+        using SimplyEnvelopped = Envelopped<ALGO,SimpleEnveloppe<typename ALGO::FPT>>;
+
         template<typename ALGO>
         struct VolumeAdjusted {
+            static constexpr auto hasEnveloppe = ALGO::hasEnveloppe;
             using T = typename ALGO::FPT;
             using FPT = T;
             static_assert(std::is_floating_point<FPT>::value, "");
@@ -101,6 +267,15 @@ namespace imajuscule {
 
             void forgetPastSignals() {
                 osc.forgetPastSignals();
+            }
+            void setEnveloppeCharacTime(int len) {
+              osc.setEnveloppeCharacTime(len);
+            }
+            void onKeyPressed() {
+                osc.onKeyPressed();
+            }
+            bool onKeyReleased() {
+                return osc.onKeyReleased();
             }
 
             void setFiltersOrder(int order) {
@@ -130,6 +305,10 @@ namespace imajuscule {
             }
 
             void step() { osc.step(); }
+
+            bool isEnveloppeFinished() const {
+              return osc.isEnveloppeFinished();
+            }
 
         private:
             unsigned int low_index_ : 4;
@@ -179,10 +358,23 @@ namespace imajuscule {
          */
         template<typename T>
         struct PCOscillatorAlgo : public Phased<T> {
+            static constexpr auto hasEnveloppe = false;
             using Phased<T>::angle_;
 
             PCOscillatorAlgo() = default;
             PCOscillatorAlgo(T angle_increments) : Phased<T>(angle_increments) {}
+
+            bool isEnveloppeFinished() const {
+              Assert(0);
+              return false;
+            }
+            void onKeyPressed() {
+                Assert(0);
+            }
+            bool onKeyReleased() {
+                Assert(0);
+                return false;
+            }
 
             T real() const { return std::cos(static_cast<T>(M_PI) * angle_); }
             T imag() const { return std::sin(static_cast<T>(M_PI) * angle_); }
@@ -193,6 +385,7 @@ namespace imajuscule {
 
         template<Sound::Type SOUND>
         struct soundBufferWrapperAlgo {
+            static constexpr auto hasEnveloppe = false;
             using F_GET_BUFFER = FGetBuffer<SOUND>;
             using T = soundBuffer::FPT;
             using FPT = T;
@@ -204,6 +397,16 @@ namespace imajuscule {
 
             void forgetPastSignals() const {
             }
+            void setEnveloppeCharacTime(int len) {
+                Assert(0);
+            }
+            void onKeyPressed() {
+                Assert(0);
+            }
+            bool onKeyReleased() {
+                Assert(0);
+                return false;
+            }
 
             T imag() const { return sb[index]; }
 
@@ -212,6 +415,11 @@ namespace imajuscule {
                 if(index == sb.size()) {
                     index = 0;
                 }
+            }
+
+            bool isEnveloppeFinished() const {
+              Assert(0);
+              return false;
             }
 
             int index = -1;
@@ -223,22 +431,36 @@ namespace imajuscule {
 
         template<typename T>
         struct SquareAlgo : public Phased<T> {
+            static constexpr auto hasEnveloppe = false;
             using Phased<T>::angle_;
 
             SquareAlgo() = default;
             SquareAlgo(T angle_increments) : Phased<T>(angle_increments) {}
 
             T imag() const { return square(angle_); }
+
+            bool isEnveloppeFinished() const {
+              Assert(0);
+              return false;
+            }
+            void onKeyPressed() {
+                Assert(0);
+            }
+            bool onKeyReleased() {
+                Assert(0);
+                return false;
+            }
         };
 
-        template<typename T>
-        using Square = FinalAudioElement<SquareAlgo<T>>;
+        template<typename Envel>
+        using Square = FinalAudioElement<Envelopped<SquareAlgo<typename Envel :: FPT>,Envel>>;
 
         /*
          * first pulse happends at angle = 0
          */
         template<typename T>
         struct PulseTrainAlgo : public Phased<T> {
+            static constexpr auto hasEnveloppe = false;
 
             using Tr = NumTraits<T>;
             using Phased<T>::angle_;
@@ -257,6 +479,18 @@ namespace imajuscule {
             }
 
             T imag() const { return pulse(angle_, pulse_width); }
+
+            bool isEnveloppeFinished() const {
+              Assert(0);
+              return false;
+            }
+            void onKeyPressed() {
+                Assert(0);
+            }
+            bool onKeyReleased() {
+                Assert(0);
+                return false;
+            }
         private:
             T pulse_width{};
         };
@@ -267,6 +501,19 @@ namespace imajuscule {
 
         template<class...AEs>
         struct Mix {
+            static constexpr auto hasEnveloppe = false; // TODO all hasEnveloppe AEs ?
+            bool isEnveloppeFinished() const {
+              Assert(0);
+              return false;
+            }
+            void onKeyPressed() {
+                Assert(0);
+            }
+            bool onKeyReleased() {
+                Assert(0);
+                return false;
+            }
+
             using T = typename NthTypeOf<0, AEs...>::FPT;
             using FPT = T;
             static_assert(std::is_floating_point<FPT>::value, "");
@@ -295,6 +542,11 @@ namespace imajuscule {
             void forgetPastSignals() {
                 for_each(aes, [](auto & ae) {
                     ae.forgetPastSignals();
+                });
+            }
+            void setEnveloppeCharacTime(int len) {
+                for_each(aes, [len](auto & ae) {
+                    ae.setEnveloppeCharacTime(len);
                 });
             }
 
@@ -350,10 +602,21 @@ namespace imajuscule {
 
         template<typename AEAlgo, FilterType KIND, int ORDER>
         struct FilterAlgo {
+            static constexpr auto hasEnveloppe = AEAlgo::hasEnveloppe;
             using T = typename AEAlgo::FPT;
             using FPT = T;
             using FilterFPT = typename InternalFilterFPTFromOrder<ORDER, FPT>::type;
             static_assert(std::is_floating_point<FPT>::value, "");
+
+            bool isEnveloppeFinished() const {
+              return audio_element.isEnveloppeFinished();
+            }
+            void onKeyPressed() {
+                return audio_element.onKeyPressed();
+            }
+            bool onKeyReleased() {
+                return audio_element.onKeyReleased();
+            }
 
         private:
             AEAlgo audio_element;
@@ -362,6 +625,9 @@ namespace imajuscule {
             void forgetPastSignals() {
                 filter_.forgetPastSignals();
                 audio_element.forgetPastSignals();
+            }
+            void setEnveloppeCharacTime(int len) {
+                audio_element.setEnveloppeCharacTime(len);
             }
 
             void setFiltersOrder(int order) {
@@ -398,6 +664,7 @@ namespace imajuscule {
 
         template<typename AEAlgo, int ORDER>
         struct BandPassAlgo_ {
+            static constexpr auto hasEnveloppe = AEAlgo::hasEnveloppe;
             using FPT = typename AEAlgo::FPT;
             using T = FPT;
             static constexpr auto low_index = 0;
@@ -424,6 +691,16 @@ namespace imajuscule {
                 return compensation * cascade.imag();
             }
 
+            bool isEnveloppeFinished() const {
+              return cascade.isEnveloppeFinished();
+            }
+            void onKeyPressed() {
+                return cascade.onKeyPressed();
+            }
+            bool onKeyReleased() {
+                return cascade.onKeyReleased();
+            }
+
         protected:
             T compensation;
         private:
@@ -444,10 +721,24 @@ namespace imajuscule {
 
         template<typename AEAlgo, int ORDER>
         struct BandRejectAlgo_ {
+            static constexpr auto hasEnveloppe = AEAlgo::hasEnveloppe;
             using FPT = typename AEAlgo::FPT;
             using T = FPT;
 
             T imag() const { return lp.imag() + hp.imag(); }
+
+            bool isEnveloppeFinished() const {
+              return lp.isEnveloppeFinished() && hp.isEnveloppeFinished();
+            }
+            void onKeyPressed() {
+                lp.onKeyPressed();
+                hp.onKeyPressed();
+            }
+            bool onKeyReleased() {
+                auto res = lp.onKeyReleased();
+                auto res2 = hp.onKeyReleased();
+                return res || res2;
+            }
 
         private:
             LowPassAlgo<AEAlgo, ORDER> lp;
@@ -586,6 +877,7 @@ namespace imajuscule {
 
         template<typename T, eNormalizePolicy NormPolicy = eNormalizePolicy::FAST>
         struct OscillatorAlgo {
+            static constexpr auto hasEnveloppe = false;
             using Tr = NumTraits<T>;
             using FPT = T;
 
@@ -593,6 +885,16 @@ namespace imajuscule {
             constexpr OscillatorAlgo() : mult(Tr::one(), Tr::zero()) {}
 
             void forgetPastSignals() const {
+            }
+            void setEnveloppeCharacTime(int len) {
+                Assert(0);
+            }
+            void onKeyPressed() {
+                Assert(0);
+            }
+            bool onKeyReleased() {
+                Assert(0);
+                return false;
             }
 
             void setFiltersOrder(int order) const {
@@ -621,6 +923,11 @@ namespace imajuscule {
             T angle() const { return arg(cur)/M_PI; }
             T angleIncrements() const { return arg(mult)/M_PI; }
 
+            bool isEnveloppeFinished() const {
+              Assert(0);
+              return false;
+            }
+
             private:
             complex<T> cur = {Tr::one(), Tr::zero()};
             complex<T> mult;
@@ -636,8 +943,8 @@ namespace imajuscule {
             }
         };
 
-        template<typename T, eNormalizePolicy NormPolicy = eNormalizePolicy::FAST>
-        using Oscillator = FinalAudioElement<OscillatorAlgo<T, NormPolicy>>;
+        template<typename Envel, eNormalizePolicy NormPolicy = eNormalizePolicy::FAST>
+        using Oscillator = FinalAudioElement<Envelopped<OscillatorAlgo<typename Envel::FPT, NormPolicy>, Envel>>;
 
         template<typename T>
         struct LogRamp {
@@ -1003,6 +1310,7 @@ namespace imajuscule {
 
         template<typename ALGO, typename ...CTRLS>
         struct FreqCtrl_ {
+            static constexpr auto hasEnveloppe = ALGO::hasEnveloppe;
             using Ctrl = std::tuple<CTRLS...>;
             using T = typename ALGO::FPT;
             using FPT = T;
@@ -1037,9 +1345,7 @@ namespace imajuscule {
             }
 
             void step() {
-
                 setFreqs(ctrls, osc);
-
                 osc.step();
             }
 
@@ -1053,6 +1359,19 @@ namespace imajuscule {
                 return std::get<0>(ctrls);
             }
 
+            bool isEnveloppeFinished() const {
+                return osc.isEnveloppeFinished();
+            }
+            void setEnveloppeCharacTime(int len) {
+                osc.setEnveloppeCharacTime(len);
+            }
+            void onKeyPressed() {
+                osc.onKeyPressed();
+            }
+            bool onKeyReleased() {
+                return osc.onKeyReleased();
+            }
+
         private:
             Ctrl ctrls;
             ALGO osc;
@@ -1064,9 +1383,8 @@ namespace imajuscule {
         template<typename T>
         using FreqRampAlgo = FreqRampOscillatorAlgo_<T, VolumeAdjust::Yes>;
 
-        template<typename T>
-        using FreqRamp = FinalAudioElement<FreqRampAlgo<T>>;
-
+        template<typename Envel>
+        using FreqRamp = FinalAudioElement<Envelopped<FreqRampAlgo<typename Envel::FPT>, Envel>>;
 
         template<typename T, int ORDER>
         using FreqRampLPWhiteNoiseAlgo_ = FreqCtrl_<LPWhiteNoiseAlgo<T, ORDER>, LogRamp<T>>;
@@ -1077,6 +1395,7 @@ namespace imajuscule {
 
         template<typename A1, typename A2>
         struct RingModulationAlgo {
+            static constexpr auto hasEnveloppe = A1::hasEnveloppe || A2::hasEnveloppe;
             using T = typename A1::FPT;
             using FPT = T;
 
@@ -1107,6 +1426,44 @@ namespace imajuscule {
 
             auto & get_element_1() { return osc1; }
             auto & get_element_2() { return osc2; }
+
+            bool isEnveloppeFinished() const {
+                if(A1::hasEnveloppe && osc1.isEnveloppeFinished()) {
+                    return true;
+                }
+                if(A2::hasEnveloppe && osc2.isEnveloppeFinished()) {
+                    return true;
+                }
+                if(!A1::hasEnveloppe && !A2::hasEnveloppe) {
+                    Assert(0);
+                }
+                return false;
+            }
+            void onKeyPressed() {
+                if(A1::hasEnveloppe) {
+                    osc1.onKeyPressed();
+                }
+                if(A2::hasEnveloppe) {
+                    osc2.onKeyPressed();
+                }
+                if(!A1::hasEnveloppe && !A2::hasEnveloppe) {
+                    Assert(0);
+                }
+            }
+            bool onKeyReleased() {
+                bool res = false;
+                if(A1::hasEnveloppe) {
+                    res = osc1.onKeyReleased();
+                }
+                if(A2::hasEnveloppe) {
+                    res = osc2.onKeyReleased() || res;
+                }
+                if(!A1::hasEnveloppe && !A2::hasEnveloppe) {
+                    Assert(0);
+                }
+                return res;
+            }
+
         private:
             A1 osc1;
             A2 osc2;

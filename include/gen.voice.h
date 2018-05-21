@@ -864,7 +864,7 @@ namespace imajuscule {
                 // it's unclear if we should use phase at all here.
                 void onStartNote(float velocity, Phase phase, MonoNoteChannel & c, OutputData & out) {
                     c.elem.engine.set_active(true);
-                    c.elem.engine.set_channels(c.channels[0], c.channels[0]);
+                    c.elem.engine.set_channels(c.channel, c.channel);
 
                     {
                         auto interp = static_cast<itp::interpolation>(itp::interpolation_traversal().realValues()[static_cast<int>(.5f + value<INTERPOLATION>())]);
@@ -1083,6 +1083,8 @@ namespace imajuscule {
                 using audioElt = typename SoundEngine::audioElt;
                 using T = typename audioElt::FPT;
 
+                static constexpr auto hasEnveloppe = audioElt::hasEnveloppe;
+
                 EngineAndRamps() : engine{[this]()-> audioElt* {
                     for(auto & r: ramps) {
                         if(r.isInactive()) {
@@ -1095,6 +1097,29 @@ namespace imajuscule {
                 void forgetPastSignals() {
                     for(auto & r : ramps) {
                         r.algo.forgetPastSignals();
+                    }
+                }
+                void setEnveloppeCharacTime(int len) {
+                    for(auto & r : ramps) {
+                        r.algo.setEnveloppeCharacTime(len);
+                    }
+                }
+                bool isEnveloppeFinished() const {
+                  for(auto const & r: ramps) {
+                      if(!r.isEnveloppeFinished()) {
+                          return false;
+                      }
+                  }
+                  return true;
+                }
+                void onKeyPressed() {
+                    for(auto & r : ramps) {
+                        r.algo.onKeyPressed();
+                    }
+                }
+                bool onKeyReleased() {
+                    for(auto & r : ramps) {
+                        r.algo.onKeyReleased();
                     }
                 }
 
@@ -1159,7 +1184,7 @@ namespace imajuscule {
 
             typename Parent_ = ImplCRTP <
             nAudioOut, XfadePolicy::UseXfade,
-            MonoNoteChannel< 1, EngineAndRamps<typename Base::SoundEngine> >,
+            MonoNoteChannel< EngineAndRamps<typename Base::SoundEngine> >,
             withNoteOff,
             EventIterator, NoteOnEvent, NoteOffEvent, Base >
             >
