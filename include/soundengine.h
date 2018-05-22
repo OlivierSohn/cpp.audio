@@ -241,7 +241,7 @@ namespace imajuscule {
 
             using Algo = typename SoundEngineAlgo_<Mix, M>::type;
 
-            using audioElt = audioelement::FinalAudioElement< audioelement::SimplyEnvelopped < Algo > >;
+            using audioElt = audioelement::FinalAudioElement< audioelement::SimplyEnveloped < Algo > >;
 
             static enumTraversal ModeTraversal;
 

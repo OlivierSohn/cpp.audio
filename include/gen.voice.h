@@ -1083,7 +1083,7 @@ namespace imajuscule {
                 using audioElt = typename SoundEngine::audioElt;
                 using T = typename audioElt::FPT;
 
-                static constexpr auto hasEnveloppe = audioElt::hasEnveloppe;
+                static constexpr auto hasEnvelope = audioElt::hasEnvelope;
 
                 EngineAndRamps() : engine{[this]()-> audioElt* {
                     for(auto & r: ramps) {
@@ -1099,14 +1099,14 @@ namespace imajuscule {
                         r.algo.forgetPastSignals();
                     }
                 }
-                void setEnveloppeCharacTime(int len) {
+                void setEnvelopeCharacTime(int len) {
                     for(auto & r : ramps) {
-                        r.algo.setEnveloppeCharacTime(len);
+                        r.algo.setEnvelopeCharacTime(len);
                     }
                 }
-                bool isEnveloppeFinished() const {
+                bool isEnvelopeFinished() const {
                   for(auto const & r: ramps) {
-                      if(!r.isEnveloppeFinished()) {
+                      if(!r.isEnvelopeFinished()) {
                           return false;
                       }
                   }

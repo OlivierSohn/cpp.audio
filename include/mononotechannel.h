@@ -4,7 +4,7 @@ namespace imajuscule {
 
         template<typename AudioElem>
         struct MonoNoteChannel {
-            static_assert(AudioElem::hasEnveloppe,"");
+            static_assert(AudioElem::hasEnvelope,"");
 
             uint8_t pitch; // instead of noteId, on note off we receive the pitch, so pitch is the key
             float tuning;
@@ -13,7 +13,7 @@ namespace imajuscule {
 
             template<WithLock lock_policy, typename OutputData>
             bool open(OutputData & out, float inital_volume) {
-                channel = out.template openChannel<lock_policy>({inital_volume}, ChannelClosingPolicy::ExplicitClose, 0);
+                channel = out.template openChannel<lock_policy>({inital_volume}, ChannelClosingPolicy::ExplicitClose, 401);
                 return channel != AUDIO_CHANNEL_NONE;
             }
 

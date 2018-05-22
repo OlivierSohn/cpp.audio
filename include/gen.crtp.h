@@ -163,11 +163,24 @@ namespace imajuscule {
             bool initialize(OutputData & out) {
                 for(auto & c : channels) {
                     // using WithLock::No : if needed, the caller is responsible to take the out lock.
-                    if(!c.template open<WithLock::No>(out, 0.f)) {
+                    if(!c.template open<WithLock::No>(out, 1.f)) {
                         return false;
                     }
                 }
                 return true;
+            }
+            
+            // counts notes that have an active enveloppe
+            int countSounds() const {
+                int n = 0;
+                for(auto & c : channels) {
+                    for(auto & r : c.elem.getRamps()) {
+                        if(r.isActive()) {
+                            ++n;
+                        }
+                    }
+                }
+                return n;
             }
 
             // Note: Logic Audio Express 9 calls this when two projects are opened and
@@ -177,7 +190,7 @@ namespace imajuscule {
                 MIDI_LG(INFO, "all notes off");
 
                 for(auto & c : channels) {
-                    c.template onKeyReleased();
+                    c.elem. template onKeyReleased();
                 }
             }
 
@@ -185,7 +198,7 @@ namespace imajuscule {
             void allSoundsOff(OutputData & out) {
                 MIDI_LG(INFO, "all sounds off");
                 for(auto & c : channels) {
-                    c.template onKeyReleased();
+                    c.elem. template onKeyReleased();
                 }
             }
 
@@ -198,7 +211,7 @@ namespace imajuscule {
                         typename OutputData::Locking L(out.get_lock());
 
                         if(auto c = editAudioElementContainer_if(channels
-                                                                , [](auto & c) { return c.elem.isEnveloppeFinished(); }))
+                                                                , [](auto & c) { return c.elem.isEnvelopeFinished(); }))
                         {
                             return this->template startNote(*c, e.noteOn, out);
                         }
@@ -222,13 +235,13 @@ namespace imajuscule {
                 // that is coherent w.r.t the existing ones of same frequency.
                 auto phase = mkNonDeterministicPhase();
                 for(auto const & o:channels) {
-                  if(o.pitch == e.pitch && o.tuning==e.tuning && !o.elem.isEnveloppeFinished()) {
+                  if(o.pitch == e.pitch && o.tuning==e.tuning && !o.elem.isEnvelopeFinished()) {
                     phase = mkDeterministicPhase(o.elem.angle());
                     break;
                   }
                 }
 
-                c.elem.setEnveloppeCharacTime(get_xfade_length());
+                c.elem.setEnvelopeCharacTime(get_xfade_length());
                 c.elem.forgetPastSignals();
                 c.elem.onKeyPressed();
 
@@ -250,7 +263,6 @@ namespace imajuscule {
                     return onEventResult::OK;
                 }
                 MIDI_LG(INFO, "off %d", pitch);
-                auto len = get_xfade_length();
 
                 // In theory (and in practice, too, see the imj-game-synths use case)
                 // we can have multiple notes with the same pitch, and different durations.
@@ -297,7 +309,7 @@ namespace imajuscule {
             out{n_channels, nOrchestratorsMax}
             {
                 out.dontUseConvolutionReverbs();
-                plugin.template initialize<with_lock>(out);
+                plugin.template initialize(out);
             }
 
             void doProcessing (ProcessData& data) {

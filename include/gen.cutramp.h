@@ -222,7 +222,6 @@ namespace imajuscule {
 
                     auto tunedNote = midi::tuned_note(c.pitch, c.tuning);
                     auto freq = to_freq(tunedNote-Do_midi, half_tone);
-                    auto channel = c.channels[0];
 
                     if(adjustFreq) {
                         auto r = (p - static_cast<float>(gap())) / p;
@@ -239,13 +238,13 @@ namespace imajuscule {
                                           denorm<LOUDNESS_LEVEL>());
                     setPhase(phase, osc.algo.getOsc());
 
-                    osc.algo.getCtrl().set(freq - ramp_amount() * (freq-start_freq),
+                    osc.algo.getAlgo().getCtrl().set(freq - ramp_amount() * (freq-start_freq),
                                       freq,
                                       ramp_size,
                                       0.f,
                                       static_cast<itp::interpolation>(itp::interpolation_traversal().realValues()[static_cast<int>(.5f + params[Params::RAMP_INTERPOLATION])]));
                     // no lock : the lock has already been taken by the caller
-                    out.playGenericNoLock(channel,
+                    out.playGenericNoLock(c.channel,
                                     std::make_pair(std::ref(osc),
                                                    Request{
                                                        &osc.buffer[0],
@@ -295,7 +294,7 @@ namespace imajuscule {
             typename Base = ImplBase<Parameters, ProcessData>,
 
             typename Parent = ImplCRTP</* > */ nAudioOut, XfadePolicy::SkipXfade,
-            MonoNoteChannel<audioelement::FreqRamp<audioelement::SimpleEnveloppe<float>>>, true,
+            MonoNoteChannel<audioelement::FreqRamp<audioelement::SimpleEnvelope<float>>>, true,
             EventIterator, NoteOnEvent, NoteOffEvent, Base /* < */>
 
             >
@@ -596,12 +595,13 @@ namespace imajuscule {
                             auto r = (p - static_cast<float>(gap())) / p;
                             freq *= r;
                         }
+                        auto & ctrl = osc.algo.getAlgo().getCtrl();
                         if(!force) {
                             // maybe from/to is swapped so we need to test with both ends
-                            if(std::abs(freq - osc.algo.getCtrl().getTo()) < 0.0001f) {
+                            if(std::abs(freq - ctrl.getTo()) < 0.0001f) {
                                 continue;
                             }
-                            if(std::abs(freq - osc.algo.getCtrl().getFrom()) < 0.0001f) {
+                            if(std::abs(freq - ctrl.getFrom()) < 0.0001f) {
                                 continue;
                             }
                         }
@@ -610,11 +610,11 @@ namespace imajuscule {
                             ramp_size = adjusted(ramp_size);
                         }
                         auto start_freq = ramp_start_freq_denormalize(ramp_start_freq());
-                        osc.algo.getCtrl().set(freq - ramp_amount() * (freq-start_freq),
-                                          freq,
-                                          ramp_size,
-                                          -1.f,
-                                          interp);
+                        ctrl.set(freq - ramp_amount() * (freq-start_freq),
+                                  freq,
+                                  ramp_size,
+                                  -1.f,
+                                  interp);
                     }
                 }
             };
