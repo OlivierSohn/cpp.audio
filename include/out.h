@@ -1033,10 +1033,10 @@ namespace imajuscule {
             for( auto & c: channels ) {
                 c.step(outputBuffer,
                        nFrames,
-                       consummed_frames ); // with that, the channel knows when
+                       consummed_frames ); // with consummed_frames, the channel knows when
                 // the next computation of AudioElements will occur
                 if(c.shouldReset()) {
-                    c.reset();
+                    c.reset(401); // the value doesn't matter, it will be overwritten when the channel is used again.
                 }
             }
 
