@@ -174,14 +174,15 @@ namespace imajuscule {
 
           void forgetPastSignals() {
             state = EnvelopeState::EnvelopeDone2;
-            lastObservedState = EnvelopeState::EnvelopeDone2;
+            lastHandledState = EnvelopeState::EnvelopeDone2;
             counter = 0;
           }
 
           void step() {
-            switch(state) {
+            auto handledState = state;
+            switch(handledState) {
               case EnvelopeState::KeyPressed:
-                if(lastObservedState != EnvelopeState::KeyPressed) {
+                if(lastHandledState != EnvelopeState::KeyPressed) {
                   counter = 0;
                 }
                 ++counter;
@@ -191,7 +192,7 @@ namespace imajuscule {
                 break;
               case EnvelopeState::KeyReleased:
               {
-                if(lastObservedState != EnvelopeState::KeyReleased) {
+                if(lastHandledState != EnvelopeState::KeyReleased) {
                   counter = 0;
                   _topValue = _value;
                 }
@@ -208,7 +209,7 @@ namespace imajuscule {
                 break;
               }
             case EnvelopeState::EnvelopeDone1:
-                if(lastObservedState != EnvelopeState::EnvelopeDone1) {
+                if(lastHandledState != EnvelopeState::EnvelopeDone1) {
                   counter = 0;
                 }
                 ++counter;
@@ -222,7 +223,7 @@ namespace imajuscule {
                 _value = static_cast<T>(0);
                 break;
             }
-            lastObservedState = state;
+            lastHandledState = handledState;
           }
 
           T value () const {
@@ -255,7 +256,7 @@ namespace imajuscule {
           // 'state' will be set to 'KeyReleased' when the key is released.
           // reads / writes to this are atomic so we don't need to lock.
           EnvelopeState state = EnvelopeState::EnvelopeDone2;
-          EnvelopeState lastObservedState = EnvelopeState::EnvelopeDone2;
+          EnvelopeState lastHandledState = EnvelopeState::EnvelopeDone2;
           unsigned int counter = 0;
         };
 
