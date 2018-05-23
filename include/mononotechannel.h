@@ -18,6 +18,23 @@ namespace imajuscule {
             }
 
             template<typename OutputData>
+            void reset(OutputData & out, int xfade_len) {
+              if(channel != AUDIO_CHANNEL_NONE) {
+                out.template editChannel(channel).reset(xfade_len);
+              }
+            }
+
+            template<typename OutputData>
+            void show(OutputData & out) {
+              if(channel != AUDIO_CHANNEL_NONE) {
+                out.template editChannel(channel).show();
+              }
+              else {
+                std::cout << "none channel";
+              }
+            }
+
+            template<typename OutputData>
             void setVolume(OutputData & out, float volume) {
                 out.template setVolume(channel, volume);
             }

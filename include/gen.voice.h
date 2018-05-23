@@ -863,8 +863,7 @@ namespace imajuscule {
                 template<typename MonoNoteChannel, typename OutputData>
                 // it's unclear if we should use phase at all here.
                 void onStartNote(float velocity, Phase phase, MonoNoteChannel & c, OutputData & out) {
-                    c.elem.engine.set_active(true);
-                    c.elem.engine.set_channels(c.channel, c.channel);
+                    c.elem.engine.set_channel(c.channel);
 
                     {
                         auto interp = static_cast<itp::interpolation>(itp::interpolation_traversal().realValues()[static_cast<int>(.5f + value<INTERPOLATION>())]);
@@ -915,8 +914,6 @@ namespace imajuscule {
                     }
 
                     c.elem.engine.set_length(denorm<LENGTH>());
-
-                    c.elem.engine.set_xfade(get_xfade_length()); // useless in case of Birds (xfade already set in the channel by caller, and this value will not be used)
 
                     c.elem.setLoudnessParams(value<LOUDNESS_REF_FREQ_INDEX>(),
                                              value<LOUDNESS_COMPENSATION_AMOUNT>(),
@@ -980,7 +977,6 @@ namespace imajuscule {
 
                         if(MODE == Mode::SWEEP) {
                             c.elem.engine.initialize_sweep(out,
-                                                           c,
                                                            denorm<LOW_FREQ>(),
                                                            denorm<HIGH_FREQ>(),
                                                            pan);
@@ -992,7 +988,6 @@ namespace imajuscule {
                             auto xfade_freq = static_cast<FreqXfade>(xfade_freq_traversal().realValues()[static_cast<int>(.5f + value<MARKOV_XFADE_FREQ>())]);
 
                             c.elem.engine.initialize_birds(out,
-                                                            c,
                                                             value<MARKOV_START_NODE>(),
                                                             value<MARKOV_PRE_TRIES>(),
                                                             value<MARKOV_MIN_PATH_LENGTH>(),
@@ -1004,7 +999,6 @@ namespace imajuscule {
                         }
                         else if(MODE == Mode::WIND) {
                             c.elem.engine.initialize_wind(out,
-                                                          c,
                                                           value<MARKOV_START_NODE>(),
                                                           value<MARKOV_PRE_TRIES>(),
                                                           value<MARKOV_MIN_PATH_LENGTH>(),
@@ -1017,7 +1011,6 @@ namespace imajuscule {
                             c.elem.engine.set_d2(/*denorm<D2>()*/value<D2>());
                             c.elem.engine.set_har_att(denorm<HARMONIC_ATTENUATION>());
                             c.elem.engine.initialize_robot(out,
-                                                           c,
                                                            value<MARKOV_START_NODE>(),
                                                            value<MARKOV_PRE_TRIES>(),
                                                            value<MARKOV_MIN_PATH_LENGTH>(),
@@ -1085,27 +1078,37 @@ namespace imajuscule {
 
                 static constexpr auto hasEnvelope = audioElt::hasEnvelope;
 
-                EngineAndRamps() : engine{[this]()-> audioElt* {
+                EngineAndRamps() : engine{[this]()-> Ramps<audioElt> {
+                    Ramps<audioElt> res;
+                    // in SoundEngine.playNextSpec (from the rt audio thread),
+                    // we onKeyPressed() the inactive ramp and onKeyReleased() the active ramp.
                     for(auto & r: ramps) {
-                        if(r.isInactive()) {
-                            return &r;
+                        if(!r.isEnvelopeFinished()) {
+                            res.active = &r;
+                        }
+                        else if (goOn) {
+                            res.inactive = &r;
                         }
                     }
-                    return nullptr;
+                    return res;
                 }} {}
+
+                void setEnvelopeCharacTime(int len) {
+                    for(auto & r : ramps) {
+                        r.algo.setEnvelopeCharacTime(len);
+                    }
+                }
 
                 void forgetPastSignals() {
                     for(auto & r : ramps) {
                         r.algo.forgetPastSignals();
                     }
                 }
-                void setEnvelopeCharacTime(int len) {
-                    for(auto & r : ramps) {
-                        r.algo.setEnvelopeCharacTime(len);
-                    }
-                }
                 bool isEnvelopeFinished() const {
-                  for(auto const & r: ramps) {
+                  if(goOn || engine.get_active()) {
+                    return false;
+                  }
+                  for(auto & r: ramps) {
                       if(!r.isEnvelopeFinished()) {
                           return false;
                       }
@@ -1113,14 +1116,21 @@ namespace imajuscule {
                   return true;
                 }
                 void onKeyPressed() {
-                    for(auto & r : ramps) {
-                        r.algo.onKeyPressed();
-                    }
+                  engine.set_active(true);
+                  goOn = true;
                 }
                 bool onKeyReleased() {
-                    for(auto & r : ramps) {
-                        r.algo.onKeyReleased();
+                  if(goOn) {
+                    goOn = false;
+                    for(auto & r: ramps) {
+                        r.onKeyReleased(); // ignore the result.
                     }
+                    // note that the sound engine may already be inactive as a result of the markov chain running out of actions.
+                    // this is why we also need 'goOn'.
+                    engine.set_active(false);
+                    return true;
+                  }
+                  return false;
                 }
 
                 void setLoudnessParams(int low_index, float log_ratio, float loudness_level) {
@@ -1146,7 +1156,7 @@ namespace imajuscule {
                     return ramps;
                 }
 
-                SoundEngine engine;
+                SoundEngine engine; // in onStartNote, this engine is assigned a given channel.
 
                 bool isInactive() const {
                   for(auto const & r: ramps) {
@@ -1162,10 +1172,10 @@ namespace imajuscule {
             private:
                 // 3 because there is 'before', 'current' and the inactive one
                 std::array<audioElt, 3> ramps;
+                bool goOn = false;
 
             public:
                 auto const & getRamps() const { return ramps; }
-
             };
 
             template<

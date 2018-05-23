@@ -142,8 +142,29 @@ namespace imajuscule {
 
         auto const get_remaining_samples_count() const { return remaining_samples_count; }
 
-        void reset() {
-            *this = {}; // to release all audio elements
+        // debugging function, do not use in production!
+        void show() {
+          using namespace std;
+          cout << "channel:" << endl;
+          cout << "volume_transition_remaining:" << volume_transition_remaining << endl;
+          cout << "next:" << next << endl;
+          cout << "active:" << active << endl;
+          cout << "total_n_writes:" << total_n_writes << endl;
+          cout << "initial_audio_element_consummed:" << initial_audio_element_consummed << endl;
+          // TODO show current / previous if needed
+          cout << "size_half_xfade:" << size_half_xfade << endl;
+          cout << "remaining_samples_count:" << remaining_samples_count << endl;
+          cout << "current_next_sample_index:" << current_next_sample_index << endl;
+          cout << "other_next_sample_index:" << other_next_sample_index << endl;
+          cout << "chan_vol current:" << chan_vol.current << endl;
+          cout << "chan_vol increments:" << chan_vol.increments << endl;
+          cout << "n queued requests:" << requests.size() << endl;
+        }
+
+        void reset(int xfade_len) {
+            *this = {}; // will mark buffers of used requests as "inactive"
+            set_xfade(xfade_len);
+
             Assert(!isPlaying());
             Assert(!shouldReset());
             Assert(isActive());
@@ -152,6 +173,8 @@ namespace imajuscule {
         void setVolume(float volume) {
             Assert(!isPlaying());
             chan_vol.current = volume;
+            chan_vol.increments = 0.f;
+            volume_transition_remaining = 0;
         }
 
         void toVolume(float volume, int nSteps) {

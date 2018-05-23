@@ -897,13 +897,13 @@ namespace imajuscule {
 
             // no need to lock here : the channel is not playing
             if(!editChannel(id).isActive()) {
-                editChannel(id).reset();
+                editChannel(id).reset(xfade_length);
             }
-            editChannel(id).setVolume(volume);
-            if(XF==XfadePolicy::UseXfade) {
+            else if(XF==XfadePolicy::UseXfade) {
                 editChannel(id).set_xfade(xfade_length);
             }
-            else {
+            editChannel(id).setVolume(volume);
+            if(XF!=XfadePolicy::UseXfade) {
                 Assert(xfade_length == 0); // make sure user is aware xfade will not be used
             }
             return id;
@@ -950,7 +950,7 @@ namespace imajuscule {
             auto it = std::find(autoclosing_ids.begin(), autoclosing_ids.end(), channel_id);
             Assert(it == autoclosing_ids.end()); // if channel is autoclosing, we should remove it there?
 #endif
-            c.reset();
+            c.reset(401); // the value is not important, it will be overwritten when the channel is reused.
             available_ids.Return(channel_id);
         }
 

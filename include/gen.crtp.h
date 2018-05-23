@@ -163,13 +163,13 @@ namespace imajuscule {
             bool initialize(OutputData & out) {
                 for(auto & c : channels) {
                     // using WithLock::No : if needed, the caller is responsible to take the out lock.
-                    if(!c.template open<WithLock::No>(out, 1.f)) {
+                    if(!c.template open<WithLock::No>(out, 0.f)) {
                         return false;
                     }
                 }
                 return true;
             }
-            
+
             // counts notes that have an active enveloppe
             int countSounds() const {
                 int n = 0;
@@ -241,13 +241,17 @@ namespace imajuscule {
                   }
                 }
 
+                Assert(c.elem.isEnvelopeFinished());
+                // if we don't reset, an assert fails when we enqueue the next request, because it's already queued.
+                c.reset(out, get_xfade_length()); // to unqueue the (potential) previous request.
+                c.setVolume(out, get_gain());
+
                 c.elem.setEnvelopeCharacTime(get_xfade_length());
                 c.elem.forgetPastSignals();
                 c.elem.onKeyPressed();
 
                 c.pitch = e.pitch;
                 c.tuning = e.tuning;
-                c.setVolume(out, get_gain());
 
                 onStartNote(e.velocity, phase, c, out);
                 return onEventResult::OK;
@@ -264,8 +268,7 @@ namespace imajuscule {
                 }
                 MIDI_LG(INFO, "off %d", pitch);
 
-                // In theory (and in practice, too, see the imj-game-synths use case)
-                // we can have multiple notes with the same pitch, and different durations.
+                // We can have multiple notes with the same pitch, and different durations.
                 // Hence, here we just close the first opened channel with matching pitch.
                 for(auto & c : channels) {
                     if(c.pitch != pitch) {
@@ -273,7 +276,7 @@ namespace imajuscule {
                     }
 
                     if(!c.elem.onKeyReleased()) {
-                        // the element had already been sent a key released.
+                        MIDI_LG(INFO, "one element had already been sent a key released. %d", channels.size());
                         continue;
                     }
 

@@ -13,7 +13,7 @@ namespace imajuscule {
 
                 // the caller is responsible for taking the out lock if needed
                 template<typename MonoNoteChannel, typename OutputData>
-                void onStartNote(float velocity, Phase phase,  MonoNoteChannel & c, OutputData & out) {
+                void onStartNote(float velocity, Phase phase, MonoNoteChannel & c, OutputData & out) {
                     using Request = typename OutputData::Request;
 
                     auto tunedNote = midi::tuned_note(c.pitch, c.tuning);
@@ -27,7 +27,7 @@ namespace imajuscule {
                     setPhase(phase, osc.algo);
 
                     // the caller is responsible for taking the out lock if needed
-                    out.playGenericNoLock(c.channel,
+                    auto res = out.playGenericNoLock(c.channel,
                                     std::make_pair(std::ref(osc),
                                                    Request{
                                                        &osc.buffer[0],
@@ -35,6 +35,9 @@ namespace imajuscule {
                                                        // e.noteOn.length is always 0, we must rely on noteOff
                                                        std::numeric_limits<decltype(std::declval<Request>().duration_in_frames)>::max()
                                                    }));
+                    if(!res) {
+                      MIDI_LG(ERR,"failed to play");
+                    }
                 }
               private:
                 int xfade_length = 401;

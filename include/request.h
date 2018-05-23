@@ -7,7 +7,7 @@ namespace imajuscule {
             Assert(state(buffer) == AE::inactive()); // to be sure at most one channel uses it
             state(buffer) = AE::queued();
         }
-        
+
         template<typename T>
         void onUnqueued(T * buffer) {
             using AE = AudioElement<T>;
@@ -17,7 +17,7 @@ namespace imajuscule {
             state(buffer) = AE::inactive();
         }
     }
-    
+
     using AE32Buffer = float *;
     using AE64Buffer = double *;
 
@@ -27,43 +27,43 @@ namespace imajuscule {
     struct TaggedBuffer {
         template<int>
         friend class QueuedRequest;
-        
+
         template<typename T>
         explicit TaggedBuffer(T buf)
         : buffer(buf) {}
-        
+
         void reset() {
             *this = TaggedBuffer{nullptr};
         }
-        
+
         void reset(soundBuffer * buf) {
             *this = TaggedBuffer{buf};
         }
-        
+
         soundBuffer::buffer & asSoundBuffer() const {
             auto ptr = buffer.soundBuffer();
             Assert(is32() && !isAudioElement() && ptr);
             return *ptr;
         }
-        
+
         AE32Buffer asAudioElement32() const {
             auto ptr = buffer.audioElement32();
             Assert(is32() && isAudioElement() && ptr);
             return ptr;
         }
-        
+
         AE64Buffer asAudioElement64() const {
             auto ptr = buffer.audioElement64();
             Assert(!is32() && isAudioElement() && ptr);
             return ptr;
         }
-        
+
         bool null() const {
             // this is not strictly legal, as we dont check the tags
             // to see which of the union members is active...
             return !buffer.soundBuffer();
         }
-        
+
         bool valid() const {
             if(isAudioElement()) {
                 return !null();
@@ -74,7 +74,7 @@ namespace imajuscule {
             auto ptr = buffer.soundBuffer();
             return ptr && !ptr->empty();
         }
-        
+
         bool isSoundBuffer() const { return !buffer.flags.is_AudioElement; }
         bool isAudioElement() const { return buffer.flags.is_AudioElement; }
 
@@ -100,11 +100,11 @@ namespace imajuscule {
             }
             return true;
         }
-        
+
         operator bool() const {
             return !null();
         }
-        
+
     private:
         union buffer {
             buffer(std::nullptr_t) : sound(nullptr) {
@@ -129,26 +129,26 @@ namespace imajuscule {
             }
 
             static constexpr auto n_low_bits_used = 2;
-            
+
             uintptr_t ptr() const { return removeLowBits<n_low_bits_used>(as_uintptr_t); }
-            
+
             soundBuffer::buffer * soundBuffer() const { return reinterpret_cast<soundBuffer::buffer *>(ptr()); }
             AE32Buffer audioElement32() const { return reinterpret_cast<AE32Buffer>(ptr()); }
             AE64Buffer audioElement64() const { return reinterpret_cast<AE64Buffer>(ptr()); }
-            
+
             // all buffers are aligned on cachelines (64=2^6) meaning the 6 lower bits my be used to store information
             struct {
                 bool is_AudioElement : 1;
                 bool is_32 : 1;
             } flags;
-            
+
             uintptr_t as_uintptr_t;
             soundBuffer::buffer * sound;
             AE32Buffer audioelement_32;
             AE64Buffer audioelement_64;
         } buffer;
-        
-        
+
+
         void onQueued() const {
             Assert(valid());
             if(isSoundBuffer()) {
@@ -161,7 +161,7 @@ namespace imajuscule {
                 audioelement::onQueued(asAudioElement64());
             }
         }
-        
+
         void onUnqueued() {
             Assert(valid());
             if(isSoundBuffer()) {
@@ -175,28 +175,28 @@ namespace imajuscule {
             }
         }
     };
-    
-    
+
+
     template<int nAudioOut>
     struct Volumes {
         using array = std::array<float, nAudioOut>;
         array volumes;
 
         Volumes() = default;
-        
+
         Volumes(float f) {
             volumes.fill(f);
         }
-        
+
         Volumes(array a) : volumes(std::move(a)) {}
-        
+
         Volumes & operator =(float const f) {
             for(auto & v : volumes) {
                 v = f;
             }
             return *this;
         }
-        
+
         Volumes & operator *=(float const f)  {
             for(auto & v : volumes) {
                 v *= f;
@@ -209,26 +209,26 @@ namespace imajuscule {
             v *= f;
             return v;
         }
-        
+
         void operator +=(Volumes const & o) {
             for(int i=0; i<volumes.size(); ++i) {
                 volumes[i] += o.volumes[i];
             }
         }
-        
+
         void operator +=(Volumes && o) {
             for(int i=0; i<volumes.size(); ++i) {
                 volumes[i] += o.volumes[i];
             }
         }
-        
+
         Volumes operator +(Volumes && o) {
             for(int i=0; i<volumes.size(); ++i) {
                 o[i] += volumes[i];
             }
             return std::move(o);
         }
-                
+
         bool is_zero() const {
             for(auto const v : volumes) {
                 if(v!=0.f) {
@@ -237,7 +237,7 @@ namespace imajuscule {
             }
             return true;
         }
-        
+
         bool is_valid() const {
             // commented out : for virtual instruments we need to output more than 1.f
 /*            for(auto const v : volumes) {
@@ -251,7 +251,7 @@ namespace imajuscule {
  */
             return true;
         }
-        
+
         float & operator[](int i) {
             return volumes[i];
         }
@@ -272,10 +272,10 @@ namespace imajuscule {
         {
             Assert(duration_ms >= 0.f);
             duration_in_frames = ms_to_frames(duration_ms);
-            
+
             // we silence some sounds instead of just not playing them, in order to keep
             // the rythm
-            
+
             soundId Id;
             bool silence = false;
             if(sound == Sound::SILENCE) {
@@ -302,13 +302,13 @@ namespace imajuscule {
             else {
                 auto & b = sounds.get( std::move(Id) );
                 buffer.reset(&b);
-                
+
                 if( sound.zeroOnPeriodBoundaries() ) {
                     const int period_size = (int)b.size();
                     if(period_size == 0) {
                         return;
                     }
-                    
+
                     if(0 == duration_in_frames) {
                         duration_in_frames = period_size;
                     }
@@ -318,37 +318,37 @@ namespace imajuscule {
                             duration_in_frames += period_size-mod;
                         }
                     }
-                    
+
                     Assert( 0 == duration_in_frames % period_size);
-                }        
+                }
             }
         }
-        
+
         Request( soundBuffer * buffer, Volumes volume, int duration_in_frames) :
         buffer(buffer), volumes(volume*chan_base_amplitude), duration_in_frames(duration_in_frames) { }
 
         Request( AE32Buffer buffer, Volumes volume, int duration_in_frames) :
         buffer(buffer), volumes(volume*chan_base_amplitude), duration_in_frames(duration_in_frames) { }
-        
+
         Request( AE64Buffer buffer, Volumes volume, int duration_in_frames) :
         buffer(buffer), volumes(volume*chan_base_amplitude), duration_in_frames(duration_in_frames) { }
 
         Request( AE32Buffer buffer, Volumes volume, float duration_in_ms) :
         Request(buffer, std::move(volume), ms_to_frames(duration_in_ms)) { }
-        
+
         Request( AE64Buffer buffer, Volumes volume, float duration_in_ms) :
         Request(buffer, std::move(volume), ms_to_frames(duration_in_ms)) { }
-        
+
         Request() : buffer(nullptr) {}
-        
+
         void reset() { buffer.reset(); }
-        
+
         bool valid() const { return duration_in_frames >= 1 && buffer.valid() && volumes.is_valid(); }
 
         bool isSilence() const {
             return volume_is_zero() || buffer.isSilence();
         }
-        
+
         TaggedBuffer buffer;
         Volumes volumes;
         int32_t duration_in_frames;
@@ -358,26 +358,26 @@ namespace imajuscule {
             return volumes.is_zero();
         }
     };
-    
+
     template<int nAudioOut>
     struct QueuedRequest : public Request<nAudioOut> {
         using Request = Request<nAudioOut>;
         using Request::buffer;
         using Request::volumes;
         using Request::duration_in_frames;
-        
+
         QueuedRequest() = default;
-        
+
         // non copyable (cf. destructor implementation)
         QueuedRequest(const QueuedRequest &) = delete;
         QueuedRequest & operator=(const QueuedRequest&) = delete;
-        
+
         // movable
         QueuedRequest(QueuedRequest && o) : Request(std::move(o)) {
             o.buffer.reset();
             Assert(!o.buffer);
         }
-        
+
         QueuedRequest& operator =(QueuedRequest && o) {
             if (this != &o) {
                 unqueue();
@@ -393,11 +393,11 @@ namespace imajuscule {
         QueuedRequest(Request const & o) : Request(o) {
             buffer.onQueued();
         }
-        
+
         ~QueuedRequest() {
             unqueue();
         }
-        
+
     private:
         void unqueue() {
             if(buffer) {

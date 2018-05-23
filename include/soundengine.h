@@ -232,6 +232,12 @@ namespace imajuscule {
                 >;
             };
 
+            template<typename T>
+            struct Ramps {
+              T * active = nullptr;
+              T * inactive = nullptr;
+            };
+
             template<
             SoundEngineMode M,
             typename Logger,
@@ -493,13 +499,12 @@ namespace imajuscule {
                 return mc;
             }
 
-            template<typename OutputData, typename MonoNoteChannel>
-            bool orchestrate(OutputData &out, MonoNoteChannel & c, int max_frame_compute) {
+            template<typename OutputData>
+            bool orchestrate(OutputData &out, int max_frame_compute) {
                 bool done = false;
                 if(onAfterCompute(out, max_frame_compute, done)) {
                     return !done;
                 }
-                c.elem.onKeyReleased(); // TODO this should be done differently, see other TODOs in onAfterCompute
                 return false;
             }
 
@@ -511,7 +516,13 @@ namespace imajuscule {
                     return true; // channel is already closed or closing
                 }
 
-                auto & channel = out.editChannel(c1);
+                if(!active) {
+                  if(nullptr == get_inactive_ramp().active) {
+                    // the key was released and all envelopes are done.
+                    return true;
+                  }
+                }
+                auto & channel = out.editChannel(cid);
                 if(!channel.isPlaying()) {
                     return true;
                 }
@@ -521,7 +532,9 @@ namespace imajuscule {
                 }
 
                 // is current request soon xfading?
-                // TODO this should be reworked to use the Envelope fade out instead of the channel's fade out.
+                // TODO today, we rely on channel xfades for xfades. But we should have channels
+                // with no xfade, and just use enveloppes (when one enveloppe starts releasing,
+                // the other starts raising : hence we need 2 channels instead of one.).
                 if(channel.get_remaining_samples_count() < max_frame_compute + 1 + channel.get_size_half_xfade())
                 {
                     if(state_silence) {
@@ -551,11 +564,15 @@ namespace imajuscule {
                 constexpr auto nAudioOut = OutputData::nOuts;
                 using Request = Request<nAudioOut>;
 
-                auto & channel = out.editChannel(c1);
+                auto & channel = out.editChannel(cid);
 
                 while(auto new_spec = ramp_specs.get_next_ramp_for_run()) {
-                    auto new_ramp = get_inactive_ramp();
-                    Assert(new_ramp); // might be null if length of ramp is too small
+                    auto rampsStatus = get_inactive_ramp();
+                    if(auto * prevRamp = rampsStatus.active) {
+                      prevRamp->algo.onKeyReleased();
+                    }
+                    Assert(rampsStatus.inactive); // might be null if length of ramp is too small
+                    auto new_ramp = rampsStatus.inactive;
                     new_ramp->algo.getAlgo().getCtrl() = new_spec->get();
                     new_ramp->algo.getAlgo().getCtrl().initializeForRun();
                     new_ramp->algo.forgetPastSignals();
@@ -563,7 +580,7 @@ namespace imajuscule {
 
                     auto v = MakeVolume::run<nAudioOut>(1.f, pan) * (new_spec->volume()/Request::chan_base_amplitude);
                     // no lock : the caller is responsible for taking the out lock
-                    if(out.playGenericNoLock(c1,
+                    if(out.playGenericNoLock(cid,
                                              std::make_pair(std::ref(*new_ramp),
                                                             Request{
                                                                 &new_ramp->buffer[0],
@@ -573,10 +590,14 @@ namespace imajuscule {
                                                             })
                                              ))
                     {
-                        return true; // channel is playing
+                        return true;
                     }
                 }
-                return false; // close channel
+                auto rampsStatus = get_inactive_ramp();
+                if(auto * prevRamp = rampsStatus.active) {
+                  prevRamp->algo.onKeyReleased();
+                }
+                return false;
             }
 
             template<typename OutputData>
@@ -584,11 +605,16 @@ namespace imajuscule {
                 constexpr auto nAudioOut = OutputData::nOuts;
                 using Request = Request<nAudioOut>;
 
-                auto & channel = out.editChannel(c1);
+                auto & channel = out.editChannel(cid);
 
                 Assert(articulative_pause_length > 2*channel.get_size_xfade());
 
-                auto res = out.playGenericNoLock(c1,
+                auto rampsStatus = get_inactive_ramp();
+                if(auto * prevRamp = rampsStatus.active) {
+                  prevRamp->algo.onKeyReleased();
+                }
+
+                auto res = out.playGenericNoLock(cid,
                                                  std::make_pair(std::ref(silence),
                                                                 Request{
                                                                     &silence,
@@ -600,9 +626,6 @@ namespace imajuscule {
                 Assert(res); // because length was checked
             }
 
-            void set_xfade(int xfade_) {
-                xfade = xfade_;
-            }
             void set_freq_xfade(int xfade_) {
                 freq_xfade = xfade_;
             }
@@ -664,16 +687,14 @@ namespace imajuscule {
                 active = b;
             }
 
-            void set_channels(uint8_t c1, uint8_t c2) {
-                this->c1 = c1;
-                this->c2 = c2;
+            void set_channel(uint8_t c) {
+                this->cid = c;
             }
 
             using InitPolicy = SoundEngineInitPolicy;
 
-            template<typename OutputData, typename MonoNoteChannel>
+            template<typename OutputData>
             void initialize_sweep(OutputData & o,
-                                  MonoNoteChannel & c,
                                   float low, float high,
                                   float pan) {
                 bool initialize = true;
@@ -687,12 +708,11 @@ namespace imajuscule {
                 freq1_robot = low;
                 freq2_robot = high;
 
-                do_initialize(o, c, initialize, 0, 0, 1, 0, articulative_pause_length, pan);
+                do_initialize(o, initialize, 0, 0, 1, 0, articulative_pause_length, pan);
             }
 
-            template<typename OutputData, typename MonoNoteChannel>
+            template<typename OutputData>
             void initialize_birds(OutputData & o,
-                                   MonoNoteChannel & c,
                                    int start_node, int pre_tries, int min_path_length, int additional_tries, InitPolicy init_policy,
                                    FreqXfade xfade_freq, int articulative_pause_length,
                                    float pan) {
@@ -706,12 +726,11 @@ namespace imajuscule {
                     }
                 }
 
-                do_initialize(o, c, initialize, start_node, pre_tries, min_path_length, additional_tries, articulative_pause_length, pan);
+                do_initialize(o, initialize, start_node, pre_tries, min_path_length, additional_tries, articulative_pause_length, pan);
             }
 
-            template<typename OutputData, typename MonoNoteChannel>
+            template<typename OutputData>
             void initialize_wind(OutputData & o,
-                                 MonoNoteChannel & c,
                                  int start_node, int pre_tries, int min_path_length, int additional_tries, InitPolicy init_policy,
                                  float pan) {
                 bool initialize = (!markov) || (init_policy==InitPolicy::StartAfresh);
@@ -722,12 +741,11 @@ namespace imajuscule {
                     }
                 }
 
-                do_initialize(o, c, initialize, start_node, pre_tries, min_path_length, additional_tries, articulative_pause_length, pan);
+                do_initialize(o, initialize, start_node, pre_tries, min_path_length, additional_tries, articulative_pause_length, pan);
             }
 
-            template<typename OutputData, typename MonoNoteChannel>
+            template<typename OutputData>
             void initialize_robot(OutputData & o,
-                                  MonoNoteChannel & c,
                                   int start_node, int pre_tries, int min_path_length, int additional_tries, InitPolicy init_policy,
                                   int articulative_pause_length,
                                   float pan) {
@@ -765,12 +783,11 @@ namespace imajuscule {
                     }
                 }
 
-                do_initialize(o, c, initialize, start_node, pre_tries, min_path_length, additional_tries, articulative_pause_length, pan);
+                do_initialize(o, initialize, start_node, pre_tries, min_path_length, additional_tries, articulative_pause_length, pan);
             }
 
-            template<typename OutputData, typename MonoNoteChannel>
+            template<typename OutputData>
             void do_initialize(OutputData & o,
-                               MonoNoteChannel & c,
                                bool initialize,
                                int start_node, int pre_tries, int min_path_length, int additional_tries,
                                int articulative_pause_length,
@@ -815,8 +832,12 @@ namespace imajuscule {
 
                 ramp_specs.finalize();
 
-                o.add_orchestrator([&o, &c, this](int max_frame_compute){
-                    return orchestrate(o, c, max_frame_compute);
+                o.add_orchestrator([&o, this](int max_frame_compute){
+                  auto res = orchestrate(o, max_frame_compute);
+                  if(!res) {
+                    active = false;
+                  }
+                  return res;
                 });
 
                 this->pan = pan;
@@ -828,7 +849,7 @@ namespace imajuscule {
 
             itp::interpolation interpolation : 5;
             itp::interpolation freq_interpolation : 5;
-            std::function<audioElt*(void)> get_inactive_ramp;
+            std::function<Ramps<audioElt>(void)> get_inactive_ramp;
             float d1, d2, har_att, length, base_freq, freq_scatter, phase_ratio1=0.f, phase_ratio2=0.f;
             float min_exp;
             float max_exp;
@@ -840,8 +861,8 @@ namespace imajuscule {
             float vol1 = 1.f, vol2 = 1.f;
             float pan;
 
-            uint8_t c1, c2;
-            int xfade, freq_xfade;
+            uint8_t cid;
+            int freq_xfade;
             int articulative_pause_length;
 
             std::unique_ptr<MarkovChain> markov;

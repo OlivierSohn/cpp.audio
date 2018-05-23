@@ -1514,6 +1514,7 @@ namespace imajuscule {
                     }
                     if(likely(e.getState() != AE::queued())) {
                         if(sync_clock == e.clock_) {
+                            // we alredy did compute this step.
                             return true;
                         }
                     }
