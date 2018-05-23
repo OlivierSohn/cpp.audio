@@ -208,7 +208,14 @@ namespace imajuscule {
                 break;
               }
             case EnvelopeState::EnvelopeDone1:
-                state = EnvelopeState::EnvelopeDone2;
+                if(lastObservedState != EnvelopeState::EnvelopeDone1) {
+                  counter = 0;
+                }
+                ++counter;
+                if(counter > n_frames_per_buffer) { // to be sure that all non-zero computed signals
+                                                    // were used
+                  state = EnvelopeState::EnvelopeDone2;
+                }
                 _value = static_cast<T>(0);
                 break;
             case EnvelopeState::EnvelopeDone2:
