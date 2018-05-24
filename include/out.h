@@ -992,6 +992,8 @@ namespace imajuscule {
         PostImpl & getPost() { return post; }
 
         decltype(std::declval<AudioLockPolicyImpl<policy>>().lock()) get_lock() { return _lock.lock(); }
+        
+        auto count_consummed_frames() const { return consummed_frames; }
 
         // called from audio callback
         void step(SAMPLE *outputBuffer, int nFrames) {
