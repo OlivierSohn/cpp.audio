@@ -27,7 +27,8 @@ namespace imajuscule {
                     setPhase(phase, osc.algo);
 
                     // the caller is responsible for taking the out lock if needed
-                    auto res = out.playGenericNoLock(c.channel,
+                    auto res = out.getChannels().playGenericNoLock(
+                                    out, c.channel,
                                     std::make_pair(std::ref(osc),
                                                    Request{
                                                        &osc.buffer[0],
