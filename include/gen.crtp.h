@@ -185,7 +185,7 @@ namespace imajuscule {
                 int n = 0;
                 for(auto & c : channels) {
                     for(auto & r : c.elem.getRamps()) {
-                        if(r.isActive()) {
+                        if(!r.isEnvelopeFinished()) {
                             ++n;
                         }
                     }
