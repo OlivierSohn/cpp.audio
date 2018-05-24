@@ -133,18 +133,36 @@ namespace imajuscule {
         Master
     };
 
+    template<AudioOutPolicy> struct AudioLockPolicyImpl;
+
+    template <>
+    struct AudioLockPolicyImpl<AudioOutPolicy::Slave> {
+        static constexpr WithLock useLock = WithLock::No;
+        
+        bool lock() { return false; }
+    };
+    
+
+    template <>
+    struct AudioLockPolicyImpl<AudioOutPolicy::Master> {
+        static constexpr auto useLock = WithLock::Yes;
+        using Locking = LockIf<useLock>;
+        
+        std::atomic_bool & lock() { return used; }
+    private:
+        std::atomic_bool used{false};
+    };
+
+    
     // cooley-tukey leads to error growths of O(log n) (worst case) and O(sqrt(log n)) (mean for random input)
     // so float is good enough
     using FFT_T = float;
 
-    template<typename T, int nAudioOut, AudioOutPolicy> struct AudioPolicyImpl;
+    template<typename T, int nAudioOut, AudioOutPolicy> struct AudioPostPolicyImpl;
 
     template<typename T, int nAudioOut>
-    struct AudioPolicyImpl<T, nAudioOut, AudioOutPolicy::Slave> {
-        /////////////////////////////// lock
-        static constexpr WithLock useLock = WithLock::No;
-
-        bool lock() { return false; }
+    struct AudioPostPolicyImpl<T, nAudioOut, AudioOutPolicy::Slave> {
+        AudioPostPolicyImpl(AudioLockPolicyImpl<AudioOutPolicy::Slave> &) {}
 
         /////////////////////////////// postprocess
         void postprocess(T*buffer, int nFrames) const {}
@@ -325,7 +343,9 @@ namespace imajuscule {
 
 
     template<typename T, int nAudioOut>
-    struct AudioPolicyImpl<T, nAudioOut, AudioOutPolicy::Master> {
+    struct AudioPostPolicyImpl<T, nAudioOut, AudioOutPolicy::Master> {
+        
+        using Locking = LockIf<AudioLockPolicyImpl<AudioOutPolicy::Master>::useLock>;
 
         //using ConvolutionReverb = FIRFilter<T>;
         //using ConvolutionReverb = FFTConvolution<FFT_T>;
@@ -336,17 +356,14 @@ namespace imajuscule {
         using SetupParam = typename ConvolutionReverb::SetupParam;
         using PartitionningSpec = PartitionningSpec<SetupParam>;
 
-        AudioPolicyImpl()
+        AudioPostPolicyImpl(AudioLockPolicyImpl<AudioOutPolicy::Master> &l) :
+        _lock(l)
 #if WITH_DELAY
-        : delays{{1000, 0.6f},{4000, 0.2f}, {4300, 0.3f}, {5000, 0.1f}},
+        , delays{{1000, 0.6f},{4000, 0.2f}, {4300, 0.3f}, {5000, 0.1f}},
 #endif
         {}
-
-        /////////////////////////////// lock
-        static constexpr auto useLock = WithLock::Yes;
-        using Locking = LockIf<useLock>;
-
-        std::atomic_bool & lock() { return used; }
+        
+        AudioLockPolicyImpl<AudioOutPolicy::Master> & _lock;
 
         /////////////////////////////// postprocess
         using postProcessFunc = std::function<void(float*)>;
@@ -392,7 +409,7 @@ namespace imajuscule {
 
         void dontUseConvolutionReverbs() {
             {
-                Locking l(lock());
+                Locking l(_lock.lock());
                 ready = false;
             }
             for(auto & r : conv_reverbs) {
@@ -423,7 +440,7 @@ namespace imajuscule {
                 // (due to cache effects for roots and possibly other) so we disable them now
                 // (when ready is false, the audio thread doesn't use reverbs)
                 // TODO rename ready !!
-                Locking l(lock());
+                Locking l(_lock.lock());
                 ready = false;
             }
 
@@ -456,9 +473,6 @@ namespace imajuscule {
         bool hasSpatializer() const { return !spatializer.empty(); }
 
     private:
-
-        /////////////////////////////// lock
-        std::atomic_bool used{false};
 
         /////////////////////////////// postprocess
         bool ready = false;
@@ -642,199 +656,114 @@ namespace imajuscule {
             }
         }
     };
-
+    
     template<
-    int nAudioOut,
+    int nOuts,
     XfadePolicy XF,
-    AudioOutPolicy policy = AudioOutPolicy::Master
+    AudioOutPolicy policy
     >
-    struct outputDataBase {
-        using T = float;
-
+    struct Channels {
+        static constexpr auto Policy = policy;
+        static constexpr auto nAudioOut = nOuts;
         using Channel = Channel<nAudioOut, XF>;
         using Request = typename Channel::Request;
         using Volumes = typename Channel::Volumes;
 
-        static constexpr auto Policy = policy;
-        static constexpr auto DefLock = (policy==AudioOutPolicy::Slave) ? WithLock::No : WithLock::Yes;
-        using Impl = AudioPolicyImpl<T, nAudioOut, policy>;
-        using Locking = LockIf<Impl::useLock>;
-
-        static constexpr auto nOuts = nAudioOut;
-
-        int count_consummed_frames() const { return consummed_frames; }
-
+        using Locking = LockIf<AudioLockPolicyImpl<policy>::useLock>;
+        
         using OrchestratorFunc = std::function<bool(int)>;
 
-        void add_orchestrator(OrchestratorFunc f) {
-            Assert(orchestrators.capacity() > orchestrators.size()); // we are in the audio thread, we shouldn't allocate dynamically
-            orchestrators.push_back(std::move(f));
-        }
-
-    private:
-        Impl impl;
-
-        //////////////////////////
-        /// state of last write:
-
-        bool clock_ : 1; /// "tic tac" flag, inverted at each new AudioElements buffer writes
-
-        /// the number of buffer frames that were used from the previous AudioElements buffer write
-        /// "0" means the entire buffers where used
-        unsigned int consummed_frames : relevantBits( audioelement::n_frames_per_buffer - 1 );
-        ///
-        //////////////////////////
-
-        AvailableIndexes<uint8_t> available_ids;
-        std::vector<Channel> channels;
-        std::vector<uint8_t> autoclosing_ids;
-
-        // orchestrators and computes could be owned by the channels but it is maybe cache-wise more efficient
-        // to group them here (if the lambda owned is small enough to not require dynamic allocation)
-        std::vector<OrchestratorFunc> orchestrators;
-        std::vector<audioelement::ComputeFunc> computes;
-
-    public:
-        template<typename F>
-        void registerCompute(F f) {
-            Assert(computes.capacity() > computes.size()); // we are in the audio thread, we shouldn't allocate dynamically
-            computes.push_back(std::move(f));
-            if(isInbetweenTwoComputes()) {
-                computes.back()(clock_);
-            }
-        }
-
-        decltype(std::declval<Impl>().lock()) get_lock() { return impl.lock(); }
-
-        bool isInbetweenTwoComputes() const {
-            Assert(consummed_frames >= 0);
-            Assert(consummed_frames < audioelement::n_frames_per_buffer);
-            return 0 != consummed_frames;
-        }
-
-        outputDataBase(int nChannelsMax = std::numeric_limits<uint8_t>::max(), int nOrchestratorsMaxPerChannel=0)
-        :
-        clock_(false),
-        consummed_frames(0)
+        Channels(AudioLockPolicyImpl<policy> & l
+                , int nChannelsMax = std::numeric_limits<uint8_t>::max()
+                , int nOrchestratorsMaxPerChannel=0):
+        _lock(l)
         {
             Assert(nChannelsMax >= 0);
             Assert(nChannelsMax <= std::numeric_limits<uint8_t>::max()); // else need to update AUDIO_CHANNEL_NONE
-
+            
             // (almost) worst case scenario : each channel is playing an audiolement crossfading with another audio element
             // "almost" only because the assumption is that requests vector holds at most one audioelement at any time
             // if there are multiple audioelements in request vector, we need to be more precise about when audioelements start to be computed...
             // or we need to constrain the implementation to add requests in realtime, using orchestrators.
             computes.reserve(2*nChannelsMax);
-
+            
             orchestrators.reserve(nOrchestratorsMaxPerChannel * nChannelsMax);
-
+            
             channels.reserve(nChannelsMax);
             autoclosing_ids.reserve(nChannelsMax);
             available_ids.reserve(nChannelsMax);
         }
 
-        void dontUseConvolutionReverbs() {
-            impl.dontUseConvolutionReverbs();
+        void add_orchestrator(OrchestratorFunc f) {
+            Assert(orchestrators.capacity() > orchestrators.size()); // we are in the audio thread, we shouldn't allocate dynamically
+            orchestrators.push_back(std::move(f));
         }
-
-        void setConvolutionReverbIR(std::vector<FFT_T> impulse_response, int n_channels, int n_audio_cb_frames) {
-            impl.setConvolutionReverbIR(std::move(impulse_response), n_channels, n_audio_cb_frames);
-        }
-
-        bool hasSpatializer() const { return impl.hasSpatializer(); }
-
-        // called from audio callback
-        void step(SAMPLE *outputBuffer, int nFrames) {
-            /*
-            static bool first(true);
-            if(first) {
-                first = false;
-                std::cout << "audio thread: " << std::endl;
-                thread::logSchedParams();
-            }*/
-
-            // todo: locking in the real time thread should be avoided
-            Locking l(get_lock());
-
-            if(unlikely(!impl.isReady())) {
-                // impl is being initialized in another thread
-                memset(outputBuffer, 0, nFrames * nAudioOut * sizeof(SAMPLE));
-                return;
-            }
-
-            if(consummed_frames != 0) {
-                // finish consuming previous buffers
-                if(!consume_buffers(outputBuffer, nFrames)) {
-                    return;
-                }
-            }
-
-            while(true) {
-                // the previous buffers are consumed, we need to compute them again
-                run_computes();
-
-                if(!consume_buffers(outputBuffer, nFrames)) {
-                    return;
-                }
+        
+        template<typename F, typename Out>
+        void registerCompute(Out const & out, F f) {
+            Assert(computes.capacity() > computes.size()); // we are in the audio thread, we shouldn't allocate dynamically
+            computes.push_back(std::move(f));
+            if(out.isInbetweenTwoComputes()) {
+                computes.back()(out.getTicTac());
             }
         }
 
         Channel & editChannel(uint8_t id) { return channels[id]; }
-
+        
         Channel const & getChannel(uint8_t id) const { return channels[id]; }
-
+        
         bool empty() const { return channels.empty(); }
-
+        
         bool hasOrchestrators() const {
             return !orchestrators.empty();
         }
-
+        
         void toVolume(uint8_t channel_id, float volume, int nSteps) {
-            Locking l(get_lock());
+            Locking l(_lock.lock());
             editChannel(channel_id).toVolume(volume, nSteps);
         }
         void setVolume(uint8_t channel_id, float volume) {
             editChannel(channel_id).setVolume(volume);
         }
-
-        template<class... Args>
-        bool playGeneric( uint8_t channel_id, Args&&... requests) {
-
+        
+        template<typename Out, class... Args>
+        bool playGeneric( Out & out, uint8_t channel_id, Args&&... requests) {
+            
             // it's important to register and enqueue in the same lock cycle
             // else we miss some audio frames,
             // or the callback gets unscheduled
-            Locking l(get_lock());
-
-            return playGenericNoLock(channel_id, std::forward<Args>(requests)...);
+            Locking l(_lock.lock());
+            
+            return playGenericNoLock(out, channel_id, std::forward<Args>(requests)...);
         }
-
-
-        template<class... Args>
-        bool playGenericNoLock( uint8_t channel_id, Args&&... requests) {
-
+        
+        
+        template<typename Out, class... Args>
+        bool playGenericNoLock( Out & out, uint8_t channel_id, Args&&... requests) {
+            
             // we enqueue first, so that the buffer has the "queued" state
             // because when registering compute lambdas, they can be executed right away
             // so the buffer needs to be in the right state
-
+            
             bool res = playNolock(channel_id, {std::move(requests.second)...});
-
+            
             auto buffers = std::make_tuple(std::ref(requests.first)...);
-            for_each(buffers, [this](auto &buf) {
+            for_each(buffers, [this, &out](auto &buf) {
                 if(auto f = audioelement::fCompute(buf)) {
-                    this->registerCompute(std::move(f));
+                    this->registerCompute(out, std::move(f));
                 }
             });
-
+            
             return res;
         }
-
+        
         void play( uint8_t channel_id, StackVector<Request> && v) {
-            Locking l(get_lock());
+            Locking l(_lock.lock());
             playNolock(channel_id, std::move(v));
         }
-
+        
         void closeAllChannels(int xfade) {
-            Locking l(get_lock());
+            Locking l(_lock.lock());
             if(!xfade) {
                 channels.clear();
             }
@@ -846,7 +775,7 @@ namespace imajuscule {
                 }
             }
         }
-
+        
         template<WithLock lock>
         uint8_t openChannel(float volume, ChannelClosingPolicy l, int xfade_length = 0) {
             uint8_t id = AUDIO_CHANNEL_NONE;
@@ -865,7 +794,7 @@ namespace imajuscule {
                     else {
                         // take the lock in the loop so that at the end of each iteration
                         // the audio thread has a chance to run
-                        Locking l(get_lock());
+                        Locking l(_lock.lock());
                         if(channels[id].isPlaying()) {
                             id = AUDIO_CHANNEL_NONE;
                             continue;
@@ -894,7 +823,7 @@ namespace imajuscule {
                     convert_to_autoclosing(id);
                 }
             }
-
+            
             // no need to lock here : the channel is not playing
             if(!editChannel(id).isActive()) {
                 editChannel(id).reset(xfade_length);
@@ -908,7 +837,7 @@ namespace imajuscule {
             }
             return id;
         }
-
+        
         template<WithLock l>
         void closeChannel(uint8_t channel_id, CloseMode mode, int nStepsForXfadeToZeroMode = -1)
         {
@@ -919,13 +848,13 @@ namespace imajuscule {
                 closeChannel(channel_id, mode, nStepsForXfadeToZeroMode);
             }
         }
-
+        
         void closeChannel(uint8_t channel_id, CloseMode mode, int nStepsForXfadeToZeroMode = -1)
         {
-            Locking l(get_lock());
+            Locking l(_lock.lock());
             closeChannelNoLock(channel_id, mode, nStepsForXfadeToZeroMode);
         }
-
+        
         void closeChannelNoLock(uint8_t channel_id, CloseMode mode, int nStepsForXfadeToZeroMode = -1)
         {
             auto & c = editChannel(channel_id);
@@ -954,12 +883,49 @@ namespace imajuscule {
             available_ids.Return(channel_id);
         }
 
-    private:
-        void convert_to_autoclosing(uint8_t channel_id) {
-            Assert(autoclosing_ids.size() < autoclosing_ids.capacity());
-            // else logic error : some users closed manually some autoclosing channels
-            autoclosing_ids.push_back(channel_id);
+        void run_computes(bool tictac) {
+            for(auto it = orchestrators.begin(), end = orchestrators.end(); it!=end;) {
+                if(!((*it)(audioelement::n_frames_per_buffer))) { // can grow 'computes' vector
+                    it = orchestrators.erase(it);
+                    end = orchestrators.end();
+                }
+                else {
+                    ++it;
+                }
+            }
+            
+            for(auto it = computes.begin(), end = computes.end(); it!=end;) {
+                if(!((*it)(tictac))) {
+                    it = computes.erase(it);
+                    end = computes.end();
+                }
+                else {
+                    ++it;
+                }
+            }
         }
+        
+        template <typename F>
+        void forEach(F f) {
+            for(auto & c : channels) {
+                f(c);
+            }
+        }
+        
+        decltype(std::declval<AudioLockPolicyImpl<policy>>().lock()) get_lock() { return _lock.lock(); }
+
+    private:
+        AudioLockPolicyImpl<policy> & _lock;
+
+        AvailableIndexes<uint8_t> available_ids;
+        std::vector<Channel> channels;
+        std::vector<uint8_t> autoclosing_ids;
+
+
+        // orchestrators and computes could be owned by the channels but it is maybe cache-wise more efficient
+        // to group them here (if the lambda owned is small enough to not require dynamic allocation)
+        std::vector<OrchestratorFunc> orchestrators;
+        std::vector<audioelement::ComputeFunc> computes;
 
         bool playNolock( uint8_t channel_id, StackVector<Request> && v) {
             bool res = true;
@@ -972,33 +938,110 @@ namespace imajuscule {
             }
             return res;
         }
-
-        void run_computes() {
-            Assert(consummed_frames == 0); // else we skip some unconsummed frames
-            clock_ = !clock_; // keep that BEFORE passing clock_ to compute functions (dependency on registerCompute)
-
-
-            for(auto it = orchestrators.begin(), end = orchestrators.end(); it!=end;) {
-                if(!((*it)(audioelement::n_frames_per_buffer))) { // can grow 'computes' vector
-                    it = orchestrators.erase(it);
-                    end = orchestrators.end();
-                }
-                else {
-                    ++it;
-                }
-            }
-
-            for(auto it = computes.begin(), end = computes.end(); it!=end;) {
-                if(!((*it)(clock_))) {
-                    it = computes.erase(it);
-                    end = computes.end();
-                }
-                else {
-                    ++it;
-                }
-            }
-            Assert(consummed_frames == 0);
+        
+        void convert_to_autoclosing(uint8_t channel_id) {
+            Assert(autoclosing_ids.size() < autoclosing_ids.capacity());
+            // else logic error : some users closed manually some autoclosing channels
+            autoclosing_ids.push_back(channel_id);
         }
+
+    };
+    
+    template< typename ChannelsType >
+    struct outputDataBase {
+        using T = float;
+
+        static constexpr auto policy = ChannelsType::Policy;
+        static constexpr auto DefLock = (policy==AudioOutPolicy::Slave) ? WithLock::No : WithLock::Yes;
+        static constexpr auto nOuts = ChannelsType::nAudioOut;
+        using ChannelsT = ChannelsType;
+        using Request = typename ChannelsType::Request;
+        using PostImpl = AudioPostPolicyImpl<T, nOuts, policy>;
+        using Locking = LockIf<AudioLockPolicyImpl<policy>::useLock>;
+
+    private:
+        //////////////////////////
+        /// state of last write:
+        
+        bool clock_ : 1; /// "tic tac" flag, inverted at each new AudioElements buffer writes
+        
+        /// the number of buffer frames that were used from the previous AudioElements buffer write
+        /// "0" means the entire buffers where used
+        unsigned int consummed_frames : relevantBits( audioelement::n_frames_per_buffer - 1 );
+        ///
+        //////////////////////////
+
+        AudioLockPolicyImpl<policy> & _lock;
+        ChannelsT channelsT;
+        PostImpl post;
+        
+    public:
+        
+        template<typename ...Args>
+        outputDataBase(AudioLockPolicyImpl<policy>&l, Args ... args):
+        channelsT(l, args ...)
+        , post(l)
+        , _lock(l)
+        , clock_(false)
+        , consummed_frames(0)
+        {}
+
+        ChannelsT & getChannels() { return channelsT; }
+        ChannelsT const & getConstChannels() const { return channelsT; }
+
+        PostImpl & getPost() { return post; }
+
+        decltype(std::declval<AudioLockPolicyImpl<policy>>().lock()) get_lock() { return _lock.lock(); }
+
+        // called from audio callback
+        void step(SAMPLE *outputBuffer, int nFrames) {
+            /*
+            static bool first(true);
+            if(first) {
+                first = false;
+                std::cout << "audio thread: " << std::endl;
+                thread::logSchedParams();
+            }*/
+
+            // todo: locking in the real time thread should be avoided
+            Locking l(_lock.lock());
+
+            if(unlikely(!post.isReady())) {
+                // post is being initialized in another thread
+                memset(outputBuffer, 0, nFrames * nOuts * sizeof(SAMPLE));
+                return;
+            }
+
+            if(consummed_frames != 0) {
+                // finish consuming previous buffers
+                if(!consume_buffers(outputBuffer, nFrames)) {
+                    return;
+                }
+            }
+
+            while(true) {
+                // the previous buffers are consumed, we need to compute them again
+
+                Assert(consummed_frames == 0); // else we skip some unconsummed frames
+
+                clock_ = !clock_; // keep that BEFORE passing clock_ to compute functions (dependency on registerCompute)
+                channelsT.run_computes(clock_);
+
+                if(!consume_buffers(outputBuffer, nFrames)) {
+                    return;
+                }
+            }
+        }
+        
+        bool isInbetweenTwoComputes() const {
+            Assert(consummed_frames >= 0);
+            Assert(consummed_frames < audioelement::n_frames_per_buffer);
+            return 0 != consummed_frames;
+        }
+        
+        bool getTicTac() const { return clock_;}
+
+    private:
 
         // returns true if everything was consummed AND there is more frames remaining
         bool consume_buffers(SAMPLE *& buf, int & nFrames) {
@@ -1020,7 +1063,7 @@ namespace imajuscule {
             if(nFrames == 0) {
                 return false;
             }
-            buf += nAudioOut * remaining_frames;
+            buf += nOuts * remaining_frames;
             return true;
         }
 
@@ -1028,9 +1071,9 @@ namespace imajuscule {
             Assert(nFrames <= audioelement::n_frames_per_buffer); // by design
             Assert(consummed_frames < audioelement::n_frames_per_buffer); // by design
 
-            memset(outputBuffer, 0, nFrames * nAudioOut * sizeof(SAMPLE));
-
-            for( auto & c: channels ) {
+            memset(outputBuffer, 0, nFrames * nOuts * sizeof(SAMPLE));
+            
+            channelsT.forEach([outputBuffer, this, nFrames](auto & c) {
                 c.step(outputBuffer,
                        nFrames,
                        consummed_frames ); // with consummed_frames, the channel knows when
@@ -1038,11 +1081,16 @@ namespace imajuscule {
                 if(c.shouldReset()) {
                     c.reset(401); // the value doesn't matter, it will be overwritten when the channel is used again.
                 }
-            }
+            });
 
-            impl.postprocess(outputBuffer, nFrames);
+            post.postprocess(outputBuffer, nFrames);
         }
     };
 
-    using outputData = outputDataBase<2, XfadePolicy::UseXfade>;
+    template<typename OutputData>
+    void dontUseConvolutionReverbs(OutputData & data) {
+        data.getPost().dontUseConvolutionReverbs();
+    }
+    
+    using outputData = outputDataBase< Channels<2, XfadePolicy::UseXfade, AudioOutPolicy::Master> >;
 }

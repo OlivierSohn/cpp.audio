@@ -216,9 +216,9 @@ namespace imajuscule {
                 float get_gain() const { return denorm<GAIN>(); }
 
                 // The caller is responsible for taking the out lock if needed.
-                template<typename MonoNoteChannel, typename OutputData>
-                void onStartNote(float velocity, Phase phase, MonoNoteChannel & c, OutputData & out) {
-                    using Request = typename OutputData::Request;
+                template<typename MonoNoteChannel, typename ChannelsT>
+                void onStartNote(float velocity, Phase phase, MonoNoteChannel & c, ChannelsT & out) {
+                    using Request = typename ChannelsT::Request;
 
                     auto tunedNote = midi::tuned_note(c.pitch, c.tuning);
                     auto freq = to_freq(tunedNote-Do_midi, half_tone);
@@ -244,7 +244,8 @@ namespace imajuscule {
                                       0.f,
                                       static_cast<itp::interpolation>(itp::interpolation_traversal().realValues()[static_cast<int>(.5f + params[Params::RAMP_INTERPOLATION])]));
                     // no lock : the lock has already been taken by the caller
-                    out.playGenericNoLock(c.channel,
+                    out.getChannels().playGenericNoLock(
+                                    out, c.channel,
                                     std::make_pair(std::ref(osc),
                                                    Request{
                                                        &osc.buffer[0],
@@ -334,8 +335,8 @@ namespace imajuscule {
 
             public:
 
-                template<typename OutputData>
-                onEventResult onEvent(Event const & e, OutputData & out)
+                template<typename Out>
+                onEventResult onEvent(Event const & e, Out & out)
                 {
                     // in case this is called before the first doProcessing:
                     if(!period.hasValue()) {

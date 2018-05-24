@@ -1217,8 +1217,8 @@ namespace imajuscule {
 
             public:
 
-                template<typename OutputData>
-                onEventResult onEvent(Event const & e, OutputData & out)
+                template<typename Out>
+                onEventResult onEvent(Event const & e, Out & out)
                 {
                     return onEvent2(e, out);
                 }

@@ -159,8 +159,8 @@ namespace imajuscule {
             static constexpr auto n_max_simultaneous_notes_per_voice = 2;
             static constexpr auto n_channels = n_channels_per_note * n_max_voices * n_max_simultaneous_notes_per_voice;
 
-            template<typename OutputData>
-            bool initialize(OutputData & out) {
+            template<typename ChannelsT>
+            bool initialize(ChannelsT & out) {
                 for(auto & c : channels) {
                     // using WithLock::No : if needed, the caller is responsible to take the out lock.
                     if(!c.template open<WithLock::No>(out, 0.f)) {
@@ -185,8 +185,7 @@ namespace imajuscule {
 
             // Note: Logic Audio Express 9 calls this when two projects are opened and
             // the second project starts playing, so we are not in an "initialized" state.
-            template<WithLock l, typename OutputData>
-            void allNotesOff(OutputData & out) {
+            void allNotesOff() {
                 MIDI_LG(INFO, "all notes off");
 
                 for(auto & c : channels) {
@@ -194,21 +193,20 @@ namespace imajuscule {
                 }
             }
 
-            template<WithLock l, typename OutputData>
-            void allSoundsOff(OutputData & out) {
+            void allSoundsOff() {
                 MIDI_LG(INFO, "all sounds off");
                 for(auto & c : channels) {
                     c.elem. template onKeyReleased();
                 }
             }
 
-            template<typename OutputData>
-            onEventResult onEvent2(Event const & e, OutputData & out) {
+            template<typename Out>
+            onEventResult onEvent2(Event const & e, Out & out) {
                 if(e.type == Event::kNoteOnEvent) {
                     // this case is handled by the wrapper... else we need to do a noteOff
                     Assert(e.noteOn.velocity > 0.f );
                     {
-                        typename OutputData::Locking L(out.get_lock());
+                        typename Out::Locking L(out.get_lock());
 
                         if(auto c = editAudioElementContainer_if(channels
                                                                 , [](auto & c) { return c.elem.isEnvelopeFinished(); }))
@@ -219,7 +217,7 @@ namespace imajuscule {
                     return onDroppedNote(e.noteOn.pitch);
                 }
                 else if(e.type == Event::kNoteOffEvent) {
-                    return noteOff(e.noteOff.pitch, out);
+                    return noteOff(e.noteOff.pitch, out.getChannels());
                 }
                 return onEventResult::UNHANDLED;
             }
@@ -243,8 +241,8 @@ namespace imajuscule {
 
                 Assert(c.elem.isEnvelopeFinished());
                 // if we don't reset, an assert fails when we enqueue the next request, because it's already queued.
-                c.reset(out, get_xfade_length()); // to unqueue the (potential) previous request.
-                c.setVolume(out, get_gain());
+                c.reset(out.getChannels(), get_xfade_length()); // to unqueue the (potential) previous request.
+                c.setVolume(out.getChannels(), get_gain());
 
                 c.elem.setEnvelopeCharacTime(get_xfade_length());
                 c.elem.forgetPastSignals();
@@ -299,6 +297,8 @@ namespace imajuscule {
             std::array<MonoNoteChannel, n_channels> channels;
         };
 
+        AudioLockPolicyImpl<AudioOutPolicy::Slave> & fakeAudioLock();
+
         template<typename T>
         struct Wrapper {
             static constexpr auto n_channels = T::n_channels;
@@ -306,13 +306,13 @@ namespace imajuscule {
 
             using ProcessData = typename T::ProcessData;
 
-            using OutputData = outputDataBase<T::nAudioOut, T::xfade_policy, AudioOutPolicy::Slave>;
+            using OutputData = outputDataBase< Channels<T::nAudioOut, T::xfade_policy, AudioOutPolicy::Slave> >;
 
             Wrapper(int nOrchestratorsMax) :
-            out{n_channels, nOrchestratorsMax}
+            out{fakeAudioLock(), n_channels, nOrchestratorsMax}
             {
-                out.dontUseConvolutionReverbs();
-                plugin.template initialize(out);
+                dontUseConvolutionReverbs(out);
+                plugin.template initialize(out.getChannels());
             }
 
             void doProcessing (ProcessData& data) {
@@ -320,11 +320,11 @@ namespace imajuscule {
             }
 
             void allNotesOff() {
-                return plugin.template allNotesOff<with_lock>(out);
+                return plugin.allNotesOff();
             }
 
             void allSoundsOff() {
-                return plugin.template allSoundsOff<with_lock>(out);
+                return plugin.allSoundsOff();
             }
 
             OutputData out;

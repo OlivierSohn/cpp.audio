@@ -10,3 +10,12 @@
 #include "loudness_filter.cpp"
 #include "soundengine.cpp"
 #include "normalization.cpp"
+
+namespace imajuscule {
+    namespace audio {
+        AudioLockPolicyImpl<AudioOutPolicy::Slave> & fakeAudioLock() {
+            static AudioLockPolicyImpl<AudioOutPolicy::Slave> l;
+            return l;
+        }
+    }
+}

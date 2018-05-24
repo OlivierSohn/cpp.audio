@@ -260,9 +260,7 @@ namespace imajuscule {
                 getSilence(); // make sure potential dynamic allocation occurs not under audio lock
             }
 
-            template<typename OutputData>
-            void play(OutputData & o,
-                      float length, float freq1, float freq2,
+            void play(float length, float freq1, float freq2,
                       float phase_ratio1, float phase_ratio2,
                       float freq_scatter) {
                 length *= powf(2.f,
@@ -324,25 +322,24 @@ namespace imajuscule {
                 }
             }
 
-            template<typename OutputData>
-            auto create_birds(OutputData & o) {
-                constexpr auto nAudioOut = OutputData::nOuts;
+            template<int nAudioOut>
+            auto create_birds() {
                 using Request = Request<nAudioOut>;
                 auto mc = std::make_unique<MarkovChain>();
 
                 auto node1 = mc->emplace([](Move const m, MarkovNode&me, MarkovNode&from_to) {
                 });
-                auto node2 = mc->emplace([&o, this](Move const m, MarkovNode&me, MarkovNode&from_to) {
+                auto node2 = mc->emplace([this](Move const m, MarkovNode&me, MarkovNode&from_to) {
                     if(m==Move::ENTER) {
-                        play(o, length, base_freq*4, base_freq*3, phase_ratio1, phase_ratio2, freq_scatter);
+                        play(length, base_freq*4, base_freq*3, phase_ratio1, phase_ratio2, freq_scatter);
                     }
                     else {
-                        play(o, length, base_freq*2, base_freq*4, phase_ratio1, phase_ratio2, freq_scatter);
+                        play(length, base_freq*2, base_freq*4, phase_ratio1, phase_ratio2, freq_scatter);
                     }
                 });
-                auto node3 = mc->emplace([&o, this](Move const m, MarkovNode&me, MarkovNode&from_to) {
+                auto node3 = mc->emplace([this](Move const m, MarkovNode&me, MarkovNode&from_to) {
                     if(m==Move::ENTER) {
-                        play(o, length, base_freq*4, base_freq*3, phase_ratio1, phase_ratio2, freq_scatter);
+                        play(length, base_freq*4, base_freq*3, phase_ratio1, phase_ratio2, freq_scatter);
                     }
                 });
 
@@ -359,13 +356,12 @@ namespace imajuscule {
                 return mc;
             }
 
-            template<typename OutputData>
-            auto create_robot(OutputData & o) {
-                constexpr auto nAudioOut = OutputData::nOuts;
+            template<int nAudioOut>
+            auto create_robot() {
                 using Request = Request<nAudioOut>;
                 auto mc = std::make_unique<MarkovChain>();
 
-                auto node0 = mc->emplace([this, &o](Move const m, MarkovNode&me, MarkovNode&from_to) {
+                auto node0 = mc->emplace([this](Move const m, MarkovNode&me, MarkovNode&from_to) {
                     if(m == Move::LEAVE) {
                         auto length = this->length;
                         length *= powf(2.f,
@@ -385,7 +381,7 @@ namespace imajuscule {
                 });
                 auto node1 = mc->emplace([](Move const m, MarkovNode&me, MarkovNode&from_to) {
                 });
-                auto node2 = mc->emplace([&o, this](Move const m, MarkovNode&me, MarkovNode&from_to) {
+                auto node2 = mc->emplace([this](Move const m, MarkovNode&me, MarkovNode&from_to) {
                     if(m==Move::ENTER) {
                         auto length = this->length;
                         length *= powf(2.f,
@@ -411,7 +407,7 @@ namespace imajuscule {
                         }
                     }
                 });
-                auto node3 = mc->emplace([&o, this](Move const m, MarkovNode&me, MarkovNode&from_to) {
+                auto node3 = mc->emplace([this](Move const m, MarkovNode&me, MarkovNode&from_to) {
                     if(m==Move::ENTER) {
                         constexpr auto slide_length_scale = 2.f;
                         auto length = slide_length_scale * this->length;
@@ -454,13 +450,12 @@ namespace imajuscule {
                 return mc;
             }
 
-            template<typename OutputData>
-            auto create_sweep(OutputData & o) {
-                constexpr auto nAudioOut = OutputData::nOuts;
+            template<int nAudioOut>
+            auto create_sweep() {
                 using Request = Request<nAudioOut>;
                 auto mc = std::make_unique<MarkovChain>();
 
-                auto node0 = mc->emplace([this, &o](Move const m, MarkovNode&me, MarkovNode&from_to) {
+                auto node0 = mc->emplace([this](Move const m, MarkovNode&me, MarkovNode&from_to) {
                     if(m == Move::LEAVE) {
                         auto length = this->length;
                         length *= powf(2.f,
@@ -479,13 +474,11 @@ namespace imajuscule {
                 return mc;
             }
 
-            template<typename OutputData>
-            auto create_wind(OutputData & o) {
-                constexpr auto nAudioOut = OutputData::nOuts;
-                using Request = Request<nAudioOut>;
+            template<int nAudioOut>
+            auto create_wind() {
                 auto mc = std::make_unique<MarkovChain>();
 
-                auto node0 = mc->emplace([this, &o](Move const m, MarkovNode&me, MarkovNode&from_to) {
+                auto node0 = mc->emplace([this](Move const m, MarkovNode&me, MarkovNode&from_to) {
                     if(auto * ramp_spec = ramp_specs.get_next_ramp_for_build()) {
                         ramp_spec->get().getUnderlyingIter().set_interpolation(interpolation);
                     }
@@ -522,7 +515,7 @@ namespace imajuscule {
                     return true;
                   }
                 }
-                auto & channel = out.editChannel(cid);
+                auto & channel = out.getChannels().editChannel(cid);
                 if(!channel.isPlaying()) {
                     return true;
                 }
@@ -562,9 +555,7 @@ namespace imajuscule {
             template<typename OutputData>
             bool playNextSpec(OutputData & out) {
                 constexpr auto nAudioOut = OutputData::nOuts;
-                using Request = Request<nAudioOut>;
-
-                auto & channel = out.editChannel(cid);
+                using Request = typename OutputData::Request;
 
                 while(auto new_spec = ramp_specs.get_next_ramp_for_run()) {
                     auto rampsStatus = get_inactive_ramp();
@@ -580,7 +571,8 @@ namespace imajuscule {
 
                     auto v = MakeVolume::run<nAudioOut>(1.f, pan) * (new_spec->volume()/Request::chan_base_amplitude);
                     // no lock : the caller is responsible for taking the out lock
-                    if(out.playGenericNoLock(cid,
+                    if(out.getChannels().playGenericNoLock(
+                                             out, cid,
                                              std::make_pair(std::ref(*new_ramp),
                                                             Request{
                                                                 &new_ramp->buffer[0],
@@ -600,12 +592,12 @@ namespace imajuscule {
                 return false;
             }
 
-            template<typename OutputData>
-            void playSilence(OutputData & out, soundBuffer & silence) {
-                constexpr auto nAudioOut = OutputData::nOuts;
+            template<typename Out>
+            void playSilence(Out & out, soundBuffer & silence) {
+                constexpr auto nAudioOut = Out::nOuts;
                 using Request = Request<nAudioOut>;
 
-                auto & channel = out.editChannel(cid);
+                auto & channel = out.getChannels().editChannel(cid);
 
                 Assert(articulative_pause_length > 2*channel.get_size_xfade());
 
@@ -614,7 +606,8 @@ namespace imajuscule {
                   prevRamp->algo.onKeyReleased();
                 }
 
-                auto res = out.playGenericNoLock(cid,
+                auto res = out.getChannels().playGenericNoLock(
+                                                 out, cid,
                                                  std::make_pair(std::ref(silence),
                                                                 Request{
                                                                     &silence,
@@ -693,13 +686,13 @@ namespace imajuscule {
 
             using InitPolicy = SoundEngineInitPolicy;
 
-            template<typename OutputData>
-            void initialize_sweep(OutputData & o,
+            template<typename Out>
+            void initialize_sweep(Out & o,
                                   float low, float high,
                                   float pan) {
                 bool initialize = true;
                 if(!markov) {
-                    markov = create_sweep(o);
+                    markov = create_sweep<Out::nOuts>();
                     if(!markov) {
                         return;
                     }
@@ -711,8 +704,8 @@ namespace imajuscule {
                 do_initialize(o, initialize, 0, 0, 1, 0, articulative_pause_length, pan);
             }
 
-            template<typename OutputData>
-            void initialize_birds(OutputData & o,
+            template<typename Out>
+            void initialize_birds(Out & o,
                                    int start_node, int pre_tries, int min_path_length, int additional_tries, InitPolicy init_policy,
                                    FreqXfade xfade_freq, int articulative_pause_length,
                                    float pan) {
@@ -720,7 +713,7 @@ namespace imajuscule {
 
                 bool initialize = (!markov) || (init_policy==InitPolicy::StartAfresh);
                 if(!markov) {
-                    markov = create_birds(o);
+                    markov = create_birds<Out::nOuts>();
                     if(!markov) {
                         return;
                     }
@@ -729,13 +722,13 @@ namespace imajuscule {
                 do_initialize(o, initialize, start_node, pre_tries, min_path_length, additional_tries, articulative_pause_length, pan);
             }
 
-            template<typename OutputData>
-            void initialize_wind(OutputData & o,
+            template<typename Out>
+            void initialize_wind(Out & o,
                                  int start_node, int pre_tries, int min_path_length, int additional_tries, InitPolicy init_policy,
                                  float pan) {
                 bool initialize = (!markov) || (init_policy==InitPolicy::StartAfresh);
                 if(!markov) {
-                    markov = create_wind(o);
+                    markov = create_wind<Out::nOuts>();
                     if(!markov) {
                         return;
                     }
@@ -744,8 +737,8 @@ namespace imajuscule {
                 do_initialize(o, initialize, start_node, pre_tries, min_path_length, additional_tries, articulative_pause_length, pan);
             }
 
-            template<typename OutputData>
-            void initialize_robot(OutputData & o,
+            template<typename Out>
+            void initialize_robot(Out & o,
                                   int start_node, int pre_tries, int min_path_length, int additional_tries, InitPolicy init_policy,
                                   int articulative_pause_length,
                                   float pan) {
@@ -777,7 +770,7 @@ namespace imajuscule {
 
                 bool initialize = (!markov) || (init_policy==InitPolicy::StartAfresh);
                 if(!markov) {
-                    markov = create_robot(o);
+                    markov = create_robot<Out::nOuts>();
                     if(!markov) {
                         return;
                     }
@@ -832,7 +825,7 @@ namespace imajuscule {
 
                 ramp_specs.finalize();
 
-                o.add_orchestrator([&o, this](int max_frame_compute){
+                o.getChannels().add_orchestrator([&o, this](int max_frame_compute){
                   auto res = orchestrate(o, max_frame_compute);
                   if(!res) {
                     active = false;
