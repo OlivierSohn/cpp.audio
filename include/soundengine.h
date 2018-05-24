@@ -118,11 +118,6 @@ namespace imajuscule {
 
                 void forgetPastSignals() {
                     ctrl.forgetPastSignals();
-                    noise.forgetPastSignals();
-                }
-
-                void initializeForRun() {
-                    ctrl.initializeForRun();
                     noise.initializeForRun();
                 }
 
@@ -234,8 +229,9 @@ namespace imajuscule {
 
             template<typename T>
             struct Ramps {
-              T * active = nullptr;
-              T * inactive = nullptr;
+                T * keyPressed = nullptr;
+                T * envelopeDone = nullptr;
+                bool allDone = true;
             };
 
             template<
@@ -253,7 +249,7 @@ namespace imajuscule {
 
             template<typename F>
             SoundEngine(F f) :
-            get_inactive_ramp(std::move(f)),
+            get_ramps(std::move(f)),
             active(false),
             xfade_freq(FreqXfade::No)
             {
@@ -510,10 +506,11 @@ namespace imajuscule {
                 }
 
                 if(!active) {
-                  if(nullptr == get_inactive_ramp().active) {
-                    // the key was released and all envelopes are done.
-                    return true;
-                  }
+                    auto r = get_ramps();
+                    if(r.allDone) {
+                        // the key was released and all envelopes are done.
+                        return true;
+                    }
                 }
                 auto & channel = out.getChannels().editChannel(cid);
                 if(!channel.isPlaying()) {
@@ -532,7 +529,6 @@ namespace imajuscule {
                 {
                     if(state_silence) {
                         state_silence = false;
-                        done = !playNextSpec(out);
                     }
                     else {
                         bool const has_silence = articulative_pause_length > 2*channel.get_size_xfade();
@@ -545,8 +541,8 @@ namespace imajuscule {
                                 }
                             }
                         }
-                        done = !playNextSpec(out);
                     }
+                    done = !playNextSpec(out);
                 }
 
                 return !done;
@@ -558,15 +554,15 @@ namespace imajuscule {
                 using Request = typename OutputData::Request;
 
                 while(auto new_spec = ramp_specs.get_next_ramp_for_run()) {
-                    auto rampsStatus = get_inactive_ramp();
-                    if(auto * prevRamp = rampsStatus.active) {
+                    auto rampsStatus = get_ramps();
+                    if(auto * prevRamp = rampsStatus.keyPressed) {
                       prevRamp->algo.onKeyReleased();
                     }
-                    Assert(rampsStatus.inactive); // might be null if length of ramp is too small
-                    auto new_ramp = rampsStatus.inactive;
+                    Assert(rampsStatus.envelopeDone); // might be null if length of ramp is too small
+                    auto new_ramp = rampsStatus.envelopeDone;
                     new_ramp->algo.getAlgo().getCtrl() = new_spec->get();
-                    new_ramp->algo.getAlgo().getCtrl().initializeForRun();
                     new_ramp->algo.forgetPastSignals();
+                    new_ramp->algo.setEnvelopeCharacTime(xfade_len);
                     new_ramp->algo.onKeyPressed();
 
                     auto v = MakeVolume::run<nAudioOut>(1.f, pan) * (new_spec->volume()/Request::chan_base_amplitude);
@@ -585,8 +581,8 @@ namespace imajuscule {
                         return true;
                     }
                 }
-                auto rampsStatus = get_inactive_ramp();
-                if(auto * prevRamp = rampsStatus.active) {
+                // release all keys
+                while(auto * prevRamp = get_ramps().keyPressed) {
                   prevRamp->algo.onKeyReleased();
                 }
                 return false;
@@ -601,8 +597,7 @@ namespace imajuscule {
 
                 Assert(articulative_pause_length > 2*channel.get_size_xfade());
 
-                auto rampsStatus = get_inactive_ramp();
-                if(auto * prevRamp = rampsStatus.active) {
+                if(auto * prevRamp = get_ramps().keyPressed) {
                   prevRamp->algo.onKeyReleased();
                 }
 
@@ -619,6 +614,9 @@ namespace imajuscule {
                 Assert(res); // because length was checked
             }
 
+            void setEnvelopeCharacTime(int len) {
+                xfade_len = len;
+            }
             void set_freq_xfade(int xfade_) {
                 freq_xfade = xfade_;
             }
@@ -842,7 +840,7 @@ namespace imajuscule {
 
             itp::interpolation interpolation : 5;
             itp::interpolation freq_interpolation : 5;
-            std::function<Ramps<audioElt>(void)> get_inactive_ramp;
+            std::function<Ramps<audioElt>(void)> get_ramps;
             float d1, d2, har_att, length, base_freq, freq_scatter, phase_ratio1=0.f, phase_ratio2=0.f;
             float min_exp;
             float max_exp;
@@ -855,6 +853,7 @@ namespace imajuscule {
             float pan;
 
             uint8_t cid;
+            int xfade_len;
             int freq_xfade;
             int articulative_pause_length;
 

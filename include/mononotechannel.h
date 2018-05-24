@@ -13,15 +13,16 @@ namespace imajuscule {
 
             template<WithLock lock_policy, typename ChannelsT>
             bool open(ChannelsT & out, float inital_volume) {
-                channel = out.template openChannel<lock_policy>({inital_volume}, ChannelClosingPolicy::ExplicitClose, 401);
+                constexpr auto xfadeLen = (ChannelsT::XFPolicy==XfadePolicy::UseXfade)?401:0;
+                channel = out.template openChannel<lock_policy>({inital_volume}, ChannelClosingPolicy::ExplicitClose
+                                                                , xfadeLen);
                 return channel != AUDIO_CHANNEL_NONE;
             }
 
             template<typename ChannelsT>
-            void reset(ChannelsT & out, int xfade_len) {
-              if(channel != AUDIO_CHANNEL_NONE) {
-                out.template editChannel(channel).reset(xfade_len);
-              }
+            void reset(ChannelsT & out) {
+                Assert(channel != AUDIO_CHANNEL_NONE);
+                out.template editChannel(channel).reset();
             }
 
             template<typename ChannelsT>
@@ -36,7 +37,14 @@ namespace imajuscule {
 
             template<typename ChannelsT>
             void setVolume(ChannelsT & out, float volume) {
+                Assert(channel != AUDIO_CHANNEL_NONE);
                 out.template setVolume(channel, volume);
+            }
+
+            template<typename ChannelsT>
+            void setXFade(ChannelsT & out, int xf) {
+                Assert(channel != AUDIO_CHANNEL_NONE);
+                out.template setXFade(channel, xf);
             }
         };
 

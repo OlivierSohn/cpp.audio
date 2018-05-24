@@ -99,11 +99,11 @@ namespace imajuscule {
         };
 
 
-        enum class EnvelopeState {
-            KeyPressed
-          , KeyReleased
-          , EnvelopeDone1
-          , EnvelopeDone2
+        enum class EnvelopeState { // TODO use this as the generic enveloppe state, and use another enum for substates (for ADSR)
+            KeyPressed // the envelope is raising or sustained
+          , KeyReleased // the envelope is closing
+          , EnvelopeDone1 // the envelope has closed, but the last buffer contains samples where the enveloppe was still opened.
+          , EnvelopeDone2 // the envelope has closed, the last buffer contains only samples where the enveloppe was closed.
         };
 
         // Similar to RingModulationAlgo except the modulator has equal real and imaginary parts.
@@ -150,6 +150,7 @@ namespace imajuscule {
 
           auto & getOsc() { return algo.getOsc(); }
           auto & getAlgo() { return algo; }
+            auto const & getEnveloppe() const { return env; }
 
           void setLoudnessParams(int low_index, float log_ratio, float loudness_level) {
               algo.setLoudnessParams(low_index, log_ratio, loudness_level);
@@ -174,33 +175,25 @@ namespace imajuscule {
 
           void forgetPastSignals() {
             state = EnvelopeState::EnvelopeDone2;
-            lastHandledState = EnvelopeState::EnvelopeDone2;
+            _value = static_cast<T>(0);
             counter = 0;
           }
 
           void step() {
-            auto handledState = state;
-            switch(handledState) {
+            ++counter;
+            switch(state) {
               case EnvelopeState::KeyPressed:
-                if(lastHandledState != EnvelopeState::KeyPressed) {
-                  counter = 0;
-                }
-                ++counter;
                 _value = std::min
                   (static_cast<T>(1)
                   ,static_cast<T>(counter) * increment);
                 break;
               case EnvelopeState::KeyReleased:
               {
-                if(lastHandledState != EnvelopeState::KeyReleased) {
-                  counter = 0;
-                  _topValue = _value;
-                }
-                ++counter;
                 auto ratio = static_cast<T>(1) - static_cast<T>(counter) * increment;
                 // when ratio becomes 0 or negative, we consider the enveloppe is done.
                 if(ratio <= static_cast<T>(0)) {
                   state = EnvelopeState::EnvelopeDone1;
+                  counter = 0;
                   _value = static_cast<T>(0);
                 }
                 else {
@@ -209,21 +202,16 @@ namespace imajuscule {
                 break;
               }
             case EnvelopeState::EnvelopeDone1:
-                if(lastHandledState != EnvelopeState::EnvelopeDone1) {
-                  counter = 0;
-                }
-                ++counter;
                 if(counter > n_frames_per_buffer) { // to be sure that all non-zero computed signals
                                                     // were used
                   state = EnvelopeState::EnvelopeDone2;
+                  counter = 0;
                 }
-                _value = static_cast<T>(0);
-                break;
+                [[fallthrough]];
             case EnvelopeState::EnvelopeDone2:
                 _value = static_cast<T>(0);
                 break;
             }
-            lastHandledState = handledState;
           }
 
           T value () const {
@@ -233,11 +221,20 @@ namespace imajuscule {
           // can be called from the main thread
           void onKeyPressed() {
               state = EnvelopeState::KeyPressed;
+              counter = 0;
           }
           // can be called from the main thread
           bool onKeyReleased() {
               if(state == EnvelopeState::KeyPressed) {
-                  state = EnvelopeState::KeyReleased;
+                  if(0 == counter) {
+                      // the key was pressed, but immediately released, so we skip the note.
+                      state = EnvelopeState::EnvelopeDone2;
+                  }
+                  else {
+                      state = EnvelopeState::KeyReleased;
+                      _topValue = _value;
+                      counter = 0;
+                  }
                   return true;
               }
               return false;
@@ -256,7 +253,6 @@ namespace imajuscule {
           // 'state' will be set to 'KeyReleased' when the key is released.
           // reads / writes to this are atomic so we don't need to lock.
           EnvelopeState state = EnvelopeState::EnvelopeDone2;
-          EnvelopeState lastHandledState = EnvelopeState::EnvelopeDone2;
           unsigned int counter = 0;
         };
 
@@ -974,7 +970,6 @@ namespace imajuscule {
             {}
 
             void forgetPastSignals() const {}
-            void initializeForRun() const {}
 
             void setFreqRange(range<float> const &) const { Assert(0); } // use set instead
             void set_interpolation(itp::interpolation) const {Assert(0);} // use set instead
@@ -1077,10 +1072,6 @@ namespace imajuscule {
                 it.initializeForRun();
             }
 
-            void forgetPastSignals() {
-                it.forgetPastSignals();
-            }
-
             void operator ++() {
                 ++it;
             }
@@ -1130,11 +1121,6 @@ namespace imajuscule {
 
             void initializeForRun() {
                 it.initializeForRun();
-                onMajorStep();
-            }
-
-            void forgetPastSignals() {
-                it.forgetPastSignals();
                 onMajorStep();
             }
 
@@ -1199,10 +1185,6 @@ namespace imajuscule {
                 it.initializeForRun();
             }
 
-            void forgetPastSignals() {
-                it.forgetPastSignals();
-            }
-
             void operator ++() {
                 auto const n = [this]() {
                     if(it.isDiminishing()) {
@@ -1238,12 +1220,8 @@ namespace imajuscule {
             using T = FPT;
             using Tr = NumTraits<T>;
 
-            void initializeForRun() {
-                it.initializeForRun();
-            }
-
             void forgetPastSignals() {
-                it.forgetPastSignals();
+                it.initializeForRun();
             }
             void setFiltersOrder(int ) const {}
             void setAngleIncrements(T ) const {}

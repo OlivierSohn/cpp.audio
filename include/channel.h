@@ -161,9 +161,8 @@ namespace imajuscule {
           cout << "n queued requests:" << requests.size() << endl;
         }
 
-        void reset(int xfade_len) {
+        void reset() {
             *this = {}; // will mark buffers of used requests as "inactive"
-            set_xfade(xfade_len);
 
             Assert(!isPlaying());
             Assert(!shouldReset());

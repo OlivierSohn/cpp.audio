@@ -170,6 +170,16 @@ namespace imajuscule {
                 return true;
             }
 
+            template<typename ChannelsT>
+            void finalize(ChannelsT & out) {
+                for(auto & c : channels) {
+                    if(c.channel == AUDIO_CHANNEL_NONE) {
+                        continue;
+                    }
+                    c.template reset(out);
+                }
+            }
+
             // counts notes that have an active enveloppe
             int countSounds() const {
                 int n = 0;
@@ -241,7 +251,10 @@ namespace imajuscule {
 
                 Assert(c.elem.isEnvelopeFinished());
                 // if we don't reset, an assert fails when we enqueue the next request, because it's already queued.
-                c.reset(out.getChannels(), get_xfade_length()); // to unqueue the (potential) previous request.
+                c.reset(out.getChannels()); // to unqueue the (potential) previous request.
+                if constexpr ((OutputData::ChannelsT::XFPolicy) == (XfadePolicy::UseXfade)) {
+                    c.setXFade(out.getChannels(),get_xfade_length());
+                }
                 c.setVolume(out.getChannels(), get_gain());
 
                 c.elem.setEnvelopeCharacTime(get_xfade_length());
@@ -313,6 +326,10 @@ namespace imajuscule {
             {
                 dontUseConvolutionReverbs(out);
                 plugin.template initialize(out.getChannels());
+            }
+            
+            ~Wrapper() {
+                plugin.template finalize(out.getChannels());
             }
 
             void doProcessing (ProcessData& data) {

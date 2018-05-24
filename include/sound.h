@@ -160,10 +160,6 @@ namespace imajuscule {
             Assert(it < end);
         }
         
-        void forgetPastSignals() {
-            initializeForRun();
-        }
-        
         void log() const {
             LG(INFO, "pink noise iterator @[%d]", getPosition());
         }

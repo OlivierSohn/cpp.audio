@@ -1079,30 +1079,33 @@ namespace imajuscule {
                 static constexpr auto hasEnvelope = audioElt::hasEnvelope;
 
                 EngineAndRamps() : engine{[this]()-> Ramps<audioElt> {
+                    using namespace imajuscule::audioelement;
                     Ramps<audioElt> res;
                     // in SoundEngine.playNextSpec (from the rt audio thread),
                     // we onKeyPressed() the inactive ramp and onKeyReleased() the active ramp.
                     for(auto & r: ramps) {
-                        if(!r.isEnvelopeFinished()) {
-                            res.active = &r;
+                        auto state = r.algo.getEnveloppe().getState();
+                        if(state == EnvelopeState::EnvelopeDone2) {
+                            if(goOn) {
+                                res.envelopeDone = &r;
+                            }
                         }
-                        else if (goOn) {
-                            res.inactive = &r;
+                        else {
+                            res.allDone = false;
+                            if(state == EnvelopeState::KeyPressed) {
+                                res.keyPressed = &r;
+                            }
                         }
                     }
                     return res;
                 }} {}
 
                 void setEnvelopeCharacTime(int len) {
-                    for(auto & r : ramps) {
-                        r.algo.setEnvelopeCharacTime(len);
-                    }
+                    engine.setEnvelopeCharacTime(len);
                 }
 
                 void forgetPastSignals() {
-                    for(auto & r : ramps) {
-                        r.algo.forgetPastSignals();
-                    }
+                    // is handled by the sound engine
                 }
                 bool isEnvelopeFinished() const {
                   if(goOn || engine.get_active()) {
@@ -1133,12 +1136,14 @@ namespace imajuscule {
                   return false;
                 }
 
+                // TODO forward params to the soundengine, let the soudengine do the call at onKeyPressed time.
                 void setLoudnessParams(int low_index, float log_ratio, float loudness_level) {
                     for(auto & r : ramps) {
                         r.algo.getOsc().setLoudnessParams(low_index, log_ratio, loudness_level);
                     }
                 }
 
+                // TODO forward params to the soundengine, let the soudengine do the call at onKeyPressed time.
                 template<typename T>
                 void setGains(T&& gains) {
                     for(auto & r : ramps) {
@@ -1146,6 +1151,7 @@ namespace imajuscule {
                     }
                 }
 
+                // TODO forward params to the soundengine, let the soudengine do the call at onKeyPressed time.
                 void setFiltersOrder(int order) {
                     for(auto & r : ramps) {
                         r.algo.getOsc().setFiltersOrder(order);

@@ -668,8 +668,10 @@ namespace imajuscule {
         using Channel = Channel<nAudioOut, XF>;
         using Request = typename Channel::Request;
         using Volumes = typename Channel::Volumes;
+        using LockPolicy = AudioLockPolicyImpl<policy>;
+        static constexpr auto XFPolicy = XF;
 
-        using Locking = LockIf<AudioLockPolicyImpl<policy>::useLock>;
+        using Locking = LockIf<LockPolicy::useLock>;
         
         using OrchestratorFunc = std::function<bool(int)>;
 
@@ -724,6 +726,9 @@ namespace imajuscule {
         }
         void setVolume(uint8_t channel_id, float volume) {
             editChannel(channel_id).setVolume(volume);
+        }
+        void setXFade(uint8_t channel_id, int xf) {
+            editChannel(channel_id).set_xfade(xf);
         }
         
         template<typename Out, class... Args>
@@ -826,15 +831,15 @@ namespace imajuscule {
             
             // no need to lock here : the channel is not playing
             if(!editChannel(id).isActive()) {
-                editChannel(id).reset(xfade_length);
+                editChannel(id).reset();
             }
-            else if(XF==XfadePolicy::UseXfade) {
+            if(XF==XfadePolicy::UseXfade) {
                 editChannel(id).set_xfade(xfade_length);
             }
-            editChannel(id).setVolume(volume);
-            if(XF!=XfadePolicy::UseXfade) {
+            else {
                 Assert(xfade_length == 0); // make sure user is aware xfade will not be used
             }
+            editChannel(id).setVolume(volume);
             return id;
         }
         
@@ -879,7 +884,7 @@ namespace imajuscule {
             auto it = std::find(autoclosing_ids.begin(), autoclosing_ids.end(), channel_id);
             Assert(it == autoclosing_ids.end()); // if channel is autoclosing, we should remove it there?
 #endif
-            c.reset(401); // the value is not important, it will be overwritten when the channel is reused.
+            c.reset();
             available_ids.Return(channel_id);
         }
 
@@ -1081,7 +1086,7 @@ namespace imajuscule {
                        consummed_frames ); // with consummed_frames, the channel knows when
                 // the next computation of AudioElements will occur
                 if(c.shouldReset()) {
-                    c.reset(401); // the value doesn't matter, it will be overwritten when the channel is used again.
+                    c.reset();
                 }
             });
 
