@@ -252,6 +252,8 @@
 		094BFE4020B80EE0001F1D81 /* audio_platforms.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = audio_platforms.cpp; path = source/audio_platforms.cpp; sourceTree = "<group>"; };
 		094BFE4120B81A49001F1D81 /* audio_platform_au.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = audio_platform_au.cpp; path = source/audio_platform_au.cpp; sourceTree = "<group>"; };
 		094BFE4220B825A0001F1D81 /* audio_platform_pa.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = audio_platform_pa.cpp; path = source/audio_platform_pa.cpp; sourceTree = "<group>"; };
+		094BFE4420B879DD001F1D81 /* channels_aggregate.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = channels_aggregate.h; path = include/channels_aggregate.h; sourceTree = "<group>"; };
+		094BFE4520B879DD001F1D81 /* channels.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = channels.h; path = include/channels.h; sourceTree = "<group>"; };
 		0951A5291EB62CBB00CE4A4E /* count_channels */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = count_channels; sourceTree = BUILT_PRODUCTS_DIR; };
 		0951A52F1EB62CD700CE4A4E /* main.count_channels.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = main.count_channels.cpp; path = source/main.count_channels.cpp; sourceTree = "<group>"; };
 		09529DF81E439D8D00705B99 /* gen.voice.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; lineEnding = 0; name = gen.voice.h; path = include/gen.voice.h; sourceTree = "<group>"; xcLanguageSpecificationIdentifier = xcode.lang.objcpp; };
@@ -501,6 +503,8 @@
 				094BFE3E20B80D8D001F1D81 /* audio_platforms.h */,
 				099E06E61E36EC920012348E /* audioelement.h */,
 				099E06E41E36EC920012348E /* channel.h */,
+				094BFE4420B879DD001F1D81 /* channels_aggregate.h */,
+				094BFE4520B879DD001F1D81 /* channels.h */,
 				09529DFA1E439D8D00705B99 /* events.h */,
 				09D4BAC11E883BA400C9472E /* events.impl.h */,
 				091E76EC1E46D03B009CFBA5 /* gen.crtp.h */,
