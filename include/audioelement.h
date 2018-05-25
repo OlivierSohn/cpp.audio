@@ -1473,7 +1473,7 @@ namespace imajuscule {
             template<typename U=T>
             static auto get(U & ae)
             -> std::enable_if_t<
-            IsDerivedFrom<U, AudioElementBase>::Is,
+            IsDerivedFrom<U, AudioElementBase>::value,
             ComputeFunc
             >
             {
@@ -1503,14 +1503,21 @@ namespace imajuscule {
                     }
                     Assert(e.getState() != AE::queued());
                     Assert(e.getState() != AE::inactive());
-                    return true;
+                    if constexpr (U::hasEnvelope) {
+                      // it is important that isEnvelopeFinished() returns true only one buffer cycle after
+                      // the real enveloppe end, to prevent "race conditions".
+                      return !ae.algo.isEnvelopeFinished();
+                    }
+                    else {
+                      return true;
+                    }
                 };
             }
 
             template<typename U=T>
             static auto get(U & e)
             -> std::enable_if_t<
-            !IsDerivedFrom<U, AudioElementBase>::Is,
+            !IsDerivedFrom<U, AudioElementBase>::value,
             ComputeFunc
             >
             {
