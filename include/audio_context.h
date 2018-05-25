@@ -25,9 +25,9 @@ namespace imajuscule {
                 return false;
             }
 
-            auto mod = reader.countChannels() % OutputData::nOuts;
-            if((reader.countChannels() > OutputData::nOuts) && mod) {
-                LG(ERR, "cannot use a '%d' channels reverb for '%d' outs", reader.countChannels(), OutputData::nOuts);
+            auto mod = reader.countChannels() % OutputData::nOut;
+            if((reader.countChannels() > OutputData::nOut) && mod) {
+                LG(ERR, "cannot use a '%d' channels reverb for '%d' outs", reader.countChannels(), OutputData::nOut);
                 return false;
             }
 

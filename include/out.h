@@ -161,6 +161,8 @@ namespace imajuscule {
 
     template<typename T, int nAudioOut>
     struct AudioPostPolicyImpl<T, nAudioOut, AudioOutPolicy::Slave> {
+        static constexpr auto nOut = nAudioOut;
+        
         AudioPostPolicyImpl(AudioLockPolicyImpl<AudioOutPolicy::Slave> &) {}
 
         /////////////////////////////// postprocess
@@ -343,7 +345,8 @@ namespace imajuscule {
 
     template<typename T, int nAudioOut>
     struct AudioPostPolicyImpl<T, nAudioOut, AudioOutPolicy::Master> {
-
+        static constexpr auto nOut = nAudioOut;
+        
         using Locking = LockIf<AudioLockPolicyImpl<AudioOutPolicy::Master>::useLock>;
 
         //using ConvolutionReverb = FIRFilter<T>;

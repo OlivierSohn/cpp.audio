@@ -7,7 +7,8 @@ namespace imajuscule {
         */
         void disableDenormals() {
           #if __APPLE__
-              fesetenv(FE_DFL_DISABLE_SSE_DENORMS_ENV);
+            fesetenv(FE_DFL_DISABLE_SSE_DENORMS_ENV);
+            fesetenv(FE_DFL_DISABLE_DENORMS_ENV);
           #else
           #define CSR_FLUSH_TO_ZERO         (1 << 15)
               unsigned csr = __builtin_ia32_stmxcsr();

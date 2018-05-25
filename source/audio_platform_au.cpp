@@ -41,7 +41,7 @@ namespace imajuscule {
         int initAudioStreams(Features feat, AudioUnit & audioUnit, void * chans,
                              AURenderCallback cb, int nOuts,
                              AudioStreamBasicDescription & streamDescription) {
-            UInt32 audioCategory = (feat == InAndOut)?
+            UInt32 audioCategory = (feat == Features::InAndOut)?
                 kAudioSessionCategory_PlayAndRecord:
             // this looks wrong, maybe we can optimize : why should we need play and record for both audiounits??
             
@@ -75,7 +75,7 @@ namespace imajuscule {
             AudioUnitElement const inputBus = 1;
             
             //https://developer.apple.com/library/content/technotes/tn2091/_index.html
-            UInt32 enable = withAudioIn?1:0;
+            UInt32 enable = (feat==Features::InAndOut)?1:0;
             
             if(auto err = AudioUnitSetProperty(audioUnit, kAudioOutputUnitProperty_EnableIO,
                                                kAudioUnitScope_Input, inputBus, &enable, sizeof(UInt32))) {
