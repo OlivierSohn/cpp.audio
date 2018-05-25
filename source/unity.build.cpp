@@ -10,12 +10,11 @@
 #include "loudness_filter.cpp"
 #include "soundengine.cpp"
 #include "normalization.cpp"
+#include "audio_platforms.cpp"
+#if TARGET_OS_IOS
+# include "audio_platform_au.cpp"
+#else
+# include "audio_platform_pa.cpp"
+#endif
+#include "audio_context.cpp"
 
-namespace imajuscule {
-    namespace audio {
-        AudioLockPolicyImpl<AudioOutPolicy::Slave> & fakeAudioLock() {
-            static AudioLockPolicyImpl<AudioOutPolicy::Slave> l;
-            return l;
-        }
-    }
-}

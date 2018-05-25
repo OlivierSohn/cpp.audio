@@ -14,10 +14,21 @@
 #include "../../cpp.os.logs/include/public.h"
 #include "../../cpp.os.storage/include/public.h"
 
+#include "audio_platforms.h"
+
+#include "sound.defines.h"
+
+#if TARGET_OS_IOS
+# import <AudioToolbox/AudioToolbox.h>
+# include "audio_platform_au.h"
+#else
+# include "portaudio.h"
+# include "audio_platform_pa.h"
+#endif
+
 #include "samples.h"
 #include "loudness_filter_coefficients.h"
 #include "loudness.h"
-#include "sound.defines.h"
 #include "sound.functions.h"
 #include "stereo.h"
 #include "sound.h"
@@ -45,3 +56,4 @@
 #include "gen.vasine.h"
 #include "gen.voice.h"
 #include "events.impl.h"
+#include "audio_context.h"

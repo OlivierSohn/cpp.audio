@@ -1,9 +1,7 @@
-# define IMJ_PORTAUDIO_SAMPLE_TYPE  paFloat32
-using SAMPLE = float;
-
+// this hugly hack should be removed once we platform-templatize audioIn, like we did for audioOut
 typedef void PaStream; //from "portaudio.h"
 
 namespace imajuscule {
-    
+    using SAMPLE = float;
     constexpr int SAMPLE_RATE = 44100;
 }

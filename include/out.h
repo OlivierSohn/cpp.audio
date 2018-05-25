@@ -2,7 +2,7 @@
 
 namespace imajuscule {
 
-    namespace Sensor {
+    namespace sensor {
 
         class RAIILock {
         public:
@@ -112,7 +112,7 @@ namespace imajuscule {
     };
 
     template <>
-    struct LockIf_<WithLock::Yes> { using type = Sensor::RAIILock; };
+    struct LockIf_<WithLock::Yes> { using type = sensor::RAIILock; };
     template <>
     struct LockIf_<WithLock::No> { using type = NoOpLock; };
 
