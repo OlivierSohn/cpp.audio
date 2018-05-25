@@ -185,38 +185,38 @@ namespace imajuscule {
         template <>
         struct SignedTypeForSampleSize<1> {
             using type = int8_t;
-            static_assert(sizeof(type) == 1, "");
+            static_assert(sizeof(type) == 1);
         };
 
         template <>
         struct SignedTypeForSampleSize<2> {
             using type = int16_t;
-            static_assert(sizeof(type) == 2, "");
+            static_assert(sizeof(type) == 2);
         };
 
         template <>
         struct SignedTypeForSampleSize<3> {
             using type = int24_t;
-            static_assert(sizeof(type) == 3, "");
+            static_assert(sizeof(type) == 3);
         };
 
         template <>
         struct SignedTypeForSampleSize<4> {
             using type = int32_t;
-            static_assert(sizeof(type) == 4, "");
+            static_assert(sizeof(type) == 4);
         };
 
 
         template <>
         struct FloatTypeForSampleSize<4> {
             using type = float;
-            static_assert(sizeof(type) == 4, "");
+            static_assert(sizeof(type) == 4);
         };
 
         template <>
         struct FloatTypeForSampleSize<8> {
             using type = double;
-            static_assert(sizeof(type) == 8, "");
+            static_assert(sizeof(type) == 8);
         };
 
         template<int SAMPLE_SIZE>
@@ -617,7 +617,7 @@ namespace imajuscule {
             auto const n_frames = reader.countFrames();
 
             using T = typename TypeFor<FMT, SAMPLE_SIZE>::type;
-            static_assert(sizeof(T) == SAMPLE_SIZE, "");
+            static_assert(sizeof(T) == SAMPLE_SIZE);
 
             Assert(FMT == reader.getFormat());
 
@@ -733,7 +733,7 @@ namespace imajuscule {
             auto const n_frames = reader.countFrames();
 
             using T = typename TypeFor<FMT, SAMPLE_SIZE>::type;
-            static_assert(sizeof(T) == SAMPLE_SIZE, "");
+            static_assert(sizeof(T) == SAMPLE_SIZE);
 
             Assert(FMT == reader.getFormat());
 

@@ -84,7 +84,7 @@ namespace imajuscule {
         decltype(NumericLimits<SIGNED>::min()) m = NumericLimits<SIGNED>::min()
         >
         static SIGNED float_to_signed(FLT flt) {
-            static_assert(std::is_floating_point<FLT>(), "");
+            static_assert(std::is_floating_point<FLT>());
 
             if(flt > NumTraits<FLT>::zero()) {
                 if(flt > NumTraits<FLT>::one()) {
@@ -109,7 +109,7 @@ namespace imajuscule {
         decltype(NumericLimits<SIGNED>::min()) m = NumericLimits<SIGNED>::min()
         >
         static auto signed_to_float(SIGNED s) -> FLT {
-            static_assert(std::is_floating_point<FLT>(), "");
+            static_assert(std::is_floating_point<FLT>());
 
             if(s > 0) {
                 return s / static_cast<FLT>(M);

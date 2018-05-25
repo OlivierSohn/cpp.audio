@@ -52,7 +52,7 @@ namespace imajuscule {
             // depend on another
 
             using FPT = T;
-            static_assert(std::is_floating_point<FPT>::value, "");
+            static_assert(std::is_floating_point<FPT>::value);
             using Tr = NumTraits<T>;
 
             AudioElement() {
@@ -71,7 +71,7 @@ namespace imajuscule {
         struct FinalAudioElement : public AudioElement<typename ALGO::FPT>{
             static constexpr auto hasEnvelope = ALGO::hasEnvelope;
             using FPT = typename ALGO::FPT;
-            static_assert(std::is_floating_point<FPT>::value, "");
+            static_assert(std::is_floating_point<FPT>::value);
 
             bool isEnvelopeFinished() const {
               return algo.isEnvelopeFinished();
@@ -111,7 +111,7 @@ namespace imajuscule {
         struct Envelopped {
           static constexpr auto hasEnvelope = true;
           using FPT = typename ALGO::FPT;
-          static_assert(std::is_same<typename ALGO::FPT, typename Envelope::FPT>::value, "");
+          static_assert(std::is_same<typename ALGO::FPT, typename Envelope::FPT>::value);
 
           void forgetPastSignals() {
             env.forgetPastSignals();
@@ -264,7 +264,7 @@ namespace imajuscule {
             static constexpr auto hasEnvelope = ALGO::hasEnvelope;
             using T = typename ALGO::FPT;
             using FPT = T;
-            static_assert(std::is_floating_point<FPT>::value, "");
+            static_assert(std::is_floating_point<FPT>::value);
 
             T real() const { return volume * osc.real(); }
             T imag() const { return volume * osc.imag(); }
@@ -332,7 +332,7 @@ namespace imajuscule {
         template<typename T>
         struct Phased {
             using FPT = T;
-            static_assert(std::is_floating_point<FPT>::value, "");
+            static_assert(std::is_floating_point<FPT>::value);
             using Tr = NumTraits<T>;
 
             Phased() = default;
@@ -398,7 +398,7 @@ namespace imajuscule {
             using F_GET_BUFFER = FGetBuffer<SOUND>;
             using T = soundBuffer::FPT;
             using FPT = T;
-            static_assert(std::is_floating_point<FPT>::value, "");
+            static_assert(std::is_floating_point<FPT>::value);
 
             soundBufferWrapperAlgo() {
                 F_GET_BUFFER().getAbsMean(); // just to initialize the static in it
@@ -525,7 +525,7 @@ namespace imajuscule {
 
             using T = typename NthTypeOf<0, AEs...>::FPT;
             using FPT = T;
-            static_assert(std::is_floating_point<FPT>::value, "");
+            static_assert(std::is_floating_point<FPT>::value);
 
             static constexpr auto n_aes = sizeof...(AEs);
 
@@ -593,7 +593,7 @@ namespace imajuscule {
         struct Chain {
             using T = typename NthTypeOf<0, AEs...>::FPT;
             using FPT = T;
-            static_assert(std::is_floating_point<FPT>::value, "");
+            static_assert(std::is_floating_point<FPT>::value);
 
         private:
             std::tuple<AEs...> aes;
@@ -615,7 +615,7 @@ namespace imajuscule {
             using T = typename AEAlgo::FPT;
             using FPT = T;
             using FilterFPT = typename InternalFilterFPTFromOrder<ORDER, FPT>::type;
-            static_assert(std::is_floating_point<FPT>::value, "");
+            static_assert(std::is_floating_point<FPT>::value);
 
             bool isEnvelopeFinished() const {
               return audio_element.isEnvelopeFinished();
@@ -1390,7 +1390,7 @@ namespace imajuscule {
             using T = typename A1::FPT;
             using FPT = T;
 
-            static_assert(std::is_same<typename A1::FPT, typename A2::FPT>::value, ""); // else choice for T is arbitrary
+            static_assert(std::is_same<typename A1::FPT, typename A2::FPT>::value); // else choice for T is arbitrary
 
             using Tr = NumTraits<T>;
 

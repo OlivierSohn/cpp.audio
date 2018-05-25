@@ -612,7 +612,7 @@ namespace imajuscule {
             auto ratio = partitionning.getCost() * static_cast<float>(n_channels) / static_cast<float>(theoretical_max_avg_time_per_frame);
 
             cout << "ratio : " << ratio;
-            static_assert(ratio_soft_limit < ratio_hard_limit, "");
+            static_assert(ratio_soft_limit < ratio_hard_limit);
             cout << " which will";
             if(ratio >= ratio_soft_limit) {
                 if(ratio < ratio_hard_limit) {

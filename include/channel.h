@@ -74,7 +74,7 @@ namespace imajuscule {
         static constexpr unsigned int default_volume_transition_length = 2000;
         static constexpr unsigned int min_xfade_size = 3;
         // make sure we'll have no overflow on volume_transition_remaining
-        static_assert(default_volume_transition_length < (1 << 16), "");
+        static_assert(default_volume_transition_length < (1 << 16));
 
         /*
          * used in case we don't know, at the time the request is added

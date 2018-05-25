@@ -1215,7 +1215,7 @@ namespace imajuscule {
 
                 static constexpr auto use_orchestrators = true;
                 static constexpr auto n_frames_interleaved = size_interleaved / nAudioOut;
-                static_assert(n_frames_interleaved * nAudioOut == size_interleaved, ""); // make sure we don't waste space
+                static_assert(n_frames_interleaved * nAudioOut == size_interleaved); // make sure we don't waste space
 
                 using Base::interleaved;
                 using Base::get_xfade_length;
@@ -1247,7 +1247,7 @@ namespace imajuscule {
 
                     auto nRemainingFrames = data.numSamples;
 
-                    static_assert((size_interleaved / nAudioOut) * nAudioOut == size_interleaved, "");
+                    static_assert((size_interleaved / nAudioOut) * nAudioOut == size_interleaved);
 
                     auto currentFrame = 0;
 

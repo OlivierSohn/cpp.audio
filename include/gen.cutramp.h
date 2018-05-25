@@ -34,7 +34,7 @@ namespace imajuscule {
 
             template<typename T>
             constexpr auto get_middle(T p, T g) {
-                static_assert(std::is_integral<T>::value, "");
+                static_assert(std::is_integral<T>::value);
                 return ((p+1)-g)/2;
             }
 
@@ -257,7 +257,7 @@ namespace imajuscule {
 
                 template<typename T>
                 int adjusted(T val) {
-                    static_assert(std::is_integral<T>(), "");
+                    static_assert(std::is_integral<T>());
 
                     Assert(p > gap());
                     return static_cast<int>(.5f + val * p / (p-gap()));
@@ -331,7 +331,7 @@ namespace imajuscule {
                 using Event = typename Parent::Event;
 
                 static constexpr auto cut_period_one_cache_line = size_interleaved_one_cache_line / nAudioOut;
-                static_assert(cut_period_one_cache_line <= max_cut_period, "");
+                static_assert(cut_period_one_cache_line <= max_cut_period);
 
             public:
 
@@ -394,7 +394,7 @@ namespace imajuscule {
                     auto nRemainingFrames = data.numSamples;
                     auto middle = get_middle(p,gap());
 
-                    static_assert((size_interleaved / nAudioOut) * nAudioOut == size_interleaved, "");
+                    static_assert((size_interleaved / nAudioOut) * nAudioOut == size_interleaved);
 
                     auto currentFrame = 0;
 

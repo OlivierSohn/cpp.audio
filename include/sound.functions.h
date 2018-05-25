@@ -31,19 +31,19 @@ namespace imajuscule {
     // angle increment unit is "rad / pi"
     template<typename T>
     constexpr T freq_to_angle_increment(T freq) {
-        static_assert(std::is_floating_point<T>::value, "");
+        static_assert(std::is_floating_point<T>::value);
         return 2 * freq / SAMPLE_RATE;
     }
     
     template<typename T>
     constexpr T angle_increment_to_freq(T i) {
-        static_assert(std::is_floating_point<T>::value, "");
+        static_assert(std::is_floating_point<T>::value);
         return i * SAMPLE_RATE * 0.5f;
     }
     
     template<typename T>
     constexpr T square(T ang) {
-        static_assert(std::is_floating_point<T>::value, "");
+        static_assert(std::is_floating_point<T>::value);
         using Tr = NumTraits<T>;
         if( Tr::half() < ang && ang < Tr::one_and_half() ) {
             return -Tr::one();
@@ -54,7 +54,7 @@ namespace imajuscule {
     
     template<typename T>
     constexpr T pulse(T ang, T pulse_width) {
-        static_assert(std::is_floating_point<T>::value, "");
+        static_assert(std::is_floating_point<T>::value);
         using Tr = NumTraits<T>;
         Assert(pulse_width >= 0);
         Assert(ang >= 0);

@@ -40,7 +40,7 @@ namespace imajuscule {
     struct SmoothedIntegralPolicy {
         using value_type = T;
         
-        static_assert(std::is_integral<T>::value, "");
+        static_assert(std::is_integral<T>::value);
         
         SmoothedIntegralPolicy() : initialized(false), changed(false) {}
         
