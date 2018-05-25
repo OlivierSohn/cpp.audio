@@ -5,6 +5,10 @@
 namespace imajuscule {
     namespace audio {
 
+        AudioLockPolicyImpl<AudioOutPolicy::Master> & masterAudioLock() {
+            static AudioLockPolicyImpl<AudioOutPolicy::Master> l;
+            return l;
+        }
         
 #ifdef _WIN32
         int setenv(const char *name, const char *value, int overwrite)

@@ -2,6 +2,8 @@
 
 namespace imajuscule {
     namespace audio {
+        AudioLockPolicyImpl<AudioOutPolicy::Master> & masterAudioLock();
+
         void setPortaudioEnvVars();
         
         constexpr auto initial_n_audio_cb_frames = -1;
