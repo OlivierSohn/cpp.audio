@@ -7,7 +7,7 @@ namespace imajuscule {
             PortAudio,
             AudioUnits
         };
-        
+
         enum class Features {
               JustOut
             , InAndOut
@@ -17,6 +17,12 @@ namespace imajuscule {
         struct Context;
 
         extern int32_t n_audio_cb_frames;
+
+
+      /*
+      * Denormals can appear in reverb algorithm, when signal becomes close to 0.
+      */
+      void disableDenormals();
 
     }
 }

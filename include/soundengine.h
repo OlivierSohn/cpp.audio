@@ -488,18 +488,18 @@ namespace imajuscule {
                 return mc;
             }
 
-            template<typename OutputData>
-            bool orchestrate(OutputData &out, int max_frame_compute) {
+            template<typename OutputData, typename Chans>
+            bool orchestrate(OutputData &out, Chans & chans, int max_frame_compute) {
                 bool done = false;
-                if(onAfterCompute(out, max_frame_compute, done)) {
+                if(onAfterCompute(out, chans, max_frame_compute, done)) {
                     return !done;
                 }
                 return false;
             }
 
             // returns false if channel needs to be closed
-            template<typename OutputData>
-            bool onAfterCompute(OutputData &out, int max_frame_compute, bool & done) {
+            template<typename OutputData, typename Chans>
+            bool onAfterCompute(OutputData &out, Chans & chans, int max_frame_compute, bool & done) {
                 done = true;
                 if(ramp_specs.done()) {
                     return true; // channel is already closed or closing
@@ -512,7 +512,7 @@ namespace imajuscule {
                         return true;
                     }
                 }
-                auto & channel = out.getChannels().editChannel(cid);
+                auto & channel = chans.editChannel(cid);
                 if(!channel.isPlaying()) {
                     return true;
                 }
@@ -536,20 +536,20 @@ namespace imajuscule {
                             if(auto cur = ramp_specs.get_current()) {
                                 if(cur->silenceFollows()) {
                                     state_silence = true;
-                                    playSilence(out, getSilence());
+                                    playSilence(out, chans, getSilence());
                                     return true;
                                 }
                             }
                         }
                     }
-                    done = !playNextSpec(out);
+                    done = !playNextSpec(out, chans);
                 }
 
                 return !done;
             }
 
-            template<typename OutputData>
-            bool playNextSpec(OutputData & out) {
+            template<typename OutputData, typename Chans>
+            bool playNextSpec(OutputData & out, Chans & chans) {
                 constexpr auto nAudioOut = OutputData::nOuts;
                 using Request = typename OutputData::Request;
 
@@ -567,7 +567,7 @@ namespace imajuscule {
 
                     auto v = MakeVolume::run<nAudioOut>(1.f, pan) * (new_spec->volume()/Request::chan_base_amplitude);
                     // no lock : the caller is responsible for taking the out lock
-                    if(out.getChannels().playGenericNoLock(
+                    if(chans.playGenericNoLock(
                                              out, cid,
                                              std::make_pair(std::ref(*new_ramp),
                                                             Request{
@@ -588,12 +588,12 @@ namespace imajuscule {
                 return false;
             }
 
-            template<typename Out>
-            void playSilence(Out & out, soundBuffer & silence) {
+            template<typename Out, typename Chans>
+            void playSilence(Out & out, Chans & chans, soundBuffer & silence) {
                 constexpr auto nAudioOut = Out::nOuts;
                 using Request = Request<nAudioOut>;
 
-                auto & channel = out.getChannels().editChannel(cid);
+                auto & channel = chans.editChannel(cid);
 
                 Assert(articulative_pause_length > 2*channel.get_size_xfade());
 
@@ -601,7 +601,7 @@ namespace imajuscule {
                   prevRamp->algo.onKeyReleased();
                 }
 
-                auto res = out.getChannels().playGenericNoLock(
+                auto res = chans.playGenericNoLock(
                                                  out, cid,
                                                  std::make_pair(std::ref(silence),
                                                                 Request{
@@ -684,8 +684,9 @@ namespace imajuscule {
 
             using InitPolicy = SoundEngineInitPolicy;
 
-            template<typename Out>
+            template<typename Out, typename Chans>
             void initialize_sweep(Out & o,
+                                 Chans & chans,
                                   float low, float high,
                                   float pan) {
                 bool initialize = true;
@@ -699,11 +700,12 @@ namespace imajuscule {
                 freq1_robot = low;
                 freq2_robot = high;
 
-                do_initialize(o, initialize, 0, 0, 1, 0, articulative_pause_length, pan);
+                do_initialize(o, chans, initialize, 0, 0, 1, 0, articulative_pause_length, pan);
             }
 
-            template<typename Out>
+            template<typename Out, typename Chans>
             void initialize_birds(Out & o,
+                                 Chans & chans,
                                    int start_node, int pre_tries, int min_path_length, int additional_tries, InitPolicy init_policy,
                                    FreqXfade xfade_freq, int articulative_pause_length,
                                    float pan) {
@@ -717,11 +719,12 @@ namespace imajuscule {
                     }
                 }
 
-                do_initialize(o, initialize, start_node, pre_tries, min_path_length, additional_tries, articulative_pause_length, pan);
+                do_initialize(o, chans, initialize, start_node, pre_tries, min_path_length, additional_tries, articulative_pause_length, pan);
             }
 
-            template<typename Out>
+            template<typename Out, typename Chans>
             void initialize_wind(Out & o,
+                                 Chans & chans,
                                  int start_node, int pre_tries, int min_path_length, int additional_tries, InitPolicy init_policy,
                                  float pan) {
                 bool initialize = (!markov) || (init_policy==InitPolicy::StartAfresh);
@@ -732,11 +735,12 @@ namespace imajuscule {
                     }
                 }
 
-                do_initialize(o, initialize, start_node, pre_tries, min_path_length, additional_tries, articulative_pause_length, pan);
+                do_initialize(o, chans, initialize, start_node, pre_tries, min_path_length, additional_tries, articulative_pause_length, pan);
             }
 
-            template<typename Out>
+            template<typename Out, typename Chans>
             void initialize_robot(Out & o,
+                                 Chans & chans,
                                   int start_node, int pre_tries, int min_path_length, int additional_tries, InitPolicy init_policy,
                                   int articulative_pause_length,
                                   float pan) {
@@ -774,11 +778,12 @@ namespace imajuscule {
                     }
                 }
 
-                do_initialize(o, initialize, start_node, pre_tries, min_path_length, additional_tries, articulative_pause_length, pan);
+                do_initialize(o, chans, initialize, start_node, pre_tries, min_path_length, additional_tries, articulative_pause_length, pan);
             }
 
-            template<typename OutputData>
+            template<typename OutputData, typename Chans>
             void do_initialize(OutputData & o,
+                               Chans & chans,
                                bool initialize,
                                int start_node, int pre_tries, int min_path_length, int additional_tries,
                                int articulative_pause_length,
@@ -823,8 +828,8 @@ namespace imajuscule {
 
                 ramp_specs.finalize();
 
-                o.getChannels().add_orchestrator([&o, this](int max_frame_compute){
-                  auto res = orchestrate(o, max_frame_compute);
+                chans.add_orchestrator([&o, this](Chans & chans, int max_frame_compute){
+                  auto res = orchestrate(o, chans, max_frame_compute);
                   if(!res) {
                     active = false;
                   }
@@ -832,7 +837,7 @@ namespace imajuscule {
                 });
 
                 this->pan = pan;
-                playNextSpec(o);
+                playNextSpec(o, chans);
             }
 
         private:

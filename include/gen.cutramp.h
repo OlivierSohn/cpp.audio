@@ -216,9 +216,9 @@ namespace imajuscule {
                 float get_gain() const { return denorm<GAIN>(); }
 
                 // The caller is responsible for taking the out lock if needed.
-                template<typename MonoNoteChannel, typename ChannelsT>
-                void onStartNote(float velocity, Phase phase, MonoNoteChannel & c, ChannelsT & out) {
-                    using Request = typename ChannelsT::Request;
+                template<typename MonoNoteChannel, typename OutputData, typename Chans>
+                void onStartNote(float velocity, Phase phase, MonoNoteChannel & c, OutputData & out, Chans & chans) {
+                    using Request = typename Chans::Request;
 
                     auto tunedNote = midi::tuned_note(c.pitch, c.tuning);
                     auto freq = to_freq(tunedNote-Do_midi, half_tone);
@@ -244,7 +244,7 @@ namespace imajuscule {
                                       0.f,
                                       static_cast<itp::interpolation>(itp::interpolation_traversal().realValues()[static_cast<int>(.5f + params[Params::RAMP_INTERPOLATION])]));
                     // no lock : the lock has already been taken by the caller
-                    out.getChannels().playGenericNoLock(
+                    chans.playGenericNoLock(
                                     out, c.channel,
                                     std::make_pair(std::ref(osc),
                                                    Request{
@@ -335,14 +335,14 @@ namespace imajuscule {
 
             public:
 
-                template<typename Out>
-                onEventResult onEvent(Event const & e, Out & out)
+                template<typename Out, typename Chans>
+                onEventResult onEvent(Event const & e, Out & out, Chans & chans)
                 {
                     // in case this is called before the first doProcessing:
                     if(!period.hasValue()) {
                         updateParams();
                     }
-                    return onEvent2(e, out);
+                    return onEvent2(e, out, chans);
                 }
 
                 void updateParams()
@@ -377,8 +377,8 @@ namespace imajuscule {
                     }
                 }
 
-                template<typename OutputData>
-                void doProcessing (ProcessData& data, OutputData & out)
+                template<typename OutputData, typename Chans>
+                void doProcessing (ProcessData& data, OutputData & out, Chans & chans)
                 {
                     Assert(data.numSamples);
 
@@ -428,7 +428,7 @@ namespace imajuscule {
                         while(nextEventPosition == currentFrame) {
                             Event e;
                             it.dereference(e);
-                            this->onEvent(e, out);
+                            this->onEvent(e, out, chans);
                             ++it;
                             nextEventPosition = getNextEventPosition(it, end);
                         }

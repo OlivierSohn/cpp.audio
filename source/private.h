@@ -1,5 +1,9 @@
 #include "../include/public.h"
 
+#if __APPLE__
+#include <fenv.h>
+#endif
+
 #define  _USE_MATH_DEFINES
 #include <cmath>
 #include <stdlib.h>

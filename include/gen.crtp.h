@@ -160,10 +160,10 @@ namespace imajuscule {
             static constexpr auto n_channels = n_channels_per_note * n_max_voices * n_max_simultaneous_notes_per_voice;
 
             template<typename ChannelsT>
-            bool initialize(ChannelsT & out) {
+            bool initialize(ChannelsT & chans) {
                 for(auto & c : channels) {
                     // using WithLock::No : if needed, the caller is responsible to take the out lock.
-                    if(!c.template open<WithLock::No>(out, 0.f)) {
+                    if(!c.template open<WithLock::No>(chans, 0.f)) {
                         return false;
                     }
                 }
@@ -210,8 +210,8 @@ namespace imajuscule {
                 }
             }
 
-            template<typename Out>
-            onEventResult onEvent2(Event const & e, Out & out) {
+            template<typename Out, typename Chans>
+            onEventResult onEvent2(Event const & e, Out & out, Chans & chans) {
                 if(e.type == Event::kNoteOnEvent) {
                     // this case is handled by the wrapper... else we need to do a noteOff
                     Assert(e.noteOn.velocity > 0.f );
@@ -221,21 +221,21 @@ namespace imajuscule {
                         if(auto c = editAudioElementContainer_if(channels
                                                                 , [](auto & c) { return c.elem.isEnvelopeFinished(); }))
                         {
-                            return this->template startNote(*c, e.noteOn, out);
+                            return this->template startNote(*c, e.noteOn, out, chans);
                         }
                     }
                     return onDroppedNote(e.noteOn.pitch);
                 }
                 else if(e.type == Event::kNoteOffEvent) {
-                    return noteOff(e.noteOff.pitch, out.getChannels());
+                    return noteOff(e.noteOff.pitch, chans);
                 }
                 return onEventResult::UNHANDLED;
             }
 
         private:
             // precondition : if needed the lock of out was taken by a caller
-            template<typename OutputData>
-            onEventResult startNote(MonoNoteChannel & c, NoteOnEvent const & e, OutputData & out) {
+            template<typename OutputData, typename Chans>
+            onEventResult startNote(MonoNoteChannel & c, NoteOnEvent const & e, OutputData & out, Chans & chans) {
                 MIDI_LG(INFO, "on  %d", e.pitch);
 
                 // To prevent phase cancellation, if any other active channel has the same frequency,
@@ -251,11 +251,11 @@ namespace imajuscule {
 
                 Assert(c.elem.isEnvelopeFinished());
                 // if we don't reset, an assert fails when we enqueue the next request, because it's already queued.
-                c.reset(out.getChannels()); // to unqueue the (potential) previous request.
-                if constexpr ((OutputData::ChannelsT::XFPolicy) == (XfadePolicy::UseXfade)) {
-                    c.setXFade(out.getChannels(),get_xfade_length());
+                c.reset(chans); // to unqueue the (potential) previous request.
+                if constexpr (Chans::XFPolicy == XfadePolicy::UseXfade) {
+                    c.setXFade(chans,get_xfade_length());
                 }
-                c.setVolume(out.getChannels(), get_gain());
+                c.setVolume(chans, get_gain());
 
                 c.elem.setEnvelopeCharacTime(get_xfade_length());
                 c.elem.forgetPastSignals();
@@ -264,7 +264,7 @@ namespace imajuscule {
                 c.pitch = e.pitch;
                 c.tuning = e.tuning;
 
-                onStartNote(e.velocity, phase, c, out);
+                onStartNote(e.velocity, phase, c, out, chans);
                 return onEventResult::OK;
             }
 
@@ -319,7 +319,10 @@ namespace imajuscule {
 
             using ProcessData = typename T::ProcessData;
 
-            using OutputData = outputDataBase< Channels<T::nAudioOut, T::xfade_policy, AudioOutPolicy::Slave> >;
+            using OutputData = outputDataBase<
+              AudioOutPolicy::Slave,
+              Channels<T::nAudioOut, T::xfade_policy, AudioOutPolicy::Slave>
+              >;
 
             Wrapper(int nOrchestratorsMax) :
             out{fakeAudioLock(), n_channels, nOrchestratorsMax}
@@ -327,7 +330,7 @@ namespace imajuscule {
                 dontUseConvolutionReverbs(out);
                 plugin.template initialize(out.getChannels());
             }
-            
+
             ~Wrapper() {
                 plugin.template finalize(out.getChannels());
             }

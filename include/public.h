@@ -40,6 +40,8 @@
 #include "channel.h"
 #include "read.wav.h"
 #include "out.h"
+#include "channels.h"
+#include "channels_aggregate.h"
 #include "note.h"
 #include "soundengine.h"
 #include "parse.music.h"

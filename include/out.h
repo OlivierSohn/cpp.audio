@@ -1,7 +1,6 @@
 #define WITH_DELAY 0
 
 namespace imajuscule {
-
     namespace sensor {
 
         class RAIILock {
@@ -138,22 +137,22 @@ namespace imajuscule {
     template <>
     struct AudioLockPolicyImpl<AudioOutPolicy::Slave> {
         static constexpr WithLock useLock = WithLock::No;
-        
+
         bool lock() { return false; }
     };
-    
+
 
     template <>
     struct AudioLockPolicyImpl<AudioOutPolicy::Master> {
         static constexpr auto useLock = WithLock::Yes;
         using Locking = LockIf<useLock>;
-        
+
         std::atomic_bool & lock() { return used; }
     private:
         std::atomic_bool used{false};
     };
 
-    
+
     // cooley-tukey leads to error growths of O(log n) (worst case) and O(sqrt(log n)) (mean for random input)
     // so float is good enough
     using FFT_T = float;
@@ -344,7 +343,7 @@ namespace imajuscule {
 
     template<typename T, int nAudioOut>
     struct AudioPostPolicyImpl<T, nAudioOut, AudioOutPolicy::Master> {
-        
+
         using Locking = LockIf<AudioLockPolicyImpl<AudioOutPolicy::Master>::useLock>;
 
         //using ConvolutionReverb = FIRFilter<T>;
@@ -362,7 +361,7 @@ namespace imajuscule {
         , delays{{1000, 0.6f},{4000, 0.2f}, {4300, 0.3f}, {5000, 0.1f}},
 #endif
         {}
-        
+
         AudioLockPolicyImpl<AudioOutPolicy::Master> & _lock;
 
         /////////////////////////////// postprocess
@@ -656,334 +655,37 @@ namespace imajuscule {
             }
         }
     };
-    
-    template<
-    int nOuts,
-    XfadePolicy XF,
-    AudioOutPolicy policy
-    >
-    struct Channels {
-        static constexpr auto Policy = policy;
-        static constexpr auto nAudioOut = nOuts;
-        using Channel = Channel<nAudioOut, XF>;
-        using Request = typename Channel::Request;
-        using Volumes = typename Channel::Volumes;
-        using LockPolicy = AudioLockPolicyImpl<policy>;
-        static constexpr auto XFPolicy = XF;
 
-        using Locking = LockIf<LockPolicy::useLock>;
-        
-        using OrchestratorFunc = std::function<bool(int)>;
-
-        Channels(AudioLockPolicyImpl<policy> & l
-                , int nChannelsMax = std::numeric_limits<uint8_t>::max()
-                , int nOrchestratorsMaxPerChannel=0):
-        _lock(l)
-        {
-            Assert(nChannelsMax >= 0);
-            Assert(nChannelsMax <= std::numeric_limits<uint8_t>::max()); // else need to update AUDIO_CHANNEL_NONE
-            
-            // (almost) worst case scenario : each channel is playing an audiolement crossfading with another audio element
-            // "almost" only because the assumption is that requests vector holds at most one audioelement at any time
-            // if there are multiple audioelements in request vector, we need to be more precise about when audioelements start to be computed...
-            // or we need to constrain the implementation to add requests in realtime, using orchestrators.
-            computes.reserve(2*nChannelsMax);
-            
-            orchestrators.reserve(nOrchestratorsMaxPerChannel * nChannelsMax);
-            
-            channels.reserve(nChannelsMax);
-            autoclosing_ids.reserve(nChannelsMax);
-            available_ids.reserve(nChannelsMax);
-        }
-
-        void add_orchestrator(OrchestratorFunc f) {
-            Assert(orchestrators.capacity() > orchestrators.size()); // we are in the audio thread, we shouldn't allocate dynamically
-            orchestrators.push_back(std::move(f));
-        }
-        
-        template<typename F, typename Out>
-        void registerCompute(Out const & out, F f) {
-            Assert(computes.capacity() > computes.size()); // we are in the audio thread, we shouldn't allocate dynamically
-            computes.push_back(std::move(f));
-            if(out.isInbetweenTwoComputes()) {
-                computes.back()(out.getTicTac());
-            }
-        }
-
-        Channel & editChannel(uint8_t id) { return channels[id]; }
-        
-        Channel const & getChannel(uint8_t id) const { return channels[id]; }
-        
-        bool empty() const { return channels.empty(); }
-        
-        bool hasOrchestrators() const {
-            return !orchestrators.empty();
-        }
-        
-        void toVolume(uint8_t channel_id, float volume, int nSteps) {
-            Locking l(_lock.lock());
-            editChannel(channel_id).toVolume(volume, nSteps);
-        }
-        void setVolume(uint8_t channel_id, float volume) {
-            editChannel(channel_id).setVolume(volume);
-        }
-        void setXFade(uint8_t channel_id, int xf) {
-            editChannel(channel_id).set_xfade(xf);
-        }
-        
-        template<typename Out, class... Args>
-        bool playGeneric( Out & out, uint8_t channel_id, Args&&... requests) {
-            
-            // it's important to register and enqueue in the same lock cycle
-            // else we miss some audio frames,
-            // or the callback gets unscheduled
-            Locking l(_lock.lock());
-            
-            return playGenericNoLock(out, channel_id, std::forward<Args>(requests)...);
-        }
-        
-        
-        template<typename Out, class... Args>
-        bool playGenericNoLock( Out & out, uint8_t channel_id, Args&&... requests) {
-            
-            // we enqueue first, so that the buffer has the "queued" state
-            // because when registering compute lambdas, they can be executed right away
-            // so the buffer needs to be in the right state
-            
-            bool res = playNolock(channel_id, {std::move(requests.second)...});
-            
-            auto buffers = std::make_tuple(std::ref(requests.first)...);
-            for_each(buffers, [this, &out](auto &buf) {
-                if(auto f = audioelement::fCompute(buf)) {
-                    this->registerCompute(out, std::move(f));
-                }
-            });
-            
-            return res;
-        }
-        
-        void play( uint8_t channel_id, StackVector<Request> && v) {
-            Locking l(_lock.lock());
-            playNolock(channel_id, std::move(v));
-        }
-        
-        void closeAllChannels(int xfade) {
-            Locking l(_lock.lock());
-            if(!xfade) {
-                channels.clear();
-            }
-            else {
-                for(auto & c:channels) {
-                    if(c.isPlaying()) {
-                        c.stopPlayingByXFadeToZero(xfade);
-                    }
-                }
-            }
-        }
-        
-        template<WithLock lock>
-        uint8_t openChannel(float volume, ChannelClosingPolicy l, int xfade_length = 0) {
-            uint8_t id = AUDIO_CHANNEL_NONE;
-            if(channels.size() == channels.capacity() && available_ids.size() == 0) {
-                // Channels are at their maximum number and all are used...
-                // Let's find one that is autoclosing and not playing :
-                for( auto it = autoclosing_ids.begin(), end = autoclosing_ids.end(); it != end; ++it )
-                {
-                    id = *it;
-                    if(lock==WithLock::No) {
-                        if(channels[id].isPlaying()) {
-                            id = AUDIO_CHANNEL_NONE;
-                            continue;
-                        }
-                    }
-                    else {
-                        // take the lock in the loop so that at the end of each iteration
-                        // the audio thread has a chance to run
-                        Locking l(_lock.lock());
-                        if(channels[id].isPlaying()) {
-                            id = AUDIO_CHANNEL_NONE;
-                            continue;
-                        }
-                    }
-                    // channel 'id' is auto closing and not playing, so we will assign it to the caller.
-                    if(l != ChannelClosingPolicy::AutoClose) {
-                        autoclosing_ids.erase(it);
-                    }
-                    break;
-                }
-                if(id == AUDIO_CHANNEL_NONE) {
-                    LG(WARN, "no more channels available");
-                    return AUDIO_CHANNEL_NONE;
-                }
-                Assert(!editChannel(id).isPlaying());
-            }
-            else {
-                id = available_ids.Take(channels);
-                if(id == AUDIO_CHANNEL_NONE) {
-                    LG(WARN, "no more channels available");
-                    return AUDIO_CHANNEL_NONE;
-                }
-                Assert(!editChannel(id).isPlaying());
-                if(l == ChannelClosingPolicy::AutoClose) {
-                    convert_to_autoclosing(id);
-                }
-            }
-            
-            // no need to lock here : the channel is not playing
-            if(!editChannel(id).isActive()) {
-                editChannel(id).reset();
-            }
-            if(XF==XfadePolicy::UseXfade) {
-                editChannel(id).set_xfade(xfade_length);
-            }
-            else {
-                Assert(xfade_length == 0); // make sure user is aware xfade will not be used
-            }
-            editChannel(id).setVolume(volume);
-            return id;
-        }
-        
-        template<WithLock l>
-        void closeChannel(uint8_t channel_id, CloseMode mode, int nStepsForXfadeToZeroMode = -1)
-        {
-            if(l==WithLock::No) {
-                closeChannelNoLock(channel_id, mode, nStepsForXfadeToZeroMode);
-            }
-            else {
-                closeChannel(channel_id, mode, nStepsForXfadeToZeroMode);
-            }
-        }
-        
-        void closeChannel(uint8_t channel_id, CloseMode mode, int nStepsForXfadeToZeroMode = -1)
-        {
-            Locking l(_lock.lock());
-            closeChannelNoLock(channel_id, mode, nStepsForXfadeToZeroMode);
-        }
-        
-        void closeChannelNoLock(uint8_t channel_id, CloseMode mode, int nStepsForXfadeToZeroMode = -1)
-        {
-            auto & c = editChannel(channel_id);
-            if(mode != CloseMode::NOW && c.isPlaying()) {
-                if(mode == CloseMode::XFADE_ZERO) {
-                    auto it = std::find(autoclosing_ids.begin(), autoclosing_ids.end(), channel_id);
-                    if(it == autoclosing_ids.end()) {
-                        convert_to_autoclosing(channel_id);
-                    }
-                    c.stopPlayingByXFadeToZero(nStepsForXfadeToZeroMode);
-                }
-                else if(mode == CloseMode::WHEN_DONE_PLAYING) {
-#ifndef NDEBUG
-                    auto it = std::find(autoclosing_ids.begin(), autoclosing_ids.end(), channel_id);
-                    Assert(it == autoclosing_ids.end()); // if channel is already autoclosing, this call is redundant
-#endif
-                    convert_to_autoclosing(channel_id);
-                }
-                return;
-            }
-#ifndef NDEBUG
-            auto it = std::find(autoclosing_ids.begin(), autoclosing_ids.end(), channel_id);
-            Assert(it == autoclosing_ids.end()); // if channel is autoclosing, we should remove it there?
-#endif
-            c.reset();
-            available_ids.Return(channel_id);
-        }
-
-        void run_computes(bool tictac) {
-            for(auto it = orchestrators.begin(), end = orchestrators.end(); it!=end;) {
-                if(!((*it)(audioelement::n_frames_per_buffer))) { // can grow 'computes' vector
-                    it = orchestrators.erase(it);
-                    end = orchestrators.end();
-                }
-                else {
-                    ++it;
-                }
-            }
-            
-            for(auto it = computes.begin(), end = computes.end(); it!=end;) {
-                if(!((*it)(tictac))) {
-                    it = computes.erase(it);
-                    end = computes.end();
-                }
-                else {
-                    ++it;
-                }
-            }
-        }
-        
-        template <typename F>
-        void forEach(F f) {
-            for(auto & c : channels) {
-                f(c);
-            }
-        }
-        
-        decltype(std::declval<AudioLockPolicyImpl<policy>>().lock()) get_lock() { return _lock.lock(); }
-
-    private:
-        AudioLockPolicyImpl<policy> & _lock;
-
-        AvailableIndexes<uint8_t> available_ids;
-        std::vector<Channel> channels;
-        std::vector<uint8_t> autoclosing_ids;
-
-
-        // orchestrators and computes could be owned by the channels but it is maybe cache-wise more efficient
-        // to group them here (if the lambda owned is small enough to not require dynamic allocation)
-        std::vector<OrchestratorFunc> orchestrators;
-        std::vector<audioelement::ComputeFunc> computes;
-
-        bool playNolock( uint8_t channel_id, StackVector<Request> && v) {
-            bool res = true;
-            auto & c = editChannel(channel_id);
-            for( auto & sound : v ) {
-                Assert(sound.valid());
-                if(!c.addRequest( std::move(sound) )) {
-                    res = false;
-                }
-            }
-            return res;
-        }
-        
-        void convert_to_autoclosing(uint8_t channel_id) {
-            Assert(autoclosing_ids.size() < autoclosing_ids.capacity());
-            // else logic error : some users closed manually some autoclosing channels
-            autoclosing_ids.push_back(channel_id);
-        }
-
-    };
-    
-    template< typename ChannelsType >
+    template< AudioOutPolicy Policy, typename ChannelsType >
     struct outputDataBase {
-        using T = float;
+        using T = SAMPLE;
 
-        static constexpr auto policy = ChannelsType::Policy;
-        static constexpr auto DefLock = (policy==AudioOutPolicy::Slave) ? WithLock::No : WithLock::Yes;
         static constexpr auto nOuts = ChannelsType::nAudioOut;
         using ChannelsT = ChannelsType;
         using Request = typename ChannelsType::Request;
-        using PostImpl = AudioPostPolicyImpl<T, nOuts, policy>;
-        using Locking = LockIf<AudioLockPolicyImpl<policy>::useLock>;
+        using PostImpl = AudioPostPolicyImpl<T, nOuts, Policy>;
+        using Locking = LockIf<AudioLockPolicyImpl<Policy>::useLock>;
 
     private:
         //////////////////////////
         /// state of last write:
-        
+
         bool clock_ : 1; /// "tic tac" flag, inverted at each new AudioElements buffer writes
-        
+
         /// the number of buffer frames that were used from the previous AudioElements buffer write
         /// "0" means the entire buffers where used
         unsigned int consummed_frames : relevantBits( audioelement::n_frames_per_buffer - 1 );
         ///
         //////////////////////////
 
-        AudioLockPolicyImpl<policy> & _lock;
+        AudioLockPolicyImpl<Policy> & _lock;
         ChannelsT channelsT;
         PostImpl post;
-        
+
     public:
-        
+
         template<typename ...Args>
-        outputDataBase(AudioLockPolicyImpl<policy>&l, Args ... args):
+        outputDataBase(AudioLockPolicyImpl<Policy>&l, Args ... args):
         channelsT(l, args ...)
         , post(l)
         , _lock(l)
@@ -996,8 +698,8 @@ namespace imajuscule {
 
         PostImpl & getPost() { return post; }
 
-        decltype(std::declval<AudioLockPolicyImpl<policy>>().lock()) get_lock() { return _lock.lock(); }
-        
+        decltype(std::declval<AudioLockPolicyImpl<Policy>>().lock()) get_lock() { return _lock.lock(); }
+
         auto count_consummed_frames() const { return consummed_frames; }
 
         // called from audio callback
@@ -1039,13 +741,13 @@ namespace imajuscule {
                 }
             }
         }
-        
+
         bool isInbetweenTwoComputes() const {
             Assert(consummed_frames >= 0);
             Assert(consummed_frames < audioelement::n_frames_per_buffer);
             return 0 != consummed_frames;
         }
-        
+
         bool getTicTac() const { return clock_;}
 
     private:
@@ -1079,7 +781,7 @@ namespace imajuscule {
             Assert(consummed_frames < audioelement::n_frames_per_buffer); // by design
 
             memset(outputBuffer, 0, nFrames * nOuts * sizeof(SAMPLE));
-            
+
             channelsT.forEach([outputBuffer, this, nFrames](auto & c) {
                 c.step(outputBuffer,
                        nFrames,
@@ -1098,6 +800,5 @@ namespace imajuscule {
     void dontUseConvolutionReverbs(OutputData & data) {
         data.getPost().dontUseConvolutionReverbs();
     }
-    
-    using outputData = outputDataBase< Channels<2, XfadePolicy::UseXfade, AudioOutPolicy::Master> >;
+
 }

@@ -860,9 +860,9 @@ namespace imajuscule {
                 }
 
             protected:
-                template<typename MonoNoteChannel, typename OutputData>
+                template<typename MonoNoteChannel, typename OutputData, typename Chans>
                 // it's unclear if we should use phase at all here.
-                void onStartNote(float velocity, Phase phase, MonoNoteChannel & c, OutputData & out) {
+                void onStartNote(float velocity, Phase phase, MonoNoteChannel & c, OutputData & out, Chans & chans) {
                     c.elem.engine.set_channel(c.channel);
 
                     {
@@ -977,6 +977,7 @@ namespace imajuscule {
 
                         if(MODE == Mode::SWEEP) {
                             c.elem.engine.initialize_sweep(out,
+                                                           chans,
                                                            denorm<LOW_FREQ>(),
                                                            denorm<HIGH_FREQ>(),
                                                            pan);
@@ -988,6 +989,7 @@ namespace imajuscule {
                             auto xfade_freq = static_cast<FreqXfade>(xfade_freq_traversal().realValues()[static_cast<int>(.5f + value<MARKOV_XFADE_FREQ>())]);
 
                             c.elem.engine.initialize_birds(out,
+                                                           chans,
                                                             value<MARKOV_START_NODE>(),
                                                             value<MARKOV_PRE_TRIES>(),
                                                             value<MARKOV_MIN_PATH_LENGTH>(),
@@ -999,6 +1001,7 @@ namespace imajuscule {
                         }
                         else if(MODE == Mode::WIND) {
                             c.elem.engine.initialize_wind(out,
+                                                          chans,
                                                           value<MARKOV_START_NODE>(),
                                                           value<MARKOV_PRE_TRIES>(),
                                                           value<MARKOV_MIN_PATH_LENGTH>(),
@@ -1011,6 +1014,7 @@ namespace imajuscule {
                             c.elem.engine.set_d2(/*denorm<D2>()*/value<D2>());
                             c.elem.engine.set_har_att(denorm<HARMONIC_ATTENUATION>());
                             c.elem.engine.initialize_robot(out,
+                                                           chans,
                                                            value<MARKOV_START_NODE>(),
                                                            value<MARKOV_PRE_TRIES>(),
                                                            value<MARKOV_MIN_PATH_LENGTH>(),
@@ -1223,14 +1227,14 @@ namespace imajuscule {
 
             public:
 
-                template<typename Out>
-                onEventResult onEvent(Event const & e, Out & out)
+                template<typename Out, typename Chans>
+                onEventResult onEvent(Event const & e, Out & out, Chans & chans)
                 {
-                    return onEvent2(e, out);
+                    return onEvent2(e, out, chans);
                 }
 
-                template<typename OutputData>
-                void doProcessing (ProcessData& data, OutputData & out)
+                template<typename OutputData, typename Chans>
+                void doProcessing (ProcessData& data, OutputData & out, Chans & chans)
                 {
                     Assert(data.numSamples);
 
@@ -1261,7 +1265,7 @@ namespace imajuscule {
                         while(nextEventPosition == currentFrame) {
                             Event e;
                             it.dereference(e);
-                            onEvent(e, out);
+                            onEvent(e, out, chans);
                             ++it;
                             nextEventPosition = getNextEventPosition(it, end);
                         }

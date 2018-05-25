@@ -465,7 +465,7 @@ namespace imajuscule {
                         other_next_sample_index = 0;
                     }
                     Assert(other_next_sample_index <= other_s);
-                    Assert(std::abs((other->buffer.asSoundBuffer())[other_next_sample_index] < 100000.f));
+                    Assert(std::abs((other->buffer.asSoundBuffer())[other_next_sample_index]) < 100000.f);
                     val += other->volumes * ((1.f - xfade_ratio) * chan_vol.current * (other->buffer.asSoundBuffer())[other_next_sample_index]);
                     ++other_next_sample_index;
                 }

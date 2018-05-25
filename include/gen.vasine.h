@@ -12,8 +12,8 @@ namespace imajuscule {
                 static constexpr float get_gain() { return 1.f; };
 
                 // the caller is responsible for taking the out lock if needed
-                template<typename MonoNoteChannel, typename OutputData>
-                void onStartNote(float velocity, Phase phase, MonoNoteChannel & c, OutputData & out) {
+                template<typename MonoNoteChannel, typename OutputData, typename Chans>
+                void onStartNote(float velocity, Phase phase, MonoNoteChannel & c, OutputData & out, Chans & chans) {
                     using Request = typename OutputData::Request;
 
                     auto tunedNote = midi::tuned_note(c.pitch, c.tuning);
@@ -27,7 +27,7 @@ namespace imajuscule {
                     setPhase(phase, osc.algo);
 
                     // the caller is responsible for taking the out lock if needed
-                    auto res = out.getChannels().playGenericNoLock(
+                    auto res = chans.playGenericNoLock(
                                     out, c.channel,
                                     std::make_pair(std::ref(osc),
                                                    Request{
