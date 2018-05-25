@@ -336,7 +336,7 @@ namespace imajuscule {
             }
 
             void doProcessing (ProcessData& data) {
-                return plugin.doProcessing(data, out);
+                return plugin.doProcessing(data, out, out.getChannels());
             }
 
             void allNotesOff() {
