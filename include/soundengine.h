@@ -552,14 +552,20 @@ namespace imajuscule {
             bool playNextSpec(OutputData & out, Chans & chans) {
                 constexpr auto nAudioOut = OutputData::nOuts;
                 using Request = typename OutputData::Request;
-
-                while(auto new_spec = ramp_specs.get_next_ramp_for_run()) {
+                while(true) {
                     auto rampsStatus = get_ramps();
                     if(auto * prevRamp = rampsStatus.keyPressed) {
                       prevRamp->algo.onKeyReleased();
                     }
-                    Assert(rampsStatus.envelopeDone); // might be null if length of ramp is too small
                     auto new_ramp = rampsStatus.envelopeDone;
+                    if(!new_ramp) {
+                        Assert(rampsStatus.envelopeDone); // might be null if length of ramp is too small ?
+                        return true;
+                    }
+                    auto new_spec = ramp_specs.get_next_ramp_for_run();
+                    if(!new_spec) {
+                        break;
+                    }
                     new_ramp->algo.getAlgo().getCtrl() = new_spec->get();
                     new_ramp->algo.forgetPastSignals();
                     new_ramp->algo.setEnvelopeCharacTime(xfade_len);

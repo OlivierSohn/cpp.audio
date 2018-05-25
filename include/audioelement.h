@@ -404,7 +404,7 @@ namespace imajuscule {
                 F_GET_BUFFER().getAbsMean(); // just to initialize the static in it
             }
 
-            void forgetPastSignals() const {
+            void forgetPastSignals() {
             }
             void setEnvelopeCharacTime(int len) {
                 Assert(0);
@@ -479,6 +479,9 @@ namespace imajuscule {
             Phased<T>(angle_increments),
             pulse_width(pulse_width) {
                 Assert(pulse_width >= angle_increments); // else it's always 0
+            }
+            
+            void forgetPastSignals() {
             }
 
             void set(T angle_increments, T pulse_width_) {
@@ -893,7 +896,7 @@ namespace imajuscule {
             constexpr OscillatorAlgo(T angle_increments) { setAngleIncrements(angle_increments); }
             constexpr OscillatorAlgo() : mult(Tr::one(), Tr::zero()) {}
 
-            void forgetPastSignals() const {
+            void forgetPastSignals() {
             }
             void setEnvelopeCharacTime(int len) {
                 Assert(0);
@@ -969,7 +972,7 @@ namespace imajuscule {
             LogRamp() : cur_sample(Tr::zero()), from{}, to{}, duration_in_samples{}
             {}
 
-            void forgetPastSignals() const {}
+            void forgetPastSignals() {}
 
             void setFreqRange(range<float> const &) const { Assert(0); } // use set instead
             void set_interpolation(itp::interpolation) const {Assert(0);} // use set instead
@@ -1406,6 +1409,11 @@ namespace imajuscule {
                     osc1.setAngle(0.f);
                 }
             }
+            
+            void forgetPastSignals() {
+                osc1.forgetPastSignals();
+                osc2.forgetPastSignals();
+            }
 
             void step() {
                 osc1.step();
@@ -1488,6 +1496,11 @@ namespace imajuscule {
                         // it will have 2 lambdas because the first lambda will never have seen the inactive state.
                         // However the issue is not major, as the 2 lambdas have a chance to be removed
                         // the next time
+                        if constexpr (U::hasEnvelope) {
+                            ae.forgetPastSignals(); // temporary, to fix soundengine, where the channel xfade is used instead of the enveloppe xfade:
+                                                // this resets the eveloppe state to Done2, and then lets the audioelement be reused
+                                                // in subsequent markov move.
+                        }
                         return false;
                     }
                     if(likely(e.getState() != AE::queued())) {
