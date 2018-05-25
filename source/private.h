@@ -4,6 +4,7 @@
 #include <fenv.h>
 
 #if TARGET_OS_IOS
+// on ios, these macros are hidden from fenv.h:
 
 // from https://github.com/mstg/iOS-full-sdk/blob/master/iPhoneOS9.3.sdk/usr/include/fenv.h
 extern const fenv_t _FE_DFL_DISABLE_DENORMS_ENV;
