@@ -210,6 +210,13 @@ namespace imajuscule {
                 }
             }
 
+            template <typename F>
+            void forEachElems(F f) {
+                for(auto & c : channels) {
+                    f(c.elem);
+                }
+            }
+
             template<typename Out, typename Chans>
             onEventResult onEvent2(Event const & e, Out & out, Chans & chans) {
                 if(e.type == Event::kNoteOnEvent) {

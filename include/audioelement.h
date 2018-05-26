@@ -150,7 +150,8 @@ namespace imajuscule {
 
           auto & getOsc() { return algo.getOsc(); }
           auto & getAlgo() { return algo; }
-            auto const & getEnveloppe() const { return env; }
+          auto const & getEnveloppe() const { return env; }
+          auto & editEnveloppe() { return env; }
 
           void setLoudnessParams(int low_index, float log_ratio, float loudness_level) {
               algo.setLoudnessParams(low_index, log_ratio, loudness_level);
@@ -175,7 +176,7 @@ namespace imajuscule {
                 _value = static_cast<T>(0);
                 counter = 0;
             }
-            
+
             void step() {
                 ++counter;
                 switch(state) {
@@ -202,11 +203,11 @@ namespace imajuscule {
                         break;
                 }
             }
-            
+
             T value () const {
                 return _value;
             }
-            
+
             // can be called from the main thread
             void onKeyPressed() {
                 state = EnvelopeState::KeyPressed;
@@ -231,11 +232,11 @@ namespace imajuscule {
                 }
                 return false;
             }
-            
+
             EnvelopeState getState() const {
                 return state;
             }
-            
+
         private:
             // between 0 and 1.
             FPT _value = static_cast<T>(0);
@@ -276,7 +277,7 @@ namespace imajuscule {
 
         template <typename T>
         using SimpleEnvelope = EnvelopeCRT < SimpleEnvelopeBase <T> >;
-        
+
         /* This inner state describes states when the outer state is 'KeyPressed'. */
         enum class AHD {
             Attacking,
@@ -293,7 +294,7 @@ namespace imajuscule {
 #else
 #   error Must have an optional type, either from <optional> or if not supported from <experimental/optional>.
 #endif
-        
+
         // inspired from https://stackoverflow.com/questions/44217316/how-do-i-use-stdoptional-in-c
         template<typename T>
         T const& get_value(Optional<T>const &opt)
@@ -301,7 +302,7 @@ namespace imajuscule {
             Assert(opt);
             return *opt;
         }
-        
+
         inline Optional<AHD> rotateAHD(AHD s) {
             switch(s) {
                 case AHD::Attacking:
@@ -315,21 +316,23 @@ namespace imajuscule {
                     return {};
             }
         }
-        
+
         template <typename T>
         struct AHDSREnvelopeBase {
             using FPT = T;
-            
+
             void setEnvelopeCharacTime(int len) {
-                Assert(0 && "ADSR enveloppes cannot be set using setEnvelopeCharacTime");
+                // we just ignore this, but it shows that the design is not optimal:
+                //   we should unify 'setEnvelopeCharacTime' with 'setAHDSR'
+                //Assert(0 && "ADSR enveloppes cannot be set using setEnvelopeCharacTime");
             }
-            
+
             // fast moog attacks are 1ms according to
             // cf. https://www.muffwiggler.com/forum/viewtopic.php?t=65964&sid=0f628fc3793b76de64c7bceabfbd80ff
             // so we set the max normalized enveloppe velocity to 1ms (i.e the time to go from 0 to 1)
             static constexpr auto normalizedMinDt = SAMPLE_RATE/1000;
             static_assert(normalizedMinDt > 0);
-            
+
             /* The AHDSR envelope is like an ADSR envelope, except we allow to hold the value after the attack:
 
                | a |h| d |           |r|
@@ -345,16 +348,21 @@ namespace imajuscule {
                    holding                                            <- inner pressed state changes
                      decaying                                         <- inner pressed state changes
                         sustaining                                    <- inner pressed state changes
-             
+
              */
-            void setAHDSR(int _A, int _H, int _D, FPT _S, int _R) {
+            void setAHDSR(AHDSR_t const & s) {
+                int _A = s.attack;
+                int _H = s.hold;
+                int _D = s.decay;
+                FPT _S = s.sustain;
+                int _R = s.release;
                 S = clamp (_S, static_cast<T>(0), static_cast<T>(1));
                 A = std::max( _A, normalizedMinDt );
                 H = std::max( _H, 0 );
                 D = std::max( _D, static_cast<int>(static_cast<T>(normalizedMinDt) * (static_cast<T>(1)-S)));
                 R = std::max( _R, static_cast<int>(static_cast<T>(normalizedMinDt) * S));
             }
-            
+
         protected:
             void startPressed() {
                 ahdState = AHD::Attacking;
@@ -375,7 +383,7 @@ namespace imajuscule {
                                    , std::max(from,to));
                 }
             }
-            
+
             float getSustain() const { return S; }
             int getReleaseTime() const { return R; }
 
@@ -386,7 +394,7 @@ namespace imajuscule {
             int D = normalizedMinDt;
             int R = normalizedMinDt;
             float S = static_cast<T>(0.5);
-            
+
             // this inner state is taken into account only while the outer state is KeyPressed:
             Optional<AHD> ahdState;
 
@@ -420,7 +428,7 @@ namespace imajuscule {
                     inc = (to-from) / static_cast<T>(M);
                 }
             }
-            
+
             void stepAHD() {
                 Assert(ahdState);
                 auto maxCounter = getMaxCounterForAHD();
@@ -431,7 +439,7 @@ namespace imajuscule {
                 ahdState = rotateAHD(get_value(ahdState));
                 onAHDStateChange();
             }
-            
+
             int getMaxCounterForAHD() const {
                 switch(get_value(ahdState)) {
                     case AHD::Attacking:
@@ -445,13 +453,13 @@ namespace imajuscule {
                         return 0;
                 }
             }
-            
+
         private:
             FPT from = static_cast<T>(0);
             FPT to = static_cast<T>(0);
             FPT inc = static_cast<T>(0);
         };
-        
+
         template <typename T>
         using AHDSREnvelope = EnvelopeCRT < AHDSREnvelopeBase <T> >;
 
@@ -679,7 +687,7 @@ namespace imajuscule {
             pulse_width(pulse_width) {
                 Assert(pulse_width >= angle_increments); // else it's always 0
             }
-            
+
             void forgetPastSignals() {
             }
 
@@ -1608,7 +1616,7 @@ namespace imajuscule {
                     osc1.setAngle(0.f);
                 }
             }
-            
+
             void forgetPastSignals() {
                 osc1.forgetPastSignals();
                 osc2.forgetPastSignals();
