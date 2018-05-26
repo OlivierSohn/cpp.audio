@@ -161,100 +161,299 @@ namespace imajuscule {
           ALGO algo;
         };
 
+        template <typename Base>
+        struct EnvelopeCRT : public Base {
+            using FPT = typename Base::FPT;
+            using T = FPT;
+            using Base::startPressed;
+            using Base::stepPressed;
+            using Base::getSustain;
+            using Base::getReleaseTime;
+
+            void forgetPastSignals() {
+                state = EnvelopeState::EnvelopeDone2;
+                _value = static_cast<T>(0);
+                counter = 0;
+            }
+            
+            void step() {
+                ++counter;
+                switch(state) {
+                    case EnvelopeState::KeyPressed:
+                        _value = stepPressed(counter);
+                        break;
+                    case EnvelopeState::KeyReleased:
+                        _value = _topValue - static_cast<T>(counter) * increment;
+                        if(_value <= static_cast<T>(0)) {
+                            state = EnvelopeState::EnvelopeDone1;
+                            counter = 0;
+                            _value = static_cast<T>(0);
+                        }
+                        break;
+                    case EnvelopeState::EnvelopeDone1:
+                        if(counter > n_frames_per_buffer) { // to be sure that all non-zero computed signals
+                            // were used
+                            state = EnvelopeState::EnvelopeDone2;
+                            counter = 0;
+                        }
+                        [[fallthrough]];
+                    case EnvelopeState::EnvelopeDone2:
+                        _value = static_cast<T>(0);
+                        break;
+                }
+            }
+            
+            T value () const {
+                return _value;
+            }
+            
+            // can be called from the main thread
+            void onKeyPressed() {
+                state = EnvelopeState::KeyPressed;
+                counter = 0;
+                startPressed();
+            }
+
+            // can be called from the main thread
+            bool onKeyReleased() {
+                if(state == EnvelopeState::KeyPressed) {
+                    if(0 == counter) {
+                        // the key was pressed, but immediately released, so we skip the note.
+                        state = EnvelopeState::EnvelopeDone2;
+                    }
+                    else {
+                        state = EnvelopeState::KeyReleased;
+                        _topValue = _value;
+                        increment = getSustain() / static_cast<T>(getReleaseTime()); // note that we use S, not _topValue, so that R defines a slope, rather than a duration.
+                        counter = 0;
+                    }
+                    return true;
+                }
+                return false;
+            }
+            
+            EnvelopeState getState() const {
+                return state;
+            }
+            
+        private:
+            // between 0 and 1.
+            FPT _value = static_cast<T>(0);
+            FPT _topValue = static_cast<T>(0); // the value when the key was released
+            FPT increment = 0; // the rate of change, except for release, where it is the opposite of rate of change.
+            // 'state' will be set to 'KeyReleased' when the key is released.
+            // reads / writes to this are atomic so we don't need to lock.
+            EnvelopeState state = EnvelopeState::EnvelopeDone2;
+            unsigned int counter = 0;
+        };
+
         template <typename T>
-        struct SimpleEnvelope {
+        struct SimpleEnvelopeBase {
           using FPT = T;
 
-          // len is in samples
-          void setEnvelopeCharacTime(int len) {
-            if(unlikely (len <= 100)) {
-              len = 100;
+          static constexpr auto normalizedMinDt = 100;
+
+            // len is in samples
+            void setEnvelopeCharacTime(int len) {
+                C = std::max(len,normalizedMinDt);
             }
-            increment = static_cast<T>(1) / static_cast<T>(len);
-          }
+        private:
+          int C = normalizedMinDt;
 
-          void forgetPastSignals() {
-            state = EnvelopeState::EnvelopeDone2;
-            _value = static_cast<T>(0);
-            counter = 0;
-          }
+        protected:
 
-          void step() {
-            ++counter;
-            switch(state) {
-              case EnvelopeState::KeyPressed:
-                _value = std::min
+          void startPressed() {}
+
+          T stepPressed (int counter) const {
+                return std::min
                   (static_cast<T>(1)
-                  ,static_cast<T>(counter) * increment);
-                break;
-              case EnvelopeState::KeyReleased:
-              {
-                auto ratio = static_cast<T>(1) - static_cast<T>(counter) * increment;
-                // when ratio becomes 0 or negative, we consider the enveloppe is done.
-                if(ratio <= static_cast<T>(0)) {
-                  state = EnvelopeState::EnvelopeDone1;
-                  counter = 0;
-                  _value = static_cast<T>(0);
+                  ,static_cast<T>(counter) / static_cast<T>(C));
+          }
+
+          T getSustain() const { return 1.f; }
+          int getReleaseTime() const { return C; }
+        };
+
+        template <typename T>
+        using SimpleEnvelope = EnvelopeCRT < SimpleEnvelopeBase <T> >;
+        
+        /* This inner state describes states when the outer state is 'KeyPressed'. */
+        enum class AHD {
+            Attacking,
+            Holding,
+            Decaying
+        };
+
+        template<typename T>
+        using Optional =
+#if __has_include(<optional>)
+            std::optional<T>;
+#elif __has_include(<experimental/optional>)
+            std::experimental::optional<T>;
+#else
+#   error Must have an optional type, either from <optional> or if not supported from <experimental/optional>.
+#endif
+        
+        // inspired from https://stackoverflow.com/questions/44217316/how-do-i-use-stdoptional-in-c
+        template<typename T>
+        T const& get_value(Optional<T>const &opt)
+        {
+            Assert(opt);
+            return *opt;
+        }
+        
+        inline Optional<AHD> rotateAHD(AHD s) {
+            switch(s) {
+                case AHD::Attacking:
+                    return AHD::Holding;
+                case AHD::Holding:
+                    return AHD::Decaying;
+                case AHD::Decaying:
+                    return {};
+                default:
+                    Assert(0);
+                    return {};
+            }
+        }
+        
+        template <typename T>
+        struct AHDSREnvelopeBase {
+            using FPT = T;
+            
+            void setEnvelopeCharacTime(int len) {
+                Assert(0 && "ADSR enveloppes cannot be set using setEnvelopeCharacTime");
+            }
+            
+            // fast moog attacks are 1ms according to
+            // cf. https://www.muffwiggler.com/forum/viewtopic.php?t=65964&sid=0f628fc3793b76de64c7bceabfbd80ff
+            // so we set the max normalized enveloppe velocity to 1ms (i.e the time to go from 0 to 1)
+            static constexpr auto normalizedMinDt = SAMPLE_RATE/1000;
+            static_assert(normalizedMinDt > 0);
+            
+            /* The AHDSR envelope is like an ADSR envelope, except we allow to hold the value after the attack:
+
+               | a |h| d |           |r|
+                   ___                                      < 1
+                  .    .
+                 .       _____________                      < s
+                .                     .
+             ___                       ___________________  < 0
+               ^                     ^ ^             ^
+               |                     | envelopeDone1 envelopeDone2    <- state changes
+               keyPressed            keyReleased                      <- state changes
+               attacking                                              <- inner pressed state changes
+                   holding                                            <- inner pressed state changes
+                     decaying                                         <- inner pressed state changes
+                        sustaining                                    <- inner pressed state changes
+             
+             */
+            void setAHDSR(int _A, int _H, int _D, FPT _S, int _R) {
+                S = clamp (_S, static_cast<T>(0), static_cast<T>(1));
+                A = std::max( _A, normalizedMinDt );
+                H = std::max( _H, 0 );
+                D = std::max( _D, static_cast<int>(static_cast<T>(normalizedMinDt) * (static_cast<T>(1)-S)));
+                R = std::max( _R, static_cast<int>(static_cast<T>(normalizedMinDt) * S));
+            }
+            
+        protected:
+            void startPressed() {
+                ahdState = AHD::Attacking;
+                onAHDStateChange();
+            }
+
+            T stepPressed(int) {
+                if(ahdState) {
+                    ++ahdCounter;
+                    stepAHD();
+                }
+                if(!ahdState) {
+                    return S;
                 }
                 else {
-                  _value = _topValue * ratio;
+                    return clamp(from + static_cast<T>(ahdCounter) * inc
+                                   , std::min(from,to)
+                                   , std::max(from,to));
                 }
-                break;
-              }
-            case EnvelopeState::EnvelopeDone1:
-                if(counter > n_frames_per_buffer) { // to be sure that all non-zero computed signals
-                                                    // were used
-                  state = EnvelopeState::EnvelopeDone2;
-                  counter = 0;
-                }
-                [[fallthrough]];
-            case EnvelopeState::EnvelopeDone2:
-                _value = static_cast<T>(0);
-                break;
             }
-          }
-
-          T value () const {
-            return _value;
-          }
-
-          // can be called from the main thread
-          void onKeyPressed() {
-              state = EnvelopeState::KeyPressed;
-              counter = 0;
-          }
-          // can be called from the main thread
-          bool onKeyReleased() {
-              if(state == EnvelopeState::KeyPressed) {
-                  if(0 == counter) {
-                      // the key was pressed, but immediately released, so we skip the note.
-                      state = EnvelopeState::EnvelopeDone2;
-                  }
-                  else {
-                      state = EnvelopeState::KeyReleased;
-                      _topValue = _value;
-                      counter = 0;
-                  }
-                  return true;
-              }
-              return false;
-          }
-
-          EnvelopeState getState() const {
-            return state;
-          }
+            
+            float getSustain() const { return S; }
+            int getReleaseTime() const { return R; }
 
         private:
-          // between 0 and 1.
-          FPT _value = static_cast<T>(0);
-          FPT _topValue = static_cast<T>(0);
-          FPT increment = 0.0025;
+            int ahdCounter = 0;
+            int A = normalizedMinDt;
+            int H = 0;
+            int D = normalizedMinDt;
+            int R = normalizedMinDt;
+            float S = static_cast<T>(0.5);
+            
+            // this inner state is taken into account only while the outer state is KeyPressed:
+            Optional<AHD> ahdState;
 
-          // 'state' will be set to 'KeyReleased' when the key is released.
-          // reads / writes to this are atomic so we don't need to lock.
-          EnvelopeState state = EnvelopeState::EnvelopeDone2;
-          unsigned int counter = 0;
+            void onAHDStateChange() {
+                ahdCounter = 0;
+                if(!ahdState) {
+                    return;
+                }
+                switch(get_value(ahdState)) {
+                    case AHD::Attacking:
+                        from = static_cast<T>(0);
+                        to = static_cast<T>(1);
+                        break;
+                    case AHD::Holding:
+                        from = static_cast<T>(1);
+                        to = static_cast<T>(1);
+                        break;
+                    case AHD::Decaying:
+                        from = static_cast<T>(1);
+                        to = static_cast<T>(S);
+                        break;
+                    default:
+                        Assert(0);
+                        break;
+                }
+                auto M = getMaxCounterForAHD();
+                if(M==0) {
+                    stepAHD();
+                }
+                else {
+                    inc = (to-from) / static_cast<T>(M);
+                }
+            }
+            
+            void stepAHD() {
+                Assert(ahdState);
+                auto maxCounter = getMaxCounterForAHD();
+                Assert(ahdCounter >= 0);
+                if (ahdCounter < maxCounter) {
+                    return;
+                }
+                ahdState = rotateAHD(get_value(ahdState));
+                onAHDStateChange();
+            }
+            
+            int getMaxCounterForAHD() const {
+                switch(get_value(ahdState)) {
+                    case AHD::Attacking:
+                        return A;
+                    case AHD::Holding:
+                        return H;
+                    case AHD::Decaying:
+                        return D;
+                    default:
+                        Assert(0);
+                        return 0;
+                }
+            }
+            
+        private:
+            FPT from = static_cast<T>(0);
+            FPT to = static_cast<T>(0);
+            FPT inc = static_cast<T>(0);
         };
+        
+        template <typename T>
+        using AHDSREnvelope = EnvelopeCRT < AHDSREnvelopeBase <T> >;
 
         template <typename ALGO>
         using SimplyEnveloped = Envelopped<ALGO,SimpleEnvelope<typename ALGO::FPT>>;
