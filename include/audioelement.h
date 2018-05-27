@@ -225,7 +225,9 @@ namespace imajuscule {
                     else {
                         state = EnvelopeState::KeyReleased;
                         _topValue = _value;
-                        increment = getSustain() / static_cast<T>(getReleaseTime()); // note that we use S, not _topValue, so that R defines a slope, rather than a duration.
+                        // note that we use getSustain, not _topValue, so that R defines a slope, rather than a duration.
+                        increment = getSustain() / static_cast<T>(getReleaseTime());
+                        std::cout << increment << " s:" << getSustain() << "r:" << getReleaseTime() << std::endl;
                         counter = 0;
                     }
                     return true;
@@ -251,6 +253,7 @@ namespace imajuscule {
         template <typename T>
         struct SimpleEnvelopeBase {
           using FPT = T;
+          using Param = int;
 
           static constexpr auto normalizedMinDt = 100;
 
@@ -317,9 +320,27 @@ namespace imajuscule {
             }
         }
 
+        /* The AHDSR envelope is like an ADSR envelope, except we allow to hold the value after the attack:
+
+           | a |h| d |           |r|
+               ___                                      < 1
+              .    .
+             .       _____________                      < s
+            .                     .
+         ___                       ___________________  < 0
+           ^                     ^ ^             ^
+           |                     | envelopeDone1 envelopeDone2    <- state changes
+           keyPressed            keyReleased                      <- state changes
+           attacking                                              <- inner pressed state changes
+               holding                                            <- inner pressed state changes
+                 decaying                                         <- inner pressed state changes
+                    sustaining                                    <- inner pressed state changes
+
+         */
         template <typename T>
         struct AHDSREnvelopeBase {
             using FPT = T;
+            using Param = AHDSR_t;
 
             void setEnvelopeCharacTime(int len) {
                 // we just ignore this, but it shows that the design is not optimal:
@@ -333,23 +354,6 @@ namespace imajuscule {
             static constexpr auto normalizedMinDt = SAMPLE_RATE/1000;
             static_assert(normalizedMinDt > 0);
 
-            /* The AHDSR envelope is like an ADSR envelope, except we allow to hold the value after the attack:
-
-               | a |h| d |           |r|
-                   ___                                      < 1
-                  .    .
-                 .       _____________                      < s
-                .                     .
-             ___                       ___________________  < 0
-               ^                     ^ ^             ^
-               |                     | envelopeDone1 envelopeDone2    <- state changes
-               keyPressed            keyReleased                      <- state changes
-               attacking                                              <- inner pressed state changes
-                   holding                                            <- inner pressed state changes
-                     decaying                                         <- inner pressed state changes
-                        sustaining                                    <- inner pressed state changes
-
-             */
             void setAHDSR(AHDSR_t const & s) {
                 int _A = s.attack;
                 int _H = s.hold;
@@ -384,7 +388,7 @@ namespace imajuscule {
                 }
             }
 
-            float getSustain() const { return S; }
+            T getSustain() const { return S; }
             int getReleaseTime() const { return R; }
 
         private:
@@ -393,7 +397,7 @@ namespace imajuscule {
             int H = 0;
             int D = normalizedMinDt;
             int R = normalizedMinDt;
-            float S = static_cast<T>(0.5);
+            T S = static_cast<T>(0.5);
 
             // this inner state is taken into account only while the outer state is KeyPressed:
             Optional<AHD> ahdState;
@@ -414,7 +418,7 @@ namespace imajuscule {
                         break;
                     case AHD::Decaying:
                         from = static_cast<T>(1);
-                        to = static_cast<T>(S);
+                        to = S;
                         break;
                     default:
                         Assert(0);
@@ -459,6 +463,166 @@ namespace imajuscule {
             FPT to = static_cast<T>(0);
             FPT inc = static_cast<T>(0);
         };
+
+        /* The AHPropDerDSR envelope is like an AHDSR envelope, except that the decay phase is
+        using the 'proportional_value_derivative' interpolation to reach the sustain value.
+
+           | a |h| d |           |r|
+               ___                                      < 1
+              .   .
+             .       _____________                      < s
+            .                     .
+         ___                       ___________________  < 0
+           ^                     ^ ^             ^
+           |                     | envelopeDone1 envelopeDone2    <- state changes
+           keyPressed            keyReleased                      <- state changes
+           attacking                                              <- inner pressed state changes
+               holding                                            <- inner pressed state changes
+                 decaying                                         <- inner pressed state changes
+                    sustaining                                    <- inner pressed state changes
+
+         */
+        template <typename T>
+        struct AHPropDerDSREnvelopeBase {
+            using FPT = T;
+            using Param = AHDSR_t;
+
+            void setEnvelopeCharacTime(int len) {
+                // we just ignore this, but it shows that the design is not optimal:
+                //   we should unify 'setEnvelopeCharacTime' with 'setAHDSR'
+                //Assert(0 && "ADSR enveloppes cannot be set using setEnvelopeCharacTime");
+            }
+
+            // fast moog attacks are 1ms according to
+            // cf. https://www.muffwiggler.com/forum/viewtopic.php?t=65964&sid=0f628fc3793b76de64c7bceabfbd80ff
+            // so we set the max normalized enveloppe velocity to 1ms (i.e the time to go from 0 to 1)
+            static constexpr auto normalizedMinDt = SAMPLE_RATE/1000;
+            static_assert(normalizedMinDt > 0);
+
+            void setAHDSR(AHDSR_t const & s) {
+                int _A = s.attack;
+                int _H = s.hold;
+                int _D = s.decay;
+                FPT _S = s.sustain;
+                int _R = s.release;
+                auto S = clamp (_S, static_cast<T>(0), static_cast<T>(1));
+                SMinusOne = S - static_cast<T>(1);
+                A = std::max( _A, normalizedMinDt );
+                H = std::max( _H, 0 );
+                D = std::max( _D, static_cast<int>(static_cast<T>(normalizedMinDt) * (static_cast<T>(1) - S)));
+                R = std::max( _R, static_cast<int>(static_cast<T>(normalizedMinDt) * S));
+            }
+
+        protected:
+            void startPressed() {
+                ahdState = AHD::Attacking;
+                onAHDStateChange();
+            }
+
+            T stepPressed(int) {
+                if(ahdState) {
+                    ++ahdCounter;
+                    stepAHD();
+                }
+                if(!ahdState) {
+                    return static_cast<T>(1) + SMinusOne;
+                }
+                else {
+                    T from, toMinusFrom;
+                    switch(get_value(ahdState)) {
+                        case AHD::Attacking:
+                            from = static_cast<T>(0);
+                            toMinusFrom = static_cast<T>(1);
+                            break;
+                        case AHD::Holding:
+                            from = static_cast<T>(1);
+                            toMinusFrom = static_cast<T>(0);
+                            break;
+                        case AHD::Decaying:
+                            from = static_cast<T>(1);
+                            toMinusFrom = SMinusOne;
+                            break;
+                        default:
+                            toMinusFrom = from = static_cast<T>(0);
+                            Assert(0);
+                            break;
+                    }
+
+                    return itp::interpolate(
+                        getInterpolation()
+                      , static_cast<T>(ahdCounter)
+                      , from
+                      , toMinusFrom
+                      , getMaxCounterForAHD());
+                }
+            }
+
+            float getSustain() const { static_cast<T>(1) + SMinusOne; }
+            int getReleaseTime() const { return R; }
+
+        private:
+            int ahdCounter = 0;
+            int A = normalizedMinDt;
+            int H = 0;
+            int D = normalizedMinDt;
+            int R = normalizedMinDt;
+            T SMinusOne = static_cast<T>(-0.5);
+
+            // this inner state is taken into account only while the outer state is KeyPressed:
+            Optional<AHD> ahdState;
+
+            void onAHDStateChange() {
+                ahdCounter = 0;
+                if(!ahdState) {
+                    return;
+                }
+                if(0==getMaxCounterForAHD()) {
+                    stepAHD();
+                }
+            }
+
+            void stepAHD() {
+                Assert(ahdState);
+                auto maxCounter = getMaxCounterForAHD();
+                Assert(ahdCounter >= 0);
+                if (ahdCounter < maxCounter) {
+                    return;
+                }
+                ahdState = rotateAHD(get_value(ahdState));
+                onAHDStateChange();
+            }
+
+            int getMaxCounterForAHD() const {
+                switch(get_value(ahdState)) {
+                    case AHD::Attacking:
+                        return A;
+                    case AHD::Holding:
+                        return H;
+                    case AHD::Decaying:
+                        return D;
+                    default:
+                        Assert(0);
+                        return 0;
+                }
+            }
+
+            itp::interpolation getInterpolation() const {
+                switch(get_value(ahdState)) {
+                    case AHD::Attacking:
+                        return itp::LINEAR;
+                    case AHD::Holding:
+                        return itp::LINEAR;
+                    case AHD::Decaying:
+                        return itp::PROPORTIONAL_VALUE_DERIVATIVE;
+                    default:
+                        Assert(0);
+                        return itp::LINEAR;
+                }
+            }
+        };
+
+        template <typename T>
+        using AHPropDerDSREnvelope = EnvelopeCRT < AHPropDerDSREnvelopeBase <T> >;
 
         template <typename T>
         using AHDSREnvelope = EnvelopeCRT < AHDSREnvelopeBase <T> >;
