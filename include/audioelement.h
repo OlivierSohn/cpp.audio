@@ -308,6 +308,11 @@ namespace imajuscule {
             }
         }
 
+        enum class EnvelopeRelease {
+          WaitForKeyRelease,
+          ReleaseAfterDecay
+        };
+
         /* The AHDSR envelope is like an ADSR envelope, except we allow to hold the value after the attack:
 
            | a |h| d |           |r|
@@ -325,7 +330,7 @@ namespace imajuscule {
                     sustaining                                    <- inner pressed state changes
 
          */
-        template <typename T>
+        template <typename T, EnvelopeRelease Rel>
         struct AHDSREnvelopeBase {
             using FPT = T;
             using Param = AHDSR_t;
@@ -367,7 +372,12 @@ namespace imajuscule {
                     stepAHD();
                 }
                 if(!ahdState) {
-                    return S;
+                    if constexpr (Rel == EnvelopeRelease::WaitForKeyRelease) {
+                      return S;
+                    }
+                    else {
+                      return {};
+                    }
                 }
                 else {
                     return clamp(from + static_cast<T>(ahdCounter) * inc
@@ -448,11 +458,6 @@ namespace imajuscule {
             FPT from = static_cast<T>(0);
             FPT to = static_cast<T>(0);
             FPT inc = static_cast<T>(0);
-        };
-
-        enum class EnvelopeRelease {
-          WaitForKeyRelease,
-          ReleaseAfterDecay
         };
 
         /* The AHPropDerDSR envelope is like an AHDSR envelope, except that the decay phase is
@@ -619,8 +624,8 @@ namespace imajuscule {
         template <typename T, EnvelopeRelease Rel>
         using AHPropDerDSREnvelope = EnvelopeCRT < AHPropDerDSREnvelopeBase <T, Rel> >;
 
-        template <typename T>
-        using AHDSREnvelope = EnvelopeCRT < AHDSREnvelopeBase <T> >;
+        template <typename T, EnvelopeRelease Rel>
+        using AHDSREnvelope = EnvelopeCRT < AHDSREnvelopeBase <T, Rel> >;
 
         template <typename ALGO>
         using SimplyEnveloped = Envelopped<ALGO,SimpleEnvelope<typename ALGO::FPT>>;
