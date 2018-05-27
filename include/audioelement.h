@@ -227,7 +227,6 @@ namespace imajuscule {
                         _topValue = _value;
                         // note that we use getSustain, not _topValue, so that R defines a slope, rather than a duration.
                         increment = getSustain() / static_cast<T>(getReleaseTime());
-                        std::cout << increment << " s:" << getSustain() << "r:" << getReleaseTime() << std::endl;
                         counter = 0;
                     }
                     return true;
@@ -557,7 +556,7 @@ namespace imajuscule {
                 }
             }
 
-            float getSustain() const { static_cast<T>(1) + SMinusOne; }
+            float getSustain() const { return static_cast<T>(1) + SMinusOne; }
             int getReleaseTime() const { return R; }
 
         private:
