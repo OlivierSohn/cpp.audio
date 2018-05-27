@@ -168,7 +168,6 @@ namespace imajuscule {
             using T = FPT;
             using Base::startPressed;
             using Base::stepPressed;
-            using Base::getSustain;
             using Base::getReleaseTime;
 
             void forgetPastSignals() {
@@ -225,8 +224,7 @@ namespace imajuscule {
                     else {
                         state = EnvelopeState::KeyReleased;
                         _topValue = _value;
-                        // note that we use getSustain, not _topValue, so that R defines a slope, rather than a duration.
-                        increment = getSustain() / static_cast<T>(getReleaseTime());
+                        increment = _topValue / static_cast<T>(getReleaseTime());
                         counter = 0;
                     }
                     return true;
@@ -273,7 +271,6 @@ namespace imajuscule {
                   ,static_cast<T>(counter) / static_cast<T>(C));
           }
 
-          T getSustain() const { return 1.f; }
           int getReleaseTime() const { return C; }
         };
 
@@ -387,7 +384,6 @@ namespace imajuscule {
                 }
             }
 
-            T getSustain() const { return S; }
             int getReleaseTime() const { return R; }
 
         private:
@@ -556,7 +552,6 @@ namespace imajuscule {
                 }
             }
 
-            float getSustain() const { return static_cast<T>(1) + SMinusOne; }
             int getReleaseTime() const { return R; }
 
         private:
