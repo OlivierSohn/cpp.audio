@@ -180,7 +180,17 @@ namespace imajuscule {
                 ++counter;
                 switch(state) {
                     case EnvelopeState::KeyPressed:
-                        _value = stepPressed(counter);
+                    {
+                      auto maybeV = stepPressed(counter);
+                      if(maybeV) {
+                        _value = *maybeV;
+                      }
+                      else {
+                        onKeyReleased();
+                        step(); // recursion, and note that we won't infinite loop because
+                                // onKeyReleased() changes the state.
+                      }
+                    }
                         break;
                     case EnvelopeState::KeyReleased:
                         _value = _topValue - static_cast<T>(counter) * increment;
@@ -265,7 +275,7 @@ namespace imajuscule {
 
           void startPressed() {}
 
-          T stepPressed (int counter) const {
+          Optional<T> stepPressed (int counter) const {
                 return std::min
                   (static_cast<T>(1)
                   ,static_cast<T>(counter) / static_cast<T>(C));
@@ -283,24 +293,6 @@ namespace imajuscule {
             Holding,
             Decaying
         };
-
-        template<typename T>
-        using Optional =
-#if __has_include(<optional>)
-            std::optional<T>;
-#elif __has_include(<experimental/optional>)
-            std::experimental::optional<T>;
-#else
-#   error Must have an optional type, either from <optional> or if not supported from <experimental/optional>.
-#endif
-
-        // inspired from https://stackoverflow.com/questions/44217316/how-do-i-use-stdoptional-in-c
-        template<typename T>
-        T const& get_value(Optional<T>const &opt)
-        {
-            Assert(opt);
-            return *opt;
-        }
 
         inline Optional<AHD> rotateAHD(AHD s) {
             switch(s) {
@@ -369,7 +361,7 @@ namespace imajuscule {
                 onAHDStateChange();
             }
 
-            T stepPressed(int) {
+            Optional<T> stepPressed(int) {
                 if(ahdState) {
                     ++ahdCounter;
                     stepAHD();
@@ -453,10 +445,14 @@ namespace imajuscule {
                 }
             }
 
-        private:
             FPT from = static_cast<T>(0);
             FPT to = static_cast<T>(0);
             FPT inc = static_cast<T>(0);
+        };
+
+        enum class EnvelopeRelease {
+          WaitForKeyRelease,
+          ReleaseAfterDecay
         };
 
         /* The AHPropDerDSR envelope is like an AHDSR envelope, except that the decay phase is
@@ -477,7 +473,7 @@ namespace imajuscule {
                     sustaining                                    <- inner pressed state changes
 
          */
-        template <typename T>
+        template <typename T, EnvelopeRelease Rel>
         struct AHPropDerDSREnvelopeBase {
             using FPT = T;
             using Param = AHDSR_t;
@@ -514,13 +510,18 @@ namespace imajuscule {
                 onAHDStateChange();
             }
 
-            T stepPressed(int) {
+            Optional<T> stepPressed(int) {
                 if(ahdState) {
                     ++ahdCounter;
                     stepAHD();
                 }
                 if(!ahdState) {
-                    return static_cast<T>(1) + SMinusOne;
+                    if constexpr (Rel == EnvelopeRelease::WaitForKeyRelease) {
+                      return static_cast<T>(1) + SMinusOne;
+                    }
+                    else {
+                      return {};
+                    }
                 }
                 else {
                     T from, toMinusFrom;
@@ -615,8 +616,8 @@ namespace imajuscule {
             }
         };
 
-        template <typename T>
-        using AHPropDerDSREnvelope = EnvelopeCRT < AHPropDerDSREnvelopeBase <T> >;
+        template <typename T, EnvelopeRelease Rel>
+        using AHPropDerDSREnvelope = EnvelopeCRT < AHPropDerDSREnvelopeBase <T, Rel> >;
 
         template <typename T>
         using AHDSREnvelope = EnvelopeCRT < AHDSREnvelopeBase <T> >;

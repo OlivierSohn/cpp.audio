@@ -4,16 +4,6 @@
 #include <atomic>
 #include <complex>
 #include <map>
-
-#if __has_include(<optional>)
-#   include <optional>
-#elif __has_include(<experimental/optional>)
-#   include <experimental/optional>
-#else
-#   error Must have an optional type, either from <optional> or if not supported from <experimental/optional>.
-#endif
-
-#include <experimental/optional>
 #include <queue>
 #include <set>
 #include <thread>
