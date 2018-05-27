@@ -316,6 +316,8 @@
 		09DC9A0B208F4CDC0057F6EE /* gen.sine.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = gen.sine.h; path = include/gen.sine.h; sourceTree = "<group>"; };
 		09F16A7B20B7130000555324 /* audio_context.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = audio_context.h; path = include/audio_context.h; sourceTree = "<group>"; };
 		09F16A8520B7168200555324 /* audio_context.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = audio_context.cpp; path = source/audio_context.cpp; sourceTree = "<group>"; };
+		09FC7DDF20BAAA780037B04C /* public_c.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = public_c.h; path = include/public_c.h; sourceTree = "<group>"; };
+		09FC7DE920BAAA780037B04C /* ahdsr.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = ahdsr.h; path = include/ahdsr.h; sourceTree = "<group>"; };
 		09FD59EB1E7F266D0052B2FD /* loudness_filter.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = loudness_filter.h; path = include/loudness_filter.h; sourceTree = "<group>"; };
 		09FF3F231E36EBBB00C81351 /* libaudio.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = libaudio.a; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
@@ -497,6 +499,7 @@
 		099E06E31E36EC850012348E /* include */ = {
 			isa = PBXGroup;
 			children = (
+				09FC7DE920BAAA780037B04C /* ahdsr.h */,
 				09F16A7B20B7130000555324 /* audio_context.h */,
 				094BFE3420B80D32001F1D81 /* audio_platform_au.h */,
 				094BFE3F20B80DF7001F1D81 /* audio_platform_pa.h */,
@@ -531,6 +534,7 @@
 				099E06E81E36EC920012348E /* parse.music.h */,
 				091E76EB1E46C08F009CFBA5 /* pernamespace.implparams.h */,
 				09529DFC1E439EC000705B99 /* program.h */,
+				09FC7DDF20BAAA780037B04C /* public_c.h */,
 				099E06E91E36EC920012348E /* public.h */,
 				09C02B121E9A64F700E570F5 /* read.wav.h */,
 				099E06EA1E36EC920012348E /* request.h */,
