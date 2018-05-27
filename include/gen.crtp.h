@@ -134,7 +134,8 @@ namespace imajuscule {
         typename EventIterator,
         typename NoteOnEvent,
         typename NoteOffEvent,
-        typename Base
+        typename Base,
+        int n_max_voices = 8
 
         >
         struct ImplCRTP : public Base {
@@ -150,12 +151,13 @@ namespace imajuscule {
 
             using Event = typename EventIterator::object;
 
-            static constexpr auto n_max_voices = 8;
             static constexpr auto n_channels_per_note = 1;
 
             // notes played in rapid succession can have a common audio interval during xfades
             // even if their noteOn / noteOff intervals are disjoint.
-            // n_max_simultaneous_notes_per_voice controls the possibility to support that 'well':
+            // n_max_simultaneous_notes_per_voice controls the possibility to support that 'well'.
+            // TODO if the release time is long, and notes are consecutive and short, this number
+            // should be increased.
             static constexpr auto n_max_simultaneous_notes_per_voice = 2;
             static constexpr auto n_channels = n_channels_per_note * n_max_voices * n_max_simultaneous_notes_per_voice;
 

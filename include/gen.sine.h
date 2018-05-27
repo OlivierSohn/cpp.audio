@@ -43,7 +43,15 @@ namespace imajuscule {
             typename NoteOnEvent,
             typename NoteOffEvent
             >
-            using Synth = ImplCRTP <nOuts, xfade_policy_, MNC, close_channel_on_note_off, EventIterator, NoteOnEvent, NoteOffEvent, SynthImpl>;
+            using Synth = ImplCRTP <nOuts,
+              xfade_policy_,
+              MNC,
+              close_channel_on_note_off,
+              EventIterator,
+              NoteOnEvent,
+              NoteOffEvent,
+              SynthImpl,
+              32>;
         }
     }
 } // namespaces
