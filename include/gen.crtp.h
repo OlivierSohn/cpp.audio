@@ -236,7 +236,7 @@ namespace imajuscule {
                     return onDroppedNote(e.noteOn.pitch);
                 }
                 else if(e.type == Event::kNoteOffEvent) {
-                    return noteOff(e.noteOff.pitch, chans);
+                    return noteOff(e.noteOff.pitch);
                 }
                 return onEventResult::UNHANDLED;
             }
@@ -277,8 +277,7 @@ namespace imajuscule {
                 return onEventResult::OK;
             }
 
-            template<typename OutputData>
-            onEventResult noteOff(uint8_t pitch, OutputData & out) {
+            onEventResult noteOff(uint8_t pitch) {
                 if(!handle_note_off) {
                     MIDI_LG(INFO, "off (ignored) %d", pitch);
                     // the initial implementation was using CloseMode::WHEN_DONE_PLAYING for that case
