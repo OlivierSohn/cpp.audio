@@ -2,7 +2,25 @@
 
 namespace imajuscule {
     namespace audio {
-        AudioLockPolicyImpl<AudioOutPolicy::Master> & masterAudioLock();
+
+        template <AudioOutPolicy>
+        struct GlobalAudioLock;
+
+        template <>
+        struct GlobalAudioLock<AudioOutPolicy::Slave> {
+            static auto & get() {
+                static AudioLockPolicyImpl<AudioOutPolicy::Slave> l;
+                return l;
+            }
+        };
+
+        template <>
+        struct GlobalAudioLock<AudioOutPolicy::Master> {
+            static auto & get() {
+                static AudioLockPolicyImpl<AudioOutPolicy::Master> l;
+                return l;
+            }
+        };
 
         void setPortaudioEnvVars();
 

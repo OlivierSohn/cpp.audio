@@ -19,9 +19,12 @@ namespace imajuscule {
         using Locking = LockIf<LockPolicy::useLock>;
 
         using OrchestratorFunc = std::function<bool(Channels &, int)>;
+        Channels() : _lock(GlobalAudioLock<Policy>::get()) {
+            Assert(0 && "The other constructor should be used");
+        }
 
         Channels(AudioLockPolicyImpl<policy> & l
-                , int nChannelsMax = std::numeric_limits<uint8_t>::max()
+                , int nChannelsMax
                 , int nOrchestratorsMaxPerChannel=0):
         _lock(l)
         {

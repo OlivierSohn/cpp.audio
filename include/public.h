@@ -50,6 +50,7 @@ inline bool operator < (AHDSR_t const& l, AHDSR_t const& r)
 #include "channel.h"
 #include "read.wav.h"
 #include "out.h"
+#include "audio_context.h"
 #include "channels.h"
 #include "channels_aggregate.h"
 #include "note.h"
@@ -68,4 +69,3 @@ inline bool operator < (AHDSR_t const& l, AHDSR_t const& r)
 #include "gen.vasine.h"
 #include "gen.voice.h"
 #include "events.impl.h"
-#include "audio_context.h"

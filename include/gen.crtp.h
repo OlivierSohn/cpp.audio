@@ -318,8 +318,6 @@ namespace imajuscule {
             std::array<MonoNoteChannel, n_channels> channels;
         };
 
-        AudioLockPolicyImpl<AudioOutPolicy::Slave> & fakeAudioLock();
-
         template<typename T>
         struct Wrapper {
             static constexpr auto n_channels = T::n_channels;
@@ -333,7 +331,11 @@ namespace imajuscule {
               >;
 
             Wrapper(int nOrchestratorsMax) :
-            out{fakeAudioLock(), n_channels, nOrchestratorsMax}
+            out{
+                GlobalAudioLock<AudioOutPolicy::Slave>::get(),
+                n_channels,
+                nOrchestratorsMax
+            }
             {
                 dontUseConvolutionReverbs(out);
                 plugin.template initialize(out.getChannels());

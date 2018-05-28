@@ -19,11 +19,6 @@ namespace imajuscule {
           #endif
         }
 
-        AudioLockPolicyImpl<AudioOutPolicy::Slave> & fakeAudioLock() {
-            static AudioLockPolicyImpl<AudioOutPolicy::Slave> l;
-            return l;
-        }
-
         // no need to synchronize access to this : it's 4 bytes-aligned,
         // and only one thread writes it (the audio thread), except for initialization time.
         int32_t n_audio_cb_frames = initial_n_audio_cb_frames;

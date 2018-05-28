@@ -312,161 +312,21 @@ namespace imajuscule {
           WaitForKeyRelease,
           ReleaseAfterDecay
         };
-
-        /* The AHDSR envelope is like an ADSR envelope, except we allow to hold the value after the attack:
-
-           | a |h| d |           |r|
-               ___                                      < 1
-              .    .
-             .       _____________                      < s
-            .                     .
-         ___                       ___________________  < 0
-           ^                     ^ ^             ^
-           |                     | envelopeDone1 envelopeDone2    <- state changes
-           keyPressed            keyReleased                      <- state changes
-           attacking                                              <- inner pressed state changes
-               holding                                            <- inner pressed state changes
-                 decaying                                         <- inner pressed state changes
-                    sustaining                                    <- inner pressed state changes
-
-         */
-        template <typename T, EnvelopeRelease Rel>
-        struct AHDSREnvelopeBase {
-            using FPT = T;
-            using Param = AHDSR_t;
-
-            void setEnvelopeCharacTime(int len) {
-                // we just ignore this, but it shows that the design is not optimal:
-                //   we should unify 'setEnvelopeCharacTime' with 'setAHDSR'
-                //Assert(0 && "ADSR enveloppes cannot be set using setEnvelopeCharacTime");
-            }
-
-            // fast moog attacks are 1ms according to
-            // cf. https://www.muffwiggler.com/forum/viewtopic.php?t=65964&sid=0f628fc3793b76de64c7bceabfbd80ff
-            // so we set the max normalized enveloppe velocity to 1ms (i.e the time to go from 0 to 1)
-            static constexpr auto normalizedMinDt = SAMPLE_RATE/1000;
-            static_assert(normalizedMinDt > 0);
-
-            void setAHDSR(AHDSR_t const & s) {
-                int _A = s.attack;
-                int _H = s.hold;
-                int _D = s.decay;
-                FPT _S = s.sustain;
-                int _R = s.release;
-                S = clamp (_S, static_cast<T>(0), static_cast<T>(1));
-                A = std::max( _A, normalizedMinDt );
-                H = std::max( _H, 0 );
-                D = std::max( _D, static_cast<int>(static_cast<T>(normalizedMinDt) * (static_cast<T>(1)-S)));
-                R = std::max( _R, static_cast<int>(static_cast<T>(normalizedMinDt) * S));
-            }
-
-        protected:
-            void startPressed() {
-                ahdState = AHD::Attacking;
-                onAHDStateChange();
-            }
-
-            Optional<T> stepPressed(int) {
-                if(ahdState) {
-                    ++ahdCounter;
-                    stepAHD();
-                }
-                if(!ahdState) {
-                    if constexpr (Rel == EnvelopeRelease::WaitForKeyRelease) {
-                      return S;
-                    }
-                    else {
-                      return {};
-                    }
-                }
-                else {
-                    return clamp(from + static_cast<T>(ahdCounter) * inc
-                                   , std::min(from,to)
-                                   , std::max(from,to));
-                }
-            }
-
-            int getReleaseTime() const { return R; }
-
-        private:
-            int ahdCounter = 0;
-            int A = normalizedMinDt;
-            int H = 0;
-            int D = normalizedMinDt;
-            int R = normalizedMinDt;
-            T S = static_cast<T>(0.5);
-
-            // this inner state is taken into account only while the outer state is KeyPressed:
-            Optional<AHD> ahdState;
-
-            void onAHDStateChange() {
-                ahdCounter = 0;
-                if(!ahdState) {
-                    return;
-                }
-                switch(get_value(ahdState)) {
-                    case AHD::Attacking:
-                        from = static_cast<T>(0);
-                        to = static_cast<T>(1);
-                        break;
-                    case AHD::Holding:
-                        from = static_cast<T>(1);
-                        to = static_cast<T>(1);
-                        break;
-                    case AHD::Decaying:
-                        from = static_cast<T>(1);
-                        to = S;
-                        break;
-                    default:
-                        Assert(0);
-                        break;
-                }
-                auto M = getMaxCounterForAHD();
-                if(M==0) {
-                    stepAHD();
-                }
-                else {
-                    inc = (to-from) / static_cast<T>(M);
-                }
-            }
-
-            void stepAHD() {
-                Assert(ahdState);
-                auto maxCounter = getMaxCounterForAHD();
-                Assert(ahdCounter >= 0);
-                if (ahdCounter < maxCounter) {
-                    return;
-                }
-                ahdState = rotateAHD(get_value(ahdState));
-                onAHDStateChange();
-            }
-
-            int getMaxCounterForAHD() const {
-                switch(get_value(ahdState)) {
-                    case AHD::Attacking:
-                        return A;
-                    case AHD::Holding:
-                        return H;
-                    case AHD::Decaying:
-                        return D;
-                    default:
-                        Assert(0);
-                        return 0;
-                }
-            }
-
-            FPT from = static_cast<T>(0);
-            FPT to = static_cast<T>(0);
-            FPT inc = static_cast<T>(0);
+        
+        enum class DecayInterpolation {
+            DecayProportionalDerivative,
+            DecayLinear
         };
 
-        /* The AHPropDerDSR envelope is like an AHDSR envelope, except that the decay phase is
-        using the 'proportional_value_derivative' interpolation to reach the sustain value.
+        /* The AHDSR envelope is like an ADSR envelope, except we allow to hold the value after the attack:
+         
+         The decay phase can use a 'linear' or 'proportional_value_derivative' interpolation
+         to reach the sustain value.
 
            | a |h| d |           |r|
                ___                                      < 1
               .   .
-             .       _____________                      < s
+             .      ._____________                      < s
             .                     .
          ___                       ___________________  < 0
            ^                     ^ ^             ^
@@ -478,8 +338,8 @@ namespace imajuscule {
                     sustaining                                    <- inner pressed state changes
 
          */
-        template <typename T, EnvelopeRelease Rel>
-        struct AHPropDerDSREnvelopeBase {
+        template <typename T, DecayInterpolation DecayItp, EnvelopeRelease Rel>
+        struct AHDSREnvelopeBase {
             using FPT = T;
             using Param = AHDSR_t;
 
@@ -517,8 +377,8 @@ namespace imajuscule {
 
             Optional<T> stepPressed(int) {
                 if(ahdState) {
-                    ++ahdCounter;
                     stepAHD();
+                    ++ahdCounter;
                 }
                 if(!ahdState) {
                     if constexpr (Rel == EnvelopeRelease::WaitForKeyRelease) {
@@ -613,7 +473,12 @@ namespace imajuscule {
                     case AHD::Holding:
                         return itp::LINEAR;
                     case AHD::Decaying:
-                        return itp::PROPORTIONAL_VALUE_DERIVATIVE;
+                        if constexpr (DecayItp == DecayInterpolation::DecayLinear) {
+                            return itp::LINEAR;
+                        }
+                        else {
+                            return itp::PROPORTIONAL_VALUE_DERIVATIVE;
+                        }
                     default:
                         Assert(0);
                         return itp::LINEAR;
@@ -622,10 +487,14 @@ namespace imajuscule {
         };
 
         template <typename T, EnvelopeRelease Rel>
-        using AHPropDerDSREnvelope = EnvelopeCRT < AHPropDerDSREnvelopeBase <T, Rel> >;
+        using AHPropDerDSREnvelope = EnvelopeCRT < AHDSREnvelopeBase <T,
+            DecayInterpolation::DecayProportionalDerivative,
+            Rel> >;
 
         template <typename T, EnvelopeRelease Rel>
-        using AHDSREnvelope = EnvelopeCRT < AHDSREnvelopeBase <T, Rel> >;
+        using AHDSREnvelope = EnvelopeCRT < AHDSREnvelopeBase <T,
+            DecayInterpolation::DecayLinear,
+            Rel> >;
 
         template <typename ALGO>
         using SimplyEnveloped = Envelopped<ALGO,SimpleEnvelope<typename ALGO::FPT>>;
