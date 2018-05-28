@@ -210,7 +210,7 @@ namespace imajuscule {
         void step(SAMPLE * outputBuffer, int nFrames, unsigned int audio_element_consummed);
 
         bool addRequest(Request r) {
-            if(XF == XfadePolicy::UseXfade) {
+            if constexpr (XF == XfadePolicy::UseXfade) {
                 if(r.duration_in_frames < 2*get_size_xfade()) {
                     return false;
                 }
@@ -258,7 +258,7 @@ namespace imajuscule {
 
         bool consume(int n_writes_remaining) {
             Assert(remaining_samples_count == 0);
-            if(XF==XfadePolicy::SkipXfade) {
+            if constexpr (XF==XfadePolicy::SkipXfade) {
                 if(requests.empty()) {
                     return false;
                 }
@@ -766,7 +766,7 @@ namespace imajuscule {
         {
             while(remaining_samples_count < n_max_writes)
             {
-                if(XF==XfadePolicy::UseXfade)
+                if constexpr (XF==XfadePolicy::UseXfade)
                 {
                     auto xfade_remaining = crossfading_from_zero_remaining();
                     if(xfade_remaining > 0) {
@@ -780,7 +780,7 @@ namespace imajuscule {
                 Assert(remaining_samples_count >= 0);
                 {
                     auto remaining_normal = remaining_samples_count;
-                    if(XF==XfadePolicy::UseXfade) {
+                    if constexpr (XF==XfadePolicy::UseXfade) {
                         remaining_normal -= size_half_xfade + 1;
                     }
                     else {
@@ -798,7 +798,7 @@ namespace imajuscule {
                 }
                 Assert(remaining_samples_count >= 0);
                 Assert(n_max_writes > 0);
-                if(XF==XfadePolicy::UseXfade) {
+                if constexpr (XF==XfadePolicy::UseXfade) {
                     Assert(remaining_samples_count <= size_half_xfade + 1);
                     if(!handleToZero(outputBuffer, n_max_writes)) {
                         return;
@@ -812,7 +812,7 @@ namespace imajuscule {
                 }
             }
 
-            if(XF==XfadePolicy::UseXfade)
+            if constexpr (XF==XfadePolicy::UseXfade)
             {
                 auto xfade_remaining = crossfading_from_zero_remaining();
                 if(xfade_remaining > 0) {
@@ -832,7 +832,7 @@ namespace imajuscule {
             }
             {
                 auto remaining_normal = remaining_samples_count;
-                if(XF==XfadePolicy::UseXfade) {
+                if constexpr (XF==XfadePolicy::UseXfade) {
                     remaining_normal -= size_half_xfade + 1;
                 }
                 else {
@@ -855,7 +855,7 @@ namespace imajuscule {
                     }
                 }
             }
-            if(XF==XfadePolicy::UseXfade) {
+            if constexpr (XF==XfadePolicy::UseXfade) {
                 Assert(remaining_samples_count >= 0);
                 if(remaining_samples_count <= size_half_xfade + 1) {
                     if(!handleToZero(outputBuffer, n_max_writes)) {

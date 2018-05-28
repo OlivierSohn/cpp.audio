@@ -48,6 +48,7 @@ namespace imajuscule {
         struct AudioOutContext : public Context<AUP, F, T> {
             static constexpr auto nAudioOut = T::nOuts;
             using Chans=T;
+            using Locking = typename Chans::Locking;
             using Request = typename Chans::Request;
             using Volumes = typename Chans::ChannelsT::Volumes;
             using Base = Context<AUP, F, T>;

@@ -1,46 +1,52 @@
 
 namespace imajuscule {
   namespace audio {
-    
-    template<typename Chans1, typename Chans2>
-    struct ChannelsAggregate {
-      static constexpr auto nAudioOut = Chans1::nAudioOut;
-      static_assert(Chans1::nAudioOut == Chans2::nAudioOut);
 
-      static constexpr auto Policy = Chans1::Policy;
-      static_assert( Chans1::Policy == Chans2::Policy);
+    template<int nOuts, AudioOutPolicy P>
+    struct ChannelsVecAggregate {
+      static constexpr auto nAudioOut = nOuts;
+      static constexpr auto Policy = P;
+
+      using XFadeChans = Channels<nAudioOut, XfadePolicy::UseXfade, Policy>;
+      using NoXFadeChans = Channels<nAudioOut, XfadePolicy::SkipXfade, Policy>;
 
       using Request = Request<nAudioOut>;
       using Volumes = Volumes<nAudioOut>;
 
-      template<typename ...Args>
-      ChannelsAggregate(AudioLockPolicyImpl<Policy>&l, Args ... args):
-        c1(l, args...)
-      , c2(l, args...)
-      {}
-
-      auto & getChannels1() { return c1; }
-      auto & getChannels2() { return c2; }
+      auto & getChannelsXFade() { return cX; }
+      auto & getChannelsNoXFade() { return cNoX; }
 
       template <typename F>
       void forEach(F f) {
-        c1.forEach(f);
-        c2.forEach(f);
+        for(auto & c : cX) {
+          c->forEach(f);
+        }
+        for(auto & c : cNoX) {
+          c->forEach(f);
+        }
       }
 
       void run_computes(bool tictac) {
-        c1.run_computes(tictac);
-        c2.run_computes(tictac);
+        for(auto & c : cX) {
+          c->run_computes(tictac);
+        }
+        for(auto & c : cNoX) {
+          c->run_computes(tictac);
+        }
       }
 
       void closeAllChannels(int xfade) {
-        c1.closeAllChannels(xfade);
-        c2.closeAllChannels(xfade);
+        for(auto & c : cX) {
+          c->closeAllChannels(xfade);
+        }
+        for(auto & c : cNoX) {
+          c->closeAllChannels(xfade);
+        }
       }
 
     private:
-      Chans1 c1;
-      Chans2 c2;
+      std::vector<std::unique_ptr<XFadeChans>> cX;
+      std::vector<std::unique_ptr<NoXFadeChans>> cNoX;
     };
 
   }
