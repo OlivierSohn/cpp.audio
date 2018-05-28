@@ -1868,9 +1868,10 @@ namespace imajuscule {
                         // However the issue is not major, as the 2 lambdas have a chance to be removed
                         // the next time
                         if constexpr (U::hasEnvelope) {
-                            ae.forgetPastSignals(); // temporary, to fix soundengine, where the channel xfade is used instead of the enveloppe xfade:
-                                                // this resets the eveloppe state to Done2, and then lets the audioelement be reused
-                                                // in subsequent markov move.
+                            // Temporary, to fix soundengine, where the channel xfade is used instead of the enveloppe xfade:
+                            // this resets the eveloppe state to Done2, and then lets the audioelement be reused
+                            // in subsequent markov move.
+                            ae.forgetPastSignals();
                         }
                         return false;
                     }
