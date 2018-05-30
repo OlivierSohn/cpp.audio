@@ -162,13 +162,21 @@ namespace imajuscule {
           ALGO algo;
         };
 
+        enum class EnvelopeRelease {
+          WaitForKeyRelease,
+          ReleaseAfterDecay
+        };
+
         template <typename Base>
         struct EnvelopeCRT : public Base {
             using FPT = typename Base::FPT;
             using T = FPT;
+            static constexpr EnvelopeRelease Release = Base::Release;
+
             using Base::startPressed;
             using Base::stepPressed;
             using Base::getReleaseTime;
+            using Base::isAfterAttackBeforeSustain;
 
             void forgetPastSignals() {
                 state = EnvelopeState::EnvelopeDone2;
@@ -246,6 +254,10 @@ namespace imajuscule {
                 return state;
             }
 
+            bool afterAttackBeforeSustain() const {
+              return isAfterAttackBeforeSustain(counter);
+            }
+
         private:
             // between 0 and 1.
             FPT _value = static_cast<T>(0);
@@ -261,6 +273,7 @@ namespace imajuscule {
         struct SimpleEnvelopeBase {
           using FPT = T;
           using Param = int;
+          static constexpr auto Release = EnvelopeRelease::WaitForKeyRelease;
 
           static constexpr auto normalizedMinDt = 100;
 
@@ -282,6 +295,10 @@ namespace imajuscule {
           }
 
           int getReleaseTime() const { return C; }
+
+          bool isAfterAttackBeforeSustain(int counter) const {
+            return counter >= 0 && counter < C;
+          }
         };
 
         template <typename T>
@@ -308,18 +325,13 @@ namespace imajuscule {
             }
         }
 
-        enum class EnvelopeRelease {
-          WaitForKeyRelease,
-          ReleaseAfterDecay
-        };
-        
         enum class DecayInterpolation {
             DecayProportionalDerivative,
             DecayLinear
         };
 
         /* The AHDSR envelope is like an ADSR envelope, except we allow to hold the value after the attack:
-         
+
          The decay phase can use a 'linear' or 'proportional_value_derivative' interpolation
          to reach the sustain value.
 
@@ -342,6 +354,7 @@ namespace imajuscule {
         struct AHDSREnvelopeBase {
             using FPT = T;
             using Param = AHDSR_t;
+            static constexpr auto Release = Rel;
 
             void setEnvelopeCharacTime(int len) {
                 // we just ignore this, but it shows that the design is not optimal:
@@ -359,9 +372,8 @@ namespace imajuscule {
                 int _A = s.attack;
                 int _H = s.hold;
                 int _D = s.decay;
-                FPT _S = s.sustain;
                 int _R = s.release;
-                auto S = clamp (_S, static_cast<T>(0), static_cast<T>(1));
+                auto S = clamp (s.sustain, static_cast<T>(0), static_cast<T>(1));
                 SMinusOne = S - static_cast<T>(1);
                 A = std::max( _A, normalizedMinDt );
                 H = std::max( _H, 0 );
@@ -419,6 +431,10 @@ namespace imajuscule {
             }
 
             int getReleaseTime() const { return R; }
+
+            bool isAfterAttackBeforeSustain(int) const {
+              return static_cast<bool>(ahdState);
+            }
 
         private:
             int ahdCounter = 0;
@@ -486,15 +502,8 @@ namespace imajuscule {
             }
         };
 
-        template <typename T, EnvelopeRelease Rel>
-        using AHPropDerDSREnvelope = EnvelopeCRT < AHDSREnvelopeBase <T,
-            DecayInterpolation::DecayProportionalDerivative,
-            Rel> >;
-
-        template <typename T, EnvelopeRelease Rel>
-        using AHDSREnvelope = EnvelopeCRT < AHDSREnvelopeBase <T,
-            DecayInterpolation::DecayLinear,
-            Rel> >;
+        template <typename T, DecayInterpolation DecayItp, EnvelopeRelease Rel>
+        using AHDSREnvelope = EnvelopeCRT < AHDSREnvelopeBase <T, DecayItp, Rel> >;
 
         template <typename ALGO>
         using SimplyEnveloped = Envelopped<ALGO,SimpleEnvelope<typename ALGO::FPT>>;
