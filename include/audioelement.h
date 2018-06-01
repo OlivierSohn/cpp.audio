@@ -325,15 +325,9 @@ namespace imajuscule {
             }
         }
 
-        enum class DecayInterpolation {
-            DecayProportionalDerivative,
-            DecayLinear
-        };
-
         /* The AHDSR envelope is like an ADSR envelope, except we allow to hold the value after the attack:
 
-         The decay phase can use a 'linear' or 'proportional_value_derivative' interpolation
-         to reach the sustain value.
+         Attack, decay and release interpolations are specified via template parameters.
 
            | a |h| d |           |r|
                ___                                      < 1
@@ -350,7 +344,7 @@ namespace imajuscule {
                     sustaining                                    <- inner pressed state changes
 
          */
-        template <typename T, DecayInterpolation DecayItp, EnvelopeRelease Rel>
+        template <typename T, itp::interpolation DecayItp, EnvelopeRelease Rel>
         struct AHDSREnvelopeBase {
             using FPT = T;
             using Param = AHDSR_t;
@@ -489,12 +483,7 @@ namespace imajuscule {
                     case AHD::Holding:
                         return itp::LINEAR;
                     case AHD::Decaying:
-                        if constexpr (DecayItp == DecayInterpolation::DecayLinear) {
-                            return itp::LINEAR;
-                        }
-                        else {
-                            return itp::PROPORTIONAL_VALUE_DERIVATIVE;
-                        }
+                        return DecayItp;
                     default:
                         Assert(0);
                         return itp::LINEAR;
@@ -502,7 +491,7 @@ namespace imajuscule {
             }
         };
 
-        template <typename T, DecayInterpolation DecayItp, EnvelopeRelease Rel>
+        template <typename T, itp::interpolation DecayItp, EnvelopeRelease Rel>
         using AHDSREnvelope = EnvelopeCRT < AHDSREnvelopeBase <T, DecayItp, Rel> >;
 
         template <typename ALGO>
