@@ -273,8 +273,13 @@ namespace imajuscule {
             unsigned int counter = 0;
         };
 
-        template <typename T>
+        template <typename T, itp::interpolation AttackItp, itp::interpolation ReleaseItp>
         struct SimpleEnvelopeBase {
+          static_assert(itp::isValid(AttackItp));
+          static_assert(itp::isValid(ReleaseItp));
+          static_assert(AttackItp != itp::PROPORTIONAL_VALUE_DERIVATIVE);
+          static_assert(ReleaseItp != itp::PROPORTIONAL_VALUE_DERIVATIVE);
+
           using FPT = T;
           using Param = int;
           static constexpr auto Release = EnvelopeRelease::WaitForKeyRelease;
@@ -293,22 +298,29 @@ namespace imajuscule {
           void startPressed() {}
 
           Optional<T> stepPressed (int counter) const {
-                return std::min
+              return std::min
                   (static_cast<T>(1)
-                  ,static_cast<T>(counter) / static_cast<T>(C));
+                   ,itp::interpolate( AttackItp
+                                    , static_cast<T>(counter)
+                                    , static_cast<T>(0)
+                                    , static_cast<T>(1)
+                                    , C));
           }
 
           int getReleaseTime() const { return C; }
 
-          static constexpr itp::interpolation getReleaseItp() { return itp::LINEAR; }
+          static constexpr itp::interpolation getReleaseItp() { return ReleaseItp; }
 
           bool isAfterAttackBeforeSustain(int counter) const {
             return counter >= 0 && counter < C;
           }
         };
 
+        template <typename T, itp::interpolation AttackItp, itp::interpolation ReleaseItp>
+        using SimpleEnvelope = EnvelopeCRT < SimpleEnvelopeBase <T, AttackItp, ReleaseItp> >;
+
         template <typename T>
-        using SimpleEnvelope = EnvelopeCRT < SimpleEnvelopeBase <T> >;
+        using SimpleLinearEnvelope = SimpleEnvelope < T, itp::LINEAR, itp::LINEAR >;
 
         /* This inner state describes states when the outer state is 'KeyPressed'. */
         enum class AHD {
@@ -330,10 +342,28 @@ namespace imajuscule {
                     return {};
             }
         }
+        
+        struct AHDSR {
+            int attack;
+            itp::interpolation attackItp;
+            int hold;
+            int decay;
+            itp::interpolation decayItp;
+            int release;
+            itp::interpolation releaseItp;
+            float sustain;
+        };
+
+        inline bool operator < (AHDSR const& l, AHDSR const& r)
+        {
+            return
+            std::make_tuple(l.attack,l.attackItp,l.hold,l.decay,l.decayItp,l.release,l.releaseItp,l.sustain) <
+            std::make_tuple(r.attack,r.attackItp,r.hold,r.decay,r.decayItp,r.release,r.releaseItp,r.sustain);
+        }
 
         /* The AHDSR envelope is like an ADSR envelope, except we allow to hold the value after the attack:
 
-         Attack, decay and release interpolations are specified via template parameters.
+         Attack, decay and release interpolations are specified via parameters.
 
            | a |h| d |           |r|
                ___                                      < 1
@@ -350,10 +380,10 @@ namespace imajuscule {
                     sustaining                                    <- inner pressed state changes
 
          */
-        template <typename T, itp::interpolation DecayItp, EnvelopeRelease Rel>
+        template <typename T, EnvelopeRelease Rel>
         struct AHDSREnvelopeBase {
             using FPT = T;
-            using Param = AHDSR_t;
+            using Param = AHDSR;
             static constexpr auto Release = Rel;
 
             void setEnvelopeCharacTime(int len) {
@@ -368,7 +398,7 @@ namespace imajuscule {
             static constexpr auto normalizedMinDt = SAMPLE_RATE/1000;
             static_assert(normalizedMinDt > 0);
 
-            void setAHDSR(AHDSR_t const & s) {
+            void setAHDSR(AHDSR const & s) {
                 int _A = s.attack;
                 int _H = s.hold;
                 int _D = s.decay;
@@ -379,6 +409,9 @@ namespace imajuscule {
                 H = std::max( _H, 0 );
                 D = std::max( _D, static_cast<int>(static_cast<T>(normalizedMinDt) * (static_cast<T>(1) - S)));
                 R = std::max( _R, static_cast<int>(static_cast<T>(normalizedMinDt) * S));
+                attackItp = s.attackItp;
+                decayItp = s.decayItp;
+                releaseItp = s.releaseItp;
             }
 
         protected:
@@ -432,7 +465,7 @@ namespace imajuscule {
 
             int getReleaseTime() const { return R; }
 
-            itp::interpolation getReleaseItp() const { return itp::LINEAR; }
+            itp::interpolation getReleaseItp() const { return releaseItp; }
 
             bool isAfterAttackBeforeSustain(int) const {
               return static_cast<bool>(ahdState);
@@ -444,6 +477,9 @@ namespace imajuscule {
             int H = 0;
             int D = normalizedMinDt;
             int R = normalizedMinDt;
+            itp::interpolation attackItp;
+            itp::interpolation decayItp;
+            itp::interpolation releaseItp;
             T SMinusOne = static_cast<T>(-0.5);
 
             // this inner state is taken into account only while the outer state is KeyPressed:
@@ -487,11 +523,11 @@ namespace imajuscule {
             itp::interpolation getInterpolation() const {
                 switch(get_value(ahdState)) {
                     case AHD::Attacking:
-                        return itp::LINEAR;
+                        return attackItp;
                     case AHD::Holding:
                         return itp::LINEAR;
                     case AHD::Decaying:
-                        return DecayItp;
+                        return decayItp;
                     default:
                         Assert(0);
                         return itp::LINEAR;
@@ -499,11 +535,11 @@ namespace imajuscule {
             }
         };
 
-        template <typename T, itp::interpolation DecayItp, EnvelopeRelease Rel>
-        using AHDSREnvelope = EnvelopeCRT < AHDSREnvelopeBase <T, DecayItp, Rel> >;
+        template <typename T, EnvelopeRelease Rel>
+        using AHDSREnvelope = EnvelopeCRT < AHDSREnvelopeBase <T, Rel> >;
 
         template <typename ALGO>
-        using SimplyEnveloped = Envelopped<ALGO,SimpleEnvelope<typename ALGO::FPT>>;
+        using SimplyEnveloped = Envelopped<ALGO,SimpleLinearEnvelope<typename ALGO::FPT>>;
 
         template<typename ALGO>
         struct VolumeAdjusted {

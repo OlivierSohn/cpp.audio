@@ -3,13 +3,13 @@ namespace imajuscule {
 
     class Sounds {
         std::map< soundId, soundBuffer > sounds;
-        std::array<audioelement::Square<audioelement::SimpleEnvelope<float>>, 8> squares;
-        std::array<audioelement::Oscillator<audioelement::SimpleEnvelope<float>>, 8> oscillators;
-        std::array<audioelement::FreqRamp<audioelement::SimpleEnvelope<float>>, 6> ramps;
+        std::array<audioelement::Square<audioelement::SimpleLinearEnvelope<float>>, 8> squares;
+        std::array<audioelement::Oscillator<audioelement::SimpleLinearEnvelope<float>>, 8> oscillators;
+        std::array<audioelement::FreqRamp<audioelement::SimpleLinearEnvelope<float>>, 6> ramps;
 
         std::array<audioelement::RingModulation<
         audioelement::LowPassAlgo<audioelement::PulseTrainAlgo<float>, 1>,
-        audioelement::Envelopped<audioelement::OscillatorAlgo<float>,audioelement::SimpleEnvelope<float>>
+        audioelement::Envelopped<audioelement::OscillatorAlgo<float>,audioelement::SimpleLinearEnvelope<float>>
         >, 6> ringmods;
 
         std::array<audioelement::LowPass<audioelement::PulseTrainAlgo<float>, 1>, 6> lptrains;

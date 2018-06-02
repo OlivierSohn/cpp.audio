@@ -14,16 +14,6 @@
 #include "../../cpp.os.logs/include/public.h"
 #include "../../cpp.os.storage/include/public.h"
 
-extern "C" {
-#include "public_c.h"
-}
-inline bool operator < (AHDSR_t const& l, AHDSR_t const& r)
-{
-    return
-      std::make_tuple(l.attack,l.hold,l.decay,l.sustain,l.release) <
-      std::make_tuple(r.attack,r.hold,r.decay,r.sustain,r.release);
-}
-
 #include "audio_platforms.h"
 
 #include "sound.defines.h"
