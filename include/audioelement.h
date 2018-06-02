@@ -175,6 +175,7 @@ namespace imajuscule {
 
             using Base::startPressed;
             using Base::stepPressed;
+            using Base::getReleaseItp;
             using Base::getReleaseTime;
             using Base::isAfterAttackBeforeSustain;
 
@@ -201,8 +202,12 @@ namespace imajuscule {
                     }
                         break;
                     case EnvelopeState::KeyReleased:
-                        _value = _topValue - static_cast<T>(counter) * increment;
-                        if(_value <= static_cast<T>(0)) {
+                        _value = itp::interpolate(getReleaseItp()
+                                                  , static_cast<T>(counter)
+                                                  , _topValue
+                                                  , - _topValue
+                                                  , getReleaseTime());
+                        if(counter >= getReleaseTime()) {
                             state = EnvelopeState::EnvelopeDone1;
                             counter = 0;
                             _value = static_cast<T>(0);
@@ -242,7 +247,6 @@ namespace imajuscule {
                     else {
                         state = EnvelopeState::KeyReleased;
                         _topValue = _value;
-                        increment = _topValue / static_cast<T>(getReleaseTime());
                         counter = 0;
                     }
                     return true;
@@ -262,7 +266,7 @@ namespace imajuscule {
             // between 0 and 1.
             FPT _value = static_cast<T>(0);
             FPT _topValue = static_cast<T>(0); // the value when the key was released
-            FPT increment = 0; // the rate of change, except for release, where it is the opposite of rate of change.
+
             // 'state' will be set to 'KeyReleased' when the key is released.
             // reads / writes to this are atomic so we don't need to lock.
             EnvelopeState state = EnvelopeState::EnvelopeDone2;
@@ -295,6 +299,8 @@ namespace imajuscule {
           }
 
           int getReleaseTime() const { return C; }
+
+          static constexpr itp::interpolation getReleaseItp() { return itp::LINEAR; }
 
           bool isAfterAttackBeforeSustain(int counter) const {
             return counter >= 0 && counter < C;
@@ -425,6 +431,8 @@ namespace imajuscule {
             }
 
             int getReleaseTime() const { return R; }
+
+            itp::interpolation getReleaseItp() const { return itp::LINEAR; }
 
             bool isAfterAttackBeforeSustain(int) const {
               return static_cast<bool>(ahdState);
