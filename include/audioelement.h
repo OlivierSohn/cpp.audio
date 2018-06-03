@@ -275,8 +275,8 @@ namespace imajuscule {
 
         template <typename T, itp::interpolation AttackItp, itp::interpolation ReleaseItp>
         struct SimpleEnvelopeBase {
-          static_assert(itp::isValid(AttackItp));
-          static_assert(itp::isValid(ReleaseItp));
+          static_assert(itp::intIsReal(AttackItp));
+          static_assert(itp::intIsReal(ReleaseItp));
           static_assert(AttackItp != itp::PROPORTIONAL_VALUE_DERIVATIVE);
           static_assert(ReleaseItp != itp::PROPORTIONAL_VALUE_DERIVATIVE);
 
@@ -342,7 +342,7 @@ namespace imajuscule {
                     return {};
             }
         }
-        
+
         struct AHDSR {
             int attack;
             itp::interpolation attackItp;
