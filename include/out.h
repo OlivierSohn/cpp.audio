@@ -5,12 +5,12 @@ namespace imajuscule {
 
         class RAIILock {
         public:
-            RAIILock( std::atomic_bool & l ) : l(l) {
+            RAIILock( std::atomic_bool & l ) noexcept : l(l) {
                 while (l.exchange(true)) {
                     std::this_thread::yield();
                 }
             }
-            ~RAIILock() {
+            ~RAIILock() noexcept {
                 auto prev = l.exchange(false);
                 Assert(prev); // make sure l was true
             }
@@ -103,20 +103,48 @@ namespace imajuscule {
         Yes,No
     };
 
-    template<WithLock>
+    enum class ThreadType {
+        RealTime    // we are in a real-time thread, we don't need to raise the priority before locking
+      , NonRealTime // we are in a non-realtime thread, to avoid priority inversion,
+                    // we will raise the priority to realtime before locking and restore it after.
+    };
+
+    template<WithLock, ThreadType>
     struct LockIf_;
 
     struct NoOpLock {
-        NoOpLock(bool) {}
+        NoOpLock(bool) noexcept {}
+    };
+
+
+    template<ThreadType>
+    struct AudioLock;
+
+    template <>
+    struct AudioLock<ThreadType::NonRealTime> {
+      AudioLock( std::atomic_bool & l) noexcept : l(l) {}
+
+    private:
+      // first to be constructed, last to be destroyed
+      thread::ScopedPriorityChange s{SCHED_RR, thread::Priority::Max};
+      sensor::RAIILock l;
+      // last to be constructed, first to be destroyed
     };
 
     template <>
-    struct LockIf_<WithLock::Yes> { using type = sensor::RAIILock; };
-    template <>
-    struct LockIf_<WithLock::No> { using type = NoOpLock; };
+    struct AudioLock<ThreadType::RealTime> {
+      AudioLock( std::atomic_bool & l) noexcept : l(l) {}
+    private:
+      sensor::RAIILock l;
+    };
 
-    template<WithLock l>
-    using LockIf = typename LockIf_<l>::type;
+    template <ThreadType T>
+    struct LockIf_<WithLock::Yes, T> { using type = AudioLock<T>; };
+    template <ThreadType T>
+    struct LockIf_<WithLock::No, T> { using type = NoOpLock; };
+
+    template<WithLock l, ThreadType T>
+    using LockIf = typename LockIf_<l,T>::type;
 
     enum class ChannelClosingPolicy {
         AutoClose,  // once the request queue is empty (or more precisely
@@ -145,7 +173,8 @@ namespace imajuscule {
     template <>
     struct AudioLockPolicyImpl<AudioOutPolicy::Master> {
         static constexpr auto useLock = WithLock::Yes;
-        using Locking = LockIf<useLock>;
+        using LockFromRT = LockIf<useLock, ThreadType::RealTime>;
+        using LockFromNRT = LockIf<useLock, ThreadType::NonRealTime>;
 
         std::atomic_bool & lock() { return used; }
     private:
@@ -346,8 +375,8 @@ namespace imajuscule {
     template<typename T, int nAudioOut>
     struct AudioPostPolicyImpl<T, nAudioOut, AudioOutPolicy::Master> {
         static constexpr auto nOut = nAudioOut;
-
-        using Locking = LockIf<AudioLockPolicyImpl<AudioOutPolicy::Master>::useLock>;
+        using LockFromRT = LockIf<AudioLockPolicyImpl<AudioOutPolicy::Master>::useLock, ThreadType::RealTime>;
+        using LockFromNRT = LockIf<AudioLockPolicyImpl<AudioOutPolicy::Master>::useLock, ThreadType::NonRealTime>;
 
         //using ConvolutionReverb = FIRFilter<T>;
         //using ConvolutionReverb = FFTConvolution<FFT_T>;
@@ -411,7 +440,7 @@ namespace imajuscule {
 
         void dontUseConvolutionReverbs() {
             {
-                Locking l(_lock.lock());
+                LockFromNRT l(_lock.lock());
                 ready = false;
             }
             for(auto & r : conv_reverbs) {
@@ -442,7 +471,7 @@ namespace imajuscule {
                 // (due to cache effects for roots and possibly other) so we disable them now
                 // (when ready is false, the audio thread doesn't use reverbs)
                 // TODO rename ready !!
-                Locking l(_lock.lock());
+                LockFromNRT l(_lock.lock());
                 ready = false;
             }
 
@@ -667,7 +696,8 @@ namespace imajuscule {
         using ChannelsT = ChannelsType;
         using Request = typename ChannelsType::Request;
         using PostImpl = AudioPostPolicyImpl<T, nOuts, Policy>;
-        using Locking = LockIf<AudioLockPolicyImpl<Policy>::useLock>;
+        using LockFromRT = LockIf<AudioLockPolicyImpl<Policy>::useLock, ThreadType::RealTime>;
+        using LockFromNRT = LockIf<AudioLockPolicyImpl<Policy>::useLock, ThreadType::NonRealTime>;
 
     private:
         //////////////////////////
@@ -723,8 +753,10 @@ namespace imajuscule {
                 thread::logSchedParams();
             }*/
 
-            // todo: locking in the real time thread should be avoided
-            Locking l(_lock.lock());
+            // To avoid priority inversion, we make sure that other threads
+            // taking this lock have their priority raised to realtime before taking the lock.
+            LockFromRT l(_lock.lock());
+            // TODO locking in the realtime thread should be avoided.
 
             if(unlikely(!post.isReady())) {
                 // post is being initialized in another thread

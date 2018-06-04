@@ -16,7 +16,8 @@ namespace imajuscule {
         using LockPolicy = AudioLockPolicyImpl<policy>;
         static constexpr auto XFPolicy = XF;
 
-        using Locking = LockIf<LockPolicy::useLock>;
+        using LockFromRT = LockIf<LockPolicy::useLock, ThreadType::RealTime>;
+        using LockFromNRT = LockIf<LockPolicy::useLock, ThreadType::NonRealTime>;
 
         using OrchestratorFunc = std::function<bool(Channels &, int)>;
         Channels() : _lock(GlobalAudioLock<Policy>::get()) {
@@ -69,7 +70,7 @@ namespace imajuscule {
         }
 
         void toVolume(uint8_t channel_id, float volume, int nSteps) {
-            Locking l(_lock.lock());
+            LockFromNRT l(_lock.lock());
             editChannel(channel_id).toVolume(volume, nSteps);
         }
         void setVolume(uint8_t channel_id, float volume) {
@@ -85,7 +86,7 @@ namespace imajuscule {
             // it's important to register and enqueue in the same lock cycle
             // else we miss some audio frames,
             // or the callback gets unscheduled
-            Locking l(_lock.lock());
+            LockFromNRT l(_lock.lock());
 
             return playGenericNoLock(out, channel_id, std::forward<Args>(requests)...);
         }
@@ -111,12 +112,12 @@ namespace imajuscule {
         }
 
         void play( uint8_t channel_id, StackVector<Request> && v) {
-            Locking l(_lock.lock());
+            LockFromNRT l(_lock.lock());
             playNolock(channel_id, std::move(v));
         }
 
         void closeAllChannels(int xfade) {
-            Locking l(_lock.lock());
+            LockFromNRT l(_lock.lock());
             if(!xfade) {
                 channels.clear();
             }
@@ -147,7 +148,7 @@ namespace imajuscule {
                     else {
                         // take the lock in the loop so that at the end of each iteration
                         // the audio thread has a chance to run
-                        Locking l(_lock.lock());
+                        LockFromNRT l(_lock.lock());
                         if(channels[id].isPlaying()) {
                             id = AUDIO_CHANNEL_NONE;
                             continue;
@@ -204,7 +205,7 @@ namespace imajuscule {
 
         void closeChannel(uint8_t channel_id, CloseMode mode, int nStepsForXfadeToZeroMode = -1)
         {
-            Locking l(_lock.lock());
+            LockFromNRT l(_lock.lock());
             closeChannelNoLock(channel_id, mode, nStepsForXfadeToZeroMode);
         }
 

@@ -225,7 +225,7 @@ namespace imajuscule {
                     // this case is handled by the wrapper... else we need to do a noteOff
                     Assert(e.noteOn.velocity > 0.f );
                     {
-                        typename Out::Locking L(out.get_lock());
+                        typename Out::LockFromNRT L(out.get_lock());
 
                         if(auto c = editAudioElementContainer_if(channels
                                                                 , [](auto & c) { return c.elem.isEnvelopeFinished(); }))
