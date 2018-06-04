@@ -126,7 +126,7 @@ namespace imajuscule {
 
     private:
       // first to be constructed, last to be destroyed
-      thread::ScopedPriorityChange s{SCHED_RR, thread::Priority::Max};
+      thread::ScopedRTPriority s;
       sensor::RAIILock l;
       // last to be constructed, first to be destroyed
     };
