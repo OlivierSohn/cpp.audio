@@ -305,6 +305,7 @@ namespace imajuscule {
                 static constexpr auto max_length_ramp_ms = Base::max_length_ramp_ms;
                 static constexpr auto size_interleaved = Base::size_interleaved;
                 static constexpr auto size_interleaved_one_cache_line = Base::size_interleaved_one_cache_line;
+                static constexpr auto max_queue_size = MaxQueueSize::One;
 
                 using Base::adjusted;
                 using Base::adjustFreq;

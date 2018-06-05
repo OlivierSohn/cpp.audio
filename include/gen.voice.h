@@ -1217,6 +1217,9 @@ namespace imajuscule {
                 static constexpr auto n_frames_interleaved = size_interleaved / nAudioOut;
                 static_assert(n_frames_interleaved * nAudioOut == size_interleaved); // make sure we don't waste space
 
+                // the soundengine enques requests only when the channel queue is empty, so:
+                static constexpr auto max_queue_size = MaxQueueSize::One;
+
                 using Base::interleaved;
                 using Base::get_xfade_length;
 

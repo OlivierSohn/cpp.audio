@@ -572,6 +572,7 @@ namespace imajuscule {
                     new_ramp->algo.onKeyPressed();
 
                     auto v = MakeVolume::run<nAudioOut>(1.f, pan) * (new_spec->volume()/Request::chan_base_amplitude);
+                    // note that by design (see code of caller), the channel request queue is empty at this point
                     // no lock : the caller is responsible for taking the out lock
                     if(chans.playGenericNoLock(
                                              out, cid,
@@ -606,7 +607,7 @@ namespace imajuscule {
                 if(auto * prevRamp = get_ramps().keyPressed) {
                   prevRamp->algo.onKeyReleased();
                 }
-
+                // note that by design (see code of caller), the channel request queue is empty at this point
                 auto res = chans.playGenericNoLock(
                                                  out, cid,
                                                  std::make_pair(std::ref(silence),
