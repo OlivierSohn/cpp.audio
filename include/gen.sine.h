@@ -19,16 +19,17 @@ namespace imajuscule {
                     osc.algo.setAngleIncrements(freq_to_angle_increment(freq));
                     setPhase(phase, osc.algo);
 
-                    // the caller is responsible for taking the out lock if needed
+                    // The caller is responsible for:
+                    // - taking the out lock if needed
+                    // - growing the channel request queue if needed
                     auto res = chans.playGenericNoLock(
-                                    out, c.channel,
-                                    std::make_pair(std::ref(osc),
+                                    out, c.channel,osc,
                                                    Request{
                                                        &osc.buffer[0],
                                                        velocity,
                                                        // e.noteOn.length is always 0, we must rely on noteOff
                                                        std::numeric_limits<decltype(std::declval<Request>().duration_in_frames)>::max()
-                                                   }));
+                                                   });
                 }
               private:
                 float half_tone = compute_half_tone(1.f);

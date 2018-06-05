@@ -115,25 +115,11 @@ namespace imajuscule {
     };
     
     template<typename T, size_t N>
-    size_t countActiveAudioElements(std::array<T, N> & aes) {
-        return std::count_if(aes.begin(), aes.end(), [](T const & elt){ return elt.isActive(); });
-    }
-    template<typename T, size_t N>
     T * editInactiveAudioElement(std::array<T, N> & aes) {
         auto it = std::find_if(aes.begin(), aes.end(), [](T const & elt){ return elt.isInactive(); });
         return (it == aes.end()) ? nullptr : &*it;
     }
-    
 
-    template<typename T, typename F>
-    typename T::value_type * editAudioElementContainer_if(T & container, F f_get_audioelement) {
-        auto it = std::find_if(container.begin(),
-                               container.end(),
-                               [f_get_audioelement](auto & elt) {
-                                   return f_get_audioelement(elt);
-                               });
-        return (it == container.end()) ? nullptr : &*it;
-    }
     
     
     template<Sound::Type SOUND>

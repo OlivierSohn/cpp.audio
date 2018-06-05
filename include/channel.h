@@ -80,7 +80,7 @@ namespace imajuscule {
 
     template <typename T>
     struct Queue<T, MaxQueueSize::Infinite> {
-      using type = std::queue<T>;
+      using type = fifo<T>;
     };
 
     template <typename T, MaxQueueSize MQS>
@@ -150,12 +150,13 @@ namespace imajuscule {
         Volume chan_vol;
 
         queue_t<QueuedRequest, MQS> requests;
-
+      
     public:
-        Channel() : volume_transition_remaining(0), next(false), active(true) {
-            Assert(!isPlaying());
+        Channel() {
+          reset();
         }
 
+        auto & edit_requests() { return requests; }
         auto const & get_requests() const { return requests; }
         auto const & get_current() const { return current; }
 
@@ -183,11 +184,23 @@ namespace imajuscule {
         }
 
         void reset() {
-            *this = {}; // will mark buffers of used requests as "inactive"
+          volume_transition_remaining = 0;
+          next = false;
+          active = true;
+          
+          // will mark buffers of used requests as "inactive"
+          current = {};
+          previous = {};
+          requests.reset();
 
-            Assert(!isPlaying());
-            Assert(!shouldReset());
-            Assert(isActive());
+          chan_vol = {};
+          remaining_samples_count = 0;
+          current_next_sample_index = 0;
+          other_next_sample_index = 0;
+        
+          Assert(!isPlaying());
+          Assert(!shouldReset());
+          Assert(isActive());
         }
 
         void setVolume(float volume) {
@@ -230,7 +243,7 @@ namespace imajuscule {
 
         void step(SAMPLE * outputBuffer, int nFrames, unsigned int audio_element_consummed);
 
-        bool addRequest(Request r) {
+        bool addRequest(Request && r) {
             if constexpr (XF == XfadePolicy::UseXfade) {
                 if(r.duration_in_frames < 2*get_size_xfade()) {
                     return false;
@@ -331,7 +344,7 @@ namespace imajuscule {
         bool done(int n_writes_remaining) {
             if(shouldReset()) {
                 // to avoid residual noise due to very low volume
-                requests = {};
+                requests.reset();
                 current = {};
                 previous = {};
                 return true;

@@ -2,24 +2,39 @@
 
 namespace imajuscule {
     namespace sensor {
+      
+      struct LockCtrl {
+        LockCtrl( std::atomic_bool & l ) noexcept : l(l) {}
+        
+        void lock() noexcept {
+          while (l.exchange(true)) {
+            std::this_thread::yield();
+          }
+        }
+        
+        void unlock() noexcept {
+          auto prev = l.exchange(false);
+          Assert(prev); // make sure l was true
+        }
+      private:
+        std::atomic_bool & l;
+      };
 
-        class RAIILock {
-        public:
-            RAIILock( std::atomic_bool & l ) noexcept : l(l) {
-                while (l.exchange(true)) {
-                    std::this_thread::yield();
-                }
-            }
-            ~RAIILock() noexcept {
-                auto prev = l.exchange(false);
-                Assert(prev); // make sure l was true
-            }
-        private:
-            std::atomic_bool & l;
 
-            RAIILock(const RAIILock &) = delete;
-            RAIILock & operator = (const RAIILock &) = delete;
-        };
+      class RAIILock {
+      public:
+        RAIILock( std::atomic_bool & l ) noexcept : ctrl(l) {
+          ctrl.lock();
+        }
+        ~RAIILock() noexcept {
+          ctrl.unlock();
+        }
+      private:
+        LockCtrl ctrl;
+        
+        RAIILock(const RAIILock &) = delete;
+        RAIILock & operator = (const RAIILock &) = delete;
+      };
     }
 
     template<int nAudioOut>
@@ -109,42 +124,87 @@ namespace imajuscule {
                     // we will raise the priority to realtime before locking and restore it after.
     };
 
-    template<WithLock, ThreadType>
-    struct LockIf_;
-
     struct NoOpLock {
         NoOpLock(bool) noexcept {}
     };
 
+  template<ThreadType>
+  struct AudioLockCtrl;
 
-    template<ThreadType>
-    struct AudioLock;
+  template<>
+  struct AudioLockCtrl<ThreadType::NonRealTime> {
+    AudioLockCtrl(std::atomic_bool & l) noexcept : spin(l) {}
 
-    template <>
-    struct AudioLock<ThreadType::NonRealTime> {
-      AudioLock( std::atomic_bool & l) noexcept : l(l) {}
+    void lock() {
+      priority.lock();
+      spin.lock();
+    }
+    void unlock() {
+      spin.unlock();
+      priority.unlock();
+    }
+    
+  private:
+    thread::CtrlRTPriority priority;
+    sensor::LockCtrl spin;
+  };
+  
+  template<>
+  struct AudioLockCtrl<ThreadType::RealTime> {
+    AudioLockCtrl(std::atomic_bool & l) noexcept : spin(l) {}
 
-    private:
-      // first to be constructed, last to be destroyed
-      thread::ScopedRTPriority s;
-      sensor::RAIILock l;
-      // last to be constructed, first to be destroyed
-    };
+    void lock() {
+      spin.lock();
+    }
+    void unlock() {
+      spin.unlock();
+    }
+    
+  private:
+    sensor::LockCtrl spin;
+  };
+  
+  struct NoOpLockCtrl {
+    NoOpLockCtrl(bool) {}
+    
+    void lock() {
+    }
+    void unlock() {
+    }
+  };
+  
+  template<ThreadType T>
+  struct AudioLock {
+    AudioLock( std::atomic_bool & l) noexcept : ctrl(l) {
+      ctrl.lock();
+    }
+    ~AudioLock() {
+      ctrl.unlock();
+    }
 
-    template <>
-    struct AudioLock<ThreadType::RealTime> {
-      AudioLock( std::atomic_bool & l) noexcept : l(l) {}
-    private:
-      sensor::RAIILock l;
-    };
+  private:
+    AudioLockCtrl<T> ctrl;
+  };
 
-    template <ThreadType T>
-    struct LockIf_<WithLock::Yes, T> { using type = AudioLock<T>; };
-    template <ThreadType T>
-    struct LockIf_<WithLock::No, T> { using type = NoOpLock; };
+  template<WithLock, ThreadType>
+  struct LockIf_;
+  
+  template <ThreadType T>
+  struct LockIf_<WithLock::Yes, T> {
+    using type = AudioLock<T>;
+    using ctrlType = AudioLockCtrl<T>;
+  };
+  template <ThreadType T>
+  struct LockIf_<WithLock::No, T> {
+    using type = NoOpLock;
+    using ctrlType = NoOpLockCtrl;
+  };
 
-    template<WithLock l, ThreadType T>
-    using LockIf = typename LockIf_<l,T>::type;
+  template<WithLock l, ThreadType T>
+  using LockIf = typename LockIf_<l,T>::type;
+  
+  template<WithLock l, ThreadType T>
+  using LockCtrlIf = typename LockIf_<l,T>::ctrlType;
 
     enum class ChannelClosingPolicy {
         AutoClose,  // once the request queue is empty (or more precisely
@@ -697,7 +757,8 @@ namespace imajuscule {
         using Request = typename ChannelsType::Request;
         using PostImpl = AudioPostPolicyImpl<T, nOuts, Policy>;
         using LockFromRT = LockIf<AudioLockPolicyImpl<Policy>::useLock, ThreadType::RealTime>;
-        using LockFromNRT = LockIf<AudioLockPolicyImpl<Policy>::useLock, ThreadType::NonRealTime>;
+      using LockFromNRT = LockIf<AudioLockPolicyImpl<Policy>::useLock, ThreadType::NonRealTime>;
+      using LockCtrlFromNRT = LockCtrlIf<AudioLockPolicyImpl<Policy>::useLock, ThreadType::NonRealTime>;
 
     private:
         //////////////////////////

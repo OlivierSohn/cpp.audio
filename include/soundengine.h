@@ -575,15 +575,13 @@ namespace imajuscule {
                     // note that by design (see code of caller), the channel request queue is empty at this point
                     // no lock : the caller is responsible for taking the out lock
                     if(chans.playGenericNoLock(
-                                             out, cid,
-                                             std::make_pair(std::ref(*new_ramp),
+                                             out, cid,*new_ramp,
                                                             Request{
                                                                 &new_ramp->buffer[0],
                                                                 v,
                                                                 // TODO this should probably be reworked, as now, the enveloppe is responsible for fading out.
                                                                 static_cast<int>(.5f + new_ramp->algo.getAlgo().getCtrl().get_duration_in_samples())
-                                                            })
-                                             ))
+                                                            }))
                     {
                         return true;
                     }
@@ -608,16 +606,15 @@ namespace imajuscule {
                   prevRamp->algo.onKeyReleased();
                 }
                 // note that by design (see code of caller), the channel request queue is empty at this point
+                // no lock : the caller is responsible for taking the out lock
                 auto res = chans.playGenericNoLock(
-                                                 out, cid,
-                                                 std::make_pair(std::ref(silence),
+                                                 out, cid,silence,
                                                                 Request{
                                                                     &silence,
                                                                     // to propagate the volume of previous spec to the next spec
                                                                     channel.get_current().volumes * (1.f/Request::chan_base_amplitude),
                                                                     articulative_pause_length
-                                                                })
-                                                 );
+                                                                });
                 Assert(res); // because length was checked
             }
 

@@ -19,6 +19,7 @@ namespace imajuscule {
 
         using LockFromRT = LockIf<LockPolicy::useLock, ThreadType::RealTime>;
         using LockFromNRT = LockIf<LockPolicy::useLock, ThreadType::NonRealTime>;
+        using LockCtrlFromNRT = LockCtrlIf<LockPolicy::useLock, ThreadType::NonRealTime>;
 
         using OrchestratorFunc = std::function<bool(Channels &, int)>;
         Channels() : _lock(GlobalAudioLock<Policy>::get()) {
@@ -71,7 +72,7 @@ namespace imajuscule {
         }
 
         void toVolume(uint8_t channel_id, float volume, int nSteps) {
-            LockFromNRT l(_lock.lock());
+            LockFromNRT l(get_lock());
             editChannel(channel_id).toVolume(volume, nSteps);
         }
         void setVolume(uint8_t channel_id, float volume) {
@@ -80,45 +81,60 @@ namespace imajuscule {
         void setXFade(uint8_t channel_id, int xf) {
             editChannel(channel_id).set_xfade(xf);
         }
+      
+        template<typename Out, typename T>
+        bool playGeneric( Out & out, uint8_t channel_id, T & buf, Request && req) {
 
-        template<typename Out, class... Args>
-        bool playGeneric( Out & out, uint8_t channel_id, Args&&... requests) {
+          // it's important to register and enqueue in the same lock cycle
+          // else we miss some audio frames,
+          // or the callback gets unscheduled
+          
+          LockCtrlFromNRT l(get_lock());
+          
+          auto & c = editChannel(channel_id);
+          reserveAndLock(1,c.edit_requests(),l);
 
-            // it's important to register and enqueue in the same lock cycle
-            // else we miss some audio frames,
-            // or the callback gets unscheduled
-            LockFromNRT l(_lock.lock());
+          auto res = playGenericNoLock(out, channel_id, buf, std::move(req));
 
-            return playGenericNoLock(out, channel_id, std::forward<Args>(requests)...);
+          l.unlock();
+
+          return res;
         }
 
 
-        template<typename Out, class... Args>
-        bool playGenericNoLock( Out & out, uint8_t channel_id, Args&&... requests) {
+        /* We expect that the caller has (if needed):
+         * - taken the out lock
+         * - grown the capacity of the channel request queue
+         */
+        template<typename Out, typename T>
+        bool playGenericNoLock( Out & out, uint8_t channel_id, T & buf, Request && req) {
 
             // we enqueue first, so that the buffer has the "queued" state
             // because when registering compute lambdas, they can be executed right away
             // so the buffer needs to be in the right state
 
-            bool res = playNolock(channel_id, {std::move(requests.second)...});
+            bool res = playNolock(channel_id, {std::move(req)});
 
-            auto buffers = std::make_tuple(std::ref(requests.first)...);
-            for_each(buffers, [this, &out](auto &buf) {
-                if(auto f = audioelement::fCompute(buf)) {
-                    this->registerCompute(out, std::move(f));
-                }
-            });
+            if(auto f = audioelement::fCompute(buf)) {
+                this->registerCompute(out, std::move(f));
+            }
 
             return res;
         }
 
         void play( uint8_t channel_id, StackVector<Request> && v) {
-            LockFromNRT l(_lock.lock());
-            playNolock(channel_id, std::move(v));
+          LockCtrlFromNRT l(get_lock());
+          
+          auto & c = editChannel(channel_id);
+          reserveAndLock(v.size(),c.edit_requests(),l);
+
+          playNolock(channel_id, std::move(v));
+
+          l.unlock();
         }
 
         void closeAllChannels(int xfade) {
-            LockFromNRT l(_lock.lock());
+            LockFromNRT l(get_lock());
             if(!xfade) {
                 channels.clear();
             }
@@ -149,7 +165,7 @@ namespace imajuscule {
                     else {
                         // take the lock in the loop so that at the end of each iteration
                         // the audio thread has a chance to run
-                        LockFromNRT l(_lock.lock());
+                        LockFromNRT l(get_lock());
                         if(channels[id].isPlaying()) {
                             id = AUDIO_CHANNEL_NONE;
                             continue;
@@ -206,7 +222,7 @@ namespace imajuscule {
 
         void closeChannel(uint8_t channel_id, CloseMode mode, int nStepsForXfadeToZeroMode = -1)
         {
-            LockFromNRT l(_lock.lock());
+            LockFromNRT l(get_lock());
             closeChannelNoLock(channel_id, mode, nStepsForXfadeToZeroMode);
         }
 
@@ -299,7 +315,7 @@ namespace imajuscule {
             // else logic error : some users closed manually some autoclosing channels
             autoclosing_ids.push_back(channel_id);
         }
-
+      
     };
   }
 }

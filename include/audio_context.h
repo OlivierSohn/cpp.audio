@@ -149,12 +149,12 @@ namespace imajuscule {
                 getChannelHandler().getChannels().play( channel_id, std::move( v ) );
             }
 
-            template<class ...Args>
-            void playGeneric( uint8_t channel_id, Args&& ...args ) {
+            template<typename U>
+            void playGeneric( uint8_t channel_id, U & buf, Request && req ) {
                 if(closing) {
                     return;
                 }
-                getChannelHandler().getChannels().playGeneric( chans, channel_id, std::forward<Args>( args )... );
+              getChannelHandler().getChannels().playGeneric( chans, channel_id, buf, std::move(req) );
             }
 
             void toVolume( uint8_t channel_id, float volume, int nSteps ) {

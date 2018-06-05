@@ -225,6 +225,9 @@ namespace imajuscule {
                 Assert(e.noteOn.velocity > 0.f ); // this case is handled by the wrapper... else we need to do a noteOff
                 MIDI_LG(INFO, "on  %d", e.noteOn.pitch);
 
+                // We will reset the channel used, so the request queue will be guaranteed
+                // to have room for a new element, hence we won't need to release this lock
+                // to allocate / deallocate and take it again to grow the queue.
                 typename Out::LockFromNRT L(out.get_lock());
 
                 MonoNoteChannel * channel = nullptr;

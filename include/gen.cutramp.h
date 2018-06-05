@@ -243,16 +243,18 @@ namespace imajuscule {
                                       ramp_size,
                                       0.f,
                                       static_cast<itp::interpolation>(itp::interpolation_traversal().realValues()[static_cast<int>(.5f + params[Params::RAMP_INTERPOLATION])]));
-                    // no lock : the lock has already been taken by the caller
+                  
+                    // The caller is responsible for:
+                    // - taking the out lock if needed
+                    // - growing the channel request queue if needed
                     chans.playGenericNoLock(
-                                    out, c.channel,
-                                    std::make_pair(std::ref(osc),
+                                    out, c.channel,osc,
                                                    Request{
                                                        &osc.buffer[0],
                                                        velocity,
                                                        // e.noteOn.length is always 0, we must rely on noteOff
                                                        std::numeric_limits<decltype(std::declval<Request>().duration_in_frames)>::max()
-                                                   }));
+                                                   });
                 }
 
                 template<typename T>
