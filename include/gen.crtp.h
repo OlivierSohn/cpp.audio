@@ -221,61 +221,57 @@ namespace imajuscule {
 
             template<typename Out, typename Chans>
             onEventResult onEvent2(Event const & e, Out & out, Chans & chans) {
-                if(e.type == Event::kNoteOnEvent) {
-                    // this case is handled by the wrapper... else we need to do a noteOff
-                    Assert(e.noteOn.velocity > 0.f );
-                    {
-                        typename Out::LockFromNRT L(out.get_lock());
+              if(e.type == Event::kNoteOnEvent) {
+                Assert(e.noteOn.velocity > 0.f ); // this case is handled by the wrapper... else we need to do a noteOff
+                MIDI_LG(INFO, "on  %d", e.noteOn.pitch);
 
-                        if(auto c = editAudioElementContainer_if(channels
-                                                                , [](auto & c) { return c.elem.isEnvelopeFinished(); }))
-                        {
-                            return this->template startNote(*c, e.noteOn, out, chans);
-                        }
-                    }
-                    return onDroppedNote(e.noteOn.pitch);
-                }
-                else if(e.type == Event::kNoteOffEvent) {
-                    return noteOff(e.noteOff.pitch);
-                }
-                return onEventResult::UNHANDLED;
-            }
+                typename Out::LockFromNRT L(out.get_lock());
 
-        private:
-            // precondition : if needed the lock of out was taken by a caller
-            template<typename OutputData, typename Chans>
-            onEventResult startNote(MonoNoteChannel & c, NoteOnEvent const & e, OutputData & out, Chans & chans) {
-                MIDI_LG(INFO, "on  %d", e.pitch);
-
-                // To prevent phase cancellation, if any other active channel has the same frequency,
-                // we pass the phase information to 'startNote', so as to create a new wave
-                // that is coherent w.r.t the existing ones of same frequency.
+                MonoNoteChannel * channel = nullptr;
                 auto phase = mkNonDeterministicPhase();
-                for(auto const & o:channels) {
-                  if(o.pitch == e.pitch && o.tuning==e.tuning && !o.elem.isEnvelopeFinished()) {
+
+                for(auto & o:channels) {
+                  // Find a channel where the element has finished
+                  if(o.elem.isEnvelopeFinished()) {
+                    if(channel) {
+                      continue;
+                    }
+                    // Setup the element to start a new note
+                    o.elem.setEnvelopeCharacTime(get_xfade_length());
+                    o.elem.forgetPastSignals();
+                    o.elem.onKeyPressed();
+
+                    // if we don't reset, an assert fails when we enqueue the next request, because it's already queued.
+                    o.reset(chans); // to unqueue the (potential) previous request.
+                    if constexpr (Chans::XFPolicy == XfadePolicy::UseXfade) {
+                      o.setXFade(chans,get_xfade_length());
+                    }
+                    o.setVolume(chans, get_gain());
+                    o.pitch = e.noteOn.pitch;
+                    o.tuning = e.noteOn.tuning;
+
+                    channel = &o;
+                  }
+                  // To prevent phase cancellation, the phase of the new note will be
+                  // coherent with the phase of any active channel that plays a note at the same frequency.
+                  else if(!phase.isDeterministic() && o.pitch == e.noteOn.pitch && o.tuning==e.noteOn.tuning) {
                     phase = mkDeterministicPhase(o.elem.angle());
-                    break;
                   }
                 }
 
-                Assert(c.elem.isEnvelopeFinished());
-                // if we don't reset, an assert fails when we enqueue the next request, because it's already queued.
-                c.reset(chans); // to unqueue the (potential) previous request.
-                if constexpr (Chans::XFPolicy == XfadePolicy::UseXfade) {
-                    c.setXFade(chans,get_xfade_length());
+                if(!channel) {
+                  return onDroppedNote(e.noteOn.pitch);
                 }
-                c.setVolume(chans, get_gain());
-
-                c.elem.setEnvelopeCharacTime(get_xfade_length());
-                c.elem.forgetPastSignals();
-                c.elem.onKeyPressed();
-
-                c.pitch = e.pitch;
-                c.tuning = e.tuning;
-
-                onStartNote(e.velocity, phase, c, out, chans);
+                onStartNote(e.noteOn.velocity, phase, *channel, out, chans);
                 return onEventResult::OK;
+              }
+              else if(e.type == Event::kNoteOffEvent) {
+                return noteOff(e.noteOff.pitch);
+              }
+              return onEventResult::UNHANDLED;
             }
+
+        private:
 
             onEventResult noteOff(uint8_t pitch) {
                 if(!handle_note_off) {
@@ -327,7 +323,7 @@ namespace imajuscule {
 
             using OutputData = outputDataBase<
               AudioOutPolicy::Slave,
-              Channels<T::nAudioOut, T::xfade_policy, AudioOutPolicy::Slave>
+              Channels<T::nAudioOut, T::xfade_policy, T::max_queue_size, AudioOutPolicy::Slave>
               >;
 
             Wrapper(int nOrchestratorsMax) :

@@ -7,8 +7,8 @@ namespace imajuscule {
       static constexpr auto nAudioOut = nOuts;
       static constexpr auto Policy = P;
 
-      using XFadeChans = Channels<nAudioOut, XfadePolicy::UseXfade, Policy>;
-      using NoXFadeChans = Channels<nAudioOut, XfadePolicy::SkipXfade, Policy>;
+      using XFadeChans = Channels<nAudioOut, XfadePolicy::UseXfade, MaxQueueSize::One, Policy>;
+      using NoXFadeChans = Channels<nAudioOut, XfadePolicy::SkipXfade, MaxQueueSize::One, Policy>;
 
       using Request = Request<nAudioOut>;
       using Volumes = Volumes<nAudioOut>;

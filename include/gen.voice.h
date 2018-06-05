@@ -1026,7 +1026,7 @@ namespace imajuscule {
                     }
                 }
 
-                int get_xfade_length() const {
+                int32_t get_xfade_length() const {
                     auto d = denorm<XFADE_LENGTH>();
                     // make it odd
                     return 1 + ( static_cast<int>( .5f + d ) / 2 ) * 2;

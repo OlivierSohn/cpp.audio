@@ -7,8 +7,8 @@ namespace imajuscule {
             static_assert(AudioElem::hasEnvelope,"");
 
             uint8_t pitch; // instead of noteId, on note off we receive the pitch, so pitch is the key
-            float tuning;
             uint8_t channel = AUDIO_CHANNEL_NONE; // TODO use a pointer to the channel instead.
+            float tuning;
             AudioElem elem;
 
             template<WithLock lock_policy, typename ChannelsT>

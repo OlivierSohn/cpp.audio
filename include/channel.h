@@ -65,7 +65,28 @@ namespace imajuscule {
         UseXfade // use internal fades
     };
 
-    template<int nAudioOut, XfadePolicy XF>
+    enum class MaxQueueSize {
+        One
+      , Infinite
+    };
+
+    template<typename T, MaxQueueSize s>
+    struct Queue;
+
+    template <typename T>
+    struct Queue<T, MaxQueueSize::One> {
+      using type = fifo1<T>;
+    };
+
+    template <typename T>
+    struct Queue<T, MaxQueueSize::Infinite> {
+      using type = std::queue<T>;
+    };
+
+    template <typename T, MaxQueueSize MQS>
+    using queue_t = typename Queue<T,MQS>::type;
+
+    template<int nAudioOut, XfadePolicy XF, MaxQueueSize MQS>
     struct Channel : public NonCopyable {
         using Volumes = Volumes<nAudioOut>;
         using QueuedRequest = QueuedRequest<nAudioOut>;
@@ -117,7 +138,7 @@ namespace imajuscule {
 
         QueuedRequest current;
         QueuedRequest previous; // not for SkipXfade
-        int size_half_xfade; // not for SkipXfade
+        int32_t size_half_xfade; // not for SkipXfade
         int32_t remaining_samples_count = 0;
         int32_t current_next_sample_index = 0;
         int32_t other_next_sample_index = 0; // not for SkipXfade
@@ -128,7 +149,7 @@ namespace imajuscule {
         };
         Volume chan_vol;
 
-        std::queue<QueuedRequest> requests;
+        queue_t<QueuedRequest, MQS> requests;
 
     public:
         Channel() : volume_transition_remaining(0), next(false), active(true) {
@@ -274,37 +295,36 @@ namespace imajuscule {
                     current_next_sample_index += total_n_writes - n_writes_remaining;
                     Assert(current_next_sample_index < audioelement::n_frames_per_buffer);
                 }
-
-                return true;
-            }
-
-            auto current_next_sample_index_backup = current_next_sample_index;
-            previous = std::move(current);
-            Assert(!current.buffer); // the move constructor has reset it
-            if (requests.empty()) {
-                Assert(!next); // because we have started the crossfade and have detected that there is no more requests to process
-                if(!previous.buffer) {
-                    return false;
-                }
-                // emulate a right xfade 'to zero'
-                current.duration_in_frames = get_size_xfade()-1; // to do the right xfade
-                remaining_samples_count = size_half_xfade;  // to do the right xfade
-                current_next_sample_index = 0;
-            }
-            else if(!next && !current.buffer) {
-                // emulate a left xfade 'from zero'
-                current.duration_in_frames = 2 * get_size_xfade(); // to skip the right xfade
-                remaining_samples_count = size_half_xfade + 1; // to skip the normal writes and begin the left xfade
             }
             else {
-                current = std::move(requests.front());
-                requests.pop();
+                auto current_next_sample_index_backup = current_next_sample_index;
+                previous = std::move(current);
+                Assert(!current.buffer); // the move constructor has reset it
+                if (requests.empty()) {
+                    Assert(!next); // because we have started the crossfade and have detected that there is no more requests to process
+                    if(!previous.buffer) {
+                        return false;
+                    }
+                    // emulate a right xfade 'to zero'
+                    current.duration_in_frames = get_size_xfade()-1; // to do the right xfade
+                    remaining_samples_count = size_half_xfade;  // to do the right xfade
+                    current_next_sample_index = 0;
+                }
+                else if(!next && !current.buffer) {
+                    // emulate a left xfade 'from zero'
+                    current.duration_in_frames = 2 * get_size_xfade(); // to skip the right xfade
+                    remaining_samples_count = size_half_xfade + 1; // to skip the normal writes and begin the left xfade
+                }
+                else {
+                    current = std::move(requests.front());
+                    requests.pop();
 
-                Assert(current.duration_in_frames >= 0);
-                remaining_samples_count = current.duration_in_frames;
-                current_next_sample_index = next ? other_next_sample_index : 0;
+                    Assert(current.duration_in_frames >= 0);
+                    remaining_samples_count = current.duration_in_frames;
+                    current_next_sample_index = next ? other_next_sample_index : 0;
+                }
+                other_next_sample_index = current_next_sample_index_backup;
             }
-            other_next_sample_index = current_next_sample_index_backup;
             return true;
         }
 
@@ -730,8 +750,8 @@ namespace imajuscule {
 
     };
 
-    template<int nAudioOut, XfadePolicy XF>
-    bool Channel<nAudioOut, XF>::handleToZero(SAMPLE *& outputBuffer, int & n_max_writes) {
+    template<int nAudioOut, XfadePolicy XF, MaxQueueSize MQS>
+    bool Channel<nAudioOut, XF, MQS>::handleToZero(SAMPLE *& outputBuffer, int & n_max_writes) {
         Assert(XF==XfadePolicy::UseXfade);
         if(remaining_samples_count == size_half_xfade + 1) {
             onBeginToZero(n_max_writes);
@@ -749,8 +769,8 @@ namespace imajuscule {
         return consume(n_max_writes);
     }
 
-    template<int nAudioOut, XfadePolicy XF>
-    void Channel<nAudioOut, XF>::step(SAMPLE * outputBuffer, int n_max_writes, unsigned int audio_element_consummed_frames)
+    template<int nAudioOut, XfadePolicy XF, MaxQueueSize MQS>
+    void Channel<nAudioOut, XF, MQS>::step(SAMPLE * outputBuffer, int n_max_writes, unsigned int audio_element_consummed_frames)
     {
         Assert(n_max_writes <= audioelement::n_frames_per_buffer);
         Assert(audio_element_consummed_frames < audioelement::n_frames_per_buffer);

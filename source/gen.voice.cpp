@@ -26,7 +26,7 @@ namespace imajuscule {
 
             const float Limits<LENGTH_EXPONENT>::m = 0.f;
             const float Limits<LENGTH_EXPONENT>::M = 7.f; // see comment below
-            // chosen so that Limits<LENGTH>::M ^ (Limits<LENGTH_EXPONENT>::M * 2) < std::numeric_limits<int>::max()
+            // chosen so that Limits<LENGTH>::M ^ (Limits<LENGTH_EXPONENT>::M * 2) < std::numeric_limits<int>::max()
             // *2 in exponent to take into account exponent variation
 
             const float Limits<LOW_FREQ>::m = 10.f;

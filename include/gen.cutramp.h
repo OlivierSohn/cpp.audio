@@ -211,7 +211,7 @@ namespace imajuscule {
                 void set_seed(int seed) {}
 
             protected:
-                int get_xfade_length() { return adjusted(xfade_len); }
+                int32_t get_xfade_length() { return adjusted(xfade_len); }
 
                 float get_gain() const { return denorm<GAIN>(); }
 
@@ -294,9 +294,9 @@ namespace imajuscule {
 
             typename Base = ImplBase<Parameters, ProcessData>,
 
-            typename Parent = ImplCRTP</* > */ nAudioOut, XfadePolicy::SkipXfade,
+            typename Parent = ImplCRTP</* > */ nAudioOut, XfadePolicy::SkipXfade,
             MonoNoteChannel<audioelement::FreqRamp<audioelement::SimpleLinearEnvelope<float>>>, true,
-            EventIterator, NoteOnEvent, NoteOffEvent, Base /* < */>
+            EventIterator, NoteOnEvent, NoteOffEvent, Base /* < */>
 
             >
             struct Impl_ : public Parent {

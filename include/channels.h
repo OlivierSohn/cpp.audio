@@ -5,12 +5,13 @@ namespace imajuscule {
     template<
     int nOuts,
     XfadePolicy XF,
+    MaxQueueSize MQS,
     AudioOutPolicy policy
     >
     struct Channels {
         static constexpr auto Policy = policy;
         static constexpr auto nAudioOut = nOuts;
-        using Channel = Channel<nAudioOut, XF>;
+        using Channel = Channel<nAudioOut, XF, MQS>;
         using Request = typename Channel::Request;
         using Volumes = typename Channel::Volumes;
         using LockPolicy = AudioLockPolicyImpl<policy>;

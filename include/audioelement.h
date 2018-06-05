@@ -3,25 +3,15 @@ namespace imajuscule {
 
         constexpr auto n_frames_per_buffer = 16;
 
-        struct AudioElementBase  {
-            AudioElementBase() = default;
+        // AudioComponent<float> has a buffer of size 1 cache line
+        // AudioComponent<double> has a buffer of size 2 cache lines
+        // each of them have 16 frames worth of data in their buffer
+        static constexpr auto buffer_alignment = cache_line_n_bytes; // 64 or 32
 
-            // no copy or move because the lambda returned by fCompute() captures 'this'
-            AudioElementBase(const AudioElementBase &) = delete;
-            AudioElementBase & operator=(const AudioElementBase&) = delete;
-            AudioElementBase(AudioElementBase &&) = delete;
-            AudioElementBase& operator = (AudioElementBase &&) = delete;
-
-            // AudioComponent<float> has a buffer of size 1 cache line
-            // AudioComponent<double> has a buffer of size 2 cache lines
-            // each of them have 16 frames worth of data in their buffer
-            static constexpr auto buffer_alignment = cache_line_n_bytes; // 64 or 32
-
-            static constexpr auto index_state = 0;
-        };
+        static constexpr auto index_state = 0;
 
         template<typename T>
-        auto & state(T * buffer) { return buffer[AudioElementBase::index_state]; }
+        auto & state(T * buffer) { return buffer[index_state]; }
 
         // lifecycle :
         // upon creation, state is inactive()
@@ -29,9 +19,11 @@ namespace imajuscule {
         // when processed state is a float
         // when done being played state is inactive()
         template<typename T>
-        struct AudioElement : public AudioElementBase {
+        struct AudioElement {
             using buffer_placeholder_t = std::aligned_storage_t<n_frames_per_buffer * sizeof(T), buffer_alignment>;
+
             static_assert(alignof(buffer_placeholder_t) == buffer_alignment,"");
+
 
             // state values must be distinct from every possible valid value
             static constexpr auto queued() { return -std::numeric_limits<T>::infinity(); } // in *** at most *** one queue
@@ -41,6 +33,7 @@ namespace imajuscule {
             ////// [AudioElement] beginning of the 1st cache line
 
             union {
+                // 'for_alignment' is the largest member, hence it defines the minimal alignment of 'AudioElement' and its derived classes
                 buffer_placeholder_t for_alignment;
                 T buffer[n_frames_per_buffer];
             };
@@ -48,8 +41,7 @@ namespace imajuscule {
             ////// [AudioElement<float>] beginning of the 2nd cache line
             ////// [AudioElement<double>] beginning of the 3rd cache line
 
-            bool clock_ : 1; // could be removed since we don't have any AudioElement
-            // depend on another
+            bool clock_ : 1;
 
             using FPT = T;
             static_assert(std::is_floating_point<FPT>::value);
@@ -61,6 +53,12 @@ namespace imajuscule {
                 //Assert(0 == reinterpret_cast<unsigned long>(buffer) % buffer_alignment);
                 state(buffer) = inactive();
             }
+
+            // no copy or move because the lambda returned by fCompute() captures 'this'
+            AudioElement(const AudioElement &) = delete;
+            AudioElement & operator=(const AudioElement&) = delete;
+            AudioElement(AudioElement &&) = delete;
+            AudioElement& operator = (AudioElement &&) = delete;
 
             auto getState() const { return state(buffer); }
             constexpr bool isInactive() const { return getState() == inactive(); }
@@ -99,7 +97,7 @@ namespace imajuscule {
         };
 
 
-        enum class EnvelopeState { // TODO use this as the generic enveloppe state, and use another enum for substates (for ADSR)
+        enum class EnvelopeState : unsigned char {
             KeyPressed // the envelope is raising or sustained
           , KeyReleased // the envelope is closing
           , EnvelopeDone1 // the envelope has closed, but the last buffer contains samples where the enveloppe was still opened.
@@ -162,7 +160,7 @@ namespace imajuscule {
           ALGO algo;
         };
 
-        enum class EnvelopeRelease {
+        enum class EnvelopeRelease : unsigned char {
           WaitForKeyRelease,
           ReleaseAfterDecay
         };
@@ -270,7 +268,7 @@ namespace imajuscule {
             // 'state' will be set to 'KeyReleased' when the key is released.
             // reads / writes to this are atomic so we don't need to lock.
             EnvelopeState state = EnvelopeState::EnvelopeDone2;
-            unsigned int counter = 0;
+            int32_t counter = 0;
         };
 
         template <typename T, itp::interpolation AttackItp, itp::interpolation ReleaseItp>
@@ -291,13 +289,13 @@ namespace imajuscule {
                 C = std::max(len,normalizedMinDt);
             }
         private:
-          int C = normalizedMinDt;
+          int32_t C = normalizedMinDt;
 
         protected:
 
           void startPressed() {}
 
-          Optional<T> stepPressed (int counter) const {
+          Optional<T> stepPressed (int32_t counter) const {
               return std::min
                   (static_cast<T>(1)
                    ,itp::interpolate( AttackItp
@@ -307,11 +305,11 @@ namespace imajuscule {
                                     , C));
           }
 
-          int getReleaseTime() const { return C; }
+          int32_t getReleaseTime() const { return C; }
 
           static constexpr itp::interpolation getReleaseItp() { return ReleaseItp; }
 
-          bool isAfterAttackBeforeSustain(int counter) const {
+          bool isAfterAttackBeforeSustain(int32_t counter) const {
             return counter >= 0 && counter < C;
           }
         };
@@ -323,7 +321,7 @@ namespace imajuscule {
         using SimpleLinearEnvelope = SimpleEnvelope < T, itp::LINEAR, itp::LINEAR >;
 
         /* This inner state describes states when the outer state is 'KeyPressed'. */
-        enum class AHD {
+        enum class AHD : unsigned char {
             Attacking,
             Holding,
             Decaying
@@ -344,12 +342,12 @@ namespace imajuscule {
         }
 
         struct AHDSR {
-            int attack;
+            int32_t attack;
             itp::interpolation attackItp;
-            int hold;
-            int decay;
+            int32_t hold;
+            int32_t decay;
             itp::interpolation decayItp;
-            int release;
+            int32_t release;
             itp::interpolation releaseItp;
             float sustain;
         };
@@ -399,10 +397,10 @@ namespace imajuscule {
             static_assert(normalizedMinDt > 0);
 
             void setAHDSR(AHDSR const & s) {
-                int _A = s.attack;
-                int _H = s.hold;
-                int _D = s.decay;
-                int _R = s.release;
+                int32_t _A = s.attack;
+                int32_t _H = s.hold;
+                int32_t _D = s.decay;
+                int32_t _R = s.release;
                 auto S = clamp (s.sustain, static_cast<T>(0), static_cast<T>(1));
                 SMinusOne = S - static_cast<T>(1);
                 A = std::max( _A, normalizedMinDt );
@@ -463,7 +461,7 @@ namespace imajuscule {
                 }
             }
 
-            int getReleaseTime() const { return R; }
+            int32_t getReleaseTime() const { return R; }
 
             itp::interpolation getReleaseItp() const { return releaseItp; }
 
@@ -472,11 +470,11 @@ namespace imajuscule {
             }
 
         private:
-            int ahdCounter = 0;
-            int A = normalizedMinDt;
-            int H = 0;
-            int D = normalizedMinDt;
-            int R = normalizedMinDt;
+            int32_t ahdCounter = 0;
+            int32_t A = normalizedMinDt;
+            int32_t H = 0;
+            int32_t D = normalizedMinDt;
+            int32_t R = normalizedMinDt;
             itp::interpolation attackItp;
             itp::interpolation decayItp;
             itp::interpolation releaseItp;
@@ -506,7 +504,7 @@ namespace imajuscule {
                 onAHDStateChange();
             }
 
-            int getMaxCounterForAHD() const {
+            int32_t getMaxCounterForAHD() const {
                 switch(get_value(ahdState)) {
                     case AHD::Attacking:
                         return A;
@@ -602,7 +600,7 @@ namespace imajuscule {
             }
 
         private:
-            unsigned int low_index_ : 4;
+            uint32_t low_index_ : 4;
             float loudness_level;
             float log_ratio_;
             float volume;
@@ -1164,7 +1162,7 @@ namespace imajuscule {
         template<typename AEAlgo, int ORDER>
         using LowPass = FinalAudioElement<LowPassAlgo<AEAlgo, ORDER>>;
 
-        enum class eNormalizePolicy {
+        enum class eNormalizePolicy : unsigned char {
             FAST,
             ACCURATE
         };
@@ -1523,7 +1521,7 @@ namespace imajuscule {
             WindFreqIter<ITER> it = { itp::LINEAR };
         };
 
-        enum class VolumeAdjust {
+        enum class VolumeAdjust : unsigned char{
             Yes,
             No
         };
@@ -1763,7 +1761,7 @@ namespace imajuscule {
             template<typename U=T>
             static auto get(U & ae)
             -> std::enable_if_t<
-            IsDerivedFrom<U, AudioElementBase>::value,
+            IsDerivedFrom<U, AudioElement<typename T::FPT>>::value,
             ComputeFunc
             >
             {
@@ -1813,7 +1811,7 @@ namespace imajuscule {
             template<typename U=T>
             static auto get(U & e)
             -> std::enable_if_t<
-            !IsDerivedFrom<U, AudioElementBase>::value,
+            !IsDerivedFrom<U, AudioElement<typename T::FPT>>::value,
             ComputeFunc
             >
             {

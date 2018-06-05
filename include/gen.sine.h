@@ -4,7 +4,7 @@ namespace imajuscule {
 
             struct SynthImpl {
 
-                static constexpr int get_xfade_length() { return 401; }
+                static constexpr int32_t get_xfade_length() { return 401; }
                 static constexpr float get_gain() { return 1.f; };
 
                 // the caller is responsible for taking the out lock if needed

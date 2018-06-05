@@ -6,8 +6,8 @@ namespace imajuscule {
 
             struct SynthImpl {
 
-                int get_xfade_length() const { return xfade_length; }
-                void set_xfade_length(int l) { xfade_length = l; }
+                int32_t get_xfade_length() const { return xfade_length; }
+                void set_xfade_length(int32_t l) { xfade_length = l; }
 
                 static constexpr float get_gain() { return 1.f; };
 
@@ -41,7 +41,7 @@ namespace imajuscule {
                     }
                 }
               private:
-                int xfade_length = 401;
+                int32_t xfade_length = 401;
                 float half_tone = compute_half_tone(1.f);
             };
 
