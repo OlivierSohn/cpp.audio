@@ -74,6 +74,8 @@ namespace imajuscule {
         using FPT = value_type;
         
         using buffer = a64::vector<value_type>;
+        static constexpr bool computable = false;
+
         
         // no copy
         soundBuffer(const soundBuffer &) = delete;

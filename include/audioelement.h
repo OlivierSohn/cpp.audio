@@ -13,63 +13,60 @@ namespace imajuscule {
         template<typename T>
         auto & state(T * buffer) { return buffer[index_state]; }
 
-        // lifecycle :
-        // upon creation, state is inactive()
-        // when in a queue state is queued()
-        // when processed state is a float
-        // when done being played state is inactive()
-        template<typename T>
-        struct AudioElement {
-            using buffer_placeholder_t = std::aligned_storage_t<n_frames_per_buffer * sizeof(T), buffer_alignment>;
+      // lifecycle :
+      // upon creation, state is inactive()
+      // when in a queue state is queued()
+      // when processed state is a float
+      // when done being played state is inactive()
+      template<typename T>
+      struct AEBuffer {
+        AEBuffer() {
+          // assert deactivated as it fails on iphone / iphone simulator. I think I need to implement
+          // a freelist of blocks of cache line size to get around this issue related to overaligned types.
+          //Assert(0 == reinterpret_cast<unsigned long>(buffer) % buffer_alignment);
+          state(buffer) = inactive();
+        }
 
-            static_assert(alignof(buffer_placeholder_t) == buffer_alignment,"");
+        // no copy or move because the lambda returned by fCompute() captures 'this'
+        AEBuffer(const AEBuffer &) = delete;
+        AEBuffer & operator=(const AEBuffer&) = delete;
+        AEBuffer(AEBuffer &&) = delete;
+        AEBuffer& operator = (AEBuffer &&) = delete;
 
+        using buffer_placeholder_t = std::aligned_storage_t<n_frames_per_buffer * sizeof(T), buffer_alignment>;
+        static_assert(alignof(buffer_placeholder_t) == buffer_alignment);
 
-            // state values must be distinct from every possible valid value
-            static constexpr auto queued() { return -std::numeric_limits<T>::infinity(); } // in *** at most *** one queue
-            static constexpr auto inactive() { return std::numeric_limits<T>::infinity(); }// not active in any queue
+        // state values must be distinct from every possible valid value
+        static constexpr auto queued() { return -std::numeric_limits<T>::infinity(); } // in *** at most *** one queue
+        static constexpr auto inactive() { return std::numeric_limits<T>::infinity(); }// not active in any queue
 
-
-            ////// [AudioElement] beginning of the 1st cache line
-
-            union {
-                // 'for_alignment' is the largest member, hence it defines the minimal alignment of 'AudioElement' and its derived classes
-                buffer_placeholder_t for_alignment;
-                T buffer[n_frames_per_buffer];
-            };
-
-            ////// [AudioElement<float>] beginning of the 2nd cache line
-            ////// [AudioElement<double>] beginning of the 3rd cache line
-
-            bool clock_ : 1;
-
-            using FPT = T;
-            static_assert(std::is_floating_point<FPT>::value);
-            using Tr = NumTraits<T>;
-
-            AudioElement() {
-                // assert deactivated as it fails on iphone / iphone simulator. I think I need to implement
-                // a freelist of blocks of cache line size to get around this issue related to overaligned types.
-                //Assert(0 == reinterpret_cast<unsigned long>(buffer) % buffer_alignment);
-                state(buffer) = inactive();
-            }
-
-            // no copy or move because the lambda returned by fCompute() captures 'this'
-            AudioElement(const AudioElement &) = delete;
-            AudioElement & operator=(const AudioElement&) = delete;
-            AudioElement(AudioElement &&) = delete;
-            AudioElement& operator = (AudioElement &&) = delete;
-
-            auto getState() const { return state(buffer); }
-            constexpr bool isInactive() const { return getState() == inactive(); }
-            constexpr bool isActive() const { return getState() != inactive(); }
+        ////// [AEBuffer] beginning of the 1st cache line
+        
+        union {
+          // 'for_alignment' is the largest member, hence it defines the minimal alignment of 'AudioElement' and its derived classes
+          buffer_placeholder_t for_alignment;
+          T buffer[n_frames_per_buffer];
         };
+        
+        ////// [AEBuffer<float>] beginning of the 2nd cache line
+        ////// [AEBuffer<double>] beginning of the 3rd cache line
 
+        constexpr bool isInactive() const { return getState() == inactive(); }
+        auto getState() const { return state(buffer); }
+      };
+      
         template<typename ALGO>
-        struct FinalAudioElement : public AudioElement<typename ALGO::FPT>{
+        struct FinalAudioElement {
             static constexpr auto hasEnvelope = ALGO::hasEnvelope;
+            static constexpr bool computable = true;
             using FPT = typename ALGO::FPT;
             static_assert(std::is_floating_point<FPT>::value);
+
+            // no copy or move because the lambda returned by fCompute() captures 'this'
+            FinalAudioElement(const FinalAudioElement &) = delete;
+            FinalAudioElement & operator=(const FinalAudioElement&) = delete;
+            FinalAudioElement(FinalAudioElement &&) = delete;
+            FinalAudioElement& operator = (FinalAudioElement &&) = delete;
 
             bool isEnvelopeFinished() const {
               return algo.isEnvelopeFinished();
@@ -93,6 +90,11 @@ namespace imajuscule {
 
             FPT angle() const { return algo.angle(); }
 
+            constexpr bool isInactive() const { return buffer.isInactive(); }
+            auto getState() const { return buffer.getState(); }
+
+            AEBuffer<FPT> buffer;
+            bool clock_ : 1;
             ALGO algo;
         };
 
@@ -1751,78 +1753,49 @@ namespace imajuscule {
         template<typename A1, typename A2>
         using RingModulation = FinalAudioElement<RingModulationAlgo<A1,A2>>;
 
-        /*
-         * returns false when the buffer is done being used
-         */
-        using ComputeFunc = std::function<bool(bool)>;
+      template <typename T>
+      auto fCompute(T&e) {
+        return [&e](bool sync_clock) {
+          using AE = AEBuffer<typename T::FPT>;
 
-        template<typename T>
-        struct FCompute {
-            template<typename U=T>
-            static auto get(U & ae)
-            -> std::enable_if_t<
-            IsDerivedFrom<U, AudioElement<typename T::FPT>>::value,
-            ComputeFunc
-            >
-            {
-                return [&ae](bool sync_clock) {
-                    using AE = AudioElement<typename T::FPT>;
-                    auto & e = safe_cast<AE&>(ae);
-
-                    if(e.getState() == AE::inactive()) {
-                        // Issue : if the buffer just got marked inactive,
-                        // but no new AudioElementCompute happends
-                        // and from the main thread someone acquires this and queues it,
-                        // it will have 2 lambdas because the first lambda will never have seen the inactive state.
-                        // However the issue is not major, as the 2 lambdas have a chance to be removed
-                        // the next time
-                        if constexpr (U::hasEnvelope) {
-                            // Temporary, to fix soundengine, where the channel xfade is used instead of the enveloppe xfade:
-                            // this resets the eveloppe state to Done2, and then lets the audioelement be reused
-                            // in subsequent markov move.
-                            ae.forgetPastSignals();
-                        }
-                        return false;
-                    }
-                    if(likely(e.getState() != AE::queued())) {
-                        if(sync_clock == e.clock_) {
-                            // we alredy did compute this step.
-                            return true;
-                        }
-                    }
-                    e.clock_ = sync_clock;
-                    for(auto & v : e.buffer) {
-                        ae.algo.step();
-                        v = ae.algo.imag();
-                    }
-                    Assert(e.getState() != AE::queued());
-                    Assert(e.getState() != AE::inactive());
-                    if constexpr (U::hasEnvelope) {
-                      // it is important that isEnvelopeFinished() returns true only one buffer cycle after
-                      // the real enveloppe end, to prevent "race conditions".
-                      return !ae.algo.isEnvelopeFinished();
-                    }
-                    else {
-                      return true;
-                    }
-                };
+          if(e.getState() == AE::inactive()) {
+            // Issue : if the buffer just got marked inactive,
+            // but no new AudioElementCompute happends
+            // and from the main thread someone acquires this and queues it,
+            // it will have 2 lambdas because the first lambda will never have seen the inactive state.
+            // However the issue is not major, as the 2 lambdas have a chance to be removed
+            // the next time
+            if constexpr (T::hasEnvelope) {
+              // Temporary, to fix soundengine, where the channel xfade is used instead of the enveloppe xfade:
+              // this resets the eveloppe state to Done2, and then lets the audioelement be reused
+              // in subsequent markov move.
+              e.forgetPastSignals();
             }
-
-            template<typename U=T>
-            static auto get(U & e)
-            -> std::enable_if_t<
-            !IsDerivedFrom<U, AudioElement<typename T::FPT>>::value,
-            ComputeFunc
-            >
-            {
-                return {};
+            return false;
+          }
+          if(likely(e.getState() != AE::queued())) {
+            if(sync_clock == e.clock_) {
+              // we alredy did compute this step.
+              return true;
             }
+          }
+          e.clock_ = sync_clock;
+          for(auto & v : e.buffer.buffer) {
+            e.algo.step();
+            v = e.algo.imag();
+          }
+          Assert(e.getState() != AE::queued());
+          Assert(e.getState() != AE::inactive());
+          if constexpr (T::hasEnvelope) {
+            // it is important that isEnvelopeFinished() returns true only one buffer cycle after
+            // the real enveloppe end, to prevent "race conditions".
+            return !e.algo.isEnvelopeFinished();
+          }
+          else {
+            return true;
+          }
         };
-
-        template<typename T>
-        ComputeFunc fCompute(T & e) {
-            return FCompute<T>::get(e);
-        }
-
+      }
+      
     } // NS audioelement
 } // NS imajuscule

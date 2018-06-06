@@ -21,7 +21,15 @@ namespace imajuscule {
         using LockFromNRT = LockIf<LockPolicy::useLock, ThreadType::NonRealTime>;
         using LockCtrlFromNRT = LockCtrlIf<LockPolicy::useLock, ThreadType::NonRealTime>;
 
+        /*
+         * returns false when the lambda can be removed
+         */
         using OrchestratorFunc = std::function<bool(Channels &, int)>;
+        /*
+         * returns false when the lambda can be removed
+         */
+        using ComputeFunc = std::function<bool(bool)>;
+
         Channels() : _lock(GlobalAudioLock<Policy>::get()) {
             Assert(0 && "The other constructor should be used");
         }
@@ -120,9 +128,9 @@ namespace imajuscule {
 
             bool res = playNolock(channel_id, {std::move(req)});
 
-            if(auto f = audioelement::fCompute(buf)) {
-                this->registerCompute(out, std::move(f));
-            }
+          if constexpr (T::computable) {
+            this->registerCompute(out, fCompute(buf));
+          }
 
             return res;
         }
@@ -292,6 +300,7 @@ namespace imajuscule {
 
         decltype(std::declval<AudioLockPolicyImpl<policy>>().lock()) get_lock() { return _lock.lock(); }
 
+
     private:
         AudioLockPolicyImpl<policy> & _lock;
 
@@ -303,7 +312,7 @@ namespace imajuscule {
         // orchestrators and computes could be owned by the channels but it is maybe cache-wise more efficient
         // to group them here (if the lambda owned is small enough to not require dynamic allocation)
         std::vector<OrchestratorFunc> orchestrators;
-        std::vector<audioelement::ComputeFunc> computes;
+        std::vector<ComputeFunc> computes;
         // This counter is used to be able to know, without locking, if there are any computes / orchestrators ATM.
         int32_t nOrchestratorsAndComputes = 0;
 
