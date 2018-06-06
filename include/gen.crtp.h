@@ -164,7 +164,8 @@ namespace imajuscule {
             template<typename ChannelsT>
             bool initialize(ChannelsT & chans) {
                 for(auto & c : channels) {
-                    // using WithLock::No : if needed, the caller is responsible to take the out lock.
+                    // using WithLock::No : since we own all these channels and they are not playing, we don't need
+                    // to take the audio lock.
                     if(!c.template open<WithLock::No>(chans, 0.f)) {
                         return false;
                     }
@@ -182,17 +183,14 @@ namespace imajuscule {
                 }
             }
 
-            // counts notes that have an active enveloppe
-            int countSounds() const {
-                int n = 0;
+            // returns true if at least one channel has an active enveloppe
+            int areEnvelopeFinished() const {
                 for(auto & c : channels) {
-                    for(auto & r : c.elem.getRamps()) {
-                        if(!r.isEnvelopeFinished()) {
-                            ++n;
-                        }
-                    }
+                  if(!c.elem.isEnvelopeFinished()) {
+                      return false;
+                  }
                 }
-                return n;
+                return true;
             }
 
             // Note: Logic Audio Express 9 calls this when two projects are opened and

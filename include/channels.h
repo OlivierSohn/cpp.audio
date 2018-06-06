@@ -49,12 +49,14 @@ namespace imajuscule {
 
         void add_orchestrator(OrchestratorFunc f) {
             Assert(orchestrators.capacity() > orchestrators.size()); // we are in the audio thread, we shouldn't allocate dynamically
+            ++nOrchestratorsAndComputes;
             orchestrators.push_back(std::move(f));
         }
 
         template<typename F, typename Out>
         void registerCompute(Out const & out, F f) {
             Assert(computes.capacity() > computes.size()); // we are in the audio thread, we shouldn't allocate dynamically
+            ++nOrchestratorsAndComputes;
             computes.push_back(std::move(f));
             if(out.isInbetweenTwoComputes()) {
                 computes.back()(out.getTicTac());
@@ -67,8 +69,11 @@ namespace imajuscule {
 
         bool empty() const { return channels.empty(); }
 
-        bool hasOrchestrators() const {
-            return !orchestrators.empty();
+        int32_t countOrchestratorsAndComputes() const {
+          return nOrchestratorsAndComputes;
+        }
+        bool hasOrchestratorsOrComputes() const {
+          return nOrchestratorsAndComputes > 0;
         }
 
         void toVolume(uint8_t channel_id, float volume, int nSteps) {
@@ -81,16 +86,16 @@ namespace imajuscule {
         void setXFade(uint8_t channel_id, int xf) {
             editChannel(channel_id).set_xfade(xf);
         }
-      
+
         template<typename Out, typename T>
         bool playGeneric( Out & out, uint8_t channel_id, T & buf, Request && req) {
 
           // it's important to register and enqueue in the same lock cycle
           // else we miss some audio frames,
           // or the callback gets unscheduled
-          
+
           LockCtrlFromNRT l(get_lock());
-          
+
           auto & c = editChannel(channel_id);
           reserveAndLock(1,c.edit_requests(),l);
 
@@ -124,7 +129,7 @@ namespace imajuscule {
 
         void play( uint8_t channel_id, StackVector<Request> && v) {
           LockCtrlFromNRT l(get_lock());
-          
+
           auto & c = editChannel(channel_id);
           reserveAndLock(v.size(),c.edit_requests(),l);
 
@@ -258,6 +263,7 @@ namespace imajuscule {
             for(auto it = orchestrators.begin(), end = orchestrators.end(); it!=end;) {
                 if(!((*it)(*this, audioelement::n_frames_per_buffer))) { // can grow 'computes' vector
                     it = orchestrators.erase(it);
+                    --nOrchestratorsAndComputes;
                     end = orchestrators.end();
                 }
                 else {
@@ -268,6 +274,7 @@ namespace imajuscule {
             for(auto it = computes.begin(), end = computes.end(); it!=end;) {
                 if(!((*it)(tictac))) {
                     it = computes.erase(it);
+                    --nOrchestratorsAndComputes;
                     end = computes.end();
                 }
                 else {
@@ -297,6 +304,8 @@ namespace imajuscule {
         // to group them here (if the lambda owned is small enough to not require dynamic allocation)
         std::vector<OrchestratorFunc> orchestrators;
         std::vector<audioelement::ComputeFunc> computes;
+        // This counter is used to be able to know, without locking, if there are any computes / orchestrators ATM.
+        int32_t nOrchestratorsAndComputes = 0;
 
         bool playNolock( uint8_t channel_id, StackVector<Request> && v) {
             bool res = true;
@@ -315,7 +324,7 @@ namespace imajuscule {
             // else logic error : some users closed manually some autoclosing channels
             autoclosing_ids.push_back(channel_id);
         }
-      
+
     };
   }
 }
