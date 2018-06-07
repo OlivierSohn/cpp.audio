@@ -41,19 +41,20 @@ namespace imajuscule {
         static constexpr auto inactive() { return std::numeric_limits<T>::infinity(); }// not active in any queue
 
         ////// [AEBuffer] beginning of the 1st cache line
-        
+
         union {
           // 'for_alignment' is the largest member, hence it defines the minimal alignment of 'AudioElement' and its derived classes
           buffer_placeholder_t for_alignment;
           T buffer[n_frames_per_buffer];
         };
-        
+
         ////// [AEBuffer<float>] beginning of the 2nd cache line
         ////// [AEBuffer<double>] beginning of the 3rd cache line
 
         constexpr bool isInactive() const { return getState() == inactive(); }
         auto getState() const { return state(buffer); }
       };
+
       
         template<typename ALGO>
         struct FinalAudioElement {
@@ -1797,6 +1798,6 @@ namespace imajuscule {
           }
         };
       }
-      
+
     } // NS audioelement
 } // NS imajuscule

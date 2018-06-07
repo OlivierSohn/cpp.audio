@@ -6,7 +6,7 @@ namespace imajuscule {
         struct MonoNoteChannel {
             static_assert(AudioElem::hasEnvelope,"");
             using buffer_t = typename AudioElem::buffer_t;
-          
+
             MonoNoteChannel(buffer_t & b) : elem(b) {}
 
             uint8_t pitch; // instead of noteId, on note off we receive the pitch, so pitch is the key
