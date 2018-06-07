@@ -161,6 +161,9 @@ namespace imajuscule {
             static constexpr auto n_max_simultaneous_notes_per_voice = 2;
             static constexpr auto n_channels = n_channels_per_note * n_max_voices * n_max_simultaneous_notes_per_voice;
 
+            template <class... Args>
+          ImplCRTP(Args&&... args) : channels{std::forward<Args>(args)...} {}
+
             template<typename ChannelsT>
             bool initialize(ChannelsT & chans) {
                 for(auto & c : channels) {
@@ -327,7 +330,9 @@ namespace imajuscule {
               Channels<T::nAudioOut, T::xfade_policy, T::max_queue_size, AudioOutPolicy::Slave>
               >;
 
-            Wrapper(int nOrchestratorsMax) :
+            template <class... Args>
+            Wrapper(int nOrchestratorsMax, Args&&... args) :
+            plugin(std::forward<Args>(args)...),
             out{
                 GlobalAudioLock<AudioOutPolicy::Slave>::get(),
                 n_channels,

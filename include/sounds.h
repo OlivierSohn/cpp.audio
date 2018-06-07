@@ -3,7 +3,15 @@ namespace imajuscule {
 
     class Sounds {
         std::map< soundId, soundBuffer > sounds;
-        std::array<audioelement::Square<audioelement::SimpleLinearEnvelope<float>>, 8> squares;
+
+      // this is not ideal, as buffers are not necessarily in the same page.
+      std::vector<std::unique_ptr<audioelement::AEBuffer<float>>> buffers;
+      auto & takeBuffer() {
+        buffers.emplace_back();
+        return *(buffers.back());
+      }
+
+      std::array<audioelement::Square<audioelement::SimpleLinearEnvelope<float>>, 8> squares;
         std::array<audioelement::Oscillator<audioelement::SimpleLinearEnvelope<float>>, 8> oscillators;
         std::array<audioelement::FreqRamp<audioelement::SimpleLinearEnvelope<float>>, 6> ramps;
 
@@ -14,7 +22,16 @@ namespace imajuscule {
 
         std::array<audioelement::LowPass<audioelement::PulseTrainAlgo<float>, 1>, 6> lptrains;
     public:
-        soundBuffer & get( soundId );
+      
+      Sounds() :
+      squares{takeBuffer(), takeBuffer(), takeBuffer(), takeBuffer(), takeBuffer(), takeBuffer(), takeBuffer(), takeBuffer()}
+      , oscillators{takeBuffer(), takeBuffer(), takeBuffer(), takeBuffer(), takeBuffer(), takeBuffer(), takeBuffer(), takeBuffer()}
+      , ramps{takeBuffer(), takeBuffer(), takeBuffer(), takeBuffer(), takeBuffer(), takeBuffer()}
+      , ringmods{takeBuffer(), takeBuffer(), takeBuffer(), takeBuffer(), takeBuffer(), takeBuffer()}
+      , lptrains{takeBuffer(), takeBuffer(), takeBuffer(), takeBuffer(), takeBuffer(), takeBuffer()}
+      {}
+
+      soundBuffer & get( soundId );
 
         auto * getInactiveOscillator() {
             return editInactiveAudioElement(oscillators);

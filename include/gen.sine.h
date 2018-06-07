@@ -25,7 +25,7 @@ namespace imajuscule {
                     auto res = chans.playGenericNoLock(
                                     out, c.channel,osc,
                                                    Request{
-                                                       &osc.buffer.buffer[0],
+                                                       &osc.buffer->buffer[0],
                                                        velocity,
                                                        // e.noteOn.length is always 0, we must rely on noteOff
                                                        std::numeric_limits<decltype(std::declval<Request>().duration_in_frames)>::max()

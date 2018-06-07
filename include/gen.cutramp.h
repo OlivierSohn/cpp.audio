@@ -64,8 +64,8 @@ namespace imajuscule {
                 static constexpr auto ramp_start_freq_denormalize(float v) { return min_ramp_start_freq + v*max_ramp_start_freq; }
 
                 using Parent::params;
-                using Parent::half_tone;
-
+              using Parent::half_tone;
+              
             protected:
                 using interleaved_buf_t = InterleavedBuffer;
 
@@ -250,7 +250,7 @@ namespace imajuscule {
                     chans.playGenericNoLock(
                                     out, c.channel,osc,
                                                    Request{
-                                                       &osc.buffer.buffer[0],
+                                                       &osc.buffer->buffer[0],
                                                        velocity,
                                                        // e.noteOn.length is always 0, we must rely on noteOff
                                                        std::numeric_limits<decltype(std::declval<Request>().duration_in_frames)>::max()
@@ -331,11 +331,15 @@ namespace imajuscule {
                 using Parent::onEvent2;
 
                 using Event = typename Parent::Event;
+                using MonoNoteChannel = typename Parent::MonoNoteChannel;
+              static constexpr auto n_channels = Parent::n_channels;
 
                 static constexpr auto cut_period_one_cache_line = size_interleaved_one_cache_line / nAudioOut;
                 static_assert(cut_period_one_cache_line <= max_cut_period);
 
             public:
+              template <class... Args>
+              Impl_(Args&&... args) : Parent (std::forward<Args>(args)...) {}
 
                 template<typename Out, typename Chans>
                 onEventResult onEvent(Event const & e, Out & out, Chans & chans)

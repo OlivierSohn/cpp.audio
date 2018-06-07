@@ -577,7 +577,7 @@ namespace imajuscule {
                     if(chans.playGenericNoLock(
                                              out, cid,*new_ramp,
                                                             Request{
-                                                                &new_ramp->buffer.buffer[0],
+                                                                &new_ramp->buffer->buffer[0],
                                                                 v,
                                                                 // TODO this should probably be reworked, as now, the enveloppe is responsible for fading out.
                                                                 static_cast<int>(.5f + new_ramp->algo.getAlgo().getCtrl().get_duration_in_samples())

@@ -1079,10 +1079,14 @@ namespace imajuscule {
             struct EngineAndRamps {
                 using audioElt = typename SoundEngine::audioElt;
                 using T = typename audioElt::FPT;
+                using Buf = audioelement::AEBuffer<T>;
+                using buffer_t = std::array<Buf,3>;
 
                 static constexpr auto hasEnvelope = audioElt::hasEnvelope;
 
-                EngineAndRamps() : engine{[this]()-> Ramps<audioElt> {
+                EngineAndRamps(buffer_t&b) :
+                ramps{b[0],b[1],b[2]},
+                engine{[this]()-> Ramps<audioElt> {
                     using namespace imajuscule::audioelement;
                     Ramps<audioElt> res;
                     // in SoundEngine.playNextSpec (from the rt audio thread),
@@ -1202,16 +1206,15 @@ namespace imajuscule {
 
             typename Base = ImplBase<MODE, Parameters, ProcessData>,
 
-            typename Parent_ = ImplCRTP <
+            typename Parent = ImplCRTP <
             nAudioOut, XfadePolicy::UseXfade, // TODO reassess the use of xfades, now that we have enveloppes
             MonoNoteChannel< EngineAndRamps<typename Base::SoundEngine> >,
             withNoteOff,
             EventIterator, NoteOnEvent, NoteOffEvent, Base >
             >
 
-            struct Impl_ : public Parent_
+            struct Impl_ : public Parent
             {
-                using Parent = Parent_;
 
                 static constexpr auto n_frames_interleaved = size_interleaved / nAudioOut;
                 static_assert(n_frames_interleaved * nAudioOut == size_interleaved); // make sure we don't waste space
@@ -1226,8 +1229,13 @@ namespace imajuscule {
                 using Parent::channels;
 
                 using Event = typename Parent::Event;
+              using MonoNoteChannel = typename Parent::MonoNoteChannel;
+              static constexpr auto n_channels = Parent::n_channels;
 
             public:
+
+                template <class... Args>
+                Impl_(Args&&... args) : Parent (std::forward<Args>(args)...) {}
 
                 template<typename Out, typename Chans>
                 onEventResult onEvent(Event const & e, Out & out, Chans & chans)

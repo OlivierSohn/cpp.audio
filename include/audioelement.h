@@ -61,6 +61,7 @@ namespace imajuscule {
             static constexpr bool computable = true;
             using FPT = typename ALGO::FPT;
             static_assert(std::is_floating_point<FPT>::value);
+            using buffer_t = AEBuffer<FPT>;
 
             // no copy or move because the lambda returned by fCompute() captures 'this'
             FinalAudioElement(const FinalAudioElement &) = delete;
@@ -73,7 +74,7 @@ namespace imajuscule {
             }
 
             template <class... Args>
-            FinalAudioElement(Args&&... args) : algo(std::forward<Args>(args)...) {}
+            FinalAudioElement(buffer_t & b, Args&&... args) : buffer(&b), algo(std::forward<Args>(args)...) {}
 
             void forgetPastSignals() {
                 algo.forgetPastSignals();
@@ -90,10 +91,10 @@ namespace imajuscule {
 
             FPT angle() const { return algo.angle(); }
 
-            constexpr bool isInactive() const { return buffer.isInactive(); }
-            auto getState() const { return buffer.getState(); }
+            constexpr bool isInactive() const { return buffer->isInactive(); }
+            auto getState() const { return buffer->getState(); }
 
-            AEBuffer<FPT> buffer;
+            AEBuffer<FPT> * buffer;
             bool clock_ : 1;
             ALGO algo;
         };
@@ -1780,7 +1781,7 @@ namespace imajuscule {
             }
           }
           e.clock_ = sync_clock;
-          for(auto & v : e.buffer.buffer) {
+          for(auto & v : e.buffer->buffer) {
             e.algo.step();
             v = e.algo.imag();
           }
