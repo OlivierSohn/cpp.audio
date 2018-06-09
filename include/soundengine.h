@@ -323,18 +323,18 @@ namespace imajuscule {
                 using Request = Request<nAudioOut>;
                 auto mc = std::make_unique<MarkovChain>();
 
-                auto node1 = mc->emplace([](Move const m, MarkovNode&me, MarkovNode&from_to) {
+                auto node1 = mc->emplace([](MarkovMove const m, MarkovNode&me, MarkovNode&from_to) {
                 });
-                auto node2 = mc->emplace([this](Move const m, MarkovNode&me, MarkovNode&from_to) {
-                    if(m==Move::ENTER) {
+                auto node2 = mc->emplace([this](MarkovMove const m, MarkovNode&me, MarkovNode&from_to) {
+                    if(m==MarkovMove::ENTER_NODE) {
                         play(length, base_freq*4, base_freq*3, phase_ratio1, phase_ratio2, freq_scatter);
                     }
                     else {
                         play(length, base_freq*2, base_freq*4, phase_ratio1, phase_ratio2, freq_scatter);
                     }
                 });
-                auto node3 = mc->emplace([this](Move const m, MarkovNode&me, MarkovNode&from_to) {
-                    if(m==Move::ENTER) {
+                auto node3 = mc->emplace([this](MarkovMove const m, MarkovNode&me, MarkovNode&from_to) {
+                    if(m==MarkovMove::ENTER_NODE) {
                         play(length, base_freq*4, base_freq*3, phase_ratio1, phase_ratio2, freq_scatter);
                     }
                 });
@@ -357,8 +357,8 @@ namespace imajuscule {
                 using Request = Request<nAudioOut>;
                 auto mc = std::make_unique<MarkovChain>();
 
-                auto node0 = mc->emplace([this](Move const m, MarkovNode&me, MarkovNode&from_to) {
-                    if(m == Move::LEAVE) {
+                auto node0 = mc->emplace([this](MarkovMove const m, MarkovNode&me, MarkovNode&from_to) {
+                    if(m == MarkovMove::LEAVE_NODE) {
                         auto length = this->length;
                         length *= powf(2.f,
                                        std::uniform_real_distribution<float>{min_exp, max_exp}(mersenne<SEEDED::Yes>()));
@@ -375,10 +375,10 @@ namespace imajuscule {
                         }
                     }
                 });
-                auto node1 = mc->emplace([](Move const m, MarkovNode&me, MarkovNode&from_to) {
+                auto node1 = mc->emplace([](MarkovMove const m, MarkovNode&me, MarkovNode&from_to) {
                 });
-                auto node2 = mc->emplace([this](Move const m, MarkovNode&me, MarkovNode&from_to) {
-                    if(m==Move::ENTER) {
+                auto node2 = mc->emplace([this](MarkovMove const m, MarkovNode&me, MarkovNode&from_to) {
+                    if(m==MarkovMove::ENTER_NODE) {
                         auto length = this->length;
                         length *= powf(2.f,
                                        std::uniform_real_distribution<float>{min_exp, max_exp}(mersenne<SEEDED::Yes>()));
@@ -403,8 +403,8 @@ namespace imajuscule {
                         }
                     }
                 });
-                auto node3 = mc->emplace([this](Move const m, MarkovNode&me, MarkovNode&from_to) {
-                    if(m==Move::ENTER) {
+                auto node3 = mc->emplace([this](MarkovMove const m, MarkovNode&me, MarkovNode&from_to) {
+                    if(m==MarkovMove::ENTER_NODE) {
                         constexpr auto slide_length_scale = 2.f;
                         auto length = slide_length_scale * this->length;
                         length *= powf(2.f,
@@ -451,8 +451,8 @@ namespace imajuscule {
                 using Request = Request<nAudioOut>;
                 auto mc = std::make_unique<MarkovChain>();
 
-                auto node0 = mc->emplace([this](Move const m, MarkovNode&me, MarkovNode&from_to) {
-                    if(m == Move::LEAVE) {
+                auto node0 = mc->emplace([this](MarkovMove const m, MarkovNode&me, MarkovNode&from_to) {
+                    if(m == MarkovMove::LEAVE_NODE) {
                         auto length = this->length;
                         length *= powf(2.f,
                                        std::uniform_real_distribution<float>{min_exp, max_exp}(mersenne<SEEDED::Yes>()));
@@ -462,7 +462,7 @@ namespace imajuscule {
                         }
                     }
                 });
-                auto node1 = mc->emplace([](Move const m, MarkovNode&me, MarkovNode&from_to) {
+                auto node1 = mc->emplace([](MarkovMove const m, MarkovNode&me, MarkovNode&from_to) {
                 });
 
                 def_markov_transition(node0, node1, 1.f);
@@ -474,12 +474,12 @@ namespace imajuscule {
             auto create_wind() {
                 auto mc = std::make_unique<MarkovChain>();
 
-                auto node0 = mc->emplace([this](Move const m, MarkovNode&me, MarkovNode&from_to) {
+                auto node0 = mc->emplace([this](MarkovMove const m, MarkovNode&me, MarkovNode&from_to) {
                     if(auto * ramp_spec = ramp_specs.get_next_ramp_for_build()) {
                         ramp_spec->get().getUnderlyingIter().set_interpolation(interpolation);
                     }
                 });
-                auto node1 = mc->emplace([](Move const m, MarkovNode&me, MarkovNode&from_to) {
+                auto node1 = mc->emplace([](MarkovMove const m, MarkovNode&me, MarkovNode&from_to) {
                 });
 
                 def_markov_transition(node0, node1, 1.f);
