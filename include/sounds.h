@@ -7,7 +7,7 @@ namespace imajuscule {
       // this is not ideal, as buffers are not necessarily in the same page.
       std::vector<std::unique_ptr<audioelement::AEBuffer<float>>> buffers;
       auto & takeBuffer() {
-        buffers.emplace_back();
+        buffers.emplace_back(std::make_unique<audioelement::AEBuffer<float>>());
         return *(buffers.back());
       }
 
