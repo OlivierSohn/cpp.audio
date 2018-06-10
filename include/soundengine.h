@@ -28,12 +28,6 @@ namespace imajuscule {
             return v;
         }
 
-        enum class Status { OK_CHANGED, OK_STABLE, ERROR };
-        enum class UpdateMode {
-            FORCE_SOUND_AT_EACH_UPDATE, // "virtual instrument" mode
-            UPDATE_CAN_BE_SILENT // "script" mode
-        };
-
         enum SoundEngineMode : unsigned char {
             BEGIN=0,
 
