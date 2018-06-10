@@ -1,55 +1,54 @@
 
 
-
+#if defined _WIN32 && defined _UNICODE
+#define PA_MIN_LATENCY_MSEC L"PA_MIN_LATENCY_MSEC"
+#define PA_MIN_LATENCY_MSEC_V L"1"
+#else
+#define PA_MIN_LATENCY_MSEC "PA_MIN_LATENCY_MSEC"
+#define PA_MIN_LATENCY_MSEC_V "1"
+#endif
 
 namespace imajuscule {
     namespace audio {
 
         
 #ifdef _WIN32
-        int setenv(const char *name, const char *value, int overwrite)
-        {
-            int errcode = 0;
-            if ( !overwrite ) {
-                size_t envsize = 0;
-                errcode = getenv_s(&envsize, nullptr, 0, name);
-                if ( errcode || envsize ) return errcode;
-            }
-            return _putenv_s(name, value);
+#  if defined _UNICODE
+      int setenv(const wchar_t *name, const wchar_t *value, int overwrite)
+      {
+        int errcode = 0;
+        if ( !overwrite ) {
+          size_t envsize = 0;
+          errcode = _wgetenv_s(&envsize, nullptr, 0, name);
+          if ( errcode || envsize ) return errcode;
         }
+        return _wputenv_s(name, value);
+      }
+#  else
+      int setenv(const char *name, const char *value, int overwrite)
+      {
+        int errcode = 0;
+        if ( !overwrite ) {
+          size_t envsize = 0;
+          errcode = getenv_s(&envsize, nullptr, 0, name);
+          if ( errcode || envsize ) return errcode;
+        }
+        return _putenv_s(name, value);
+      }
+#  endif
 #endif
-        
+
         void setPortaudioEnvVars()
         {
 #if TARGET_OS_IOS
 #else
             // set minimum latency env var to speed things up
-            const char * lat = "PA_MIN_LATENCY_MSEC";
-            const char * latVal = "1";
-            int erri = setenv( lat, latVal, true);
+            int erri = setenv( PA_MIN_LATENCY_MSEC, PA_MIN_LATENCY_MSEC_V, true);
             if(unlikely(erri))
             {
                 LG(ERR, "AudioIn::get : Could not set env variable PA_MIN_LATENCY_MSEC: %d", errno);
                 Assert(0);
             }
-            
-            // verify that env var was set
-#ifdef _WIN32
-            char * test=0;
-            size_t sz=0;
-            if (0 != _dupenv_s(&test, &sz, lat) )
-            {
-                test = 0;
-            }
-#else
-            const char * test = getenv (lat);
-#endif
-            
-            Assert(test);
-            Assert(!strcmp(test, latVal));
-#ifdef _WIN32
-            free(test);
-#endif
 #endif
         }
     }
