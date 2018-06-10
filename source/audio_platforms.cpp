@@ -6,16 +6,14 @@ namespace imajuscule {
         * Denormals can appear in reverb algorithm, when signal becomes close to 0.
         */
         void disableDenormals() {
-#if __has_include(<fenv.h>)
+#if __has_include(<xmmintrin.h>)
+          _MM_SET_FLUSH_ZERO_MODE(_MM_FLUSH_ZERO_ON);
+          _MM_SET_DENORMALS_ZERO_MODE(_MM_DENORMALS_ZERO_ON);
+#elif __has_include(<fenv.h>)
           fesetenv(FE_DFL_DISABLE_SSE_DENORMS_ENV);
 #  if TARGET_OS_IOS
           fesetenv(FE_DFL_DISABLE_DENORMS_ENV);
 #  endif
-#else
-#  define CSR_FLUSH_TO_ZERO         (1 << 15)
-          unsigned csr = __builtin_ia32_stmxcsr();
-          csr |= CSR_FLUSH_TO_ZERO;
-          __builtin_ia32_ldmxcsr(csr);
 #endif
         }
 

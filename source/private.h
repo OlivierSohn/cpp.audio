@@ -4,6 +4,10 @@
 #  include <fenv.h>
 #endif
 
+#if __has_include(<xmmintrin.h>)
+#  include <xmmintrin.h>
+#endif
+
 #if TARGET_OS_IOS
 // on ios, these macros are hidden from fenv.h:
 
