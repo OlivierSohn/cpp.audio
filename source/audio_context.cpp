@@ -11,8 +11,8 @@
 namespace imajuscule {
     namespace audio {
 
-        
-#ifdef _WIN32
+
+#ifdef _WIN32 // setenv
 #  if defined _UNICODE
       int setenv(const wchar_t *name, const wchar_t *value, int overwrite)
       {
