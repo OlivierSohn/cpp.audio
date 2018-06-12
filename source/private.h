@@ -21,11 +21,7 @@ extern const fenv_t _FE_DFL_DISABLE_SSE_DENORMS_ENV;
 
 #endif
 
-#define  _USE_MATH_DEFINES
-#include <cmath>
 #include <stdlib.h>
 #include <string.h>
 #include <cerrno>
-#include <functional>
-#include <map>
 #include <cstdlib>
