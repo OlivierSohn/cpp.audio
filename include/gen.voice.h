@@ -706,7 +706,7 @@ namespace imajuscule {
                     return result;
                 }
                 static Programs const & getPrograms() {
-                    if(MODE==Mode::BIRDS) {
+                    if constexpr (MODE==Mode::BIRDS) {
                         static ProgramsI ps {{
                             {"Standard & Cute bird",
                                 make_bird(0, 0, 1, 0, itp::EASE_INOUT_CIRC, 0.f, 93.f, 2.f, .5f, 1000, 1301, FreqXfade::No, 6200, itp::EASE_OUT_EXPO),
@@ -743,7 +743,7 @@ namespace imajuscule {
                         }};
                         return ps.v;
                     }
-                    else if(MODE==Mode::ROBOTS) {
+                    else if constexpr (MODE==Mode::ROBOTS) {
                         static ProgramsI ps {{
                             {"R2D2",
                                 make_robot(0, 0, 1, 1, 3683, itp::LINEAR, 0.f, 19.8, 2.1f, 0.39f, 234, 6, 12, .98f, 0.f, 0.f)
@@ -753,7 +753,7 @@ namespace imajuscule {
                         }};
                         return ps.v;
                     }
-                    else if(MODE==Mode::SWEEP) {
+                    else if constexpr (MODE==Mode::SWEEP) {
                         static ProgramsI ps {{
                             {"Sweep 1",
                                 make_sweep(itp::LINEAR, 73.f, 5.f, 481, 40.f, 20000.f)
@@ -763,7 +763,7 @@ namespace imajuscule {
                         }};
                         return ps.v;
                     }
-                    else if(MODE==Mode::WIND) {
+                    else if constexpr (MODE==Mode::WIND) {
                         static ProgramsI ps {{
                             {"Medium wind in trees",
                                 make_noise_wind(1, {0.f, 0.f}, {1.f, 8.f}, 100000.f)
@@ -873,7 +873,7 @@ namespace imajuscule {
 
                     auto ex = denorm<LENGTH_EXPONENT>();
                     Assert(ex >= 0.f);
-                    if(MODE != Mode::SWEEP) {
+                    if constexpr (MODE != Mode::SWEEP) {
                         auto variation = denorm<LENGTH_EXPONENT_SCATTER>();
                         Assert(variation >= 0.f);
                         Assert(variation <= 1.f);
@@ -881,7 +881,7 @@ namespace imajuscule {
 
                         c.elem.engine.set_freq_scatter(denorm<FREQ_SCATTER>());
 
-                        if(MODE != Mode::WIND) {
+                        if constexpr (MODE != Mode::WIND) {
                             c.elem.engine.set_phase_ratio1(denorm<PHASE_RATIO1>());
                             c.elem.engine.set_phase_ratio2(denorm<PHASE_RATIO2>());
                         }
@@ -920,7 +920,7 @@ namespace imajuscule {
                                              denorm<LOUDNESS_LEVEL>());
                     c.elem.setFiltersOrder(value<ORDER_FILTERS>());
 
-                    if(MODE == Mode::WIND)
+                    if constexpr (MODE == Mode::WIND)
                     {
                         auto m = denorm<PINK_NOISE_BP_OCTAVE_WIDTH_MIN>();
                         auto M = denorm<PINK_NOISE_BP_OCTAVE_WIDTH_MAX>();
@@ -937,7 +937,7 @@ namespace imajuscule {
                         denorm<SINE_GAIN>()
                     }});
 
-                    if(MODE == Mode::WIND) {
+                    if constexpr (MODE == Mode::WIND) {
                         auto ra = octaveRangeToFreqRange<
                         CENTER_OCTAVE_MIN_LONG_TERM,
                         CENTER_OCTAVE_MAX_LONG_TERM
@@ -975,14 +975,14 @@ namespace imajuscule {
                             }
                         }
 
-                        if(MODE == Mode::SWEEP) {
+                        if constexpr (MODE == Mode::SWEEP) {
                             c.elem.engine.initialize_sweep(out,
                                                            chans,
                                                            denorm<LOW_FREQ>(),
                                                            denorm<HIGH_FREQ>(),
                                                            pan);
                         }
-                        else if(MODE == Mode::BIRDS) {
+                        else if constexpr (MODE == Mode::BIRDS) {
                             c.elem.engine.set_freq_xfade(denorm<FREQ_TRANSITION_LENGTH>());
                             auto interp_freq = static_cast<itp::interpolation>(itp::interpolation_traversal().realValues()[static_cast<int>(.5f + value<FREQ_TRANSITION_INTERPOLATION>())]);
                             c.elem.engine.set_freq_interpolation(interp_freq);
@@ -999,7 +999,7 @@ namespace imajuscule {
                                                             value<MARKOV_ARTICULATIVE_PAUSE_LENGTH>(),
                                                             pan);
                         }
-                        else if(MODE == Mode::WIND) {
+                        else if constexpr (MODE == Mode::WIND) {
                             c.elem.engine.initialize_wind(out,
                                                           chans,
                                                           value<MARKOV_START_NODE>(),
@@ -1009,7 +1009,7 @@ namespace imajuscule {
                                                           SoundEngine::InitPolicy::StartAfresh,
                                                           pan);
                         }
-                        else if(MODE == Mode::ROBOTS) {
+                        else if constexpr (MODE == Mode::ROBOTS) {
                             c.elem.engine.set_d1(/*denorm<D1>()*/value<D1>());
                             c.elem.engine.set_d2(/*denorm<D2>()*/value<D2>());
                             c.elem.engine.set_har_att(denorm<HARMONIC_ATTENUATION>());
