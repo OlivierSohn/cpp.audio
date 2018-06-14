@@ -11,7 +11,7 @@
 #include <vector>
 
 #include "../../cpp.algorithms/include/public.h"
-#include "../../cpp.os.logs/include/public.h"
+#include "../../cpp.os.log/include/public.h"
 
 #include "audio_platforms.h"
 
