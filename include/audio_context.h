@@ -22,7 +22,7 @@ namespace imajuscule {
             }
         };
 
-        void setPortaudioEnvVars();
+        void setPortaudioLatencyMillis(int latency);
 
         constexpr auto initial_n_audio_cb_frames = -1;
 
