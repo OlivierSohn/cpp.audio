@@ -110,11 +110,11 @@ namespace imajuscule {
                 chans.getChannels().closeAllChannels(0);
             }
 
-            void Init() {
+            void Init(float minLatency) {
                 if(bInitialized) {
                     return;
                 }
-                if(doInit()) {
+                if(doInit(minLatency)) {
                     initializeConvolutionReverb();
                 }
             }

@@ -38,6 +38,18 @@ namespace imajuscule {
                                     PaStreamCallbackFlags f,
                                     void *userData )
             {
+#ifndef NDEBUG // verify that our thread is not killed during the call
+                static int flag = 0;
+                if(unlikely(flag != 0)) {
+                  LG(ERR, "The audio engine assumes that the playCallback call executes till the end, but the previous call has been killed.");
+                  Assert(0);
+                }
+                flag = 1;
+#endif
+
+                // This global variable is used to dynamically optimize
+                // the reverb algorithms according to the
+                // number of frames we need to compute.
                 n_audio_cb_frames = numFrames;
 
                 Chans *chans = (Chans*)userData;
@@ -47,22 +59,29 @@ namespace imajuscule {
 
 #ifdef IMJ_LOG_OVERFLOW
                 if(f) {
-                  LG(WARN, "o %d %d %d %d %d"
+                  LG(ERR, "overflow flag: %d %d %d %d %d"
                     , f & paInputUnderflow
                     , f & paInputOverflow
                     , f & paOutputUnderflow
                     , f & paOutputOverflow
                     , f & paPrimingOutput
                   );
+                  Assert(0);
                 }
 #endif
+
                 chans->step((SAMPLE*)outputBuffer, static_cast<int>(numFrames));
+
+#ifndef NDEBUG
+                flag = 0;
+#endif
 
                 return paContinue;
             }
 
         protected:
-            bool doInit() {
+            // minLatency : latency in seconds
+            bool doInit(float minLatency) {
                 LG(INFO, "AudioOut::doInit");
                 LG(INFO, "AudioOut::doInit : initializing %s", Pa_GetVersionText());
                 PaError err = Pa_Initialize();
@@ -96,7 +115,9 @@ namespace imajuscule {
 
                     p.suggestedLatency =
                       // on windows it's important to not set suggestedLatency too low, else samples are lost (for example only 16 are available per timestep)
-                      pi->defaultLowOutputLatency;
+                      std::max(
+                        static_cast<double>(minLatency),
+                        pi->defaultLowOutputLatency);
 
                     p.hostApiSpecificStreamInfo = nullptr;
 

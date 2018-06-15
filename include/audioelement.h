@@ -55,7 +55,7 @@ namespace imajuscule {
         auto getState() const { return state(buffer); }
       };
 
-      
+
         template<typename ALGO>
         struct FinalAudioElement {
             static constexpr auto hasEnvelope = ALGO::hasEnvelope;
@@ -108,6 +108,20 @@ namespace imajuscule {
           , EnvelopeDone2 // the envelope has closed, the last buffer contains only samples where the enveloppe was closed.
         };
 
+        inline const char * toString(EnvelopeState s) {
+          switch(s) {
+            case EnvelopeState::KeyPressed:
+            return "KeyPressed";
+            case EnvelopeState::KeyReleased:
+            return "KeyReleased";
+            case EnvelopeState::EnvelopeDone1:
+            return "EnvelopeDone1";
+            case EnvelopeState::EnvelopeDone2:
+            return "EnvelopeDone2";
+          }
+          return "what?";
+        }
+
         // Similar to RingModulationAlgo except the modulator has equal real and imaginary parts.
         template <typename ALGO, typename Envelope>
         struct Envelopped {
@@ -158,6 +172,13 @@ namespace imajuscule {
           void setLoudnessParams(int low_index, float log_ratio, float loudness_level) {
               algo.setLoudnessParams(low_index, log_ratio, loudness_level);
           }
+
+#ifndef NDEBUG
+          void logDiagnostic() {
+            LG(INFO, "envelope:");
+            env.logDiagnostic();
+          }
+#endif
 
         private:
           Envelope env;
@@ -263,6 +284,15 @@ namespace imajuscule {
             bool afterAttackBeforeSustain() const {
               return isAfterAttackBeforeSustain(counter);
             }
+
+#ifndef NDEBUG
+            void logDiagnostic() {
+              std::cout << "state:     " << toString(state) << std::endl;
+              std::cout << "counter:   " << counter << std::endl;
+              std::cout << "_value:    " << _value << std::endl;
+              std::cout << "_topValue: " << _topValue << std::endl;
+            }
+#endif
 
         private:
             // between 0 and 1.
@@ -1760,7 +1790,9 @@ namespace imajuscule {
         return [&e](bool sync_clock) {
           using AE = AEBuffer<typename T::FPT>;
 
-          if(e.getState() == AE::inactive()) {
+          auto state = e.getState();
+
+          if(state == AE::inactive()) {
             // Issue : if the buffer just got marked inactive,
             // but no new AudioElementCompute happends
             // and from the main thread someone acquires this and queues it,
@@ -1775,16 +1807,36 @@ namespace imajuscule {
             }
             return false;
           }
-          if(likely(e.getState() != AE::queued())) {
+          if(likely(state != AE::queued())) {
             if(sync_clock == e.clock_) {
               // we alredy did compute this step.
               return true;
             }
           }
           e.clock_ = sync_clock;
+#ifndef NDEBUG
+          Optional<float> prevValue;
+          if(state != AE::queued() && state != AE::inactive()) {
+            prevValue = e.buffer->buffer[n_frames_per_buffer-1];
+          }
+#endif
           for(auto & v : e.buffer->buffer) {
             e.algo.step();
             v = e.algo.imag();
+#ifndef NDEBUG // verify that there is no big gap between consecutive values (happens if there is a race with onKeyReleased())
+            if(prevValue) {
+              auto diff = std::abs(v-*prevValue);
+              if(diff > 0.008f) {
+                LG(ERR, "at iteration %d: %f -> %f", &v - e.buffer->buffer, *prevValue, v);
+                e.algo.logDiagnostic();
+                for(auto & v2 : e.buffer->buffer) {
+                  LG(INFO, "%f", v2);
+                }
+                Assert(0);
+              }
+            }
+            prevValue = v;
+#endif
           }
           Assert(e.getState() != AE::queued());
           Assert(e.getState() != AE::inactive());

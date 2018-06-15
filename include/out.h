@@ -2,16 +2,16 @@
 
 namespace imajuscule {
     namespace sensor {
-      
+
       struct LockCtrl {
         LockCtrl( std::atomic_bool & l ) noexcept : l(l) {}
-        
+
         void lock() noexcept {
           while (l.exchange(true)) {
             std::this_thread::yield();
           }
         }
-        
+
         void unlock() noexcept {
           auto prev = l.exchange(false);
           Assert(prev); // make sure l was true
@@ -31,7 +31,7 @@ namespace imajuscule {
         }
       private:
         LockCtrl ctrl;
-        
+
         RAIILock(const RAIILock &) = delete;
         RAIILock & operator = (const RAIILock &) = delete;
       };
@@ -143,12 +143,12 @@ namespace imajuscule {
       spin.unlock();
       priority.unlock();
     }
-    
+
   private:
     thread::CtrlRTPriority priority;
     sensor::LockCtrl spin;
   };
-  
+
   template<>
   struct AudioLockCtrl<ThreadType::RealTime> {
     AudioLockCtrl(std::atomic_bool & l) noexcept : spin(l) {}
@@ -159,20 +159,20 @@ namespace imajuscule {
     void unlock() {
       spin.unlock();
     }
-    
+
   private:
     sensor::LockCtrl spin;
   };
-  
+
   struct NoOpLockCtrl {
     NoOpLockCtrl(bool) {}
-    
+
     void lock() {
     }
     void unlock() {
     }
   };
-  
+
   template<ThreadType T>
   struct AudioLock {
     AudioLock( std::atomic_bool & l) noexcept : ctrl(l) {
@@ -188,7 +188,7 @@ namespace imajuscule {
 
   template<WithLock, ThreadType>
   struct LockIf_;
-  
+
   template <ThreadType T>
   struct LockIf_<WithLock::Yes, T> {
     using type = AudioLock<T>;
@@ -202,7 +202,7 @@ namespace imajuscule {
 
   template<WithLock l, ThreadType T>
   using LockIf = typename LockIf_<l,T>::type;
-  
+
   template<WithLock l, ThreadType T>
   using LockCtrlIf = typename LockIf_<l,T>::ctrlType;
 

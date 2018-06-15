@@ -222,90 +222,89 @@ namespace imajuscule {
 
             template<typename Out, typename Chans>
             onEventResult onEvent2(Event const & e, Out & out, Chans & chans) {
-              if(e.type == Event::kNoteOnEvent) {
+              if(e.type == Event::kNoteOnEvent)
+              {
                 Assert(e.noteOn.velocity > 0.f ); // this case is handled by the wrapper... else we need to do a noteOff
                 MIDI_LG(INFO, "on  %d", e.noteOn.pitch);
+                {
+                  // We will reset the channel used, so the request queue will be guaranteed
+                  // to have room for a new element : no dynamic allocation will happen
+                  // so we can take the lock.
+                  typename Out::LockFromNRT L(out.get_lock());
 
-                // We will reset the channel used, so the request queue will be guaranteed
-                // to have room for a new element, hence we won't need to release this lock
-                // to allocate / deallocate and take it again to grow the queue.
-                typename Out::LockFromNRT L(out.get_lock());
+                  MonoNoteChannel * channel = nullptr;
+                  auto phase = mkNonDeterministicPhase();
 
-                MonoNoteChannel * channel = nullptr;
-                auto phase = mkNonDeterministicPhase();
+                  for(auto & o:channels) {
+                    // Find a channel where the element has finished
+                    if(o.elem.isEnvelopeFinished()) {
+                      if(channel) {
+                        continue;
+                      }
+                      // Setup the element to start a new note
+                      o.elem.setEnvelopeCharacTime(get_xfade_length());
+                      o.elem.forgetPastSignals();
+                      o.elem.onKeyPressed();
 
-                for(auto & o:channels) {
-                  // Find a channel where the element has finished
-                  if(o.elem.isEnvelopeFinished()) {
-                    if(channel) {
-                      continue;
+                      // if we don't reset, an assert fails when we enqueue the next request, because it's already queued.
+                      o.reset(chans); // to unqueue the (potential) previous request.
+                      if constexpr (Chans::XFPolicy == XfadePolicy::UseXfade) {
+                        o.setXFade(chans,get_xfade_length());
+                      }
+                      o.setVolume(chans, get_gain());
+                      o.pitch = e.noteOn.pitch;
+                      o.tuning = e.noteOn.tuning;
+
+                      channel = &o;
                     }
-                    // Setup the element to start a new note
-                    o.elem.setEnvelopeCharacTime(get_xfade_length());
-                    o.elem.forgetPastSignals();
-                    o.elem.onKeyPressed();
-
-                    // if we don't reset, an assert fails when we enqueue the next request, because it's already queued.
-                    o.reset(chans); // to unqueue the (potential) previous request.
-                    if constexpr (Chans::XFPolicy == XfadePolicy::UseXfade) {
-                      o.setXFade(chans,get_xfade_length());
+                    // To prevent phase cancellation, the phase of the new note will be
+                    // coherent with the phase of any active channel that plays a note at the same frequency.
+                    else if(!phase.isDeterministic() && o.pitch == e.noteOn.pitch && o.tuning==e.noteOn.tuning) {
+                      phase = mkDeterministicPhase(o.elem.angle());
                     }
-                    o.setVolume(chans, get_gain());
-                    o.pitch = e.noteOn.pitch;
-                    o.tuning = e.noteOn.tuning;
-
-                    channel = &o;
                   }
-                  // To prevent phase cancellation, the phase of the new note will be
-                  // coherent with the phase of any active channel that plays a note at the same frequency.
-                  else if(!phase.isDeterministic() && o.pitch == e.noteOn.pitch && o.tuning==e.noteOn.tuning) {
-                    phase = mkDeterministicPhase(o.elem.angle());
+
+                  if(channel) {
+                    onStartNote(e.noteOn.velocity, phase, *channel, out, chans);
+                    return onEventResult::OK;
                   }
                 }
-
-                if(!channel) {
-                  return onDroppedNote(e.noteOn.pitch);
-                }
-                onStartNote(e.noteOn.velocity, phase, *channel, out, chans);
-                return onEventResult::OK;
+                // it's important to call onDroppedNote only once the lock has been released.
+                return onDroppedNote(e.noteOn.pitch);
               }
-              else if(e.type == Event::kNoteOffEvent) {
-                return noteOff(e.noteOff.pitch);
-              }
-              return onEventResult::UNHANDLED;
-            }
-
-        private:
-
-            onEventResult noteOff(uint8_t pitch) {
+              else if(e.type == Event::kNoteOffEvent)
+              {
                 if(!handle_note_off) {
-                    MIDI_LG(INFO, "off (ignored) %d", pitch);
+                    MIDI_LG(INFO, "off (ignored) %d", e.noteOff.pitch);
                     // the initial implementation was using CloseMode::WHEN_DONE_PLAYING for that case
                     // but close method sets the channel to -1 so it's impossible to fade it to zero
                     // afterwards using close(), so instead we don't do anything here
                     return onEventResult::OK;
                 }
-                MIDI_LG(INFO, "off %d", pitch);
+                MIDI_LG(INFO, "off %d", e.noteOff.pitch);
+                {
+                  typename Out::LockFromNRT L(out.get_lock());
 
-                // We can have multiple notes with the same pitch, and different durations.
-                // Hence, here we just close the first opened channel with matching pitch.
-                for(auto & c : channels) {
-                    if(c.pitch != pitch) {
-                        continue;
-                    }
-
-                    if(!c.elem.onKeyReleased()) {
-                        MIDI_LG(INFO, "one element had already been sent a key released. %d", channels.size());
-                        continue;
-                    }
-
-                    // the oscillator is still used for the crossfade,
-                    // it will stop being used in the call to openChannel when that channel is finished closing
-                    return onEventResult::OK;
+                  // We can have multiple notes with the same pitch, and different durations.
+                  // Hence, here we just close the first opened channel with matching pitch.
+                  for(auto & c : channels) {
+                      if(c.pitch != e.noteOff.pitch) {
+                          continue;
+                      }
+                      if(!c.elem.onKeyReleased()) {
+                          // this one has already been sent a key released
+                          continue;
+                      }
+                      // note that the oscillator is still used for the crossfade.
+                      return onEventResult::OK;
+                  }
                 }
-                // Happens when the corresponding noteOn was skipped
+
+                // The corresponding noteOn was skipped,
                 // because too many notes were being played at the same time
-                return onDroppedNote(pitch);
+                return onDroppedNote(e.noteOff.pitch);
+              }
+              return onEventResult::UNHANDLED;
             }
 
         protected:
