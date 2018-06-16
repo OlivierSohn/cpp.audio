@@ -17,14 +17,6 @@
 
 #include "sound.defines.h"
 
-#if TARGET_OS_IOS
-# import <AudioToolbox/AudioToolbox.h>
-# include "audio_platform_au.h"
-#else
-# include "portaudio.h"
-# include "audio_platform_pa.h"
-#endif
-
 #include "samples.h"
 #include "loudness_filter_coefficients.h"
 #include "loudness.h"
@@ -33,6 +25,15 @@
 #include "sound.h"
 #include "loudness_filter.h"
 #include "audioelement.h"
+
+#if TARGET_OS_IOS
+# import <AudioToolbox/AudioToolbox.h>
+# include "audio_platform_au.h"
+#else
+# include "portaudio.h"
+# include "audio_platform_pa.h"
+#endif
+
 #include "noise.h"
 #include "sounds.h"
 #include "request.h"

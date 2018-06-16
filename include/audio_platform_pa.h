@@ -113,11 +113,28 @@ namespace imajuscule {
                     LG(INFO, "AudioOut::doInit : audio device : def. lolat %f", pi->defaultLowOutputLatency);
                     LG(INFO, "AudioOut::doInit : audio device : def. holat %f", pi->defaultHighOutputLatency);
 
-                    p.suggestedLatency =
+                    // To optimize cache use, the callback should be asked to compute
+                    // a multiple of n_frames_per_buffer frames at each call.
+
+                    auto suggestedLatency =
                       // on windows it's important to not set suggestedLatency too low, else samples are lost (for example only 16 are available per timestep)
                       std::max(
                         static_cast<double>(minLatency),
                         pi->defaultLowOutputLatency);
+                    int suggestedLatencyInSamples = static_cast<int>(0.5f + suggestedLatency * static_cast<float>(SAMPLE_RATE));
+                    LG(INFO, "suggested latency in samples       : %d", suggestedLatencyInSamples);
+                    using namespace audioelement;
+                    int ceiledSLIS = n_frames_per_buffer * (1 + (suggestedLatencyInSamples-1) / n_frames_per_buffer);
+                    LG(INFO, " ceiled to the next multiple of %d : %d", n_frames_per_buffer, ceiledSLIS);
+                    // The current portaudio doc says, about suggestedLatency:
+                    //   "implementations should round the suggestedLatency up to the next practical value
+                    //     - ie to provide an equal or higher latency than suggestedLatency wherever possible"
+                    //   http://portaudio.com/docs/v19-doxydocs/structPaStreamParameters.html#aa1e80ac0551162fd091db8936ccbe9a0
+                    //
+                    // But what I found is that the resulting latency is 'equal or lower' to the suggested one.
+                    // Hence, I add epsilon here instead of substracting it, to be sure I will get the right buffer sizes.
+                    p.suggestedLatency = static_cast<float>(ceiledSLIS) / static_cast<float>(SAMPLE_RATE) + 1e-6;
+                    LG(INFO, "p.suggestedLatency          : %f", p.suggestedLatency);
 
                     p.hostApiSpecificStreamInfo = nullptr;
 
