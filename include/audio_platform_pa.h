@@ -59,14 +59,14 @@ namespace imajuscule {
 
 #ifdef IMJ_LOG_OVERFLOW
                 if(f) {
-                  LG(ERR, "overflow flag: %d %d %d %d %d"
+                  LG(ERR, "!!!!!!!!!!!!!!!!!! overflow flag: %d %d %d %d %d"
                     , f & paInputUnderflow
                     , f & paInputOverflow
                     , f & paOutputUnderflow
                     , f & paOutputOverflow
                     , f & paPrimingOutput
                   );
-                  Assert(0);
+                  //Assert(0);
                 }
 #endif
 
