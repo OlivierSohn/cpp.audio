@@ -141,9 +141,9 @@ namespace imajuscule {
 
                     const PaStreamInfo * si = Pa_GetStreamInfo(stream);
 
-                    LG(INFO, "AudioOut::doInit : stream : output lat  %f", si->outputLatency);
-                    LG(INFO, "AudioOut::doInit : stream : input lat   %f", si->inputLatency);
                     LG(INFO, "AudioOut::doInit : stream : sample rate %f", si->sampleRate);
+                    LG(INFO, "AudioOut::doInit : stream : output lat  %f (%f frames)", si->outputLatency, si->outputLatency * si->sampleRate);
+                    LG(INFO, "AudioOut::doInit : stream : input lat   %f (%f frames)", si->inputLatency, si->inputLatency * si->sampleRate);
 
                     err = Pa_StartStream( stream );
                     if( unlikely(err != paNoError) )
