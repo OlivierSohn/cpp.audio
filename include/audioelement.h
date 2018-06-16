@@ -753,6 +753,29 @@ namespace imajuscule {
         using WhiteNoise = FinalAudioElement< soundBufferWrapperAlgo<Sound::NOISE> >;
 
         template<typename T>
+        struct ConstOne {
+          static constexpr auto hasEnvelope = false;
+          using FPT = T;
+          
+          T imag() const { return static_cast<T>(1); }
+          
+          void forgetPastSignals() const {}
+          void step() const {}
+          
+          bool isEnvelopeFinished() const {
+            Assert(0);
+            return false;
+          }
+          void onKeyPressed() {
+            Assert(0);
+          }
+          bool onKeyReleased() {
+            Assert(0);
+            return false;
+          }
+        };
+      
+        template<typename T>
         struct SquareAlgo : public Phased<T> {
             static constexpr auto hasEnvelope = false;
             using Phased<T>::angle_;
@@ -774,7 +797,6 @@ namespace imajuscule {
                 return false;
             }
         };
-
         template<typename Envel>
         using Square = FinalAudioElement<Envelopped<SquareAlgo<typename Envel :: FPT>,Envel>>;
 
@@ -1787,8 +1809,9 @@ namespace imajuscule {
 
       template <typename T>
       auto fCompute(T&e) {
-        return [&e](bool sync_clock) {
-          using AE = AEBuffer<typename T::FPT>;
+        return [&e](bool sync_clock, int nSkippedFrames) {
+          using FPT = typename T::FPT;
+          using AE = AEBuffer<FPT>;
 
           auto state = e.getState();
 
@@ -1809,34 +1832,21 @@ namespace imajuscule {
           }
           if(likely(state != AE::queued())) {
             if(sync_clock == e.clock_) {
-              // we alredy did compute this step.
+              // we already computed this step.
               return true;
             }
           }
           e.clock_ = sync_clock;
-#ifndef NDEBUG
-          Optional<float> prevValue;
-          if(state != AE::queued() && state != AE::inactive()) {
-            prevValue = e.buffer->buffer[n_frames_per_buffer-1];
+          auto * buf = e.buffer->buffer;
+          int i=0;
+          Assert(nSkippedFrames >= 0);
+          Assert(nSkippedFrames < n_frames_per_buffer);
+          for(; i != nSkippedFrames; ++i) {
+            buf[i] = {};
           }
-#endif
-          for(auto & v : e.buffer->buffer) {
+          for(; i != n_frames_per_buffer; ++i) {
             e.algo.step();
-            v = e.algo.imag();
-#ifndef NDEBUG // verify that there is no big gap between consecutive values (happens if there is a race with onKeyReleased())
-            if(prevValue) {
-              auto diff = std::abs(v-*prevValue);
-              if(diff > 0.008f) {
-                LG(ERR, "at iteration %d: %f -> %f", &v - e.buffer->buffer, *prevValue, v);
-                e.algo.logDiagnostic();
-                for(auto & v2 : e.buffer->buffer) {
-                  LG(INFO, "%f", v2);
-                }
-                Assert(0);
-              }
-            }
-            prevValue = v;
-#endif
+            buf[i] = e.algo.imag();
           }
           Assert(e.getState() != AE::queued());
           Assert(e.getState() != AE::inactive());

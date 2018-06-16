@@ -74,6 +74,10 @@ namespace imajuscule {
             using Base::chans;
             using Base::bInitialized;
             using Base::doInit;
+          
+            // the min latency used in case the initialization is done lazily
+            static constexpr float minLazyLatency = 0.005f;
+
 
         private:
             static constexpr auto xfade_on_close = 200;
@@ -138,7 +142,7 @@ namespace imajuscule {
                 if(closing) {
                     return AUDIO_CHANNEL_NONE;
                 }
-                Init();
+                Init(minLazyLatency);
                 return getChannelHandler().getChannels().template openChannel<WithLock::Yes>(volume, p, xfade_length);
             }
 

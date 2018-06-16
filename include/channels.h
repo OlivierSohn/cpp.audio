@@ -24,11 +24,15 @@ namespace imajuscule {
         /*
          * returns false when the lambda can be removed
          */
-        using OrchestratorFunc = std::function<bool(Channels &, int)>;
+        using OrchestratorFunc = std::function<bool(Channels &
+                                                    , int // the max number of frames computed in one chunk
+                                                    )>;
         /*
          * returns false when the lambda can be removed
          */
-        using ComputeFunc = std::function<bool(bool)>;
+        using ComputeFunc = std::function<bool(bool // the clock
+                                              ,int  // the number of frames to skip
+                                               )>;
 
         Channels() : _lock(GlobalAudioLock<Policy>::get()) {
             Assert(0 && "The other constructor should be used");
@@ -66,8 +70,8 @@ namespace imajuscule {
             Assert(computes.capacity() > computes.size()); // we are in the audio thread, we shouldn't allocate dynamically
             ++nOrchestratorsAndComputes;
             computes.push_back(std::move(f));
-            if(out.isInbetweenTwoComputes()) {
-                computes.back()(out.getTicTac());
+            if(int nSkippedFrames = out.getConsummedFrames()) {
+                computes.back()(out.getTicTac(), nSkippedFrames);
             }
         }
 
@@ -280,7 +284,7 @@ namespace imajuscule {
             }
 
             for(auto it = computes.begin(), end = computes.end(); it!=end;) {
-                if(!((*it)(tictac))) {
+                if(!((*it)(tictac, 0))) {
                     it = computes.erase(it);
                     --nOrchestratorsAndComputes;
                     end = computes.end();

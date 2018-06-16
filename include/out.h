@@ -846,10 +846,11 @@ namespace imajuscule {
             }
         }
 
-        bool isInbetweenTwoComputes() const {
-            Assert(consummed_frames >= 0);
-            Assert(consummed_frames < audioelement::n_frames_per_buffer);
-            return 0 != consummed_frames;
+        int getConsummedFrames() const {
+          Assert(consummed_frames >= 0);
+          Assert(consummed_frames < audioelement::n_frames_per_buffer);
+          return consummed_frames;
+
         }
 
         bool getTicTac() const { return clock_;}
