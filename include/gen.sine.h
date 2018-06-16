@@ -19,11 +19,13 @@ namespace imajuscule {
                     osc.algo.setAngleIncrements(freq_to_angle_increment(freq));
                     setPhase(phase, osc.algo);
 
+                    auto & channel = chans.editChannel(c.channel);
+
                     // The caller is responsible for:
                     // - taking the out lock if needed
                     // - growing the channel request queue if needed
                     auto res = chans.playGenericNoLock(
-                                    out, c.channel,osc,
+                                    out, channel, osc,
                                                    Request{
                                                        &osc.buffer->buffer[0],
                                                        velocity,

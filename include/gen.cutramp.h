@@ -65,7 +65,7 @@ namespace imajuscule {
 
                 using Parent::params;
               using Parent::half_tone;
-              
+
             protected:
                 using interleaved_buf_t = InterleavedBuffer;
 
@@ -243,12 +243,14 @@ namespace imajuscule {
                                       ramp_size,
                                       0.f,
                                       static_cast<itp::interpolation>(itp::interpolation_traversal().realValues()[static_cast<int>(.5f + params[Params::RAMP_INTERPOLATION])]));
-                  
+
+                    auto & channel = chans.editChannel(c.channel);
+
                     // The caller is responsible for:
                     // - taking the out lock if needed
                     // - growing the channel request queue if needed
                     chans.playGenericNoLock(
-                                    out, c.channel,osc,
+                                    out, channel, osc,
                                                    Request{
                                                        &osc.buffer->buffer[0],
                                                        velocity,

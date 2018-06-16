@@ -111,7 +111,7 @@ namespace imajuscule {
           auto & c = editChannel(channel_id);
           reserveAndLock(1,c.edit_requests(),l);
 
-          auto res = playGenericNoLock(out, channel_id, buf, std::move(req));
+          auto res = playGenericNoLock(out, c, buf, std::move(req));
 
           l.unlock();
 
@@ -124,17 +124,18 @@ namespace imajuscule {
          * - grown the capacity of the channel request queue
          */
         template<typename Out, typename T>
-        bool playGenericNoLock( Out & out, uint8_t channel_id, T & buf, Request && req) {
+        bool playGenericNoLock( Out & out, Channel & channel, T & buf, Request && req) {
 
             // we enqueue first, so that the buffer has the "queued" state
             // because when registering compute lambdas, they can be executed right away
             // so the buffer needs to be in the right state
 
-            bool res = playNolock(channel_id, {std::move(req)});
+            Assert(req.valid());
+            bool res = channel.addRequest( std::move(req) );
 
-          if constexpr (T::computable) {
-            this->registerCompute(out, fCompute(buf));
-          }
+            if constexpr (T::computable) {
+                this->registerCompute(out, fCompute(buf));
+            }
 
             return res;
         }

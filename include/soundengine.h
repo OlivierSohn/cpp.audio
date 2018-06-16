@@ -565,11 +565,13 @@ namespace imajuscule {
                     new_ramp->algo.setEnvelopeCharacTime(xfade_len);
                     new_ramp->algo.onKeyPressed();
 
+                    auto & channel = chans.editChannel(cid);
+
                     auto v = MakeVolume::run<nAudioOut>(1.f, pan) * (new_spec->volume()/Request::chan_base_amplitude);
                     // note that by design (see code of caller), the channel request queue is empty at this point
                     // no lock : the caller is responsible for taking the out lock
                     if(chans.playGenericNoLock(
-                                             out, cid,*new_ramp,
+                                             out, channel, *new_ramp,
                                                             Request{
                                                                 &new_ramp->buffer->buffer[0],
                                                                 v,
@@ -601,14 +603,13 @@ namespace imajuscule {
                 }
                 // note that by design (see code of caller), the channel request queue is empty at this point
                 // no lock : the caller is responsible for taking the out lock
-                auto res = chans.playGenericNoLock(
-                                                 out, cid,silence,
-                                                                Request{
-                                                                    &silence,
-                                                                    // to propagate the volume of previous spec to the next spec
-                                                                    channel.get_current().volumes * (1.f/Request::chan_base_amplitude),
-                                                                    articulative_pause_length
-                                                                });
+                auto res = chans.playGenericNoLock( out, channel, silence,
+                                                    Request{
+                                                        &silence,
+                                                        // to propagate the volume of previous spec to the next spec
+                                                        channel.get_current().volumes * (1.f/Request::chan_base_amplitude),
+                                                        articulative_pause_length
+                                                    });
                 Assert(res); // because length was checked
             }
 
