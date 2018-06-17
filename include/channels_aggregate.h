@@ -9,12 +9,14 @@ namespace imajuscule {
 
       using XFadeChans = Channels<nAudioOut, XfadePolicy::UseXfade, MaxQueueSize::One, Policy>;
       using NoXFadeChans = Channels<nAudioOut, XfadePolicy::SkipXfade, MaxQueueSize::One, Policy>;
+      using XFadeInfiniteChans = Channels<nAudioOut, XfadePolicy::UseXfade, MaxQueueSize::Infinite, Policy>;
 
       using Request = Request<nAudioOut>;
       using Volumes = Volumes<nAudioOut>;
 
       auto & getChannelsXFade() { return cX; }
       auto & getChannelsNoXFade() { return cNoX; }
+      auto & getChannelsXFadeInfinite() { return cXInf; }
 
       template <typename F>
       void forEach(F f) {
@@ -22,6 +24,9 @@ namespace imajuscule {
           c->forEach(f);
         }
         for(auto & c : cNoX) {
+          c->forEach(f);
+        }
+        for(auto & c : cXInf) {
           c->forEach(f);
         }
       }
@@ -33,6 +38,9 @@ namespace imajuscule {
         for(auto & c : cNoX) {
           c->run_computes(tictac);
         }
+        for(auto & c : cXInf) {
+          c->run_computes(tictac);
+        }
       }
 
       void closeAllChannels(int xfade) {
@@ -42,11 +50,15 @@ namespace imajuscule {
         for(auto & c : cNoX) {
           c->closeAllChannels(xfade);
         }
+        for(auto & c : cXInf) {
+          c->closeAllChannels(xfade);
+        }
       }
 
     private:
       std::vector<std::unique_ptr<XFadeChans>> cX;
       std::vector<std::unique_ptr<NoXFadeChans>> cNoX;
+      std::vector<std::unique_ptr<XFadeInfiniteChans>> cXInf;
     };
 
   }

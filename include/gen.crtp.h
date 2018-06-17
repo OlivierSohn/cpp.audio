@@ -247,7 +247,7 @@ namespace imajuscule {
 
                       // if we don't reset, an assert fails when we enqueue the next request, because it's already queued.
                       o.reset(); // to unqueue the (potential) previous request.
-                      if constexpr (Chans::XFPolicy == XfadePolicy::UseXfade) {
+                      if constexpr (xfade_policy == XfadePolicy::UseXfade) {
                         o.channel->set_xfade(get_xfade_length());
                       }
                       o.channel->setVolume(get_gain());

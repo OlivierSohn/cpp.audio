@@ -16,9 +16,9 @@ namespace imajuscule {
 
             template<WithLock lock_policy, typename ChannelsT>
             bool open(ChannelsT & out, float inital_volume) {
-                static_assert(ChannelsT::XFPolicy==Chan::XFPolicy);
-                constexpr auto xfadeLen = (ChannelsT::XFPolicy==XfadePolicy::UseXfade)?401:0;
-                auto cid = out.template openChannel<lock_policy>({inital_volume}, ChannelClosingPolicy::ExplicitClose
+                constexpr auto xfadeLen = (Chan::XFPolicy==XfadePolicy::UseXfade)?401:0;
+                auto cid = out.template openChannel<lock_policy>({inital_volume}
+                                                                , ChannelClosingPolicy::ExplicitClose
                                                                 , xfadeLen);
                 if(cid == AUDIO_CHANNEL_NONE) {
                   channel = nullptr;

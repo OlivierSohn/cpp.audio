@@ -143,14 +143,14 @@ namespace imajuscule {
                     return AUDIO_CHANNEL_NONE;
                 }
                 Init(minLazyLatency);
-                return getChannelHandler().getChannels().template openChannel<WithLock::Yes>(volume, p, xfade_length);
+                return getFirstXfadeInfiniteChans().template openChannel<WithLock::Yes>(volume, p, xfade_length);
             }
 
             void play( uint8_t channel_id, StackVector<Request> && v ) {
                 if(closing) {
                     return;
                 }
-                getChannelHandler().getChannels().play( channel_id, std::move( v ) );
+                getFirstXfadeInfiniteChans().play( channel_id, std::move( v ) );
             }
 
             template<typename U>
@@ -158,23 +158,33 @@ namespace imajuscule {
                 if(closing) {
                     return;
                 }
-              getChannelHandler().getChannels().playGeneric( chans, channel_id, buf, std::move(req) );
+              getFirstXfadeInfiniteChans().playGeneric( chans, channel_id, buf, std::move(req) );
             }
 
             void toVolume( uint8_t channel_id, float volume, int nSteps ) {
                 if(closing) {
                     return;
                 }
-                getChannelHandler().getChannels().toVolume( channel_id, volume, nSteps);
+                getFirstXfadeInfiniteChans().toVolume( channel_id, volume, nSteps);
             }
 
             void closeChannel(uint8_t channel_id, CloseMode mode) {
                 if(closing) {
                     return;
                 }
-                getChannelHandler().getChannels().closeChannel( channel_id, mode );
+                getFirstXfadeInfiniteChans().closeChannel( channel_id, mode );
             }
 
+          auto & getFirstXfadeInfiniteChans() {
+            auto p = getChannelHandler().getChannels().getChannelsXFadeInfinite()[0].get();
+            Assert(p);
+            return *p;
+          }
+          auto & getFirstXfadeChans() {
+            auto p = getChannelHandler().getChannels().getChannelsXFade()[0].get();
+            Assert(p);
+            return *p;
+          }
         };
 
     }
