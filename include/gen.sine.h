@@ -19,13 +19,11 @@ namespace imajuscule {
                     osc.algo.setAngleIncrements(freq_to_angle_increment(freq));
                     setPhase(phase, osc.algo);
 
-                    auto & channel = chans.editChannel(c.channel);
-
                     // The caller is responsible for:
                     // - taking the out lock if needed
                     // - growing the channel request queue if needed
                     auto res = chans.playGenericNoLock(
-                                    out, channel, osc,
+                                    out, *c.channel, osc,
                                                    Request{
                                                        &osc.buffer->buffer[0],
                                                        velocity,
@@ -40,7 +38,7 @@ namespace imajuscule {
             template<
             int nOuts,
             XfadePolicy xfade_policy_,
-            typename MNC,
+            typename AE,
             bool close_channel_on_note_off,
             typename EventIterator,
             typename NoteOnEvent,
@@ -48,7 +46,7 @@ namespace imajuscule {
             >
             using Synth = ImplCRTP <nOuts,
               xfade_policy_,
-              MNC,
+              AE,
               close_channel_on_note_off,
               EventIterator,
               NoteOnEvent,

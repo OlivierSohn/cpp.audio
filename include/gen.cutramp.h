@@ -244,13 +244,11 @@ namespace imajuscule {
                                       0.f,
                                       static_cast<itp::interpolation>(itp::interpolation_traversal().realValues()[static_cast<int>(.5f + params[Params::RAMP_INTERPOLATION])]));
 
-                    auto & channel = chans.editChannel(c.channel);
-
                     // The caller is responsible for:
                     // - taking the out lock if needed
                     // - growing the channel request queue if needed
                     chans.playGenericNoLock(
-                                    out, channel, osc,
+                                    out, *c.channel, osc,
                                                    Request{
                                                        &osc.buffer->buffer[0],
                                                        velocity,
@@ -298,9 +296,9 @@ namespace imajuscule {
 
             typename Base = ImplBase<Parameters, ProcessData>,
 
-            typename Parent = ImplCRTP</* > */ nAudioOut, XfadePolicy::SkipXfade,
-            MonoNoteChannel<audioelement::FreqRamp<audioelement::SimpleLinearEnvelope<float>>>, true,
-            EventIterator, NoteOnEvent, NoteOffEvent, Base /* < */>
+            typename Parent = ImplCRTP< nAudioOut, XfadePolicy::SkipXfade,
+            audioelement::FreqRamp<audioelement::SimpleLinearEnvelope<float>>, true,
+            EventIterator, NoteOnEvent, NoteOffEvent, Base>
 
             >
             struct Impl_ : public Parent {

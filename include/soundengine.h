@@ -230,6 +230,7 @@ namespace imajuscule {
 
             template<
             SoundEngineMode M,
+            int nOuts,
             typename Logger,
             typename Mix = typename MixOf<M>::type
             >
@@ -238,6 +239,7 @@ namespace imajuscule {
             using Algo = typename SoundEngineAlgo_<Mix, M>::type;
 
             using audioElt = audioelement::FinalAudioElement< audioelement::SimplyEnveloped < Algo > >;
+            using Chan = Channel<nOuts, XfadePolicy::UseXfade, MaxQueueSize::One>;
 
             static enumTraversal ModeTraversal;
 
@@ -506,12 +508,11 @@ namespace imajuscule {
                         return true;
                     }
                 }
-                auto & channel = chans.editChannel(cid);
-                if(!channel.isPlaying()) {
+                if(channel->isPlaying()) {
                     return true;
                 }
                 done = false;
-                if(!channel.get_requests().empty()) {
+                if(!channel->get_requests().empty()) {
                     return true;
                 }
 
@@ -519,13 +520,13 @@ namespace imajuscule {
                 // TODO today, we rely on channel xfades for xfades. But we should have channels
                 // with no xfade, and just use enveloppes (when one enveloppe starts releasing,
                 // the other starts raising : hence we need 2 channels instead of one.).
-                if(channel.get_remaining_samples_count() < max_frame_compute + 1 + channel.get_size_half_xfade())
+                if(channel->get_remaining_samples_count() < max_frame_compute + 1 + channel->get_size_half_xfade())
                 {
                     if(state_silence) {
                         state_silence = false;
                     }
                     else {
-                        bool const has_silence = articulative_pause_length > 2*channel.get_size_xfade();
+                        bool const has_silence = articulative_pause_length > 2*channel->get_size_xfade();
                         if(has_silence) {
                             if(auto cur = ramp_specs.get_current()) {
                                 if(cur->silenceFollows()) {
@@ -565,13 +566,11 @@ namespace imajuscule {
                     new_ramp->algo.setEnvelopeCharacTime(xfade_len);
                     new_ramp->algo.onKeyPressed();
 
-                    auto & channel = chans.editChannel(cid);
-
                     auto v = MakeVolume::run<nAudioOut>(1.f, pan) * (new_spec->volume()/Request::chan_base_amplitude);
                     // note that by design (see code of caller), the channel request queue is empty at this point
                     // no lock : the caller is responsible for taking the out lock
                     if(chans.playGenericNoLock(
-                                             out, channel, *new_ramp,
+                                             out, *channel, *new_ramp,
                                                             Request{
                                                                 &new_ramp->buffer->buffer[0],
                                                                 v,
@@ -594,20 +593,18 @@ namespace imajuscule {
                 constexpr auto nAudioOut = Out::nOuts;
                 using Request = Request<nAudioOut>;
 
-                auto & channel = chans.editChannel(cid);
-
-                Assert(articulative_pause_length > 2*channel.get_size_xfade());
+                Assert(articulative_pause_length > 2*channel->get_size_xfade());
 
                 if(auto * prevRamp = get_ramps().keyPressed) {
                   prevRamp->algo.onKeyReleased();
                 }
                 // note that by design (see code of caller), the channel request queue is empty at this point
                 // no lock : the caller is responsible for taking the out lock
-                auto res = chans.playGenericNoLock( out, channel, silence,
+                auto res = chans.playGenericNoLock( out, *channel, silence,
                                                     Request{
                                                         &silence,
                                                         // to propagate the volume of previous spec to the next spec
-                                                        channel.get_current().volumes * (1.f/Request::chan_base_amplitude),
+                                                        channel->get_current().volumes * (1.f/Request::chan_base_amplitude),
                                                         articulative_pause_length
                                                     });
                 Assert(res); // because length was checked
@@ -677,11 +674,9 @@ namespace imajuscule {
                 active = b;
             }
 
-            void set_channel(uint8_t c) {
-                this->cid = c;
+            void set_channel(Chan & c) {
+                channel = &c;
             }
-
-            using InitPolicy = SoundEngineInitPolicy;
 
             template<typename Out, typename Chans>
             void initialize_sweep(Out & o,
@@ -705,12 +700,12 @@ namespace imajuscule {
             template<typename Out, typename Chans>
             void initialize_birds(Out & o,
                                  Chans & chans,
-                                   int start_node, int pre_tries, int min_path_length, int additional_tries, InitPolicy init_policy,
+                                   int start_node, int pre_tries, int min_path_length, int additional_tries, SoundEngineInitPolicy init_policy,
                                    FreqXfade xfade_freq, int articulative_pause_length,
                                    float pan) {
                 this->xfade_freq = xfade_freq;
 
-                bool initialize = (!markov) || (init_policy==InitPolicy::StartAfresh);
+                bool initialize = (!markov) || (init_policy==SoundEngineInitPolicy::StartAfresh);
                 if(!markov) {
                     markov = create_birds<Out::nOuts>();
                     if(!markov) {
@@ -724,9 +719,9 @@ namespace imajuscule {
             template<typename Out, typename Chans>
             void initialize_wind(Out & o,
                                  Chans & chans,
-                                 int start_node, int pre_tries, int min_path_length, int additional_tries, InitPolicy init_policy,
+                                 int start_node, int pre_tries, int min_path_length, int additional_tries, SoundEngineInitPolicy init_policy,
                                  float pan) {
-                bool initialize = (!markov) || (init_policy==InitPolicy::StartAfresh);
+                bool initialize = (!markov) || (init_policy==SoundEngineInitPolicy::StartAfresh);
                 if(!markov) {
                     markov = create_wind<Out::nOuts>();
                     if(!markov) {
@@ -740,7 +735,7 @@ namespace imajuscule {
             template<typename Out, typename Chans>
             void initialize_robot(Out & o,
                                  Chans & chans,
-                                  int start_node, int pre_tries, int min_path_length, int additional_tries, InitPolicy init_policy,
+                                  int start_node, int pre_tries, int min_path_length, int additional_tries, SoundEngineInitPolicy init_policy,
                                   int articulative_pause_length,
                                   float pan) {
                 auto scatter = 1.f + freq_scatter;
@@ -769,7 +764,7 @@ namespace imajuscule {
                     return;
                 }
 
-                bool initialize = (!markov) || (init_policy==InitPolicy::StartAfresh);
+                bool initialize = (!markov) || (init_policy==SoundEngineInitPolicy::StartAfresh);
                 if(!markov) {
                     markov = create_robot<Out::nOuts>();
                     if(!markov) {
@@ -856,7 +851,7 @@ namespace imajuscule {
             float vol1 = 1.f, vol2 = 1.f;
             float pan;
 
-            uint8_t cid;
+            Chan * channel = nullptr;
             int xfade_len;
             int freq_xfade;
             int articulative_pause_length;

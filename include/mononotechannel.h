@@ -2,7 +2,7 @@
 namespace imajuscule {
     namespace audio {
 
-        template<typename AudioElem>
+        template<typename AudioElem, typename Chan>
         struct MonoNoteChannel {
             static_assert(AudioElem::hasEnvelope,"");
             using buffer_t = typename AudioElem::buffer_t;
@@ -10,45 +10,44 @@ namespace imajuscule {
             MonoNoteChannel(buffer_t & b) : elem(b) {}
 
             uint8_t pitch; // instead of noteId, on note off we receive the pitch, so pitch is the key
-            uint8_t channel = AUDIO_CHANNEL_NONE; // TODO use a pointer to the channel instead.
             float tuning;
+            Chan * channel = nullptr;
             AudioElem elem;
 
             template<WithLock lock_policy, typename ChannelsT>
             bool open(ChannelsT & out, float inital_volume) {
+                static_assert(ChannelsT::XFPolicy==Chan::XFPolicy);
                 constexpr auto xfadeLen = (ChannelsT::XFPolicy==XfadePolicy::UseXfade)?401:0;
-                channel = out.template openChannel<lock_policy>({inital_volume}, ChannelClosingPolicy::ExplicitClose
+                auto cid = out.template openChannel<lock_policy>({inital_volume}, ChannelClosingPolicy::ExplicitClose
                                                                 , xfadeLen);
-                return channel != AUDIO_CHANNEL_NONE;
+                if(cid == AUDIO_CHANNEL_NONE) {
+                  channel = nullptr;
+                }
+                else {
+                  channel = &out.editChannel(cid);
+                }
+                return channel != nullptr;
             }
 
-            template<typename ChannelsT>
-            void reset(ChannelsT & out) {
-                Assert(channel != AUDIO_CHANNEL_NONE);
-                out.template editChannel(channel).reset();
+            void reset() {
+                Assert(channel);
+                channel->reset();
             }
 
-            template<typename ChannelsT>
-            void show(ChannelsT & out) {
-              if(channel != AUDIO_CHANNEL_NONE) {
-                out.template editChannel(channel).show();
+            void show() {
+              if(channel) {
+                channel->show();
               }
               else {
                 std::cout << "none channel";
               }
             }
 
-            template<typename ChannelsT>
-            void setVolume(ChannelsT & out, float volume) {
-                Assert(channel != AUDIO_CHANNEL_NONE);
-                out.template setVolume(channel, volume);
+            void setVolume(float volume) {
+                Assert(channel);
+                channel->setVolume(volume);
             }
 
-            template<typename ChannelsT>
-            void setXFade(ChannelsT & out, int xf) {
-                Assert(channel != AUDIO_CHANNEL_NONE);
-                out.template setXFade(channel, xf);
-            }
         };
 
     }

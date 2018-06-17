@@ -91,6 +91,7 @@ namespace imajuscule {
         using Volumes = Volumes<nAudioOut>;
         using QueuedRequest = QueuedRequest<nAudioOut>;
         using Request = Request<nAudioOut>;
+        static constexpr auto XFPolicy = XF;
 
         static constexpr unsigned int default_volume_transition_length = 2000;
         static constexpr unsigned int min_xfade_size = 3;

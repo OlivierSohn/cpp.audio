@@ -426,8 +426,6 @@ namespace imajuscule {
                 using Parent::params;
                 using Parent::half_tone;
 
-                using SoundEngine = SoundEngine<MODE, imajuscule::Logger>;
-
             public:
                 static std::vector<ParamSpec> const & getParamSpecs() {
 
@@ -863,7 +861,7 @@ namespace imajuscule {
                 template<typename MonoNoteChannel, typename OutputData, typename Chans>
                 // it's unclear if we should use phase at all here.
                 void onStartNote(float velocity, Phase phase, MonoNoteChannel & c, OutputData & out, Chans & chans) {
-                    c.elem.engine.set_channel(c.channel);
+                    c.elem.engine.set_channel(*c.channel);
 
                     {
                         auto interp = static_cast<itp::interpolation>(itp::interpolation_traversal().realValues()[static_cast<int>(.5f + value<INTERPOLATION>())]);
@@ -994,7 +992,7 @@ namespace imajuscule {
                                                             value<MARKOV_PRE_TRIES>(),
                                                             value<MARKOV_MIN_PATH_LENGTH>(),
                                                             value<MARKOV_ADDITIONAL_TRIES>(),
-                                                            SoundEngine::InitPolicy::StartAfresh,
+                                                            SoundEngineInitPolicy::StartAfresh,
                                                             xfade_freq,
                                                             value<MARKOV_ARTICULATIVE_PAUSE_LENGTH>(),
                                                             pan);
@@ -1006,7 +1004,7 @@ namespace imajuscule {
                                                           value<MARKOV_PRE_TRIES>(),
                                                           value<MARKOV_MIN_PATH_LENGTH>(),
                                                           value<MARKOV_ADDITIONAL_TRIES>(),
-                                                          SoundEngine::InitPolicy::StartAfresh,
+                                                          SoundEngineInitPolicy::StartAfresh,
                                                           pan);
                         }
                         else if constexpr (MODE == Mode::ROBOTS) {
@@ -1019,7 +1017,7 @@ namespace imajuscule {
                                                            value<MARKOV_PRE_TRIES>(),
                                                            value<MARKOV_MIN_PATH_LENGTH>(),
                                                            value<MARKOV_ADDITIONAL_TRIES>(),
-                                                           SoundEngine::InitPolicy::StartAfresh,
+                                                           SoundEngineInitPolicy::StartAfresh,
                                                            value<MARKOV_ARTICULATIVE_PAUSE_LENGTH>(),
                                                            pan);
                         }
@@ -1208,7 +1206,7 @@ namespace imajuscule {
 
             typename Parent = ImplCRTP <
             nAudioOut, XfadePolicy::UseXfade, // TODO reassess the use of xfades, now that we have enveloppes
-            MonoNoteChannel< EngineAndRamps<typename Base::SoundEngine> >,
+            EngineAndRamps<SoundEngine<MODE, nAudioOut, Logger>>,
             withNoteOff,
             EventIterator, NoteOnEvent, NoteOffEvent, Base >
             >

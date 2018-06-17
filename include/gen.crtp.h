@@ -129,7 +129,7 @@ namespace imajuscule {
 
         int nOuts,
         XfadePolicy xfade_policy_,
-        typename MNC,
+        typename AE,
         bool handle_note_off,
         typename EventIterator,
         typename NoteOnEvent,
@@ -143,7 +143,7 @@ namespace imajuscule {
             static constexpr auto nAudioOut = nOuts;
             static constexpr auto xfade_policy = xfade_policy_;
 
-            using MonoNoteChannel = MNC;
+            using MonoNoteChannel = MonoNoteChannel<AE, Channel<nOuts, xfade_policy_, MaxQueueSize::One>>;
 
             using Base::get_xfade_length;
             using Base::get_gain;
@@ -176,13 +176,12 @@ namespace imajuscule {
                 return true;
             }
 
-            template<typename ChannelsT>
-            void finalize(ChannelsT & out) {
+            void finalize() {
                 for(auto & c : channels) {
-                    if(c.channel == AUDIO_CHANNEL_NONE) {
+                    if(c.channel == nullptr) {
                         continue;
                     }
-                    c.template reset(out);
+                    c.reset();
                 }
             }
 
@@ -247,11 +246,11 @@ namespace imajuscule {
                       o.elem.onKeyPressed();
 
                       // if we don't reset, an assert fails when we enqueue the next request, because it's already queued.
-                      o.reset(chans); // to unqueue the (potential) previous request.
+                      o.reset(); // to unqueue the (potential) previous request.
                       if constexpr (Chans::XFPolicy == XfadePolicy::UseXfade) {
-                        o.setXFade(chans,get_xfade_length());
+                        o.channel->set_xfade(get_xfade_length());
                       }
-                      o.setVolume(chans, get_gain());
+                      o.channel->setVolume(get_gain());
                       o.pitch = e.noteOn.pitch;
                       o.tuning = e.noteOn.tuning;
 
@@ -343,7 +342,7 @@ namespace imajuscule {
             }
 
             ~Wrapper() {
-                plugin.template finalize(out.getChannels());
+                plugin.finalize();
             }
 
             void doProcessing (ProcessData& data) {

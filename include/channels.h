@@ -92,12 +92,6 @@ namespace imajuscule {
             LockFromNRT l(get_lock());
             editChannel(channel_id).toVolume(volume, nSteps);
         }
-        void setVolume(uint8_t channel_id, float volume) {
-            editChannel(channel_id).setVolume(volume);
-        }
-        void setXFade(uint8_t channel_id, int xf) {
-            editChannel(channel_id).set_xfade(xf);
-        }
 
         template<typename Out, typename T>
         bool playGeneric( Out & out, uint8_t channel_id, T & buf, Request && req) {
