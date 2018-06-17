@@ -90,7 +90,8 @@ namespace imajuscule {
             }
             
         protected:
-            bool doInit() {
+          // TODO how can we set latency on ios?
+            bool doInit(float minLatency) {
                 LG(INFO, "AudioOut::doInit");
                 bInitialized = true;
                 if(0==initAudioSession())
