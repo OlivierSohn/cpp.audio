@@ -763,12 +763,7 @@ namespace imajuscule {
     private:
         //////////////////////////
         /// state of last write:
-
         bool clock_ : 1; /// "tic tac" flag, inverted at each new AudioElements buffer writes
-
-        /// the number of buffer frames that were used from the previous AudioElements buffer write
-        /// "0" means the entire buffers where used
-        unsigned int consummed_frames : relevantBits( audioelement::n_frames_per_buffer - 1 );
         ///
         //////////////////////////
 
@@ -784,14 +779,12 @@ namespace imajuscule {
         , post(l)
         , _lock(l)
         , clock_(false)
-        , consummed_frames(0)
         {}
 
         outputDataBase(AudioLockPolicyImpl<Policy>&l):
           post(l)
         , _lock(l)
         , clock_(false)
-        , consummed_frames(0)
         {}
 
         ChannelsT & getChannels() { return channelsT; }
@@ -801,8 +794,6 @@ namespace imajuscule {
 
         AudioLockPolicyImpl<Policy> & get_lock_policy() { return _lock; }
         decltype(std::declval<AudioLockPolicyImpl<Policy>>().lock()) get_lock() { return _lock.lock(); }
-
-        auto count_consummed_frames() const { return consummed_frames; }
 
         // called from audio callback
         void step(SAMPLE *outputBuffer, int nFrames) {
@@ -824,74 +815,34 @@ namespace imajuscule {
                 memset(outputBuffer, 0, nFrames * nOuts * sizeof(SAMPLE));
                 return;
             }
+          
+            int start = 0;
 
-            if(consummed_frames != 0) {
-                // finish consuming previous buffers
-                if(!consume_buffers(outputBuffer, nFrames)) {
-                    return;
-                }
-            }
-
-            while(true) {
-                // the previous buffers are consumed, we need to compute them again
-
-                Assert(consummed_frames == 0); // else we skip some unconsummed frames
-
+            while(nFrames > 0) {
                 clock_ = !clock_; // keep that BEFORE passing clock_ to compute functions (dependency on registerCompute)
-                channelsT.run_computes(clock_);
+              
+                // how many frames are we going to compute?
+                auto nLocalFrames = std::min(nFrames, audioelement::n_frames_per_buffer);
 
-                if(!consume_buffers(outputBuffer, nFrames)) {
-                    return;
-                }
+                channelsT.run_computes(clock_, nLocalFrames);
+
+                consume_buffers(&outputBuffer[start], nLocalFrames);
+                start += nLocalFrames * nOuts;
+                nFrames -= nLocalFrames;
             }
-        }
-
-        int getConsummedFrames() const {
-          Assert(consummed_frames >= 0);
-          Assert(consummed_frames < audioelement::n_frames_per_buffer);
-          return consummed_frames;
-
         }
 
         bool getTicTac() const { return clock_;}
 
     private:
 
-        // returns true if everything was consummed AND there is more frames remaining
-        bool consume_buffers(SAMPLE *& buf, int & nFrames) {
-            Assert(consummed_frames < audioelement::n_frames_per_buffer);
-            auto remaining_frames = audioelement::n_frames_per_buffer - consummed_frames;
-            Assert(remaining_frames <= audioelement::n_frames_per_buffer);
-            Assert(remaining_frames > 0);
-            if(remaining_frames > nFrames) {
-                // partial consume
-                do_consume_buffers(buf, nFrames);
-                consummed_frames += nFrames;
-                Assert(consummed_frames < audioelement::n_frames_per_buffer);
-                return false;
-            }
-            // total consume
-            do_consume_buffers(buf, remaining_frames);
-            consummed_frames = 0;
-            nFrames -= remaining_frames;
-            if(nFrames == 0) {
-                return false;
-            }
-            buf += nOuts * remaining_frames;
-            return true;
-        }
-
-        void do_consume_buffers(SAMPLE * outputBuffer, int nFrames) {
+        void consume_buffers(SAMPLE * outputBuffer, int nFrames) {
             Assert(nFrames <= audioelement::n_frames_per_buffer); // by design
-            Assert(consummed_frames < audioelement::n_frames_per_buffer); // by design
 
             memset(outputBuffer, 0, nFrames * nOuts * sizeof(SAMPLE));
 
             channelsT.forEach([outputBuffer, this, nFrames](auto & c) {
-                c.step(outputBuffer,
-                       nFrames,
-                       consummed_frames ); // with consummed_frames, the channel knows when
-                // the next computation of AudioElements will occur
+                c.step(outputBuffer, nFrames);
                 if(c.shouldReset()) {
                     c.reset();
                 }

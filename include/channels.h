@@ -70,9 +70,6 @@ namespace imajuscule {
             Assert(computes.capacity() > computes.size()); // we are in the audio thread, we shouldn't allocate dynamically
             ++nOrchestratorsAndComputes;
             computes.push_back(std::move(f));
-            if(int nSkippedFrames = out.getConsummedFrames()) {
-                computes.back()(out.getTicTac(), nSkippedFrames);
-            }
         }
 
         Channel & editChannel(uint8_t id) { return channels[id]; }
@@ -266,7 +263,7 @@ namespace imajuscule {
             available_ids.Return(channel_id);
         }
 
-        void run_computes(bool tictac) {
+        void run_computes(bool tictac, int nFrames) {
             for(auto it = orchestrators.begin(), end = orchestrators.end(); it!=end;) {
                 if(!((*it)(*this, audioelement::n_frames_per_buffer))) { // can grow 'computes' vector
                     it = orchestrators.erase(it);
@@ -279,7 +276,7 @@ namespace imajuscule {
             }
 
             for(auto it = computes.begin(), end = computes.end(); it!=end;) {
-                if(!((*it)(tictac, 0))) {
+                if(!((*it)(tictac, nFrames))) {
                     it = computes.erase(it);
                     --nOrchestratorsAndComputes;
                     end = computes.end();

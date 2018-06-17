@@ -332,7 +332,8 @@ namespace imajuscule {
 
                 using Event = typename Parent::Event;
                 using MonoNoteChannel = typename Parent::MonoNoteChannel;
-              static constexpr auto n_channels = Parent::n_channels;
+                static constexpr auto n_channels = Parent::n_channels;
+                static constexpr auto xfade_policy = Parent::xfade_policy;
 
                 static constexpr auto cut_period_one_cache_line = size_interleaved_one_cache_line / nAudioOut;
                 static_assert(cut_period_one_cache_line <= max_cut_period);

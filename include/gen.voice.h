@@ -1227,8 +1227,9 @@ namespace imajuscule {
                 using Parent::channels;
 
                 using Event = typename Parent::Event;
-              using MonoNoteChannel = typename Parent::MonoNoteChannel;
-              static constexpr auto n_channels = Parent::n_channels;
+                using MonoNoteChannel = typename Parent::MonoNoteChannel;
+                static constexpr auto n_channels = Parent::n_channels;
+                static constexpr auto xfade_policy = Parent::xfade_policy;
 
             public:
 

@@ -1809,7 +1809,7 @@ namespace imajuscule {
 
       template <typename T>
       auto fCompute(T&e) {
-        return [&e](bool sync_clock, int nSkippedFrames) {
+        return [&e](bool sync_clock, int nFrames) {
           using FPT = typename T::FPT;
           using AE = AEBuffer<FPT>;
 
@@ -1838,13 +1838,10 @@ namespace imajuscule {
           }
           e.clock_ = sync_clock;
           auto * buf = e.buffer->buffer;
-          int i=0;
-          Assert(nSkippedFrames >= 0);
-          Assert(nSkippedFrames < n_frames_per_buffer);
-          for(; i != nSkippedFrames; ++i) {
-            buf[i] = {};
-          }
-          for(; i != n_frames_per_buffer; ++i) {
+          
+          Assert(nFrames > 0);
+          Assert(nFrames <= n_frames_per_buffer);
+          for(int i=0; i != nFrames; ++i) {
             e.algo.step();
             buf[i] = e.algo.imag();
           }

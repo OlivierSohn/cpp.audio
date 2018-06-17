@@ -31,15 +31,15 @@ namespace imajuscule {
         }
       }
 
-      void run_computes(bool tictac) {
+      void run_computes(bool tictac, int nFrames) {
         for(auto & c : cX) {
-          c->run_computes(tictac);
+          c->run_computes(tictac, nFrames);
         }
         for(auto & c : cNoX) {
-          c->run_computes(tictac);
+          c->run_computes(tictac, nFrames);
         }
         for(auto & c : cXInf) {
-          c->run_computes(tictac);
+          c->run_computes(tictac, nFrames);
         }
       }
 

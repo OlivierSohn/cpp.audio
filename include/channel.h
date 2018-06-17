@@ -135,7 +135,6 @@ namespace imajuscule {
         bool active:1;
 
         unsigned int total_n_writes : relevantBits(audioelement::n_frames_per_buffer);
-        unsigned int initial_audio_element_consummed : relevantBits(audioelement::n_frames_per_buffer - 1);
 
         QueuedRequest current;
         QueuedRequest previous; // not for SkipXfade
@@ -173,7 +172,6 @@ namespace imajuscule {
           cout << "next:" << next << endl;
           cout << "active:" << active << endl;
           cout << "total_n_writes:" << total_n_writes << endl;
-          cout << "initial_audio_element_consummed:" << initial_audio_element_consummed << endl;
           // TODO show current / previous if needed
           cout << "size_half_xfade:" << size_half_xfade << endl;
           cout << "remaining_samples_count:" << remaining_samples_count << endl;
@@ -242,7 +240,7 @@ namespace imajuscule {
             return frames_to_ms(static_cast<float>(get_size_xfade()));
         }
 
-        void step(SAMPLE * outputBuffer, int nFrames, unsigned int audio_element_consummed);
+        void step(SAMPLE * outputBuffer, int nFrames);
 
         bool addRequest(Request && r) {
             if constexpr (XF == XfadePolicy::UseXfade) {
@@ -304,10 +302,9 @@ namespace imajuscule {
                     current_next_sample_index = 0;
                 }
                 else {
-                    current_next_sample_index = initial_audio_element_consummed; // keep separate to make the type conversion
                     Assert(n_writes_remaining <= total_n_writes); // make sure it's safe to do the following substraction, total_n_writes being unsigned
-                    current_next_sample_index += total_n_writes - n_writes_remaining;
-                    Assert(current_next_sample_index < audioelement::n_frames_per_buffer);
+                    current_next_sample_index = total_n_writes - n_writes_remaining;
+                  Assert(current_next_sample_index < total_n_writes);
                 }
             }
             else {
@@ -389,7 +386,7 @@ namespace imajuscule {
         template<typename T>
         void write_single_AudioElement(SAMPLE * outputBuffer, int n_writes, T const & buf, Volumes const & volume) {
             for( int i=0; i<n_writes; ++i) {
-                Assert(current_next_sample_index < audioelement::n_frames_per_buffer);
+                Assert(current_next_sample_index < total_n_writes);
 
                 Assert(XF==XfadePolicy::SkipXfade || crossfading_from_zero_remaining() <= 0);
                 Assert(std::abs(buf[current_next_sample_index]) < 100000.f);
@@ -402,7 +399,7 @@ namespace imajuscule {
                 ++current_next_sample_index;
             }
 
-            if(current_next_sample_index == audioelement::n_frames_per_buffer) {
+            if(current_next_sample_index == total_n_writes) {
                 current_next_sample_index = 0;
             }
         }
@@ -536,7 +533,7 @@ namespace imajuscule {
                 stepVolume();
 
                 Assert(other_next_sample_index >= 0);
-                Assert(other_next_sample_index < audioelement::n_frames_per_buffer);
+                Assert(other_next_sample_index < total_n_writes);
                 Assert(std::abs(buf2[other_next_sample_index]) < 100000.f);
                 auto val = volBuf2 * ((1.f - xfade_ratio) * chan_vol.current * static_cast<float>(buf2[other_next_sample_index]));
                 ++other_next_sample_index;
@@ -555,7 +552,7 @@ namespace imajuscule {
                 write_value(std::move(val), outputBuffer);
             }
 
-            if(other_next_sample_index == audioelement::n_frames_per_buffer) {
+            if(other_next_sample_index == total_n_writes) {
                 other_next_sample_index = 0;
             }
             LG_XFADE(INFO, " xfade %.5f", xfade_ratio);
@@ -591,7 +588,7 @@ namespace imajuscule {
                 stepVolume();
 
                 Assert(current_next_sample_index >= 0);
-                Assert(current_next_sample_index < audioelement::n_frames_per_buffer);
+                Assert(current_next_sample_index < total_n_writes);
                 Assert(std::abs(buf1[current_next_sample_index]) < 100000.f);
                 auto val = volBuf1 * (xfade_ratio * chan_vol.current * buf1[current_next_sample_index]);
 
@@ -610,7 +607,7 @@ namespace imajuscule {
                 write_value(std::move(val), outputBuffer);
             }
 
-            if(current_next_sample_index == audioelement::n_frames_per_buffer) {
+            if(current_next_sample_index == total_n_writes) {
                 current_next_sample_index = 0;
             }
             LG_XFADE(INFO, " xfade %.5f", xfade_ratio);
@@ -666,9 +663,9 @@ namespace imajuscule {
                 stepVolume();
 
                 Assert(current_next_sample_index >= 0);
-                Assert(current_next_sample_index < audioelement::n_frames_per_buffer);
+                Assert(current_next_sample_index < total_n_writes);
                 Assert(other_next_sample_index >= 0);
-                Assert(other_next_sample_index < audioelement::n_frames_per_buffer);
+                Assert(other_next_sample_index < total_n_writes);
 
                 Assert(std::abs(buf1[current_next_sample_index]) < 100000.f);
                 Assert(std::abs(buf2[other_next_sample_index]) < 100000.f);
@@ -680,10 +677,10 @@ namespace imajuscule {
                             outputBuffer);
             }
 
-            if(current_next_sample_index == audioelement::n_frames_per_buffer) {
+            if(current_next_sample_index == total_n_writes) {
                 current_next_sample_index = 0;
             }
-            if(other_next_sample_index == audioelement::n_frames_per_buffer) {
+            if(other_next_sample_index == total_n_writes) {
                 other_next_sample_index = 0;
             }
             LG_XFADE(INFO, " xfade %.5f", xfade_ratio);
@@ -730,11 +727,9 @@ namespace imajuscule {
                 }
                 else {
                     Assert(n_writes_remaining > 0);
-
-                    other_next_sample_index = initial_audio_element_consummed; // keep separate to make the type conversion
                     Assert(n_writes_remaining <= total_n_writes); // make sure it's safe to do the following substraction, total_n_writes being unsigned
-                    other_next_sample_index += total_n_writes - n_writes_remaining;
-                    Assert(other_next_sample_index < audioelement::n_frames_per_buffer);
+                    other_next_sample_index = total_n_writes - n_writes_remaining;
+                    Assert(other_next_sample_index < total_n_writes);
                 }
                 Assert(other_next_sample_index >= 0);
             }
@@ -784,12 +779,10 @@ namespace imajuscule {
     }
 
     template<int nAudioOut, XfadePolicy XF, MaxQueueSize MQS>
-    void Channel<nAudioOut, XF, MQS>::step(SAMPLE * outputBuffer, int n_max_writes, unsigned int audio_element_consummed_frames)
+    void Channel<nAudioOut, XF, MQS>::step(SAMPLE * outputBuffer, int n_max_writes)
     {
         Assert(n_max_writes <= audioelement::n_frames_per_buffer);
-        Assert(audio_element_consummed_frames < audioelement::n_frames_per_buffer);
-
-        initial_audio_element_consummed = audio_element_consummed_frames;
+      
         total_n_writes = n_max_writes;
 
         if(done(n_max_writes)) {
