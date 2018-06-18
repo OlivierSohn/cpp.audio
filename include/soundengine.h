@@ -822,6 +822,9 @@ namespace imajuscule {
 
                 ramp_specs.finalize();
 
+                this->pan = pan;
+                playNextSpec(o, chans); // is this necessary?
+
                 chans.add_orchestrator([&o, this](Chans & chans, int max_frame_compute){
                   auto res = orchestrate(o, chans, max_frame_compute);
                   if(!res) {
@@ -829,9 +832,6 @@ namespace imajuscule {
                   }
                   return res;
                 });
-
-                this->pan = pan;
-                playNextSpec(o, chans);
             }
 
         private:

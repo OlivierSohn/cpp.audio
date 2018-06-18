@@ -155,7 +155,7 @@ namespace imajuscule {
           FPT imag() const { return algo.imag() * env.value(); }
 
           bool isEnvelopeFinished() const {
-              return env.getState() == EnvelopeState::EnvelopeDone2;
+              return env.isEnvelopeFinished();
           }
           void onKeyPressed() {
               env.onKeyPressed();
@@ -277,8 +277,8 @@ namespace imajuscule {
                 return false;
             }
 
-            EnvelopeState getState() const {
-                return state;
+            bool isEnvelopeFinished() const {
+                return state == EnvelopeState::EnvelopeDone2;
             }
 
             bool afterAttackBeforeSustain() const {
@@ -293,6 +293,8 @@ namespace imajuscule {
               std::cout << "_topValue: " << _topValue << std::endl;
             }
 #endif
+
+            auto getState() const { return state; }
 
         private:
             // between 0 and 1.
@@ -756,12 +758,12 @@ namespace imajuscule {
         struct ConstOne {
           static constexpr auto hasEnvelope = false;
           using FPT = T;
-          
+
           T imag() const { return static_cast<T>(1); }
-          
+
           void forgetPastSignals() const {}
           void step() const {}
-          
+
           bool isEnvelopeFinished() const {
             Assert(0);
             return false;
@@ -774,7 +776,7 @@ namespace imajuscule {
             return false;
           }
         };
-      
+
         template<typename T>
         struct SquareAlgo : public Phased<T> {
             static constexpr auto hasEnvelope = false;
@@ -1838,7 +1840,7 @@ namespace imajuscule {
           }
           e.clock_ = sync_clock;
           auto * buf = e.buffer->buffer;
-          
+
           Assert(nFrames > 0);
           Assert(nFrames <= n_frames_per_buffer);
           for(int i=0; i != nFrames; ++i) {

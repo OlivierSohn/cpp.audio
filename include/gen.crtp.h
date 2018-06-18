@@ -294,7 +294,6 @@ namespace imajuscule {
                           // this one has already been sent a key released
                           continue;
                       }
-                      // note that the oscillator is still used for the crossfade.
                       return onEventResult::OK;
                   }
                 }
