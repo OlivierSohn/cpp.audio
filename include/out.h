@@ -1,41 +1,6 @@
 #define WITH_DELAY 0
 
 namespace imajuscule {
-    namespace sensor {
-
-      struct LockCtrl {
-        LockCtrl( std::atomic_bool & l ) noexcept : l(l) {}
-
-        void lock() noexcept {
-          while (l.exchange(true)) {
-            std::this_thread::yield();
-          }
-        }
-
-        void unlock() noexcept {
-          auto prev = l.exchange(false);
-          Assert(prev); // make sure l was true
-        }
-      private:
-        std::atomic_bool & l;
-      };
-
-
-      class RAIILock {
-      public:
-        RAIILock( std::atomic_bool & l ) noexcept : ctrl(l) {
-          ctrl.lock();
-        }
-        ~RAIILock() noexcept {
-          ctrl.unlock();
-        }
-      private:
-        LockCtrl ctrl;
-
-        RAIILock(const RAIILock &) = delete;
-        RAIILock & operator = (const RAIILock &) = delete;
-      };
-    }
 
     template<int nAudioOut>
     struct DelayLine {
@@ -146,7 +111,7 @@ namespace imajuscule {
 
   private:
     thread::CtrlRTPriority priority;
-    sensor::LockCtrl spin;
+    LockCtrl spin;
   };
 
   template<>
@@ -161,7 +126,7 @@ namespace imajuscule {
     }
 
   private:
-    sensor::LockCtrl spin;
+    LockCtrl spin;
   };
 
   struct NoOpLockCtrl {

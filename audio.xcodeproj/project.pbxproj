@@ -77,20 +77,6 @@
 			remoteGlobalIDString = 09FF3F221E36EBBB00C81351;
 			remoteInfo = audio;
 		};
-		0967E4C4208E539D004B488E /* PBXContainerItemProxy */ = {
-			isa = PBXContainerItemProxy;
-			containerPortal = 098474191E80596D0014465E /* os.log.xcodeproj */;
-			proxyType = 2;
-			remoteGlobalIDString = 09C559E819C8008700879A96;
-			remoteInfo = os.log.osx;
-		};
-		0967E4C6208E539D004B488E /* PBXContainerItemProxy */ = {
-			isa = PBXContainerItemProxy;
-			containerPortal = 098474191E80596D0014465E /* os.log.xcodeproj */;
-			proxyType = 2;
-			remoteGlobalIDString = 09C559F319C800F200879A96;
-			remoteInfo = os.log.ios;
-		};
 		0967E4CB208E539D004B488E /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = 097D56B71E86D14000018F14 /* os.storage.xcodeproj */;
@@ -278,7 +264,6 @@
 		098474021E8057E90014465E /* main.gen_headers.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = main.gen_headers.cpp; path = source/main.gen_headers.cpp; sourceTree = "<group>"; };
 		098474071E8058EE0014465E /* unity.build.genheaders.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = unity.build.genheaders.cpp; path = source/unity.build.genheaders.cpp; sourceTree = "<group>"; };
 		098474091E80595C0014465E /* algorithms.xcodeproj */ = {isa = PBXFileReference; lastKnownFileType = "wrapper.pb-project"; name = algorithms.xcodeproj; path = /Users/Olivier/Dev/cpp.algorithms/algorithms.xcodeproj; sourceTree = "<absolute>"; };
-		098474191E80596D0014465E /* os.log.xcodeproj */ = {isa = PBXFileReference; lastKnownFileType = "wrapper.pb-project"; name = os.log.xcodeproj; path = /Users/Olivier/Dev/cpp.os.log/os.log.xcodeproj; sourceTree = "<absolute>"; };
 		0984742B1E809F650014465E /* loudness_filter_coefficients.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = loudness_filter_coefficients.h; path = include/loudness_filter_coefficients.h; sourceTree = "<group>"; };
 		098EFCC21E677FBD000ADD0D /* sounds.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = sounds.h; path = include/sounds.h; sourceTree = "<group>"; };
 		098EFCCA1E6C5E50000ADD0D /* noise.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; lineEnding = 0; name = noise.h; path = include/noise.h; sourceTree = "<group>"; xcLanguageSpecificationIdentifier = xcode.lang.objcpp; };
@@ -410,15 +395,6 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
-		0967E463208E539D004B488E /* Products */ = {
-			isa = PBXGroup;
-			children = (
-				0967E4C5208E539D004B488E /* libos.log.osx.a */,
-				0967E4C7208E539D004B488E /* libos.log.ios.a */,
-			);
-			name = Products;
-			sourceTree = "<group>";
-		};
 		0967E4BE208E539D004B488E /* Products */ = {
 			isa = PBXGroup;
 			children = (
@@ -455,7 +431,6 @@
 			isa = PBXGroup;
 			children = (
 				097D56B71E86D14000018F14 /* os.storage.xcodeproj */,
-				098474191E80596D0014465E /* os.log.xcodeproj */,
 				098474091E80595C0014465E /* algorithms.xcodeproj */,
 			);
 			name = dependencies;
@@ -784,10 +759,6 @@
 					ProjectRef = 098474091E80595C0014465E /* algorithms.xcodeproj */;
 				},
 				{
-					ProductGroup = 0967E463208E539D004B488E /* Products */;
-					ProjectRef = 098474191E80596D0014465E /* os.log.xcodeproj */;
-				},
-				{
 					ProductGroup = 0967E4BE208E539D004B488E /* Products */;
 					ProjectRef = 097D56B71E86D14000018F14 /* os.storage.xcodeproj */;
 				},
@@ -807,20 +778,6 @@
 /* End PBXProject section */
 
 /* Begin PBXReferenceProxy section */
-		0967E4C5208E539D004B488E /* libos.log.osx.a */ = {
-			isa = PBXReferenceProxy;
-			fileType = archive.ar;
-			path = libos.log.osx.a;
-			remoteRef = 0967E4C4208E539D004B488E /* PBXContainerItemProxy */;
-			sourceTree = BUILT_PRODUCTS_DIR;
-		};
-		0967E4C7208E539D004B488E /* libos.log.ios.a */ = {
-			isa = PBXReferenceProxy;
-			fileType = archive.ar;
-			path = libos.log.ios.a;
-			remoteRef = 0967E4C6208E539D004B488E /* PBXContainerItemProxy */;
-			sourceTree = BUILT_PRODUCTS_DIR;
-		};
 		0967E4CC208E539D004B488E /* libos.storage.osx.a */ = {
 			isa = PBXReferenceProxy;
 			fileType = archive.ar;
