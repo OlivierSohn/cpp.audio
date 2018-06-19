@@ -15,9 +15,9 @@ namespace imajuscule {
         };
 
         template <>
-        struct GlobalAudioLock<AudioOutPolicy::Master> {
+        struct GlobalAudioLock<AudioOutPolicy::MasterGlobalLock> {
             static auto & get() {
-                static AudioLockPolicyImpl<AudioOutPolicy::Master> l;
+                static AudioLockPolicyImpl<AudioOutPolicy::MasterGlobalLock> l;
                 return l;
             }
         };

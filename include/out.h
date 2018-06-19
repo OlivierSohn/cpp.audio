@@ -181,31 +181,42 @@ namespace imajuscule {
     };
 
     enum class AudioOutPolicy {
+        // no synchronization is needed.
         Slave,
-        Master
+        // synchronization is done using a global lock
+        MasterGlobalLock,
+        // synchronization is done using lock-free datastructures
+        MasterLockFree
     };
 
     template<AudioOutPolicy> struct AudioLockPolicyImpl;
 
     template <>
     struct AudioLockPolicyImpl<AudioOutPolicy::Slave> {
-        static constexpr WithLock useLock = WithLock::No;
+        static constexpr auto sync = Synchronization::SingleThread;
+        static constexpr auto useLock = WithLock::No;
 
         bool lock() { return false; }
     };
 
-
     template <>
-    struct AudioLockPolicyImpl<AudioOutPolicy::Master> {
-        static constexpr auto useLock = WithLock::Yes;
-        using LockFromRT = LockIf<useLock, ThreadType::RealTime>;
-        using LockFromNRT = LockIf<useLock, ThreadType::NonRealTime>;
-
-        std::atomic_bool & lock() { return used; }
+    struct AudioLockPolicyImpl<AudioOutPolicy::MasterGlobalLock> {
+      static constexpr auto sync = Synchronization::SingleThread;
+      static constexpr auto useLock = WithLock::Yes;
+      
+      std::atomic_bool & lock() { return used; }
     private:
-        std::atomic_bool used{false};
+      std::atomic_bool used{false};
     };
 
+    template <>
+    struct AudioLockPolicyImpl<AudioOutPolicy::MasterLockFree> {
+      static constexpr auto sync = Synchronization::Lockfree_SingleConsumerMultipleProducer;
+      static constexpr auto useLock = WithLock::No;
+      
+      bool lock() { return false; }
+    };
+  
 
     // cooley-tukey leads to error growths of O(log n) (worst case) and O(sqrt(log n)) (mean for random input)
     // so float is good enough
@@ -396,13 +407,17 @@ namespace imajuscule {
 
     };
 
-
+  
+    // TODO how can we make this lockfree?
     template<typename T, int nAudioOut>
-    struct AudioPostPolicyImpl<T, nAudioOut, AudioOutPolicy::Master> {
+    struct AudioPostPolicyImpl<T, nAudioOut, AudioOutPolicy::MasterGlobalLock> {
         static constexpr auto nOut = nAudioOut;
-        using LockFromRT = LockIf<AudioLockPolicyImpl<AudioOutPolicy::Master>::useLock, ThreadType::RealTime>;
-        using LockFromNRT = LockIf<AudioLockPolicyImpl<AudioOutPolicy::Master>::useLock, ThreadType::NonRealTime>;
+        using LockPolicy = AudioLockPolicyImpl<AudioOutPolicy::MasterGlobalLock>;
+      
+      using LockFromRT = LockIf<LockPolicy::useLock, ThreadType::RealTime>;
+      using LockFromNRT = LockIf<LockPolicy::useLock, ThreadType::NonRealTime>;
 
+  
         //using ConvolutionReverb = FIRFilter<T>;
         //using ConvolutionReverb = FFTConvolution<FFT_T>;
         //using ConvolutionReverb = PartitionnedFFTConvolution<T>;
@@ -412,14 +427,14 @@ namespace imajuscule {
         using SetupParam = typename ConvolutionReverb::SetupParam;
         using PartitionningSpec = PartitionningSpec<SetupParam>;
 
-        AudioPostPolicyImpl(AudioLockPolicyImpl<AudioOutPolicy::Master> &l) :
+        AudioPostPolicyImpl(LockPolicy &l) :
         _lock(l)
 #if WITH_DELAY
         , delays{{1000, 0.6f},{4000, 0.2f}, {4300, 0.3f}, {5000, 0.1f}},
 #endif
         {}
 
-        AudioLockPolicyImpl<AudioOutPolicy::Master> & _lock;
+        LockPolicy & _lock;
 
         /////////////////////////////// postprocess
         using postProcessFunc = std::function<void(float*)>;

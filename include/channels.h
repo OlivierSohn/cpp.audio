@@ -42,17 +42,15 @@ namespace imajuscule {
                 , int nChannelsMax
                 , int nOrchestratorsMaxPerChannel=0):
         _lock(l)
+      , orchestrators(nOrchestratorsMaxPerChannel * nChannelsMax)
+      // (almost) worst case scenario : each channel is playing an audiolement crossfading with another audio element
+      // "almost" only because the assumption is that requests vector holds at most one audioelement at any time
+      // if there are multiple audioelements in request vector, we need to be more precise about when audioelements start to be computed...
+      // or we need to constrain the implementation to add requests in realtime, using orchestrators.
+      , computes(2*nChannelsMax)
         {
             Assert(nChannelsMax >= 0);
             Assert(nChannelsMax <= std::numeric_limits<uint8_t>::max()); // else need to update AUDIO_CHANNEL_NONE
-
-            // (almost) worst case scenario : each channel is playing an audiolement crossfading with another audio element
-            // "almost" only because the assumption is that requests vector holds at most one audioelement at any time
-            // if there are multiple audioelements in request vector, we need to be more precise about when audioelements start to be computed...
-            // or we need to constrain the implementation to add requests in realtime, using orchestrators.
-            computes.reserve(2*nChannelsMax);
-
-            orchestrators.reserve(nOrchestratorsMaxPerChannel * nChannelsMax);
 
             channels.reserve(nChannelsMax);
             autoclosing_ids.reserve(nChannelsMax);
@@ -60,16 +58,22 @@ namespace imajuscule {
         }
 
         void add_orchestrator(OrchestratorFunc f) {
-            Assert(orchestrators.capacity() > orchestrators.size()); // we are in the audio thread, we shouldn't allocate dynamically
+          if(orchestrators.tryInsert(std::move(f))) {
             ++nOrchestratorsAndComputes;
-            orchestrators.push_back(std::move(f));
+          }
+          else {
+            Assert(0);
+          }
         }
 
         template<typename F, typename Out>
         void registerCompute(Out const & out, F f) {
-            Assert(computes.capacity() > computes.size()); // we are in the audio thread, we shouldn't allocate dynamically
+          if(computes.tryInsert(std::move(f))) {
             ++nOrchestratorsAndComputes;
-            computes.push_back(std::move(f));
+          }
+          else {
+            Assert(0);
+          }
         }
 
         Channel & editChannel(uint8_t id) { return channels[id]; }
@@ -264,27 +268,13 @@ namespace imajuscule {
         }
 
         void run_computes(bool tictac, int nFrames) {
-            for(auto it = orchestrators.begin(), end = orchestrators.end(); it!=end;) {
-                if(!((*it)(*this, audioelement::n_frames_per_buffer))) { // can grow 'computes' vector
-                    it = orchestrators.erase(it);
-                    --nOrchestratorsAndComputes;
-                    end = orchestrators.end();
-                }
-                else {
-                    ++it;
-                }
-            }
-
-            for(auto it = computes.begin(), end = computes.end(); it!=end;) {
-                if(!((*it)(tictac, nFrames))) {
-                    it = computes.erase(it);
-                    --nOrchestratorsAndComputes;
-                    end = computes.end();
-                }
-                else {
-                    ++it;
-                }
-            }
+          nOrchestratorsAndComputes -= orchestrators.forEach([this](auto const & orchestrate) {
+            return orchestrate(*this, audioelement::n_frames_per_buffer);
+          });
+          
+          nOrchestratorsAndComputes -= computes.forEach([tictac, nFrames](auto const & compute) {
+            return compute(tictac, nFrames);
+          });
         }
 
         template <typename F>
@@ -307,8 +297,8 @@ namespace imajuscule {
 
         // orchestrators and computes could be owned by the channels but it is maybe cache-wise more efficient
         // to group them here (if the lambda owned is small enough to not require dynamic allocation)
-        std::vector<OrchestratorFunc> orchestrators;
-        std::vector<ComputeFunc> computes;
+        static_vector<LockPolicy::sync, OrchestratorFunc> orchestrators;
+        static_vector<LockPolicy::sync, ComputeFunc> computes;
         // This counter is used to be able to know, without locking, if there are any computes / orchestrators ATM.
         int32_t nOrchestratorsAndComputes = 0;
 
