@@ -176,17 +176,24 @@ namespace imajuscule {
                 return true;
             }
 
-            void finalize() {
+          ~ImplCRTP() {
+            finalize();
+          }
+          
+          void finalize() {
                 for(auto & c : channels) {
                     if(c.channel == nullptr) {
                         continue;
                     }
                     c.reset();
+                    c.channel = nullptr;
                 }
             }
 
-            // returns true if at least one channel has an active enveloppe
-            int areEnvelopeFinished() const {
+            // returns true if at least one channel has an active enveloppe.
+            //
+            // currently called only in a single thread context.
+            bool areEnvelopesFinished() const {
                 for(auto & c : channels) {
                   if(!c.elem.isEnvelopeFinished()) {
                       return false;
@@ -197,6 +204,8 @@ namespace imajuscule {
 
             // Note: Logic Audio Express 9 calls this when two projects are opened and
             // the second project starts playing, so we are not in an "initialized" state.
+            //
+            // currently called only in a single thread context.
             void allNotesOff() {
                 MIDI_LG(INFO, "all notes off");
 
@@ -205,17 +214,12 @@ namespace imajuscule {
                 }
             }
 
+            //
+            // currently called only in a single thread context.
             void allSoundsOff() {
                 MIDI_LG(INFO, "all sounds off");
                 for(auto & c : channels) {
                     c.elem. template onKeyReleased();
-                }
-            }
-
-            template <typename F>
-            void forEachElems(F f) {
-                for(auto & c : channels) {
-                    f(c.elem);
                 }
             }
 
@@ -339,10 +343,6 @@ namespace imajuscule {
             {
                 dontUseConvolutionReverbs(out);
                 plugin.template initialize(out.getChannels());
-            }
-
-            ~Wrapper() {
-                plugin.finalize();
             }
 
             void doProcessing (ProcessData& data) {
