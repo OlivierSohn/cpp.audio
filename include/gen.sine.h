@@ -8,8 +8,8 @@ namespace imajuscule {
                 static constexpr float get_gain() { return 1.f; };
 
                 // the caller is responsible for taking the out lock if needed
-                template<typename MonoNoteChannel, typename OutputData, typename Chans>
-                void onStartNote(float velocity, Phase phase, MonoNoteChannel & c, OutputData & out, Chans & chans) {
+                template<typename MonoNoteChannel, typename F, typename OutputData, typename Chans>
+                bool onStartNote(float velocity, Phase phase, MonoNoteChannel & c, F shouldKeyRelease, OutputData & out, Chans & chans) {
                     using Request = typename OutputData::Request;
 
                     auto tunedNote = midi::tuned_note(c.pitch, c.tuning);
@@ -22,8 +22,8 @@ namespace imajuscule {
                     // The caller is responsible for:
                     // - taking the out lock if needed
                     // - growing the channel request queue if needed
-                    auto res = chans.playGenericNoLock(
-                                    out, *c.channel, osc,
+                    return chans.playComputableNoLock(
+                                    out, *c.channel, osc.fCompute(shouldKeyRelease),
                                                    Request{
                                                        &osc.buffer->buffer[0],
                                                        velocity,
@@ -36,6 +36,7 @@ namespace imajuscule {
             };
 
             template<
+            AudioOutPolicy outPolicy,
             int nOuts,
             XfadePolicy xfade_policy_,
             typename AE,
@@ -44,7 +45,9 @@ namespace imajuscule {
             typename NoteOnEvent,
             typename NoteOffEvent
             >
-            using Synth = ImplCRTP <nOuts,
+            using Synth = ImplCRTP <
+              outPolicy,
+              nOuts,
               xfade_policy_,
               AE,
               close_channel_on_note_off,

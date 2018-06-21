@@ -57,28 +57,32 @@ namespace imajuscule {
             available_ids.reserve(nChannelsMax);
         }
 
-        void add_orchestrator(OrchestratorFunc f) {
-          if(orchestrators.tryInsert(std::move(f))) {
-            ++nOrchestratorsAndComputes;
+        bool add_orchestrator(OrchestratorFunc f) {
+          if(!orchestrators.tryInsert(std::move(f))) {
+            return false;
           }
-          else {
-            Assert(0);
-          }
+          ++nOrchestratorsAndComputes;
+          return true;
         }
 
         template<typename F, typename Out>
-        void registerCompute(Out const & out, F f) {
-          if(computes.tryInsert(std::move(f))) {
-            ++nOrchestratorsAndComputes;
+        bool registerCompute(Out const & out, F f) {
+          if(!computes.tryInsert(std::move(f))) {
+            return false;
           }
-          else {
-            Assert(0);
-          }
+          ++nOrchestratorsAndComputes;
+          return true;
         }
 
-        Channel & editChannel(uint8_t id) { return channels[id]; }
+        Channel & editChannel(uint8_t id) {
+          Assert(id != AUDIO_CHANNEL_NONE);
+          return channels[id];
+        }
 
-        Channel const & getChannel(uint8_t id) const { return channels[id]; }
+        Channel const & getChannel(uint8_t id) const {
+          Assert(id != AUDIO_CHANNEL_NONE);
+          return channels[id];          
+        }
 
         bool empty() const { return channels.empty(); }
 
@@ -94,8 +98,8 @@ namespace imajuscule {
             editChannel(channel_id).toVolume(volume, nSteps);
         }
 
-        template<typename Out, typename T>
-        bool playGeneric( Out & out, uint8_t channel_id, T & buf, Request && req) {
+        template<typename Out, typename F>
+        bool playComputable( Out & out, uint8_t channel_id, F compute, Request && req) {
 
           // it's important to register and enqueue in the same lock cycle
           // else we miss some audio frames,
@@ -106,7 +110,7 @@ namespace imajuscule {
           auto & c = editChannel(channel_id);
           reserveAndLock(1,c.edit_requests(),l);
 
-          auto res = playGenericNoLock(out, c, buf, std::move(req));
+          auto res = playComputableNoLock(out, c, compute, std::move(req));
 
           l.unlock();
 
@@ -118,21 +122,25 @@ namespace imajuscule {
          * - taken the out lock
          * - grown the capacity of the channel request queue
          */
-        template<typename Out, typename T>
-        bool playGenericNoLock( Out & out, Channel & channel, T & buf, Request && req) {
+        template<typename Out, typename F>
+        bool playComputableNoLock( Out & out, Channel & channel, F compute, Request && req) {
 
             // we enqueue first, so that the buffer has the "queued" state
             // because when registering compute lambdas, they can be executed right away
             // so the buffer needs to be in the right state
 
             Assert(req.valid());
-            bool res = channel.addRequest( std::move(req) );
-
-            if constexpr (T::computable) {
-                this->registerCompute(out, fCompute(buf));
-            }
-
-            return res;
+          if(!channel.addRequest( std::move(req) )) {
+            return false;
+          }
+          
+          if(!this->registerCompute(out, compute)) {
+            // TODO maybe we should 'channel.removeLastRequest();' else tere will be no compute associate to it,
+            // and the request will stay in the channel forever.
+            // but this would raises issues in lockfree mode...
+            return false;
+          }
+          return true;
         }
 
         void play( uint8_t channel_id, StackVector<Request> && v) {

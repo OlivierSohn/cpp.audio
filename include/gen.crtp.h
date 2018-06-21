@@ -125,8 +125,8 @@ namespace imajuscule {
           algo.setAngle(angle);
         }
 
-        template<
-
+      template<
+        AudioOutPolicy outPolicy,
         int nOuts,
         XfadePolicy xfade_policy_,
         typename AE,
@@ -142,7 +142,11 @@ namespace imajuscule {
 
             static constexpr auto nAudioOut = nOuts;
             static constexpr auto xfade_policy = xfade_policy_;
-
+          using ChannelState = audioelement::ChannelState;
+          static constexpr Atomicity flagAtomicity = getAtomicity<outPolicy>();
+          using flagTraits = maybeAtomic<flagAtomicity,ChannelState>;
+          using flag = typename flagTraits::type;
+          
             using MonoNoteChannel = MonoNoteChannel<AE, Channel<nOuts, xfade_policy_, MaxQueueSize::One>>;
 
             using Base::get_xfade_length;
@@ -160,16 +164,26 @@ namespace imajuscule {
             // should be increased.
             static constexpr auto n_max_simultaneous_notes_per_voice = 2;
             static constexpr auto n_channels = n_channels_per_note * n_max_voices * n_max_simultaneous_notes_per_voice;
+          
+        protected:
+          // members
+          LocalPairArray<flag, MonoNoteChannel, n_channels> channels;
 
-            template <class... Args>
-          ImplCRTP(Args&&... args) : channels{std::forward<Args>(args)...} {}
+        public:
+
+          //  template <class... Args>
+          //ImplCRTP(Args&&... args) : channels{std::forward<Args>(args)...} {}
+          template <typename A>
+          ImplCRTP(std::array<A, n_channels> & as) :
+          channels{ChannelState::Finished, as }
+          {}
 
             template<typename ChannelsT>
             bool initialize(ChannelsT & chans) {
-                for(auto & c : channels) {
+              for(auto it = channels.seconds(), end = channels.seconds_end(); it!= end; ++it) {
                     // using WithLock::No : since we own all these channels and they are not playing, we don't need
                     // to take the audio lock.
-                    if(!c.template open<WithLock::No>(chans, 0.f)) {
+                    if(!it -> template open<WithLock::No>(chans, 0.f)) {
                         return false;
                     }
                 }
@@ -181,7 +195,8 @@ namespace imajuscule {
           }
           
           void finalize() {
-                for(auto & c : channels) {
+            for(auto it = channels.seconds(), end = channels.seconds_end(); it!= end; ++it) {
+              auto & c = *it;
                     if(c.channel == nullptr) {
                         continue;
                     }
@@ -191,40 +206,41 @@ namespace imajuscule {
             }
 
             // returns true if at least one channel has an active enveloppe.
-            //
-            // currently called only in a single thread context.
-            bool areEnvelopesFinished() const {
-                for(auto & c : channels) {
-                  if(!c.elem.isEnvelopeFinished()) {
-                      return false;
-                  }
+            bool areEnvelopesFinished() {
+              for(auto it = channels.firsts(), end = channels.firsts_end(); it!= end; ++it) {
+                if(flagTraits::read(*it,std::memory_order_acquire) != ChannelState::Finished) {
+                  return false;
                 }
-                return true;
+              }
+              return true;
             }
 
             // Note: Logic Audio Express 9 calls this when two projects are opened and
             // the second project starts playing, so we are not in an "initialized" state.
-            //
-            // currently called only in a single thread context.
             void allNotesOff() {
-                MIDI_LG(INFO, "all notes off");
-
-                for(auto & c : channels) {
-                    c.elem. template onKeyReleased();
-                }
+              MIDI_LG(INFO, "all notes off");
+              for(auto it = channels.firsts(), end = channels.firsts_end(); it!= end; ++it) {
+                flagTraits::compareExchangeStrong(*it,
+                                      ChannelState::KeyPressed,
+                                      ChannelState::KeyReleased,
+                                      std::memory_order_acq_rel);
+              }
             }
 
-            //
-            // currently called only in a single thread context.
             void allSoundsOff() {
-                MIDI_LG(INFO, "all sounds off");
-                for(auto & c : channels) {
-                    c.elem. template onKeyReleased();
-                }
+              MIDI_LG(INFO, "all sounds off");
+              for(auto it = channels.firsts(), end = channels.firsts_end(); it!= end; ++it) {
+                flagTraits::compareExchangeStrong(*it,
+                                      ChannelState::KeyPressed,
+                                      ChannelState::KeyReleased,
+                                      std::memory_order_acq_rel);
+              }
             }
 
             template<typename Out, typename Chans>
-            onEventResult onEvent2(Event const & e, Out & out, Chans & chans) {
+            onEventResult onEvent2(Event const & e, Out & out, Chans & chans)
+            {
+              static_assert(Out::policy == outPolicy);
               if(e.type == Event::kNoteOnEvent)
               {
                 Assert(e.noteOn.velocity > 0.f ); // this case is handled by the wrapper... else we need to do a noteOff
@@ -236,19 +252,28 @@ namespace imajuscule {
                   typename Out::LockFromNRT L(out.get_lock());
 
                   MonoNoteChannel * channel = nullptr;
-                  auto phase = mkNonDeterministicPhase();
-
-                  for(auto & o:channels) {
-                    // Find a channel where the element has finished
-                    if(o.elem.isEnvelopeFinished()) {
-                      if(channel) {
+                  flag * channelFlag = nullptr;
+                  // Find a channel where the element has finished
+                  {
+                    auto begin = channels.firsts();
+                    for(auto it = begin, end = channels.firsts_end(); it!= end; ++it) {
+                      if(!flagTraits::compareExchangeStrong(*it,
+                                                            ChannelState::Finished,
+                                                            ChannelState::KeyPressed,
+                                                            std::memory_order_acq_rel)) {
                         continue;
                       }
+                      // we acquired the ownership of the channel
+                      channelFlag = it;
+                      auto i = it - begin;
+                      channel = channels.seconds() + i;
+                      auto & o = *channel;
+                      
                       // Setup the element to start a new note
                       o.elem.setEnvelopeCharacTime(get_xfade_length());
                       o.elem.forgetPastSignals();
                       o.elem.onKeyPressed();
-
+                      
                       // unqueue the (potential) previous request, else an assert fails
                       // when we enqueue the next request, because it's already queued.
                       o.reset();
@@ -258,18 +283,28 @@ namespace imajuscule {
                       o.channel->setVolume(get_gain());
                       o.pitch = e.noteOn.pitch;
                       o.tuning = e.noteOn.tuning;
-
-                      channel = &o;
-                    }
-                    // To prevent phase cancellation, the phase of the new note will be
-                    // coherent with the phase of any active channel that plays a note at the same frequency.
-                    else if(!phase.isDeterministic() && o.pitch == e.noteOn.pitch && o.tuning==e.noteOn.tuning) {
-                      phase = mkDeterministicPhase(o.elem.angle());
                     }
                   }
 
                   if(channel) {
-                    onStartNote(e.noteOn.velocity, phase, *channel, out, chans);
+                    auto phase = mkNonDeterministicPhase();
+                    
+                    // TODO make a thread safe version of this within the compute
+                    /*
+                     for(auto & o:channels) {
+                      // To prevent phase cancellation, the phase of the new note will be
+                      // coherent with the phase of any active channel that plays a note at the same frequency.
+                      if(!o.elem.isEnvelopeFinished() && o.pitch == e.noteOn.pitch && o.tuning==e.noteOn.tuning) {
+                        phase = mkDeterministicPhase(o.elem.angle());
+                        break;
+                      }
+                    }
+                     */
+
+                    Assert(channelFlag);
+                    if(!onStartNote(e.noteOn.velocity, phase, *channel, *channelFlag, out, chans)) {
+                      MIDI_LG(ERR,"failed to play");
+                    }
                     return onEventResult::OK;
                   }
                 }
@@ -288,18 +323,34 @@ namespace imajuscule {
                 MIDI_LG(INFO, "off %d", e.noteOff.pitch);
                 {
                   typename Out::LockFromNRT L(out.get_lock());
-
+                  
                   // We can have multiple notes with the same pitch, and different durations.
                   // Hence, here we just close the first opened channel with matching pitch.
-                  for(auto & c : channels) {
-                      if(c.pitch != e.noteOff.pitch) {
-                          continue;
-                      }
-                      if(!c.elem.onKeyReleased()) {
-                          // this one has already been sent a key released
-                          continue;
-                      }
-                      return onEventResult::OK;
+                  auto begin = channels.firsts();
+                  for(auto flag = begin, end = channels.firsts_end(); flag!=end; ++flag) {
+                    auto & f = *flag;
+                    if(flagTraits::read(f, std::memory_order_acquire) != ChannelState::KeyPressed) {
+                      continue;
+                    }
+                    
+                    auto i = flag - begin;
+                    auto & chan = *(channels.seconds() + i);
+                    
+                    //
+                    // WARNING : this is assuming that reading pitch is atomic.
+                    // TODO make the pitch atomic, and use std::memory_order_acquire
+                    if (chan.pitch != e.noteOff.pitch) {
+                      continue;
+                    }
+
+                    if(!flagTraits::compareExchangeStrong(f,
+                                                          ChannelState::KeyPressed,
+                                                          ChannelState::KeyReleased,
+                                                          std::memory_order_acq_rel)) {
+                      // the flag has been changed in another thread.
+                      continue;
+                    }
+                    return onEventResult::OK;
                   }
                 }
 
@@ -315,9 +366,6 @@ namespace imajuscule {
                 MIDI_LG(WARN, "dropped note '%d'", pitch);
                 return onEventResult::DROPPED_NOTE;
             }
-
-            // members
-            std::array<MonoNoteChannel, n_channels> channels;
         };
 
         template<typename T>

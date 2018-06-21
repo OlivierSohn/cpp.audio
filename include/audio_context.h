@@ -62,15 +62,15 @@ namespace imajuscule {
             return true;
         }
 
-        template <typename T, Features F, AudioPlatform AUP >
-        struct AudioOutContext : public Context<AUP, F, T> {
+        template <typename T, Features Feat, AudioPlatform AUP >
+        struct AudioOutContext : public Context<AUP, Feat, T> {
             static constexpr auto nAudioOut = T::nOuts;
             using Chans=T;
             using LockFromRT = typename Chans::LockFromRT;
             using LockFromNRT = typename Chans::LockFromNRT;
             using Request = typename Chans::Request;
             using Volumes = typename Chans::ChannelsT::Volumes;
-            using Base = Context<AUP, F, T>;
+            using Base = Context<AUP, Feat, T>;
             using Base::chans;
             using Base::bInitialized;
             using Base::doInit;
@@ -153,12 +153,12 @@ namespace imajuscule {
                 getFirstXfadeInfiniteChans().play( channel_id, std::move( v ) );
             }
 
-            template<typename U>
-            void playGeneric( uint8_t channel_id, U & buf, Request && req ) {
+            template<typename F>
+            void playComputable( uint8_t channel_id, F compute, Request && req ) {
                 if(closing) {
                     return;
                 }
-              getFirstXfadeInfiniteChans().playGeneric( chans, channel_id, buf, std::move(req) );
+              getFirstXfadeInfiniteChans().playComputable( chans, channel_id, compute, std::move(req) );
             }
 
             void toVolume( uint8_t channel_id, float volume, int nSteps ) {

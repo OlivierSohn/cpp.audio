@@ -33,20 +33,14 @@ namespace imajuscule {
         AEBuffer(AEBuffer &&) = delete;
         AEBuffer& operator = (AEBuffer &&) = delete;
 
-        using buffer_placeholder_t = std::aligned_storage_t<n_frames_per_buffer * sizeof(T), buffer_alignment>;
-        static_assert(alignof(buffer_placeholder_t) == buffer_alignment);
-
         // state values must be distinct from every possible valid value
         static constexpr auto queued() { return -std::numeric_limits<T>::infinity(); } // in *** at most *** one queue
         static constexpr auto inactive() { return std::numeric_limits<T>::infinity(); }// not active in any queue
 
         ////// [AEBuffer] beginning of the 1st cache line
 
-        union {
-          // 'for_alignment' is the largest member, hence it defines the minimal alignment of 'AudioElement' and its derived classes
-          buffer_placeholder_t for_alignment;
+        alignas(buffer_alignment)
           T buffer[n_frames_per_buffer];
-        };
 
         ////// [AEBuffer<float>] beginning of the 2nd cache line
         ////// [AEBuffer<double>] beginning of the 3rd cache line
@@ -56,6 +50,12 @@ namespace imajuscule {
       };
 
 
+      enum class ChannelState : int {
+        Finished,
+        KeyPressed,
+        KeyReleased
+      };
+      
         template<typename ALGO>
         struct FinalAudioElement {
             static constexpr auto hasEnvelope = ALGO::hasEnvelope;
@@ -83,6 +83,14 @@ namespace imajuscule {
             void setEnvelopeCharacTime(int len) {
               algo.setEnvelopeCharacTime(len);
             }
+          bool canHandleExplicitKeyReleaseNow() const {
+            if constexpr (hasEnvelope) {
+              return algo.canHandleExplicitKeyReleaseNow();
+            }
+            else {
+              return false;
+            }
+          }
             void onKeyPressed() {
                 algo.onKeyPressed();
             }
@@ -98,6 +106,87 @@ namespace imajuscule {
             AEBuffer<FPT> * buffer;
             bool clock_ : 1;
             ALGO algo;
+
+          // TODO reset the flag to FINISHED when the envelope is done.
+          template<typename F, typename G>
+          bool compute(bool sync_clock, int nFrames, F shouldKeyRelease, G reset) {
+            
+            auto * buf = buffer->buffer;
+            auto st = state(buf);
+            
+            if(st == buffer_t::inactive()) {
+              // Issue : if the buffer just got marked inactive,
+              // but no new AudioElementCompute happends
+              // and from the main thread someone acquires this and queues it,
+              // it will have 2 lambdas because the first lambda will never have seen the inactive state.
+              // However the issue is not major, as the 2 lambdas have a chance to be removed
+              // the next time
+              if constexpr (hasEnvelope) {
+                // Temporary, to fix soundengine, where the channel xfade is used instead of the enveloppe xfade:
+                // this resets the enveloppe state to Done2, and then lets the audioelement be reused
+                // in subsequent markov moves.
+                forgetPastSignals();
+              }
+              reset();
+              return false;
+            }
+            if(likely(st != buffer_t::queued())) {
+              if(sync_clock == clock_) {
+                // we already computed this step.
+                return true;
+              }
+            }
+            clock_ = sync_clock;
+
+            if constexpr (hasEnvelope) {
+              if(canHandleExplicitKeyReleaseNow() && shouldKeyRelease()) {
+                onKeyReleased();
+              }
+            }
+
+            Assert(nFrames > 0);
+            Assert(nFrames <= n_frames_per_buffer);
+            for(int i=0; i != nFrames; ++i) {
+              algo.step();
+              buf[i] = algo.imag();
+            }
+            Assert(state(buf) != buffer_t::queued());
+            Assert(state(buf) != buffer_t::inactive());
+            if constexpr (hasEnvelope) {
+              // it is important that isEnvelopeFinished() returns true only one buffer cycle after
+              // the real enveloppe end, to prevent "race conditions".
+              if(isEnvelopeFinished()) {
+                reset();
+                return false;
+              };
+            }
+            return true;
+          }
+ 
+          auto fCompute() {
+            return [this](bool sync_clock, int nFrames) {
+              return compute(sync_clock,
+                             nFrames,
+                             [](){return false;},
+                             [](){});
+            };
+          }
+
+          template<typename F>
+          auto fCompute(F & f) {
+            return [this, &f](bool sync_clock, int nFrames) {
+              using flagTraits = typename FlagTraits<F>::traits;
+              return compute(sync_clock,
+                             nFrames,
+                             [&f](){
+                               return flagTraits::read(f, std::memory_order_acquire) == ChannelState::KeyReleased;
+                             },
+                             [&f](){
+                               flagTraits::write(f, ChannelState::Finished, std::memory_order_release);
+                             });
+            };
+          }
+
         };
 
 
@@ -122,7 +211,6 @@ namespace imajuscule {
           return "what?";
         }
 
-        // Similar to RingModulationAlgo except the modulator has equal real and imaginary parts.
         template <typename ALGO, typename Envelope>
         struct Envelopped {
           static constexpr auto hasEnvelope = true;
@@ -157,6 +245,10 @@ namespace imajuscule {
           bool isEnvelopeFinished() const {
               return env.isEnvelopeFinished();
           }
+          bool canHandleExplicitKeyReleaseNow() const {
+            return env.canHandleExplicitKeyReleaseNow();
+          }
+          
           void onKeyPressed() {
               env.onKeyPressed();
           }
@@ -284,6 +376,15 @@ namespace imajuscule {
             bool afterAttackBeforeSustain() const {
               return isAfterAttackBeforeSustain(counter);
             }
+          
+          bool canHandleExplicitKeyReleaseNow() const {
+            if constexpr (Release == EnvelopeRelease::ReleaseAfterDecay) {
+              return false;
+            }
+            else {
+              return state == EnvelopeState::KeyPressed;
+            }
+          }
 
 #ifndef NDEBUG
             void logDiagnostic() {
@@ -967,6 +1068,16 @@ namespace imajuscule {
             bool onKeyReleased() {
                 return audio_element.onKeyReleased();
             }
+          
+          bool canHandleExplicitKeyReleaseNow() const {
+            if constexpr (hasEnvelope) {
+              return audio_element.canHandleExplicitKeyReleaseNow();
+            }
+            else {
+              Assert(0);
+              return false;
+            }
+          }
 
         private:
             AEAlgo audio_element;
@@ -1801,6 +1912,20 @@ namespace imajuscule {
                 return res;
             }
 
+          bool canHandleExplicitKeyReleaseNow() const {
+              bool res = false;
+              if(A1::hasEnvelope) {
+                res = osc1.canHandleExplicitKeyReleaseNow();
+              }
+              if(A2::hasEnvelope) {
+                res = res || osc2.canHandleExplicitKeyReleaseNow();
+              }
+              if(!A1::hasEnvelope && !A2::hasEnvelope) {
+                Assert(0);
+              }
+              return res;
+            }
+
         private:
             A1 osc1;
             A2 osc2;
@@ -1809,56 +1934,6 @@ namespace imajuscule {
         template<typename A1, typename A2>
         using RingModulation = FinalAudioElement<RingModulationAlgo<A1,A2>>;
 
-      template <typename T>
-      auto fCompute(T&e) {
-        return [&e](bool sync_clock, int nFrames) {
-          using FPT = typename T::FPT;
-          using AE = AEBuffer<FPT>;
-
-          auto state = e.getState();
-
-          if(state == AE::inactive()) {
-            // Issue : if the buffer just got marked inactive,
-            // but no new AudioElementCompute happends
-            // and from the main thread someone acquires this and queues it,
-            // it will have 2 lambdas because the first lambda will never have seen the inactive state.
-            // However the issue is not major, as the 2 lambdas have a chance to be removed
-            // the next time
-            if constexpr (T::hasEnvelope) {
-              // Temporary, to fix soundengine, where the channel xfade is used instead of the enveloppe xfade:
-              // this resets the eveloppe state to Done2, and then lets the audioelement be reused
-              // in subsequent markov move.
-              e.forgetPastSignals();
-            }
-            return false;
-          }
-          if(likely(state != AE::queued())) {
-            if(sync_clock == e.clock_) {
-              // we already computed this step.
-              return true;
-            }
-          }
-          e.clock_ = sync_clock;
-          auto * buf = e.buffer->buffer;
-
-          Assert(nFrames > 0);
-          Assert(nFrames <= n_frames_per_buffer);
-          for(int i=0; i != nFrames; ++i) {
-            e.algo.step();
-            buf[i] = e.algo.imag();
-          }
-          Assert(e.getState() != AE::queued());
-          Assert(e.getState() != AE::inactive());
-          if constexpr (T::hasEnvelope) {
-            // it is important that isEnvelopeFinished() returns true only one buffer cycle after
-            // the real enveloppe end, to prevent "race conditions".
-            return !e.algo.isEnvelopeFinished();
-          }
-          else {
-            return true;
-          }
-        };
-      }
 
     } // NS audioelement
 } // NS imajuscule

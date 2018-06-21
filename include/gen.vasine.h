@@ -12,8 +12,8 @@ namespace imajuscule {
                 static constexpr float get_gain() { return 1.f; };
 
                 // the caller is responsible for taking the out lock if needed
-                template<typename MonoNoteChannel, typename OutputData, typename Chans>
-                void onStartNote(float velocity, Phase phase, MonoNoteChannel & c, OutputData & out, Chans & chans) {
+                template<typename MonoNoteChannel, typename F, typename OutputData, typename Chans>
+                bool onStartNote(float velocity, Phase phase, MonoNoteChannel & c, F shouldKeyRelease, OutputData & out, Chans & chans) {
                     using Request = typename OutputData::Request;
 
                     auto tunedNote = midi::tuned_note(c.pitch, c.tuning);
@@ -29,17 +29,14 @@ namespace imajuscule {
                     // The caller is responsible for:
                     // - taking the out lock if needed
                     // - growing the channel request queue if needed
-                    auto res = chans.playGenericNoLock(
-                                    out, *c.channel, osc,
+                    return chans.playComputableNoLock(
+                                    out, *c.channel, osc.fCompute(shouldKeyRelease),
                                                    Request{
                                                        &osc.buffer->buffer[0],
                                                        velocity,
                                                        // e.noteOn.length is always 0, we must rely on noteOff
                                                        std::numeric_limits<decltype(std::declval<Request>().duration_in_frames)>::max()
                                                    });
-                    if(!res) {
-                      MIDI_LG(ERR,"failed to play");
-                    }
                 }
               private:
                 int32_t xfade_length = 401;
@@ -47,6 +44,7 @@ namespace imajuscule {
             };
 
             template<
+            AudioOutPolicy outPolicy,
             int nOuts,
             XfadePolicy xfade_policy_,
             typename AE,
@@ -56,6 +54,7 @@ namespace imajuscule {
             typename NoteOffEvent
             >
             using Synth = ImplCRTP <
+              outPolicy,
               nOuts,
               xfade_policy_,
               AE,

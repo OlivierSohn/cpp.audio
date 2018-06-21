@@ -216,8 +216,8 @@ namespace imajuscule {
                 float get_gain() const { return denorm<GAIN>(); }
 
                 // The caller is responsible for taking the out lock if needed.
-                template<typename MonoNoteChannel, typename OutputData, typename Chans>
-                void onStartNote(float velocity, Phase phase, MonoNoteChannel & c, OutputData & out, Chans & chans) {
+                template<typename MonoNoteChannel, typename F, typename OutputData, typename Chans>
+                bool onStartNote(float velocity, Phase phase, MonoNoteChannel & c, F shouldKeyRelease, OutputData & out, Chans & chans) {
                     using Request = typename Chans::Request;
 
                     auto tunedNote = midi::tuned_note(c.pitch, c.tuning);
@@ -247,8 +247,8 @@ namespace imajuscule {
                     // The caller is responsible for:
                     // - taking the out lock if needed
                     // - growing the channel request queue if needed
-                    chans.playGenericNoLock(
-                                    out, *c.channel, osc,
+                    return chans.playComputableNoLock(
+                                    out, *c.channel, osc.fCompute(shouldKeyRelease),
                                                    Request{
                                                        &osc.buffer->buffer[0],
                                                        velocity,
@@ -286,7 +286,7 @@ namespace imajuscule {
             };
 
             template<
-
+            AudioOutPolicy outPolicy,
             int nAudioOut,
             typename Parameters,
             typename EventIterator,
@@ -296,7 +296,7 @@ namespace imajuscule {
 
             typename Base = ImplBase<Parameters, ProcessData>,
 
-            typename Parent = ImplCRTP< nAudioOut, XfadePolicy::SkipXfade,
+            typename Parent = ImplCRTP< outPolicy, nAudioOut, XfadePolicy::SkipXfade,
             audioelement::FreqRamp<audioelement::SimpleLinearEnvelope<float>>, true,
             EventIterator, NoteOnEvent, NoteOffEvent, Base>
 
@@ -345,6 +345,7 @@ namespace imajuscule {
                 template<typename Out, typename Chans>
                 onEventResult onEvent(Event const & e, Out & out, Chans & chans)
                 {
+                    static_assert(Out::policy == outPolicy);
                     // in case this is called before the first doProcessing:
                     if(!period.hasValue()) {
                         updateParams();
@@ -384,9 +385,10 @@ namespace imajuscule {
                     }
                 }
 
-                template<typename OutputData, typename Chans>
-                void doProcessing (ProcessData& data, OutputData & out, Chans & chans)
+                template<typename Out, typename Chans>
+                void doProcessing (ProcessData& data, Out & out, Chans & chans)
                 {
+                    static_assert(Out::policy == outPolicy);
                     Assert(data.numSamples);
 
                     std::array<float *, nAudioOut> outs;
@@ -591,7 +593,10 @@ namespace imajuscule {
                         return;
                     }
 
-                    for(auto& c : channels) {
+                    static_assert(outPolicy == AudioOutPolicy::Slave ||
+                                  outPolicy == AudioOutPolicy::MasterGlobalLock);
+                    for(auto it = channels.seconds(), end = channels.seconds_end(); it!= end; ++it) {
+                        auto & c = *it;
                         auto & osc = c.elem;
                         if(osc.isInactive()) {
                             continue;

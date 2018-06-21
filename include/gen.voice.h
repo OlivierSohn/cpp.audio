@@ -858,9 +858,9 @@ namespace imajuscule {
                 }
 
             protected:
-                template<typename MonoNoteChannel, typename OutputData, typename Chans>
+                template<typename MonoNoteChannel, typename F, typename OutputData, typename Chans>
                 // it's unclear if we should use phase at all here.
-                void onStartNote(float velocity, Phase phase, MonoNoteChannel & c, OutputData & out, Chans & chans) {
+                bool onStartNote(float velocity, Phase phase, MonoNoteChannel & c, F & channelFlag, OutputData & out, Chans & chans) {
                     c.elem.engine.set_channel(*c.channel);
 
                     {
@@ -974,11 +974,12 @@ namespace imajuscule {
                         }
 
                         if constexpr (MODE == Mode::SWEEP) {
-                            c.elem.engine.initialize_sweep(out,
-                                                           chans,
-                                                           denorm<LOW_FREQ>(),
-                                                           denorm<HIGH_FREQ>(),
-                                                           pan);
+                          return c.elem.engine.initialize_sweep(out,
+                                                                chans,
+                                                                channelFlag,
+                                                                denorm<LOW_FREQ>(),
+                                                                denorm<HIGH_FREQ>(),
+                                                                pan);
                         }
                         else if constexpr (MODE == Mode::BIRDS) {
                             c.elem.engine.set_freq_xfade(denorm<FREQ_TRANSITION_LENGTH>());
@@ -986,40 +987,46 @@ namespace imajuscule {
                             c.elem.engine.set_freq_interpolation(interp_freq);
                             auto xfade_freq = static_cast<FreqXfade>(xfade_freq_traversal().realValues()[static_cast<int>(.5f + value<MARKOV_XFADE_FREQ>())]);
 
-                            c.elem.engine.initialize_birds(out,
-                                                           chans,
-                                                            value<MARKOV_START_NODE>(),
-                                                            value<MARKOV_PRE_TRIES>(),
-                                                            value<MARKOV_MIN_PATH_LENGTH>(),
-                                                            value<MARKOV_ADDITIONAL_TRIES>(),
-                                                            SoundEngineInitPolicy::StartAfresh,
-                                                            xfade_freq,
-                                                            value<MARKOV_ARTICULATIVE_PAUSE_LENGTH>(),
-                                                            pan);
+                            return c.elem.engine.initialize_birds(out,
+                                                                  chans,
+                                                                  channelFlag,
+                                                                  value<MARKOV_START_NODE>(),
+                                                                  value<MARKOV_PRE_TRIES>(),
+                                                                  value<MARKOV_MIN_PATH_LENGTH>(),
+                                                                  value<MARKOV_ADDITIONAL_TRIES>(),
+                                                                  SoundEngineInitPolicy::StartAfresh,
+                                                                  xfade_freq,
+                                                                  value<MARKOV_ARTICULATIVE_PAUSE_LENGTH>(),
+                                                                  pan);
                         }
                         else if constexpr (MODE == Mode::WIND) {
-                            c.elem.engine.initialize_wind(out,
-                                                          chans,
-                                                          value<MARKOV_START_NODE>(),
-                                                          value<MARKOV_PRE_TRIES>(),
-                                                          value<MARKOV_MIN_PATH_LENGTH>(),
-                                                          value<MARKOV_ADDITIONAL_TRIES>(),
-                                                          SoundEngineInitPolicy::StartAfresh,
-                                                          pan);
+                            return c.elem.engine.initialize_wind(out,
+                                                                 chans,
+                                                                 channelFlag,
+                                                                 value<MARKOV_START_NODE>(),
+                                                                 value<MARKOV_PRE_TRIES>(),
+                                                                 value<MARKOV_MIN_PATH_LENGTH>(),
+                                                                 value<MARKOV_ADDITIONAL_TRIES>(),
+                                                                 SoundEngineInitPolicy::StartAfresh,
+                                                                 pan);
                         }
                         else if constexpr (MODE == Mode::ROBOTS) {
-                            c.elem.engine.set_d1(/*denorm<D1>()*/value<D1>());
+                          c.elem.engine.set_d1(/*denorm<D1>()*/value<D1>());
                             c.elem.engine.set_d2(/*denorm<D2>()*/value<D2>());
                             c.elem.engine.set_har_att(denorm<HARMONIC_ATTENUATION>());
-                            c.elem.engine.initialize_robot(out,
-                                                           chans,
-                                                           value<MARKOV_START_NODE>(),
-                                                           value<MARKOV_PRE_TRIES>(),
-                                                           value<MARKOV_MIN_PATH_LENGTH>(),
-                                                           value<MARKOV_ADDITIONAL_TRIES>(),
-                                                           SoundEngineInitPolicy::StartAfresh,
-                                                           value<MARKOV_ARTICULATIVE_PAUSE_LENGTH>(),
-                                                           pan);
+                            return c.elem.engine.initialize_robot(out,
+                                                                  chans,
+                                                                  channelFlag,
+                                                                  value<MARKOV_START_NODE>(),
+                                                                  value<MARKOV_PRE_TRIES>(),
+                                                                  value<MARKOV_MIN_PATH_LENGTH>(),
+                                                                  value<MARKOV_ADDITIONAL_TRIES>(),
+                                                                  SoundEngineInitPolicy::StartAfresh,
+                                                                  value<MARKOV_ARTICULATIVE_PAUSE_LENGTH>(),
+                                                                  pan);
+                        }
+                        else {
+                          return false;
                         }
                     }
                 }
@@ -1084,8 +1091,11 @@ namespace imajuscule {
 
                 EngineAndRamps(buffer_t&b) :
                 ramps{b[0],b[1],b[2]},
-                engine{[this]()-> Ramps<audioElt> {
+              engine{[this](std::function<bool()> const & fShouldKeyRelease)-> Ramps<audioElt> {
                     using namespace imajuscule::audioelement;
+                  if(goOn && fShouldKeyRelease()) {
+                    onKeyReleased();
+                  }
                     Ramps<audioElt> res;
                     // in SoundEngine.playNextSpec (from the rt audio thread),
                     // we onKeyPressed() the inactive ramp and onKeyReleased() the active ramp.
@@ -1192,6 +1202,7 @@ namespace imajuscule {
 
             template<
 
+            AudioOutPolicy outPolicy,
             int nAudioOut,
             Mode MODE,
             bool withNoteOff,
@@ -1205,15 +1216,15 @@ namespace imajuscule {
             typename Base = ImplBase<MODE, Parameters, ProcessData>,
 
             typename Parent = ImplCRTP <
+            outPolicy,
             nAudioOut, XfadePolicy::UseXfade, // TODO reassess the use of xfades, now that we have enveloppes
-            EngineAndRamps<SoundEngine<MODE, nAudioOut, Logger>>,
+            EngineAndRamps<SoundEngine<MODE, nAudioOut, getAtomicity<outPolicy>(), Logger>>,
             withNoteOff,
             EventIterator, NoteOnEvent, NoteOffEvent, Base >
             >
 
             struct Impl_ : public Parent
             {
-
                 static constexpr auto n_frames_interleaved = size_interleaved / nAudioOut;
                 static_assert(n_frames_interleaved * nAudioOut == size_interleaved); // make sure we don't waste space
 
@@ -1242,9 +1253,10 @@ namespace imajuscule {
                     return onEvent2(e, out, chans);
                 }
 
-                template<typename OutputData, typename Chans>
-                void doProcessing (ProcessData& data, OutputData & out, Chans & chans)
+                template<typename Out, typename Chans>
+                void doProcessing (ProcessData& data, Out & out, Chans & chans)
                 {
+                    static_assert(Out::policy == outPolicy);
                     Assert(data.numSamples);
 
                     std::array<float *, nAudioOut> outs;

@@ -84,8 +84,8 @@ namespace imajuscule {
             IEventList* outputEvents;				///< outgoing events for this block (optional)
         };
 
-        template<int nAudioOut, audio::SoundEngineMode MODE, bool withNoteOff>
-        using Voice = imajuscule::audio::voice::Impl_<nAudioOut, MODE, withNoteOff, std::vector<float>, EventIteratorImpl, NoteOnEvent, NoteOffEvent, ProcessData>;
+        template<AudioOutPolicy outPolicy, int nAudioOut, audio::SoundEngineMode MODE, bool withNoteOff>
+        using Voice = imajuscule::audio::voice::Impl_<outPolicy, nAudioOut, MODE, withNoteOff, std::vector<float>, EventIteratorImpl, NoteOnEvent, NoteOffEvent, ProcessData>;
 
 
         ////////////////////

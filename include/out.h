@@ -98,7 +98,7 @@ namespace imajuscule {
 
   template<>
   struct AudioLockCtrl<ThreadType::NonRealTime> {
-    AudioLockCtrl(std::atomic_bool & l) noexcept : spin(l) {}
+    AudioLockCtrl(std::atomic_flag & l) noexcept : spin(l) {}
 
     void lock() {
       priority.lock();
@@ -116,7 +116,7 @@ namespace imajuscule {
 
   template<>
   struct AudioLockCtrl<ThreadType::RealTime> {
-    AudioLockCtrl(std::atomic_bool & l) noexcept : spin(l) {}
+    AudioLockCtrl(std::atomic_flag & l) noexcept : spin(l) {}
 
     void lock() {
       spin.lock();
@@ -140,7 +140,7 @@ namespace imajuscule {
 
   template<ThreadType T>
   struct AudioLock {
-    AudioLock( std::atomic_bool & l) noexcept : ctrl(l) {
+    AudioLock( std::atomic_flag & l) noexcept : ctrl(l) {
       ctrl.lock();
     }
     ~AudioLock() {
@@ -204,9 +204,9 @@ namespace imajuscule {
       static constexpr auto sync = Synchronization::SingleThread;
       static constexpr auto useLock = WithLock::Yes;
       
-      std::atomic_bool & lock() { return used; }
+      std::atomic_flag & lock() { return used; }
     private:
-      std::atomic_bool used{false};
+      std::atomic_flag used = ATOMIC_FLAG_INIT;
     };
 
     template <>
@@ -217,6 +217,14 @@ namespace imajuscule {
       bool lock() { return false; }
     };
   
+  template<AudioOutPolicy p>
+  constexpr auto getAtomicity() {
+    using OutTraits = AudioLockPolicyImpl<p>;
+    return ((OutTraits::useLock == WithLock::Yes) || (OutTraits::sync == Synchronization::SingleThread)) ?
+    Atomicity::No :
+    Atomicity::Yes;
+  }
+
 
     // cooley-tukey leads to error growths of O(log n) (worst case) and O(sqrt(log n)) (mean for random input)
     // so float is good enough
@@ -728,17 +736,18 @@ namespace imajuscule {
         }
     };
 
-    template< AudioOutPolicy Policy, typename ChannelsType >
+    template< AudioOutPolicy P, typename ChannelsType >
     struct outputDataBase {
         using T = SAMPLE;
 
+        static constexpr auto policy = P;
         static constexpr auto nOuts = ChannelsType::nAudioOut;
         using ChannelsT = ChannelsType;
         using Request = typename ChannelsType::Request;
-        using PostImpl = AudioPostPolicyImpl<T, nOuts, Policy>;
-        using LockFromRT = LockIf<AudioLockPolicyImpl<Policy>::useLock, ThreadType::RealTime>;
-      using LockFromNRT = LockIf<AudioLockPolicyImpl<Policy>::useLock, ThreadType::NonRealTime>;
-      using LockCtrlFromNRT = LockCtrlIf<AudioLockPolicyImpl<Policy>::useLock, ThreadType::NonRealTime>;
+        using PostImpl = AudioPostPolicyImpl<T, nOuts, policy>;
+        using LockFromRT = LockIf<AudioLockPolicyImpl<policy>::useLock, ThreadType::RealTime>;
+      using LockFromNRT = LockIf<AudioLockPolicyImpl<policy>::useLock, ThreadType::NonRealTime>;
+      using LockCtrlFromNRT = LockCtrlIf<AudioLockPolicyImpl<policy>::useLock, ThreadType::NonRealTime>;
 
     private:
         //////////////////////////
@@ -747,21 +756,21 @@ namespace imajuscule {
         ///
         //////////////////////////
 
-        AudioLockPolicyImpl<Policy> & _lock;
+        AudioLockPolicyImpl<policy> & _lock;
         ChannelsT channelsT;
         PostImpl post;
 
     public:
 
         template<typename ...Args>
-        outputDataBase(AudioLockPolicyImpl<Policy>&l, Args ... args):
+        outputDataBase(AudioLockPolicyImpl<policy>&l, Args ... args):
         channelsT(l, args ...)
         , post(l)
         , _lock(l)
         , clock_(false)
         {}
 
-        outputDataBase(AudioLockPolicyImpl<Policy>&l):
+        outputDataBase(AudioLockPolicyImpl<policy>&l):
           post(l)
         , _lock(l)
         , clock_(false)
@@ -772,8 +781,8 @@ namespace imajuscule {
 
         PostImpl & getPost() { return post; }
 
-        AudioLockPolicyImpl<Policy> & get_lock_policy() { return _lock; }
-        decltype(std::declval<AudioLockPolicyImpl<Policy>>().lock()) get_lock() { return _lock.lock(); }
+        AudioLockPolicyImpl<policy> & get_lock_policy() { return _lock; }
+        decltype(std::declval<AudioLockPolicyImpl<policy>>().lock()) get_lock() { return _lock.lock(); }
 
         // called from audio callback
         void step(SAMPLE *outputBuffer, int nFrames) {
