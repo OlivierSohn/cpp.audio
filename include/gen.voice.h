@@ -858,9 +858,8 @@ namespace imajuscule {
                 }
 
             protected:
-                template<typename MonoNoteChannel, typename F, typename OutputData, typename Chans>
-                // it's unclear if we should use phase at all here.
-                bool onStartNote(float velocity, Phase phase, MonoNoteChannel & c, F & channelFlag, OutputData & out, Chans & chans) {
+                template<typename MonoNoteChannel, typename F, typename CS, typename OutputData, typename Chans>
+                bool onStartNote(float velocity, MonoNoteChannel & c, F & channelFlag, CS & cs, OutputData & out, Chans & chans) {
                     c.elem.engine.set_channel(*c.channel);
 
                     {

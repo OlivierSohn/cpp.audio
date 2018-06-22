@@ -4,7 +4,8 @@ namespace imajuscule {
     namespace audio {
         namespace vasine {
 
-            struct SynthImpl {
+          
+          struct SynthImpl {
 
                 int32_t get_xfade_length() const { return xfade_length; }
                 void set_xfade_length(int32_t l) { xfade_length = l; }
@@ -12,8 +13,8 @@ namespace imajuscule {
                 static constexpr float get_gain() { return 1.f; };
 
                 // the caller is responsible for taking the out lock if needed
-                template<typename MonoNoteChannel, typename F, typename OutputData, typename Chans>
-                bool onStartNote(float velocity, Phase phase, MonoNoteChannel & c, F shouldKeyRelease, OutputData & out, Chans & chans) {
+                template<typename MonoNoteChannel, typename F, typename CS, typename OutputData, typename Chans>
+                bool onStartNote(float velocity, MonoNoteChannel & c, F & shouldKeyRelease, CS & cs, OutputData & out, Chans & chans) {
                     using Request = typename OutputData::Request;
 
                     auto tunedNote = midi::tuned_note(c.pitch, c.tuning);
@@ -24,7 +25,8 @@ namespace imajuscule {
                                                1.f,
                                                30.f);
                     osc.algo.setAngleIncrements(freq_to_angle_increment(freq));
-                    setPhase(phase, osc.algo);
+                  
+                    osc.oneShot = [&c, &cs] () { setPhase(c,cs); };
 
                     // The caller is responsible for:
                     // - taking the out lock if needed

@@ -117,7 +117,7 @@ namespace imajuscule {
         static inline Phase mkNonDeterministicPhase() { return Phase{false,{}}; }
 
         template<typename T>
-        void setPhase (Phase const & phase, T&algo) {
+        void setAlgoPhase (Phase const & phase, T&algo) {
           auto angle =
             phase.isDeterministic() ?
             phase.getDeterministicValue() :
@@ -287,22 +287,8 @@ namespace imajuscule {
                   }
 
                   if(channel) {
-                    auto phase = mkNonDeterministicPhase();
-                    
-                    // TODO make a thread safe version of this within the compute
-                    /*
-                     for(auto & o:channels) {
-                      // To prevent phase cancellation, the phase of the new note will be
-                      // coherent with the phase of any active channel that plays a note at the same frequency.
-                      if(!o.elem.isEnvelopeFinished() && o.pitch == e.noteOn.pitch && o.tuning==e.noteOn.tuning) {
-                        phase = mkDeterministicPhase(o.elem.angle());
-                        break;
-                      }
-                    }
-                     */
-
                     Assert(channelFlag);
-                    if(!onStartNote(e.noteOn.velocity, phase, *channel, *channelFlag, out, chans)) {
+                    if(!onStartNote(e.noteOn.velocity, *channel, *channelFlag, channels, out, chans)) {
                       MIDI_LG(ERR,"failed to play");
                     }
                     return onEventResult::OK;
@@ -408,5 +394,25 @@ namespace imajuscule {
             OutputData out;
             T plugin;
         };
+      
+      template<typename MonoNoteChannel, typename CS>
+      void setPhase(MonoNoteChannel & c, CS & cs)
+      {
+        auto phase = mkNonDeterministicPhase();
+        for(auto it = cs.seconds(), end = cs.seconds_end(); it!= end; ++it) {
+          if(it == &c) {
+            continue;
+          }
+          auto & o = *it;
+          // To prevent phase cancellation, the phase of the new note will be
+          // coherent with the phase of any active channel that plays a note at the same frequency.
+          if(!o.elem.isEnvelopeFinished() && o.pitch == c.pitch && o.tuning==c.tuning) {
+            phase = mkDeterministicPhase(o.elem.angle());
+            break;
+          }
+        }
+        setAlgoPhase(phase, c.elem.algo.getOsc());
+      }
+
     }
 } // namespaces

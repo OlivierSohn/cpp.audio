@@ -105,6 +105,7 @@ namespace imajuscule {
 
             AEBuffer<FPT> * buffer;
             bool clock_ : 1;
+            std::function<void(void)> oneShot;
             ALGO algo;
 
           // TODO reset the flag to FINISHED when the envelope is done.
@@ -142,6 +143,11 @@ namespace imajuscule {
               if(canHandleExplicitKeyReleaseNow() && shouldKeyRelease()) {
                 onKeyReleased();
               }
+            }
+            
+            if(oneShot) {
+              oneShot();
+              oneShot = {};
             }
 
             Assert(nFrames > 0);
@@ -186,7 +192,8 @@ namespace imajuscule {
                              });
             };
           }
-
+          
+          
         };
 
 

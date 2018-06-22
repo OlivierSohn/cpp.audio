@@ -216,8 +216,8 @@ namespace imajuscule {
                 float get_gain() const { return denorm<GAIN>(); }
 
                 // The caller is responsible for taking the out lock if needed.
-                template<typename MonoNoteChannel, typename F, typename OutputData, typename Chans>
-                bool onStartNote(float velocity, Phase phase, MonoNoteChannel & c, F shouldKeyRelease, OutputData & out, Chans & chans) {
+                template<typename MonoNoteChannel, typename F, typename CS, typename OutputData, typename Chans>
+                bool onStartNote(float velocity, MonoNoteChannel & c, F & shouldKeyRelease, CS & cs, OutputData & out, Chans & chans) {
                     using Request = typename Chans::Request;
 
                     auto tunedNote = midi::tuned_note(c.pitch, c.tuning);
@@ -236,7 +236,8 @@ namespace imajuscule {
                     osc.algo.getOsc().setLoudnessParams(value<LOUDNESS_REF_FREQ_INDEX>(),
                                           value<LOUDNESS_COMPENSATION_AMOUNT>(),
                                           denorm<LOUDNESS_LEVEL>());
-                    setPhase(phase, osc.algo.getOsc());
+
+                  osc.oneShot = [&c, &cs] () { setPhase(c,cs); };
 
                     osc.algo.getAlgo().getCtrl().set(freq - ramp_amount() * (freq-start_freq),
                                       freq,
