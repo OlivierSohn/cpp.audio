@@ -104,10 +104,10 @@ namespace imajuscule {
             ALGO algo;
 
           bool compute(bool sync_clock, int nFrames) {
-            
+
             auto * buf = buffer->buffer;
             auto st = state(buf);
-            
+
             if(st == buffer_t::inactive()) {
               // Issue : if the buffer just got marked inactive,
               // but no new AudioElementCompute happends
@@ -130,7 +130,7 @@ namespace imajuscule {
               }
             }
             clock_ = sync_clock;
-            
+
             Assert(nFrames > 0);
             Assert(nFrames <= n_frames_per_buffer);
             for(int i=0; i != nFrames; ++i) {
@@ -148,7 +148,7 @@ namespace imajuscule {
             }
             return true;
           }
- 
+
           auto fCompute() {
             return [this](bool sync_clock, int nFrames) {
               return compute(sync_clock,nFrames);
@@ -163,7 +163,7 @@ namespace imajuscule {
        KeyPressed
        KeyReleased
        EnvelopeDone1
-       
+
        Once the envelope is in state 'EnvelopeDone2', it is not used anymore by the audio thread.
        The first thread doing a "compare and swap" from 'EnvelopeDone2' to 'SoonKeyPressed'
        acquires ownership of the envelope.
@@ -279,7 +279,7 @@ namespace imajuscule {
             using Base::getReleaseItp;
             using Base::getReleaseTime;
             using Base::isAfterAttackBeforeSustain;
-          
+
           EnvelopeCRT() : Base() {
             stateTraits::write(state, EnvelopeState::EnvelopeDone2, std::memory_order_relaxed);
           }
@@ -304,7 +304,7 @@ namespace imajuscule {
 
             void step() {
                 ++counter;
-              switch(stateTraits::read(state, std::memory_order_relaxed)) {
+              switch(getRelaxedState()) {
                     case EnvelopeState::KeyPressed:
                     {
                       auto maybeV = stepPressed(counter);
@@ -355,7 +355,7 @@ namespace imajuscule {
             }
 
             bool onKeyReleased() {
-                if(stateTraits::read(state, std::memory_order_relaxed) == EnvelopeState::KeyPressed) {
+                if(getRelaxedState() == EnvelopeState::KeyPressed) {
                     if(0 == counter) {
                       // the key was pressed, but immediately released, so we skip the note.
                       stateTraits::write(state, EnvelopeState::EnvelopeDone2, std::memory_order_relaxed);
@@ -371,9 +371,9 @@ namespace imajuscule {
             }
 
             bool isEnvelopeFinished() const {
-              return stateTraits::read(state, std::memory_order_relaxed) == EnvelopeState::EnvelopeDone2;
+              return getRelaxedState() == EnvelopeState::EnvelopeDone2;
             }
-          
+
           void unsafeForceFinish() {
             stateTraits::write(state, EnvelopeState::EnvelopeDone2, std::memory_order_relaxed);
           }
@@ -381,13 +381,13 @@ namespace imajuscule {
             bool afterAttackBeforeSustain() const {
               return isAfterAttackBeforeSustain(counter);
             }
-          
+
           bool canHandleExplicitKeyReleaseNow() const {
             if constexpr (Release == EnvelopeRelease::ReleaseAfterDecay) {
               return false;
             }
             else {
-              return stateTraits::read(state, std::memory_order_relaxed) == EnvelopeState::KeyPressed;
+              return getRelaxedState() == EnvelopeState::KeyPressed;
             }
           }
 
@@ -1071,7 +1071,7 @@ namespace imajuscule {
             bool onKeyReleased() {
                 return audio_element.onKeyReleased();
             }
-          
+
           bool canHandleExplicitKeyReleaseNow() const {
             if constexpr (hasEnvelope) {
               return audio_element.canHandleExplicitKeyReleaseNow();

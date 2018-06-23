@@ -1,10 +1,10 @@
 namespace imajuscule::audio::sine {
-  
+
   struct SynthImpl {
-    
+
     static constexpr int32_t get_xfade_length() { return 401; }
     static constexpr float get_gain() { return 1.f; };
-    
+
     // the caller is responsible for taking the out lock if needed
     template<typename MonoNoteChannel, typename CS, typename Chans>
     std::pair<std::function<void(void)>,std::function<bool(Chans&,int)>>
@@ -14,7 +14,7 @@ namespace imajuscule::audio::sine {
       return {
         [&c, &cs]() {
           setPhase(c,cs);
-          c.onKeyPressed();
+          c.elem.onKeyPressed();
         }
         ,{}
       };
@@ -22,7 +22,7 @@ namespace imajuscule::audio::sine {
   private:
     float half_tone = compute_half_tone(1.f);
   };
-  
+
   template<
     AudioOutPolicy outPolicy,
     int nOuts,
@@ -45,5 +45,5 @@ namespace imajuscule::audio::sine {
     SynthImpl,
     32
   >;
-  
+
 } // NS imajuscule::audio::sine

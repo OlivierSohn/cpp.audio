@@ -1,21 +1,21 @@
 // 'va' in the name 'vasine' stand for "Volume-adjusted" sine
 
 namespace imajuscule::audio::vasine {
-  
+
   struct SynthImpl {
-    
+
     int32_t get_xfade_length() const { return xfade_length; }
     void set_xfade_length(int32_t l) { xfade_length = l; }
-    
+
     static constexpr float get_gain() { return 1.f; };
-    
+
     // the caller is responsible for taking the out lock if needed
     template<typename MonoNoteChannel, typename CS, typename Chans>
     std::pair<std::function<void(void)>,std::function<bool(Chans&,int)>>
     onStartNote(float freq, MonoNoteChannel & c, CS & cs, Chans & chans)
     {
       using Request = typename Chans::Request;
-      
+
       auto & osc = c.elem;
       osc.algo.setLoudnessParams(5,
                                  1.f,
@@ -24,7 +24,7 @@ namespace imajuscule::audio::vasine {
       return {
         [&c, &cs]() {
           setPhase(c,cs);
-          c.onKeyPressed();
+          c.elem.onKeyPressed();
         }
         ,{}
       };
@@ -34,7 +34,7 @@ namespace imajuscule::audio::vasine {
     int32_t xfade_length = 401;
     float half_tone = compute_half_tone(1.f);
   };
-  
+
   template<
     AudioOutPolicy outPolicy,
     int nOuts,

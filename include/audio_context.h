@@ -65,6 +65,7 @@ namespace imajuscule {
         template <typename T, Features Feat, AudioPlatform AUP >
         struct AudioOutContext : public Context<AUP, Feat, T> {
             static constexpr auto nAudioOut = T::nOuts;
+            static constexpr auto policy = T::policy;
             using Chans=T;
             using LockFromRT = typename Chans::LockFromRT;
             using LockFromNRT = typename Chans::LockFromNRT;
@@ -74,7 +75,7 @@ namespace imajuscule {
             using Base::chans;
             using Base::bInitialized;
             using Base::doInit;
-          
+
             // the min latency used in case the initialization is done lazily
             static constexpr float minLazyLatency = 0.005f;
 
@@ -85,8 +86,8 @@ namespace imajuscule {
             bool closing : 1;
 
         public:
-            template<typename Lock, typename ...Args>
-            AudioOutContext(Lock & l, Args... args) : Base(l, args ...)
+            template<typename ...Args>
+            AudioOutContext(Args... args) : Base(GlobalAudioLock<policy>::get(), args ...)
             , closing(false)
             {}
 

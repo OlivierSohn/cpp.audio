@@ -6,10 +6,10 @@ namespace imajuscule {
     int nOuts,
     XfadePolicy XF,
     MaxQueueSize MQS,
-    AudioOutPolicy policy
+    AudioOutPolicy P
     >
     struct Channels {
-        static constexpr auto Policy = policy;
+        static constexpr auto policy = P;
         static constexpr auto atomicity = getAtomicity<policy>();
         static constexpr auto nAudioOut = nOuts;
         using Channel = Channel<atomicity, nAudioOut, XF, MQS>;
@@ -40,7 +40,7 @@ namespace imajuscule {
                                             ,int  // the number of frames to skip
                                              )>;
 
-        Channels() : _lock(GlobalAudioLock<Policy>::get()) {
+        Channels() : _lock(GlobalAudioLock<policy>::get()) {
             Assert(0 && "The other constructor should be used");
         }
 
@@ -103,7 +103,7 @@ namespace imajuscule {
 
         Channel const & getChannel(uint8_t id) const {
           Assert(id != AUDIO_CHANNEL_NONE);
-          return channels[id];          
+          return channels[id];
         }
 
         bool empty() const { return channels.empty(); }
@@ -152,7 +152,7 @@ namespace imajuscule {
           if(!channel.addRequest( std::move(req) )) {
             return false;
           }
-          
+
           if(!this->registerCompute(compute)) {
             // TODO 'channel.cancelLastRequest();' else there will be no compute associate to it,
             // and the request will stay in the channel forever.
@@ -296,11 +296,11 @@ namespace imajuscule {
 
         void run_computes(bool tictac, int nFrames) {
           nOrchestratorsAndComputes -= oneShots.dequeueAll([this](auto const & f) { f(); });
-          
+
           nOrchestratorsAndComputes -= orchestrators.forEach([this](auto const & orchestrate) {
             return orchestrate(*this, audioelement::n_frames_per_buffer);
           });
-          
+
           nOrchestratorsAndComputes -= computes.forEach([tictac, nFrames](auto const & compute) {
             return compute(tictac, nFrames);
           });

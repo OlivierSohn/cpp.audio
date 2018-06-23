@@ -13,10 +13,10 @@
 
 namespace imajuscule::audio {
   using interleaved_buf_t = a64::vector<float>;
-  
+
   template<typename T>
   struct ForEach;
-  
+
   template<>
   struct ForEach<interleaved_buf_t> {
     template<typename F>
@@ -24,7 +24,7 @@ namespace imajuscule::audio {
       f(b);
     };
   };
-  
+
   template<int N>
   struct ForEach<std::array<interleaved_buf_t, N>> {
     template<typename F>
@@ -34,41 +34,41 @@ namespace imajuscule::audio {
       }
     };
   };
-  
+
   template<typename InterleavedBuffer, typename F>
   void forEach(InterleavedBuffer & b, F f) {
     ForEach<InterleavedBuffer>::run(b, f);
   }
-  
+
   template<
-  
+
   int NParams,
   typename Parameters,
   typename InterleavedBuffer,
   int SizeInterleaved,
   typename ProcessData_
-  
+
   >
   struct Impl {
     using ProcessData = ProcessData_;
-    
+
     static constexpr auto tune_stretch = 1.f;
-    
+
     virtual Program const & getProgram(int i) const = 0;
     virtual int countPrograms() const = 0;
-    
+
     virtual ~Impl() = default;
-    
+
     static constexpr auto NPARAMS = NParams;
     static constexpr auto size_interleaved = SizeInterleaved;
-    
+
     void initializeSlow() {
       forEach(interleaved, [](interleaved_buf_t & v) {
         v.resize(size_interleaved, 0.f);
       });
       params.resize(NPARAMS);
     }
-    
+
     void initializeSteal(Impl && o) {
       interleaved = std::move(o.interleaved);
       forEach(interleaved, [](interleaved_buf_t & v) {
@@ -78,12 +78,12 @@ namespace imajuscule::audio {
       params = std::move(o.params);
       Assert(params.size() == NPARAMS);
     }
-    
+
     void setParameter(int index, float value, int sampleOffset = 0 /* not supported yet */) {
       Assert(index < params.size());
       params[index] = value;
     }
-    
+
     void useProgram(int index) {
       auto const & p = getProgram(index);
       MIDI_LG(INFO, "with program %d of %d", index, countPrograms());
@@ -92,14 +92,14 @@ namespace imajuscule::audio {
         params[i] = p.params[i];
       }
     }
-    
+
   protected:
     Parameters params;
     InterleavedBuffer interleaved;
     float half_tone = compute_half_tone(tune_stretch);
-    
+
   };
-  
+
   // When another oscillator with the same frequency exists,
   // we synchronize the phase to avoid cancellations.
   //
@@ -114,7 +114,7 @@ namespace imajuscule::audio {
   };
   static inline Phase mkDeterministicPhase(float v) { return Phase{true,v}; }
   static inline Phase mkNonDeterministicPhase() { return Phase{false,{}}; }
-  
+
   template<typename T>
   void setAlgoPhase (Phase const & phase, T&algo) {
     auto angle =
@@ -123,7 +123,7 @@ namespace imajuscule::audio {
     std::uniform_real_distribution<float>{-1.f, 1.f}(mersenne<SEEDED::Yes>());
     algo.setAngle(angle);
   }
-  
+
   template<
   AudioOutPolicy outPolicy,
   int nOuts,
@@ -135,24 +135,24 @@ namespace imajuscule::audio {
   typename NoteOffEvent,
   typename Base,
   int n_max_voices = 8
-  
+
   >
   struct ImplCRTP : public Base {
-    
+
     static constexpr auto nAudioOut = nOuts;
     static constexpr auto xfade_policy = xfade_policy_;
     static constexpr Atomicity atomicity = getAtomicity<outPolicy>();
-    
+
     using MonoNoteChannel = MonoNoteChannel<AE, Channel<atomicity, nOuts, xfade_policy_, MaxQueueSize::One>>;
-    
+
     using Base::get_xfade_length;
     using Base::get_gain;
     using Base::onStartNote;
-    
+
     using Event = typename EventIterator::object;
-    
+
     static constexpr auto n_channels_per_note = 1;
-    
+
     // notes played in rapid succession can have a common audio interval during xfades
     // even if their noteOn / noteOff intervals are disjoint.
     // n_max_simultaneous_notes_per_voice controls the possibility to support that 'well'.
@@ -160,21 +160,21 @@ namespace imajuscule::audio {
     // should be increased.
     static constexpr auto n_max_simultaneous_notes_per_voice = 2;
     static constexpr auto n_channels = n_channels_per_note * n_max_voices * n_max_simultaneous_notes_per_voice;
-    
+
   protected:
     // members
     float half_tone = compute_half_tone(tune_stretch); // TODO remove duplicates, use constexpr version : https://github.com/elbeno/constexpr/blob/master/src/include/cx_math.h
     LocalPairArray<TunedPitch,MonoNoteChannel, n_channels> channels;
-    
+
     static constexpr auto tune_stretch = 1.f;
-    
+
   public:
-    
+
     template <typename A>
     ImplCRTP(std::array<A, n_channels> & as) :
     channels(TunedPitch{}, as)
     {}
-    
+
     template<typename ChannelsT>
     bool initialize(ChannelsT & chans) {
       for(auto & c : seconds(channels)) {
@@ -186,11 +186,11 @@ namespace imajuscule::audio {
       }
       return true;
     }
-    
+
     ~ImplCRTP() {
       finalize();
     }
-    
+
     void finalize() {
       for(auto & c : seconds(channels)) {
         if(c.channel == nullptr) {
@@ -200,7 +200,7 @@ namespace imajuscule::audio {
         c.channel = nullptr;
       }
     }
-    
+
     // returns true if at least one channel has an active enveloppe.
     bool areEnvelopesFinished() const {
       for(auto const & c : seconds(channels)) {
@@ -210,7 +210,7 @@ namespace imajuscule::audio {
       }
       return true;
     }
-    
+
     // Note: Logic Audio Express 9 calls this when two projects are opened and
     // the second project starts playing, so we are not in an "initialized" state.
     template<typename Chans>
@@ -222,7 +222,7 @@ namespace imajuscule::audio {
         }
       });
     }
-    
+
     template<typename Chans>
     void allSoundsOff(Chans & chans) {
       MIDI_LG(INFO, "all sounds off");
@@ -232,8 +232,14 @@ namespace imajuscule::audio {
         }
       });
     }
-    
-    
+
+    template <typename F>
+    void forEachElems(F f) {
+      for(auto & c : seconds(channels)) {
+        f(c.elem);
+      }
+    }
+
     template<typename Out, typename Chans>
     onEventResult onEvent2(Event const & e, Out & out, Chans & chans)
     {
@@ -244,13 +250,13 @@ namespace imajuscule::audio {
         Assert(e.noteOn.velocity > 0.f ); // this case is handled by the wrapper... else we need to do a noteOff
         MIDI_LG(INFO, "on  %d", e.noteOn.pitch);
         MonoNoteChannel * channel = nullptr;
-        
+
         // 1. [with maybe-lock]
         //      reserve a channel by maybe-CAS the envelope State Finished2 -> SoonKeyPressed
-        
+
         {
           typename Out::LockFromNRT L(out.get_lock());
-          
+
           for(auto & c : seconds(channels)) {
             if(!c.elem.tryAcquire()) {
               continue;
@@ -259,20 +265,20 @@ namespace imajuscule::audio {
             break;
           }
         }
-        
+
         if(!channel) {
           // note that we could sleep and retry or yield and retry.
           return onDroppedNote(e.noteOn.pitch);
         }
         auto & c = *channel;
-        
+
         // 2. [without maybe-lock]
         //      set the tunedpitch
         //      setup the channel (dynamic allocations allowed for soundengine)
-        
+
         TunedPitch tp{e.noteOn.pitch, e.noteOn.tuning};
         channels.corresponding(*channel) = tp;
-        
+
         c.elem.setEnvelopeCharacTime(get_xfade_length());
         // unqueue the (potential) previous request, else an assert fails
         // when we enqueue the next request, because it's already queued.
@@ -281,23 +287,23 @@ namespace imajuscule::audio {
           c.channel->set_xfade(get_xfade_length());
         }
         c.channel->setVolume(get_gain());
-        
+
         auto freq = to_freq(tp.getValue()-Do_midi, half_tone);
         auto [oneShot, orchestrator] = onStartNote(freq, *channel, channels, chans);
         if(!oneShot && !orchestrator) {
           MIDI_LG(ERR,"failed to initialize");
           return onDroppedNote(e.noteOn.pitch);
         }
-        
+
         // 3. [with maybe-lock]
         //      register the compute
         //      register the maybe-oneshot that does
         //        - phase cancellation avoidance
         //        - onKeyPress
-        
+
         {
           typename Out::LockFromNRT L(out.get_lock());
-          
+
           // The caller is responsible for growing the channel request queue if needed
           if constexpr (std::remove_reference_t<decltype(c.elem)>::computable) {
             if(!chans.playComputableNoLock(*c.channel,
@@ -313,7 +319,7 @@ namespace imajuscule::audio {
               return onDroppedNote(e.noteOn.pitch);
             }
           }
-          
+
           if(orchestrator) {
             chans.add_orchestrator(orchestrator);
           }
@@ -359,26 +365,25 @@ namespace imajuscule::audio {
       }
       return onEventResult::UNHANDLED;
     }
-    
+
   protected:
     onEventResult onDroppedNote(uint8_t pitch) {
       MIDI_LG(WARN, "dropped note '%d'", pitch);
       return onEventResult::DROPPED_NOTE;
     }
   };
-  
+
   template<typename T>
   struct Wrapper {
     static constexpr auto n_channels = T::n_channels;
     static constexpr auto with_lock = imajuscule::WithLock::No;
-    
+
     using ProcessData = typename T::ProcessData;
-    
+
     using OutputData = outputDataBase<
-    AudioOutPolicy::Slave,
     Channels<T::nAudioOut, T::xfade_policy, T::max_queue_size, AudioOutPolicy::Slave>
     >;
-    
+
     template <class... Args>
     Wrapper(int nOrchestratorsMax, Args&&... args) :
     plugin(std::forward<Args>(args)...),
@@ -391,23 +396,23 @@ namespace imajuscule::audio {
       dontUseConvolutionReverbs(out);
       plugin.template initialize(out.getChannels());
     }
-    
+
     void doProcessing (ProcessData& data) {
       return plugin.doProcessing(data, out, out.getChannels());
     }
-    
+
     void allNotesOff() {
       return plugin.template allNotesOff(out.getChannels());
     }
-    
+
     void allSoundsOff() {
       return plugin.template allSoundsOff(out.getChannels());
     }
-    
+
     OutputData out;
     T plugin;
   };
-  
+
   template<typename MonoNoteChannel, typename CS>
   void setPhase(MonoNoteChannel & c, CS & cs)
   {
@@ -427,7 +432,7 @@ namespace imajuscule::audio {
         break;
       }
     }
-    setAlgoPhase(phase, c.elem.algo.getOsc());
+    setAlgoPhase(phase, c.elem.algo);
   }
-  
+
 } // NS imajuscule::audio

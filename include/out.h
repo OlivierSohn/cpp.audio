@@ -203,7 +203,7 @@ namespace imajuscule {
     struct AudioLockPolicyImpl<AudioOutPolicy::MasterGlobalLock> {
       static constexpr auto sync = Synchronization::SingleThread;
       static constexpr auto useLock = WithLock::Yes;
-      
+
       std::atomic_flag & lock() { return used; }
     private:
       std::atomic_flag used = ATOMIC_FLAG_INIT;
@@ -213,10 +213,10 @@ namespace imajuscule {
     struct AudioLockPolicyImpl<AudioOutPolicy::MasterLockFree> {
       static constexpr auto sync = Synchronization::Lockfree_SingleConsumerMultipleProducer;
       static constexpr auto useLock = WithLock::No;
-      
+
       bool lock() { return false; }
     };
-  
+
   template<AudioOutPolicy p>
   constexpr auto getAtomicity() {
     using OutTraits = AudioLockPolicyImpl<p>;
@@ -224,7 +224,7 @@ namespace imajuscule {
     Atomicity::No :
     Atomicity::Yes;
   }
-  
+
   /*
    Returns true if a non-realtime thread should use the one shot queue,
    false if it should run the lambda in its own thread.
@@ -430,17 +430,17 @@ namespace imajuscule {
 
     };
 
-  
+
     // TODO how can we make this lockfree?
     template<typename T, int nAudioOut>
     struct AudioPostPolicyImpl<T, nAudioOut, AudioOutPolicy::MasterGlobalLock> {
         static constexpr auto nOut = nAudioOut;
         using LockPolicy = AudioLockPolicyImpl<AudioOutPolicy::MasterGlobalLock>;
-      
+
       using LockFromRT = LockIf<LockPolicy::useLock, ThreadType::RealTime>;
       using LockFromNRT = LockIf<LockPolicy::useLock, ThreadType::NonRealTime>;
 
-  
+
         //using ConvolutionReverb = FIRFilter<T>;
         //using ConvolutionReverb = FFTConvolution<FFT_T>;
         //using ConvolutionReverb = PartitionnedFFTConvolution<T>;
@@ -751,11 +751,11 @@ namespace imajuscule {
         }
     };
 
-    template< AudioOutPolicy P, typename ChannelsType >
+    template< typename ChannelsType >
     struct outputDataBase {
         using T = SAMPLE;
 
-        static constexpr auto policy = P;
+        static constexpr auto policy = ChannelsType::policy;
         static constexpr auto nOuts = ChannelsType::nAudioOut;
         using ChannelsT = ChannelsType;
         using Request = typename ChannelsType::Request;
@@ -819,12 +819,12 @@ namespace imajuscule {
                 memset(outputBuffer, 0, nFrames * nOuts * sizeof(SAMPLE));
                 return;
             }
-          
+
             int start = 0;
 
             while(nFrames > 0) {
                 clock_ = !clock_; // keep that BEFORE passing clock_ to compute functions (dependency on registerCompute)
-              
+
                 // how many frames are we going to compute?
                 auto nLocalFrames = std::min(nFrames, audioelement::n_frames_per_buffer);
 
