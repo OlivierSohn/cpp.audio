@@ -158,7 +158,7 @@ namespace imajuscule {
                 if(closing) {
                     return;
                 }
-              getFirstXfadeInfiniteChans().playComputable( chans, channel_id, compute, std::move(req) );
+              getFirstXfadeInfiniteChans().playComputable( channel_id, compute, std::move(req) );
             }
 
             void toVolume( uint8_t channel_id, float volume, int nSteps ) {

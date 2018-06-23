@@ -121,8 +121,6 @@ namespace imajuscule {
         auto it = std::find_if(aes.begin(), aes.end(), [](T const & elt){ return elt.isInactive(); });
         return (it == aes.end()) ? nullptr : &*it;
     }
-
-    
     
     template<Sound::Type SOUND>
     struct FGetBuffer;

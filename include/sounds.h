@@ -1,8 +1,10 @@
 
 namespace imajuscule {
-
+  namespace detail {
+    extern std::map< soundId, soundBuffer > & getSounds();
+  }
+    template<Atomicity A>
     class Sounds {
-        std::map< soundId, soundBuffer > sounds;
 
       // this is not ideal, as buffers are not necessarily in the same page.
       std::vector<std::unique_ptr<audioelement::AEBuffer<float>>> buffers;
@@ -11,13 +13,13 @@ namespace imajuscule {
         return *(buffers.back());
       }
 
-      std::array<audioelement::Square<audioelement::SimpleLinearEnvelope<float>>, 8> squares;
-        std::array<audioelement::Oscillator<audioelement::SimpleLinearEnvelope<float>>, 8> oscillators;
-        std::array<audioelement::FreqRamp<audioelement::SimpleLinearEnvelope<float>>, 6> ramps;
+      std::array<audioelement::Square<audioelement::SimpleLinearEnvelope<A, float>>, 8> squares;
+        std::array<audioelement::Oscillator<audioelement::SimpleLinearEnvelope<A, float>>, 8> oscillators;
+        std::array<audioelement::FreqRamp<audioelement::SimpleLinearEnvelope<A, float>>, 6> ramps;
 
         std::array<audioelement::RingModulation<
         audioelement::LowPassAlgo<audioelement::PulseTrainAlgo<float>, 1>,
-        audioelement::Envelopped<audioelement::OscillatorAlgo<float>,audioelement::SimpleLinearEnvelope<float>>
+        audioelement::Envelopped<audioelement::OscillatorAlgo<float>,audioelement::SimpleLinearEnvelope<A, float>>
         >, 6> ringmods;
 
         std::array<audioelement::LowPass<audioelement::PulseTrainAlgo<float>, 1>, 6> lptrains;
@@ -31,7 +33,19 @@ namespace imajuscule {
       , lptrains{takeBuffer(), takeBuffer(), takeBuffer(), takeBuffer(), takeBuffer(), takeBuffer()}
       {}
 
-      soundBuffer & get( soundId );
+      soundBuffer & get( soundId id )
+      {
+        auto & sounds = detail::getSounds();
+        {
+          auto it = sounds.find(id);
+          if( it != sounds.end() ) {
+            return it->second;
+          }
+        }
+        auto it = sounds.emplace(id, id);
+        Assert(it.second);
+        return it.first->second;
+      }
 
         auto * getInactiveOscillator() {
             return editInactiveAudioElement(oscillators);

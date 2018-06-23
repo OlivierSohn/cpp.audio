@@ -33,6 +33,7 @@
 # include "audio_platform_pa.h"
 #endif
 
+#include "midi.h"
 #include "noise.h"
 #include "sounds.h"
 #include "request.h"
@@ -50,7 +51,6 @@
 #include "paramspec.h"
 #include "smoothparam.h"
 #include "program.h"
-#include "midi.h"
 #include "normalization.h"
 #include "gen.crtp.h"
 #include "gen.cutramp.h"

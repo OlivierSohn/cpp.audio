@@ -86,11 +86,11 @@ namespace imajuscule {
     template <typename T, MaxQueueSize MQS>
     using queue_t = typename Queue<T,MQS>::type;
 
-    template<int nAudioOut, XfadePolicy XF, MaxQueueSize MQS>
+    template<Atomicity A, int nAudioOut, XfadePolicy XF, MaxQueueSize MQS>
     struct Channel : public NonCopyable {
         using Volumes = Volumes<nAudioOut>;
-        using QueuedRequest = QueuedRequest<nAudioOut>;
-        using Request = Request<nAudioOut>;
+        using QueuedRequest = QueuedRequest<A, nAudioOut>;
+        using Request = Request<A, nAudioOut>;
         static constexpr auto XFPolicy = XF;
 
         static constexpr unsigned int default_volume_transition_length = 2000;
@@ -759,8 +759,8 @@ namespace imajuscule {
 
     };
 
-    template<int nAudioOut, XfadePolicy XF, MaxQueueSize MQS>
-    bool Channel<nAudioOut, XF, MQS>::handleToZero(SAMPLE *& outputBuffer, int & n_max_writes) {
+    template<Atomicity A, int nAudioOut, XfadePolicy XF, MaxQueueSize MQS>
+    bool Channel<A, nAudioOut, XF, MQS>::handleToZero(SAMPLE *& outputBuffer, int & n_max_writes) {
         Assert(XF==XfadePolicy::UseXfade);
         if(remaining_samples_count == size_half_xfade + 1) {
             onBeginToZero(n_max_writes);
@@ -778,8 +778,8 @@ namespace imajuscule {
         return consume(n_max_writes);
     }
 
-    template<int nAudioOut, XfadePolicy XF, MaxQueueSize MQS>
-    void Channel<nAudioOut, XF, MQS>::step(SAMPLE * outputBuffer, int n_max_writes)
+    template<Atomicity A, int nAudioOut, XfadePolicy XF, MaxQueueSize MQS>
+    void Channel<A, nAudioOut, XF, MQS>::step(SAMPLE * outputBuffer, int n_max_writes)
     {
         Assert(n_max_writes <= audioelement::n_frames_per_buffer);
       

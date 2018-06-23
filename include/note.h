@@ -22,7 +22,8 @@ namespace imajuscule {
         bool loud : 1;
         unsigned int duration : 7; // max. 128
     };
-   
+  
+    // TODO constexpr that, using  https://github.com/elbeno/constexpr/blob/master/src/include/cx_math.h
     static inline float compute_half_tone(float stretch) {
         return powf(2.f, stretch/12.f);
     }
@@ -44,8 +45,8 @@ namespace imajuscule {
         return freq * powf(half_tone, n);
     }
     
-    template<int nAudioOut, typename Request = Request<nAudioOut>>
-    Request to_request(NoteSpec s, float time_unit, float harmonic_factor, float half_tone, Sounds & sounds, Volumes<nAudioOut> volumes) {
+    template<int nAudioOut, Atomicity A, typename Request = Request<A, nAudioOut>>
+    Request to_request(NoteSpec s, float time_unit, float harmonic_factor, float half_tone, Sounds<A> & sounds, Volumes<nAudioOut> volumes) {
         if(s.note == Silence) {
             return {
                 sounds,

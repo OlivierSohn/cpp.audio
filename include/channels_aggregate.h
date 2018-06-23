@@ -6,12 +6,13 @@ namespace imajuscule {
     struct ChannelsVecAggregate {
       static constexpr auto nAudioOut = nOuts;
       static constexpr auto Policy = P;
+      static constexpr auto atomicity = getAtomicity<Policy>();
 
-      using XFadeChans = Channels<nAudioOut, XfadePolicy::UseXfade, MaxQueueSize::One, Policy>;
-      using NoXFadeChans = Channels<nAudioOut, XfadePolicy::SkipXfade, MaxQueueSize::One, Policy>;
-      using XFadeInfiniteChans = Channels<nAudioOut, XfadePolicy::UseXfade, MaxQueueSize::Infinite, Policy>;
+      using XFadeChans         = Channels<nAudioOut, XfadePolicy::UseXfade,  MaxQueueSize::One, Policy>;
+      using NoXFadeChans       = Channels<nAudioOut, XfadePolicy::SkipXfade, MaxQueueSize::One, Policy>;
+      using XFadeInfiniteChans = Channels<nAudioOut, XfadePolicy::UseXfade,  MaxQueueSize::Infinite, Policy>;
 
-      using Request = Request<nAudioOut>;
+      using Request = Request<atomicity, nAudioOut>;
       using Volumes = Volumes<nAudioOut>;
 
       auto & getChannelsXFade() { return cX; }

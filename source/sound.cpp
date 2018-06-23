@@ -302,14 +302,12 @@ void soundBuffer::normalize() {
     }
 }
 
-soundBuffer & Sounds::get(soundId id ) {
-    {
-        auto it = sounds.find(id);
-        if( it != sounds.end() ) {
-            return it->second;
-        }
+namespace imajuscule {
+
+  namespace detail {
+    std::map< soundId, soundBuffer > & getSounds() {
+      static std::map< soundId, soundBuffer > sounds;
+      return sounds;
     }
-    auto it = sounds.emplace(id, id);
-    Assert(it.second);
-    return it.first->second;
+  }
 }

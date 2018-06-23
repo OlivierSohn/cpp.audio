@@ -21,11 +21,11 @@ namespace imajuscule {
     using AE32Buffer = float *;
     using AE64Buffer = double *;
 
-    template<int>
+    template<Atomicity, int>
     struct QueuedRequest;
 
     struct TaggedBuffer {
-        template<int>
+        template<Atomicity, int>
         friend class QueuedRequest;
 
         template<typename T>
@@ -260,13 +260,13 @@ namespace imajuscule {
         }
     };
 
-    template<int nAudioOut>
+    template<Atomicity A, int nAudioOut>
     struct Request {
         using Volumes = Volumes<nAudioOut>;
 
         static constexpr float chan_base_amplitude = 0.3f; // ok to have3 chanels at max amplitude at the same time
 
-        Request( Sounds & sounds, Sound const sound, float freq_hz, Volumes vol, float duration_ms ) :
+        Request( Sounds<A> & sounds, Sound const sound, float freq_hz, Volumes vol, float duration_ms ) :
         volumes(vol*chan_base_amplitude),
         buffer(nullptr)
         {
@@ -359,9 +359,9 @@ namespace imajuscule {
         }
     };
 
-    template<int nAudioOut>
-    struct QueuedRequest : public Request<nAudioOut> {
-        using Request = Request<nAudioOut>;
+    template<Atomicity A, int nAudioOut>
+    struct QueuedRequest : public Request<A, nAudioOut> {
+        using Request = Request<A, nAudioOut>;
         using Request::buffer;
         using Request::volumes;
         using Request::duration_in_frames;

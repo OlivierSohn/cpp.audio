@@ -10,8 +10,9 @@ namespace imajuscule {
     >
     struct Channels {
         static constexpr auto Policy = policy;
+        static constexpr auto atomicity = getAtomicity<policy>();
         static constexpr auto nAudioOut = nOuts;
-        using Channel = Channel<nAudioOut, XF, MQS>;
+        using Channel = Channel<atomicity, nAudioOut, XF, MQS>;
         using Request = typename Channel::Request;
         using Volumes = typename Channel::Volumes;
         using LockPolicy = AudioLockPolicyImpl<policy>;
@@ -21,18 +22,23 @@ namespace imajuscule {
         using LockFromNRT = LockIf<LockPolicy::useLock, ThreadType::NonRealTime>;
         using LockCtrlFromNRT = LockCtrlIf<LockPolicy::useLock, ThreadType::NonRealTime>;
 
-        /*
-         * returns false when the lambda can be removed
-         */
-        using OrchestratorFunc = std::function<bool(Channels &
-                                                    , int // the max number of frames computed in one chunk
-                                                    )>;
-        /*
-         * returns false when the lambda can be removed
-         */
-        using ComputeFunc = std::function<bool(bool // the clock
-                                              ,int  // the number of frames to skip
-                                               )>;
+      /*
+       * The function is executed once, and then removed from the queue.
+       */
+      using OneShotFunc = std::function<void(void)>;
+
+      /*
+       * returns false when the lambda can be removed
+       */
+      using OrchestratorFunc = std::function<bool(Channels &
+                                                  , int // the max number of frames computed in one chunk
+                                                  )>;
+      /*
+       * returns false when the lambda can be removed
+       */
+      using ComputeFunc = std::function<bool(bool // the clock
+                                            ,int  // the number of frames to skip
+                                             )>;
 
         Channels() : _lock(GlobalAudioLock<Policy>::get()) {
             Assert(0 && "The other constructor should be used");
@@ -48,6 +54,7 @@ namespace imajuscule {
       // if there are multiple audioelements in request vector, we need to be more precise about when audioelements start to be computed...
       // or we need to constrain the implementation to add requests in realtime, using orchestrators.
       , computes(2*nChannelsMax)
+      , oneShots(2*nChannelsMax)
         {
             Assert(nChannelsMax >= 0);
             Assert(nChannelsMax <= std::numeric_limits<uint8_t>::max()); // else need to update AUDIO_CHANNEL_NONE
@@ -57,6 +64,21 @@ namespace imajuscule {
             available_ids.reserve(nChannelsMax);
         }
 
+      // this method should not be called from the real-time thread
+      // because it yields() and retries.
+      template<typename F>
+      void enqueueOneShot(F f) {
+        if constexpr(shouldNRTThreadUseOneshotsQueue<policy>()) {
+          ++nOrchestratorsAndComputes;
+          while(!oneShots.tryEnqueue(f)) {
+            std::this_thread::yield();
+          }
+        }
+        else {
+          f();
+        }
+      }
+
         bool add_orchestrator(OrchestratorFunc f) {
           if(!orchestrators.tryInsert(std::move(f))) {
             return false;
@@ -65,8 +87,8 @@ namespace imajuscule {
           return true;
         }
 
-        template<typename F, typename Out>
-        bool registerCompute(Out const & out, F f) {
+        template<typename F>
+        bool registerCompute(F f) {
           if(!computes.tryInsert(std::move(f))) {
             return false;
           }
@@ -86,9 +108,6 @@ namespace imajuscule {
 
         bool empty() const { return channels.empty(); }
 
-        int32_t countOrchestratorsAndComputes() const {
-          return nOrchestratorsAndComputes;
-        }
         bool hasOrchestratorsOrComputes() const {
           return nOrchestratorsAndComputes > 0;
         }
@@ -98,8 +117,8 @@ namespace imajuscule {
             editChannel(channel_id).toVolume(volume, nSteps);
         }
 
-        template<typename Out, typename F>
-        bool playComputable( Out & out, uint8_t channel_id, F compute, Request && req) {
+        template<typename F>
+        bool playComputable(uint8_t channel_id, F compute, Request && req) {
 
           // it's important to register and enqueue in the same lock cycle
           // else we miss some audio frames,
@@ -110,7 +129,7 @@ namespace imajuscule {
           auto & c = editChannel(channel_id);
           reserveAndLock(1,c.edit_requests(),l);
 
-          auto res = playComputableNoLock(out, c, compute, std::move(req));
+          auto res = playComputableNoLock(c, compute, std::move(req));
 
           l.unlock();
 
@@ -122,8 +141,8 @@ namespace imajuscule {
          * - taken the out lock
          * - grown the capacity of the channel request queue
          */
-        template<typename Out, typename F>
-        bool playComputableNoLock( Out & out, Channel & channel, F compute, Request && req) {
+        template<typename F>
+        bool playComputableNoLock( Channel & channel, F compute, Request && req) {
 
             // we enqueue first, so that the buffer has the "queued" state
             // because when registering compute lambdas, they can be executed right away
@@ -134,10 +153,10 @@ namespace imajuscule {
             return false;
           }
           
-          if(!this->registerCompute(out, compute)) {
-            // TODO maybe we should 'channel.removeLastRequest();' else tere will be no compute associate to it,
+          if(!this->registerCompute(compute)) {
+            // TODO 'channel.cancelLastRequest();' else there will be no compute associate to it,
             // and the request will stay in the channel forever.
-            // but this would raises issues in lockfree mode...
+            // (only ok if 'channel.addRequest' and 'registerCompute' are always called from the same thread)
             return false;
           }
           return true;
@@ -276,6 +295,8 @@ namespace imajuscule {
         }
 
         void run_computes(bool tictac, int nFrames) {
+          nOrchestratorsAndComputes -= oneShots.dequeueAll([this](auto const & f) { f(); });
+          
           nOrchestratorsAndComputes -= orchestrators.forEach([this](auto const & orchestrate) {
             return orchestrate(*this, audioelement::n_frames_per_buffer);
           });
@@ -302,12 +323,14 @@ namespace imajuscule {
         std::vector<Channel> channels;
         std::vector<uint8_t> autoclosing_ids;
 
+        lockfree::scmp::fifo<OneShotFunc> oneShots;
 
         // orchestrators and computes could be owned by the channels but it is maybe cache-wise more efficient
         // to group them here (if the lambda owned is small enough to not require dynamic allocation)
         static_vector<LockPolicy::sync, OrchestratorFunc> orchestrators;
         static_vector<LockPolicy::sync, ComputeFunc> computes;
-        // This counter is used to be able to know, without locking, if there are any computes / orchestrators ATM.
+        // This counter is used to be able to know, without locking, if there are
+      // any computes / orchestrators / oneshot functions ATM.
         int32_t nOrchestratorsAndComputes = 0;
 
         bool playNolock( uint8_t channel_id, StackVector<Request> && v) {

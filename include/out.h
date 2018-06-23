@@ -224,6 +224,21 @@ namespace imajuscule {
     Atomicity::No :
     Atomicity::Yes;
   }
+  
+  /*
+   Returns true if a non-realtime thread should use the one shot queue,
+   false if it should run the lambda in its own thread.
+   */
+  template<AudioOutPolicy p>
+  constexpr bool shouldNRTThreadUseOneshotsQueue() {
+    using OutTraits = AudioLockPolicyImpl<p>;
+    // if we hold the master audio lock, we want to use the queue
+    if(OutTraits::useLock == WithLock::Yes) {
+      return true;
+    }
+    // if we are on a single thread, we can avoid using the queue
+    return OutTraits::sync != Synchronization::SingleThread;
+  }
 
 
     // cooley-tukey leads to error growths of O(log n) (worst case) and O(sqrt(log n)) (mean for random input)

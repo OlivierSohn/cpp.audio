@@ -49,13 +49,6 @@ namespace imajuscule {
         auto getState() const { return state(buffer); }
       };
 
-
-      enum class ChannelState : int {
-        Finished,
-        KeyPressed,
-        KeyReleased
-      };
-      
         template<typename ALGO>
         struct FinalAudioElement {
             static constexpr auto hasEnvelope = ALGO::hasEnvelope;
@@ -91,6 +84,9 @@ namespace imajuscule {
               return false;
             }
           }
+          bool tryAcquire() {
+            return algo.tryAcquire();
+          }
             void onKeyPressed() {
                 algo.onKeyPressed();
             }
@@ -105,12 +101,9 @@ namespace imajuscule {
 
             AEBuffer<FPT> * buffer;
             bool clock_ : 1;
-            std::function<void(void)> oneShot;
             ALGO algo;
 
-          // TODO reset the flag to FINISHED when the envelope is done.
-          template<typename F, typename G>
-          bool compute(bool sync_clock, int nFrames, F shouldKeyRelease, G reset) {
+          bool compute(bool sync_clock, int nFrames) {
             
             auto * buf = buffer->buffer;
             auto st = state(buf);
@@ -124,11 +117,10 @@ namespace imajuscule {
               // the next time
               if constexpr (hasEnvelope) {
                 // Temporary, to fix soundengine, where the channel xfade is used instead of the enveloppe xfade:
-                // this resets the enveloppe state to Done2, and then lets the audioelement be reused
-                // in subsequent markov moves.
+                // this lets the audioelement be reused in subsequent markov moves
+                // and resets the enveloppe state to Done2.
                 forgetPastSignals();
               }
-              reset();
               return false;
             }
             if(likely(st != buffer_t::queued())) {
@@ -138,18 +130,7 @@ namespace imajuscule {
               }
             }
             clock_ = sync_clock;
-
-            if constexpr (hasEnvelope) {
-              if(canHandleExplicitKeyReleaseNow() && shouldKeyRelease()) {
-                onKeyReleased();
-              }
-            }
             
-            if(oneShot) {
-              oneShot();
-              oneShot = {};
-            }
-
             Assert(nFrames > 0);
             Assert(nFrames <= n_frames_per_buffer);
             for(int i=0; i != nFrames; ++i) {
@@ -160,9 +141,8 @@ namespace imajuscule {
             Assert(state(buf) != buffer_t::inactive());
             if constexpr (hasEnvelope) {
               // it is important that isEnvelopeFinished() returns true only one buffer cycle after
-              // the real enveloppe end, to prevent "race conditions".
+              // the real enveloppe end, to avoid race conditions.
               if(isEnvelopeFinished()) {
-                reset();
                 return false;
               };
             }
@@ -171,34 +151,26 @@ namespace imajuscule {
  
           auto fCompute() {
             return [this](bool sync_clock, int nFrames) {
-              return compute(sync_clock,
-                             nFrames,
-                             [](){return false;},
-                             [](){});
+              return compute(sync_clock,nFrames);
             };
           }
-
-          template<typename F>
-          auto fCompute(F & f) {
-            return [this, &f](bool sync_clock, int nFrames) {
-              using flagTraits = typename FlagTraits<F>::traits;
-              return compute(sync_clock,
-                             nFrames,
-                             [&f](){
-                               return flagTraits::read(f, std::memory_order_acquire) == ChannelState::KeyReleased;
-                             },
-                             [&f](){
-                               flagTraits::write(f, ChannelState::Finished, std::memory_order_release);
-                             });
-            };
-          }
-          
-          
         };
 
 
+      /*
+       The envelope is used by a compute lambda in the audio thread when it is in states:
+
+       KeyPressed
+       KeyReleased
+       EnvelopeDone1
+       
+       Once the envelope is in state 'EnvelopeDone2', it is not used anymore by the audio thread.
+       The first thread doing a "compare and swap" from 'EnvelopeDone2' to 'SoonKeyPressed'
+       acquires ownership of the envelope.
+       */
         enum class EnvelopeState : unsigned char {
-            KeyPressed // the envelope is raising or sustained
+            SoonKeyPressed
+          , KeyPressed // the envelope is raising or sustained
           , KeyReleased // the envelope is closing
           , EnvelopeDone1 // the envelope has closed, but the last buffer contains samples where the enveloppe was still opened.
           , EnvelopeDone2 // the envelope has closed, the last buffer contains only samples where the enveloppe was closed.
@@ -206,8 +178,10 @@ namespace imajuscule {
 
         inline const char * toString(EnvelopeState s) {
           switch(s) {
+            case EnvelopeState::SoonKeyPressed:
+              return "SoonKeyPressed";
             case EnvelopeState::KeyPressed:
-            return "KeyPressed";
+              return "KeyPressed";
             case EnvelopeState::KeyReleased:
             return "KeyReleased";
             case EnvelopeState::EnvelopeDone1:
@@ -255,7 +229,9 @@ namespace imajuscule {
           bool canHandleExplicitKeyReleaseNow() const {
             return env.canHandleExplicitKeyReleaseNow();
           }
-          
+          bool tryAcquire() {
+            return env.tryAcquire();
+          }
           void onKeyPressed() {
               env.onKeyPressed();
           }
@@ -289,27 +265,46 @@ namespace imajuscule {
           ReleaseAfterDecay
         };
 
-        template <typename Base>
+        template <Atomicity A, typename Base>
         struct EnvelopeCRT : public Base {
             using FPT = typename Base::FPT;
             using T = FPT;
             static constexpr EnvelopeRelease Release = Base::Release;
+
+          using stateTraits = maybeAtomic<A,EnvelopeState>;
+          using stateType = typename stateTraits::type;
 
             using Base::startPressed;
             using Base::stepPressed;
             using Base::getReleaseItp;
             using Base::getReleaseTime;
             using Base::isAfterAttackBeforeSustain;
+          
+          EnvelopeCRT() : Base() {
+            stateTraits::write(state, EnvelopeState::EnvelopeDone2, std::memory_order_relaxed);
+          }
+
+          /* on success, the thread calling this method has acquired ownership of the
+           envelope. */
+          bool tryAcquire() {
+            auto cur = EnvelopeState::EnvelopeDone2;
+            return stateTraits::compareExchangeStrong(state,
+                                                      cur,
+                                                      EnvelopeState::SoonKeyPressed,
+                                                      std::memory_order_acq_rel);
+            // we don't 'onKeyPressed' yet : maybe the audio element using
+            // this envelope needs to be initialized first.
+          }
 
             void forgetPastSignals() {
-                state = EnvelopeState::EnvelopeDone2;
-                _value = static_cast<T>(0);
-                counter = 0;
+              state = EnvelopeState::EnvelopeDone2;
+              counter = 0;
+              // we don't set '_value', step() sets it.
             }
 
             void step() {
                 ++counter;
-                switch(state) {
+              switch(stateTraits::read(state, std::memory_order_relaxed)) {
                     case EnvelopeState::KeyPressed:
                     {
                       auto maybeV = stepPressed(counter);
@@ -330,19 +325,20 @@ namespace imajuscule {
                                                   , - _topValue
                                                   , getReleaseTime());
                         if(counter >= getReleaseTime()) {
-                            state = EnvelopeState::EnvelopeDone1;
-                            counter = 0;
-                            _value = static_cast<T>(0);
+                          stateTraits::write(state, EnvelopeState::EnvelopeDone1, std::memory_order_relaxed);
+                          counter = 0;
+                          _value = static_cast<T>(0);
                         }
                         break;
                     case EnvelopeState::EnvelopeDone1:
                         if(counter > n_frames_per_buffer) { // to be sure that all non-zero computed signals
-                            // were used
-                            state = EnvelopeState::EnvelopeDone2;
-                            counter = 0;
+                          // were used
+                          stateTraits::write(state, EnvelopeState::EnvelopeDone2, std::memory_order_relaxed);
+                          counter = 0;
                         }
                         [[fallthrough]];
                     case EnvelopeState::EnvelopeDone2:
+                    case EnvelopeState::SoonKeyPressed:
                         _value = static_cast<T>(0);
                         break;
                 }
@@ -352,24 +348,22 @@ namespace imajuscule {
                 return _value;
             }
 
-            // can be called from the main thread
             void onKeyPressed() {
-                state = EnvelopeState::KeyPressed;
+                stateTraits::write(state, EnvelopeState::KeyPressed, std::memory_order_relaxed);
                 counter = 0;
                 startPressed();
             }
 
-            // can be called from the main thread
             bool onKeyReleased() {
-                if(state == EnvelopeState::KeyPressed) {
+                if(stateTraits::read(state, std::memory_order_relaxed) == EnvelopeState::KeyPressed) {
                     if(0 == counter) {
-                        // the key was pressed, but immediately released, so we skip the note.
-                        state = EnvelopeState::EnvelopeDone2;
+                      // the key was pressed, but immediately released, so we skip the note.
+                      stateTraits::write(state, EnvelopeState::EnvelopeDone2, std::memory_order_relaxed);
                     }
                     else {
-                        state = EnvelopeState::KeyReleased;
-                        _topValue = _value;
-                        counter = 0;
+                      stateTraits::write(state, EnvelopeState::KeyReleased, std::memory_order_relaxed);
+                      _topValue = _value;
+                      counter = 0;
                     }
                     return true;
                 }
@@ -377,8 +371,12 @@ namespace imajuscule {
             }
 
             bool isEnvelopeFinished() const {
-                return state == EnvelopeState::EnvelopeDone2;
+              return stateTraits::read(state, std::memory_order_relaxed) == EnvelopeState::EnvelopeDone2;
             }
+          
+          void unsafeForceFinish() {
+            stateTraits::write(state, EnvelopeState::EnvelopeDone2, std::memory_order_relaxed);
+          }
 
             bool afterAttackBeforeSustain() const {
               return isAfterAttackBeforeSustain(counter);
@@ -389,7 +387,7 @@ namespace imajuscule {
               return false;
             }
             else {
-              return state == EnvelopeState::KeyPressed;
+              return stateTraits::read(state, std::memory_order_relaxed) == EnvelopeState::KeyPressed;
             }
           }
 
@@ -402,16 +400,14 @@ namespace imajuscule {
             }
 #endif
 
-            auto getState() const { return state; }
+            auto getRelaxedState() const { return stateTraits::read(state, std::memory_order_relaxed); }
 
         private:
             // between 0 and 1.
             FPT _value = static_cast<T>(0);
             FPT _topValue = static_cast<T>(0); // the value when the key was released
 
-            // 'state' will be set to 'KeyReleased' when the key is released.
-            // reads / writes to this are atomic so we don't need to lock.
-            EnvelopeState state = EnvelopeState::EnvelopeDone2;
+            stateType state;
             int32_t counter = 0;
         };
 
@@ -458,11 +454,11 @@ namespace imajuscule {
           }
         };
 
-        template <typename T, itp::interpolation AttackItp, itp::interpolation ReleaseItp>
-        using SimpleEnvelope = EnvelopeCRT < SimpleEnvelopeBase <T, AttackItp, ReleaseItp> >;
+        template <Atomicity A, typename T, itp::interpolation AttackItp, itp::interpolation ReleaseItp>
+        using SimpleEnvelope = EnvelopeCRT < A, SimpleEnvelopeBase <T, AttackItp, ReleaseItp> >;
 
-        template <typename T>
-        using SimpleLinearEnvelope = SimpleEnvelope < T, itp::LINEAR, itp::LINEAR >;
+        template <Atomicity A, typename T>
+        using SimpleLinearEnvelope = SimpleEnvelope < A, T, itp::LINEAR, itp::LINEAR >;
 
         /* This inner state describes states when the outer state is 'KeyPressed'. */
         enum class AHD : unsigned char {
@@ -677,11 +673,11 @@ namespace imajuscule {
             }
         };
 
-        template <typename T, EnvelopeRelease Rel>
-        using AHDSREnvelope = EnvelopeCRT < AHDSREnvelopeBase <T, Rel> >;
+        template <Atomicity A, typename T, EnvelopeRelease Rel>
+        using AHDSREnvelope = EnvelopeCRT < A, AHDSREnvelopeBase <T, Rel> >;
 
-        template <typename ALGO>
-        using SimplyEnveloped = Envelopped<ALGO,SimpleLinearEnvelope<typename ALGO::FPT>>;
+        template <Atomicity A, typename ALGO>
+        using SimplyEnveloped = Envelopped<ALGO,SimpleLinearEnvelope<A, typename ALGO::FPT>>;
 
         template<typename ALGO>
         struct VolumeAdjusted {
