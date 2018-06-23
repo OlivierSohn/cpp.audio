@@ -118,7 +118,7 @@ namespace imajuscule {
         }
 
         template<typename F>
-        bool playComputable(uint8_t channel_id, F compute, Request && req) {
+        [[nodiscard]] bool playComputable(uint8_t channel_id, F compute, Request && req) {
 
           // it's important to register and enqueue in the same lock cycle
           // else we miss some audio frames,
@@ -142,7 +142,7 @@ namespace imajuscule {
          * - grown the capacity of the channel request queue
          */
         template<typename F>
-        bool playComputableNoLock( Channel & channel, F compute, Request && req) {
+        [[nodiscard]] bool playComputableNoLock( Channel & channel, F compute, Request && req) {
 
             // we enqueue first, so that the buffer has the "queued" state
             // because when registering compute lambdas, they can be executed right away
@@ -188,7 +188,7 @@ namespace imajuscule {
         }
 
         template<WithLock lock>
-        uint8_t openChannel(float volume, ChannelClosingPolicy l, int xfade_length = 0) {
+        [[nodiscard]] uint8_t openChannel(float volume, ChannelClosingPolicy l, int xfade_length = 0) {
             uint8_t id = AUDIO_CHANNEL_NONE;
             if(channels.size() == channels.capacity() && available_ids.size() == 0) {
                 // Channels are at their maximum number and all are used...

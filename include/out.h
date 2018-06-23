@@ -193,10 +193,10 @@ namespace imajuscule {
 
     template <>
     struct AudioLockPolicyImpl<AudioOutPolicy::Slave> {
-        static constexpr auto sync = Synchronization::SingleThread;
-        static constexpr auto useLock = WithLock::No;
+      static constexpr auto sync = Synchronization::SingleThread;
+      static constexpr auto useLock = WithLock::No;
 
-        bool lock() { return false; }
+      bool lock() { return false; }
     };
 
     template <>

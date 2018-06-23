@@ -154,11 +154,11 @@ namespace imajuscule {
             }
 
             template<typename F>
-            void playComputable( uint8_t channel_id, F compute, Request && req ) {
+            [[nodiscard]] bool playComputable( uint8_t channel_id, F compute, Request && req ) {
                 if(closing) {
-                    return;
+                    return false;
                 }
-              getFirstXfadeInfiniteChans().playComputable( channel_id, compute, std::move(req) );
+              return getFirstXfadeInfiniteChans().playComputable( channel_id, compute, std::move(req) );
             }
 
             void toVolume( uint8_t channel_id, float volume, int nSteps ) {
