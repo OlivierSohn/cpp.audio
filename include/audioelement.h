@@ -692,6 +692,10 @@ namespace imajuscule {
             T angleIncrements() const { return osc.angleIncrements(); }
             T angle() const { return osc.angle(); }
 
+          auto & getOsc() {
+            return osc;
+          }
+          
             VolumeAdjusted() : log_ratio_(1.f), low_index_(0) {}
 
             void forgetPastSignals() {

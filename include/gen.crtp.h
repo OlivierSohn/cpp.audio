@@ -121,7 +121,7 @@ namespace imajuscule::audio {
     phase.isDeterministic() ?
     phase.getDeterministicValue() :
     std::uniform_real_distribution<float>{-1.f, 1.f}(mersenne<SEEDED::Yes>());
-    algo.setAngle(angle);
+    algo.getOsc().setAngle(angle);
   }
 
   template<
@@ -428,7 +428,7 @@ namespace imajuscule::audio {
       // To prevent phase cancellation, the phase of the new note will be
       // coherent with the phase of any active channel that plays a note at the same frequency.
       if(!otherChannel.elem.isEnvelopeFinished()) {
-        phase = mkDeterministicPhase(c.elem.angle());
+        phase = mkDeterministicPhase(c.elem.algo.angle());
         break;
       }
     }
