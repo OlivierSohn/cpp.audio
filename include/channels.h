@@ -17,6 +17,8 @@ namespace imajuscule {
         using Volumes = typename Channel::Volumes;
         using LockPolicy = AudioLockPolicyImpl<policy>;
         static constexpr auto XFPolicy = XF;
+        static constexpr auto canRealloc =
+          (atomicity==Atomicity::Yes) ? CanRealloc::No : CanRealloc::Yes;
 
         using LockFromRT = LockIf<LockPolicy::useLock, ThreadType::RealTime>;
         using LockFromNRT = LockIf<LockPolicy::useLock, ThreadType::NonRealTime>;
@@ -127,9 +129,11 @@ namespace imajuscule {
           LockCtrlFromNRT l(get_lock());
 
           auto & c = editChannel(channel_id);
-          reserveAndLock(1,c.edit_requests(),l);
 
-          auto res = playComputableNoLock(c, compute, std::move(req));
+          bool res = false;
+          if(reserveAndLock<canRealloc>(1,c.edit_requests(),l)) {
+            res = playComputableNoLock(c, compute, std::move(req));
+          }
 
           l.unlock();
 
@@ -162,15 +166,19 @@ namespace imajuscule {
           return true;
         }
 
-        void play( uint8_t channel_id, StackVector<Request> && v) {
+        [[nodiscard]] bool play( uint8_t channel_id, StackVector<Request> && v) {
           LockCtrlFromNRT l(get_lock());
 
           auto & c = editChannel(channel_id);
-          reserveAndLock(v.size(),c.edit_requests(),l);
 
-          playNolock(channel_id, std::move(v));
+          bool res = false;
+          if(reserveAndLock<canRealloc>(v.size(),c.edit_requests(),l)) {
+            res = playNolock(channel_id, std::move(v));
+          }
 
           l.unlock();
+
+          return res;
         }
 
         void closeAllChannels(int xfade) {
@@ -333,7 +341,7 @@ namespace imajuscule {
       // any computes / orchestrators / oneshot functions ATM.
         int32_t nOrchestratorsAndComputes = 0;
 
-        bool playNolock( uint8_t channel_id, StackVector<Request> && v) {
+        [[nodiscard]] bool playNolock( uint8_t channel_id, StackVector<Request> && v) {
             bool res = true;
             auto & c = editChannel(channel_id);
             for( auto & sound : v ) {

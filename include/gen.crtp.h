@@ -261,6 +261,7 @@ namespace imajuscule::audio {
             if(!c.elem.tryAcquire()) {
               continue;
             }
+            Assert(!c.isEnvelopeFinished()); // because we just acquired it.
             channel = &c;
             break;
           }
@@ -290,6 +291,7 @@ namespace imajuscule::audio {
 
         auto freq = to_freq(tp.getValue()-Do_midi, half_tone);
         auto [oneShot, orchestrator] = onStartNote(freq, *channel, channels, chans);
+        Assert(!c.isEnvelopeFinished());
         if(!oneShot && !orchestrator) {
           MIDI_LG(ERR,"failed to initialize");
           return onDroppedNote(e.noteOn.pitch);
