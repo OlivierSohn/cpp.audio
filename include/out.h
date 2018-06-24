@@ -220,9 +220,9 @@ namespace imajuscule {
   template<AudioOutPolicy p>
   constexpr auto getAtomicity() {
     using OutTraits = AudioLockPolicyImpl<p>;
-    return ((OutTraits::useLock == WithLock::Yes) || (OutTraits::sync == Synchronization::SingleThread)) ?
-    Atomicity::No :
-    Atomicity::Yes;
+    return (OutTraits::sync == Synchronization::Lockfree_SingleConsumerMultipleProducer) ?
+    Atomicity::Yes :
+    Atomicity::No;
   }
 
   /*
@@ -232,12 +232,7 @@ namespace imajuscule {
   template<AudioOutPolicy p>
   constexpr bool shouldNRTThreadUseOneshotsQueue() {
     using OutTraits = AudioLockPolicyImpl<p>;
-    // if we hold the master audio lock, we want to use the queue
-    if(OutTraits::useLock == WithLock::Yes) {
-      return true;
-    }
-    // if we are on a single thread, we can avoid using the queue
-    return OutTraits::sync != Synchronization::SingleThread;
+    return OutTraits::sync == Synchronization::Lockfree_SingleConsumerMultipleProducer;
   }
 
     // cooley-tukey leads to error growths of O(log n) (worst case) and O(sqrt(log n)) (mean for random input)
