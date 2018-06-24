@@ -15,6 +15,14 @@ namespace imajuscule {
         };
 
         template <>
+        struct GlobalAudioLock<AudioOutPolicy::MasterLockFree> {
+            static auto & get() {
+                static AudioLockPolicyImpl<AudioOutPolicy::MasterLockFree> l;
+                return l;
+            }
+        };
+
+        template <>
         struct GlobalAudioLock<AudioOutPolicy::MasterGlobalLock> {
             static auto & get() {
                 static AudioLockPolicyImpl<AudioOutPolicy::MasterGlobalLock> l;
@@ -78,7 +86,6 @@ namespace imajuscule {
 
             // the min latency used in case the initialization is done lazily
             static constexpr float minLazyLatency = 0.005f;
-
 
         private:
             static constexpr auto xfade_on_close = 200;

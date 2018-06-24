@@ -3,7 +3,7 @@
 namespace imajuscule {
     namespace audio {
 
-        int initAudioSession();        
+        int initAudioSession();
         extern OSStatus startAudioUnit(AudioUnit audioUnit);
         extern OSStatus stopProcessingAudio(AudioUnit audioUnit);
         int initAudioStreams(Features f, AudioUnit & audioUnit, void * chans,
@@ -16,12 +16,12 @@ namespace imajuscule {
             // we cannot know for sure how much the os will ask us to compute.
             // on my iPhone 4s I observed 512 was asked.
             static constexpr auto initial_buffer_size = 1024;
-            
+
             iOSOutputData() {
                 // preallocate to avoid dynamic allocation in audio thread
                 buf.reserve(initial_buffer_size);
             }
-            
+
             Chans * chans = nullptr;
             std::vector<typename Chans::T> buf;
         };
@@ -38,7 +38,7 @@ namespace imajuscule {
             AudioUnit getAudioUnit() const {
                 return audioUnit_out;
             }
-            
+
             AudioStreamBasicDescription const & getStreamDescription() const {
                 return desc;
             }
@@ -55,8 +55,8 @@ namespace imajuscule {
                                                UInt32                      busNumber,
                                                UInt32                      numFrames,
                                                AudioBufferList             *buffers) {
-                
-                n_audio_cb_frames = numFrames;
+
+                n_audio_cb_frames.store(numFrames, std::memory_order_relaxed);
                 
                 auto ios_data = reinterpret_cast<iOSOutputData<Chans>*>(userData);
                 auto sizeBuffer = numFrames * nAudioOut;
@@ -69,12 +69,12 @@ namespace imajuscule {
                     }
                     break;
                 }
-                
+
                 auto & outputBuffer = ios_data->buf;
                 outputBuffer.resize(sizeBuffer); // hopefully we already reserved enough
-                
+
                 ios_data->chans->step(outputBuffer.data(), numFrames);
-                
+
                 for (UInt32 i=0; i<buffers->mNumberBuffers; ++i) {
                     Assert(sizeBuffer * sizeof(SInt16) <= buffers->mBuffers[i].mDataByteSize);
                     Assert(nAudioOut == buffers->mBuffers[i].mNumberChannels);
@@ -85,10 +85,10 @@ namespace imajuscule {
                         ++buffer;
                     }
                 }
-                
+
                 return noErr;
             }
-            
+
         protected:
           // TODO how can we set latency on ios?
             bool doInit(float minLatency) {

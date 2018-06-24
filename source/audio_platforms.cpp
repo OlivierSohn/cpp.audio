@@ -19,7 +19,7 @@ namespace imajuscule {
 #  endif
 #endif
 
-          
+
 #if __has_include(<xmmintrin.h>)
 #  if defined _MM_SET_FLUSH_ZERO_MODE && defined _MM_FLUSH_ZERO_ON
           _MM_SET_FLUSH_ZERO_MODE(_MM_FLUSH_ZERO_ON);
@@ -32,7 +32,7 @@ namespace imajuscule {
 
         // no need to synchronize access to this : it's 4 bytes-aligned,
         // and only one thread writes it (the audio thread), except for initialization time.
-        int32_t n_audio_cb_frames = initial_n_audio_cb_frames;
+        std::atomic<int32_t> n_audio_cb_frames = initial_n_audio_cb_frames;
 
         int wait_for_first_n_audio_cb_frames() {
             // Note this could deadlock if there is an audio bug at os level

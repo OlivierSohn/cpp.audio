@@ -50,7 +50,7 @@ namespace imajuscule {
                 // This global variable is used to dynamically optimize
                 // the reverb algorithms according to the
                 // number of frames we need to compute.
-                n_audio_cb_frames = numFrames;
+                n_audio_cb_frames.store(numFrames, std::memory_order_relaxed);
 
                 Chans *chans = (Chans*)userData;
 

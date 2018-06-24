@@ -240,31 +240,9 @@ namespace imajuscule {
     return OutTraits::sync != Synchronization::SingleThread;
   }
 
-
     // cooley-tukey leads to error growths of O(log n) (worst case) and O(sqrt(log n)) (mean for random input)
     // so float is good enough
     using FFT_T = float;
-
-    template<typename T, int nAudioOut, AudioOutPolicy> struct AudioPostPolicyImpl;
-
-    template<typename T, int nAudioOut>
-    struct AudioPostPolicyImpl<T, nAudioOut, AudioOutPolicy::Slave> {
-        static constexpr auto nOut = nAudioOut;
-
-        AudioPostPolicyImpl(AudioLockPolicyImpl<AudioOutPolicy::Slave> &) {}
-
-        /////////////////////////////// postprocess
-        void postprocess(T*buffer, int nFrames) const {}
-        bool isReady() const { return true; }
-
-        /////////////////////////////// convolution reverb
-        void dontUseConvolutionReverbs() {
-        }
-
-        void setConvolutionReverbIR(std::vector<FFT_T>, int, int) {
-            Assert(0);
-        }
-    };
 
     constexpr auto seconds_to_nanos = 1e9f;
 
@@ -431,15 +409,16 @@ namespace imajuscule {
     };
 
 
-    // TODO how can we make this lockfree?
-    template<typename T, int nAudioOut>
-    struct AudioPostPolicyImpl<T, nAudioOut, AudioOutPolicy::MasterGlobalLock> {
+    template<typename T, int nAudioOut, AudioOutPolicy policy>
+    struct AudioPostPolicyImpl {
         static constexpr auto nOut = nAudioOut;
-        using LockPolicy = AudioLockPolicyImpl<AudioOutPolicy::MasterGlobalLock>;
+        using LockPolicy = AudioLockPolicyImpl<policy>;
+
+    // We disable postprocessing for audio plugins (i.e 'AudioOutPolicy::Slave')
+    static constexpr bool disable = policy == AudioOutPolicy::Slave;
 
       using LockFromRT = LockIf<LockPolicy::useLock, ThreadType::RealTime>;
       using LockFromNRT = LockIf<LockPolicy::useLock, ThreadType::NonRealTime>;
-
 
         //using ConvolutionReverb = FIRFilter<T>;
         //using ConvolutionReverb = FFTConvolution<FFT_T>;
@@ -463,6 +442,9 @@ namespace imajuscule {
         using postProcessFunc = std::function<void(float*)>;
 
         void postprocess(T*buffer, int nFrames) {
+          if(disable) {
+            return;
+          }
 
             // apply convolution reverbs
             if(nAudioOut && !conv_reverbs[0].empty()) {
@@ -501,16 +483,20 @@ namespace imajuscule {
 
         ///////////////////////////////// convolution reverb
 
-        void dontUseConvolutionReverbs() {
-            {
-                LockFromNRT l(_lock.lock());
-                ready = false;
-            }
-            for(auto & r : conv_reverbs) {
-                r.clear();
-            }
-            spatializer.clear();
-            ready = true;
+        void dontUseConvolutionReverbs()
+        {
+          if constexpr (disable) {
+            return;
+          }
+
+          muteAudio();
+
+          for(auto & r : conv_reverbs) {
+              r.clear();
+          }
+          spatializer.clear();
+
+          unmuteAudio();
         }
 
         static constexpr auto ratio_hard_limit = 1.0f;
@@ -520,26 +506,27 @@ namespace imajuscule {
 
         static constexpr auto theoretical_max_avg_time_per_frame = seconds_to_nanos / static_cast<float>(SAMPLE_RATE);
 
-        void setConvolutionReverbIR(std::vector<FFT_T> ir, int n_channels, int n_audiocb_frames) {
+        void setConvolutionReverbIR(std::vector<FFT_T> ir, int n_channels, int n_audiocb_frames)
+        {
+          if constexpr (disable) {
+            Assert(0);
+            return;
+          }
             using namespace std;
 
-            ImpulseResponseOptimizer<ConvolutionReverb> algo(std::move(ir),
+            ImpulseResponseOptimizer<ConvolutionReverb> algo(move(ir),
                                                              n_channels,
                                                              n_audiocb_frames,
                                                              nAudioOut);
 
             assert(nAudioOut == conv_reverbs.size());
-            {
-                // having the audio thread compute reverbs at the same time would make our calibration not very reliable
-                // (due to cache effects for roots and possibly other) so we disable them now
-                // (when ready is false, the audio thread doesn't use reverbs)
-                // TODO rename ready !!
-                LockFromNRT l(_lock.lock());
-                ready = false;
-            }
+
+            // having the audio thread compute reverbs at the same time would make our calibration not very reliable
+            // (due to cache effects for roots and possibly other) so we disable them now
+            // (when ready is false, the audio thread doesn't use reverbs)
+            muteAudio();
 
             PartitionningSpec partitionning;
-
 
             algo.optimize_length(n_channels, theoretical_max_avg_time_per_frame * ratio_soft_limit / static_cast<float>(n_channels),
                                  partitionning);
@@ -549,18 +536,20 @@ namespace imajuscule {
             // we ensured reverbs are not used so we don't need to lock.
 
             setCoefficients(partitionning,
-                            std::move(algo.editDeinterlaced()), decltype(algo)::use_spread);
+                            move(algo.editDeinterlaced()), decltype(algo)::use_spread);
 
-            ready = true;
+            unmuteAudio();
 
             algo.logReport(partitionning);
             logReport(n_channels, partitionning);
         }
 
-        bool isReady() const {
-            // no need to synchronize : aligned memory access of 4 bytes,
-            // and only one thread writes it
-            return ready;
+        bool isReady() const
+        {
+          if constexpr (disable) {
+            return true;
+          }
+          return readyTraits::read(ready, std::memory_order_relaxed);
         }
 
 
@@ -569,7 +558,10 @@ namespace imajuscule {
     private:
 
         /////////////////////////////// postprocess
-        bool ready = false;
+        using readyTraits = maybeAtomic<getAtomicity<policy>(),unsigned int>;
+        using readyType = typename readyTraits::type;
+
+        readyType ready = false;
         std::vector<postProcessFunc> post_process = {{ [](float v[nAudioOut]) {
             for(int i=0; i<nAudioOut; ++i) {
                 if(likely(-1.f <= v[i] && v[i] <= 1.f)) {
@@ -749,6 +741,26 @@ namespace imajuscule {
                 partitionning.gd.debug(true);
             }
         }
+
+        void muteAudio() {
+          LockFromNRT l(_lock.lock());
+          readyTraits::write(ready, false, std::memory_order_relaxed);
+          if constexpr (policy == AudioOutPolicy::MasterLockFree) {
+            // To avoid modifying postprocessing data while postprocessing is used,
+            // we sleep a duration corresponding to twice the size of a callback buffer,
+            // to be sure that any audio cb call in progress when we set 'ready' to false
+            // will be finished when we wake up (and subsequent cb calls will see the updated
+            // 'ready' value)
+            int n = audio::wait_for_first_n_audio_cb_frames();
+            float millisPerBuffer = ceil(1000 * n/static_cast<float>(SAMPLE_RATE));
+            std::this_thread::sleep_for(std::chrono::milliseconds(static_cast<int>(0.5f + 2.f * millisPerBuffer)));
+          }
+        }
+
+        void unmuteAudio() {
+          readyTraits::write(ready, true, std::memory_order_relaxed);
+        }
+
     };
 
     template< typename ChannelsType >
