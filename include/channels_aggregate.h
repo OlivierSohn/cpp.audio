@@ -21,45 +21,29 @@ namespace imajuscule {
 
       template <typename F>
       void forEach(F f) {
-        for(auto & c : cX) {
-          c->forEach(f);
-        }
-        for(auto & c : cNoX) {
-          c->forEach(f);
-        }
-        for(auto & c : cXInf) {
-          c->forEach(f);
-        }
+        cX.forEach(   [&f] (auto & c) { c.forEach(f); });
+        cNoX.forEach( [&f] (auto & c) { c.forEach(f); });
+        cXInf.forEach([&f] (auto & c) { c.forEach(f); });
       }
 
       void run_computes(bool tictac, int nFrames) {
-        for(auto & c : cX) {
-          c->run_computes(tictac, nFrames);
-        }
-        for(auto & c : cNoX) {
-          c->run_computes(tictac, nFrames);
-        }
-        for(auto & c : cXInf) {
-          c->run_computes(tictac, nFrames);
-        }
+        cX.forEach(   [tictac, nFrames] (auto & c) { c.run_computes(tictac, nFrames); });
+        cNoX.forEach( [tictac, nFrames] (auto & c) { c.run_computes(tictac, nFrames); });
+        cXInf.forEach([tictac, nFrames] (auto & c) { c.run_computes(tictac, nFrames); });
       }
 
       void closeAllChannels(int xfade) {
-        for(auto & c : cX) {
-          c->closeAllChannels(xfade);
-        }
-        for(auto & c : cNoX) {
-          c->closeAllChannels(xfade);
-        }
-        for(auto & c : cXInf) {
-          c->closeAllChannels(xfade);
-        }
+        cX.forEach(   [xfade] (auto & c) { c.closeAllChannels(xfade); });
+        cNoX.forEach( [xfade] (auto & c) { c.closeAllChannels(xfade); });
+        cXInf.forEach([xfade] (auto & c) { c.closeAllChannels(xfade); });
       }
 
     private:
-      std::vector<std::unique_ptr<XFadeChans>> cX;
-      std::vector<std::unique_ptr<NoXFadeChans>> cNoX;
-      std::vector<std::unique_ptr<XFadeInfiniteChans>> cXInf;
+      template<typename T>
+      using container = imajuscule::lockfree::scmp::forward_list<T>; // TODO specialize the container for single thread
+      container<XFadeChans> cX;
+      container<NoXFadeChans> cNoX;
+      container<XFadeInfiniteChans> cXInf;
     };
 
   }
