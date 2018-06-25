@@ -157,16 +157,16 @@ namespace imajuscule {
        */
       template<typename F>
       [[nodiscard]] bool playComputableNoLock( Channel & channel, F compute, Request && req) {
-        
+
         // we enqueue first, so that the buffer has the "queued" state
         // because when registering compute lambdas, they can be executed right away
         // so the buffer needs to be in the right state
-        
+
         Assert(req.valid());
         if(!channel.addRequest( std::move(req) )) {
           return false;
         }
-        
+
         if(!this->registerCompute(compute)) {
           channel.cancelLastRequest();
           return false;
@@ -345,10 +345,14 @@ namespace imajuscule {
 
         // orchestrators and computes could be owned by the channels but it is maybe cache-wise more efficient
         // to group them here (if the lambda owned is small enough to not require dynamic allocation)
-        static_vector<LockPolicy::sync, OrchestratorFunc> orchestrators;
-        static_vector<LockPolicy::sync, ComputeFunc> computes;
+        //
+        // We use the 'Synchronization::SingleThread' synchronization because
+        // these vectors are accessed from a single thread only (the audio real-time thread).
+        static_vector<Synchronization::SingleThread, OrchestratorFunc> orchestrators;
+        static_vector<Synchronization::SingleThread, ComputeFunc> computes;
+
         // This counter is used to be able to know, without locking, if there are
-      // any computes / orchestrators / oneshot functions ATM.
+        // any computes / orchestrators / oneshot functions ATM.
         int32_t nOrchestratorsAndComputes = 0;
 
         [[nodiscard]] bool playNolock( uint8_t channel_id, StackVector<Request> && v) {
