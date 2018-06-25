@@ -304,7 +304,7 @@ namespace imajuscule::audio {
         {
           typename Out::LockFromNRT L(out.get_lock());
 
-          chans.enqueueOneShot([this, &c, velocity = e.noteOn.velocity](auto & chans){
+          chans.enqueueOneShot([this, &c, velocity = e.noteOn.velocity](Chans & chans){
             // unqueue the (potential) previous request, else an assert fails
             // when we enqueue the next request, because it's already queued.
             c.reset();
@@ -327,15 +327,7 @@ namespace imajuscule::audio {
                 return;
               }
             }
-            // This fails to compile under clang (maybe gcc too?):
-            //   auto orchestrator = this -> template <Chans> onStartNote(c,channels);
-            // clang doesn't know what type is returned by 'onStartNote', eventhough
-            //   all information is available because 'Chans' is passed as template parameter.
-            // Adding a dummy parameter of type 'Chans' to 'onStartNote' method
-            //   helps clang figuring out what the method returns.
-            // I suspect this is a clang bug, but I'm not sure.
-            auto orchestrator = onStartNote(chans, c, channels);
-            if(orchestrator) {
+            if(auto orchestrator = this -> template onStartNote<Chans>(c,channels)) {
               chans.add_orchestrator(orchestrator);
             }
           });

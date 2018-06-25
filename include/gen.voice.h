@@ -1011,7 +1011,7 @@ namespace imajuscule::audio::voice {
     }
 
     template<typename Chans, typename MonoNoteChannel, typename CS>
-    std::function<bool(Chans&,int)> onStartNote(Chans&, MonoNoteChannel & c, CS & cs)
+    std::function<bool(Chans&,int)> onStartNote(MonoNoteChannel & c, CS & cs)
     {
       return c.elem.engine.template getOrchestrator<Chans>(*c.channel);
     }
