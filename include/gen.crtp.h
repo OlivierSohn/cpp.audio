@@ -304,6 +304,7 @@ namespace imajuscule::audio {
         {
           typename Out::LockFromNRT L(out.get_lock());
 
+          // TODO based on stackoverflow answers, this allocates on g++ 64bits because > 16 bytes
           chans.enqueueOneShot([this, &c, velocity = e.noteOn.velocity](Chans & chans){
             // unqueue the (potential) previous request, else an assert fails
             // when we enqueue the next request, because it's already queued.

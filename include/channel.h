@@ -25,7 +25,7 @@ namespace imajuscule {
         static
         typename std::enable_if<J == 2, Volumes<J>>::type
         run(float volume, StereoGain const & gain) {
-            return {{gain.left*volume, gain.right*volume}};
+          return {std::array<float,2>{gain.left*volume, gain.right*volume}};
         }
 
         template<int J>
@@ -252,6 +252,10 @@ namespace imajuscule {
             requests.emplace(std::move(r));
             return true;
         }
+
+      void cancelLastRequest() {
+        requests.cancel_emplace();
+      }
 
         void stopPlayingByXFadeToZero(int nSteps) {
             Assert(isPlaying()); // caller should check

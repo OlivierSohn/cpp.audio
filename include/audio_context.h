@@ -146,33 +146,35 @@ namespace imajuscule {
             }
 
 
-            uint8_t openChannel(float volume, ChannelClosingPolicy p, int xfade_length) {
-                if(closing) {
-                    return AUDIO_CHANNEL_NONE;
-                }
-                Init(minLazyLatency);
-              if(auto c = getFirstXfadeInfiniteChans()) {
-                c->template openChannel<WithLock::Yes>(volume, p, xfade_length);
-              }
-              return AUDIO_CHANNEL_NONE;
+          uint8_t openChannel(float volume, ChannelClosingPolicy p, int xfade_length)
+          {
+            if(closing) {
+                return AUDIO_CHANNEL_NONE;
             }
-
-            void play( uint8_t channel_id, StackVector<Request> && v ) {
-                if(closing) {
-                    return;
-                }
-              if(auto c = getFirstXfadeInfiniteChans()) {
-                c->play( channel_id, std::move( v ) );
-              }
+            Init(minLazyLatency);
+            if(auto c = getFirstXfadeInfiniteChans()) {
+              return c->template openChannel<WithLock::Yes>(volume, p, xfade_length);
             }
+            return AUDIO_CHANNEL_NONE;
+          }
 
-            template<typename F>
-            [[nodiscard]] bool playComputable( uint8_t channel_id, F compute, Request && req ) {
+          [[nodiscard]] bool play( uint8_t channel_id, StackVector<Request> && v ) {
+            if(closing) {
+              return false;
+            }
+            if(auto c = getFirstXfadeInfiniteChans()) {
+              return c->play( channel_id, std::move( v ) );
+            }
+            return false;
+          }
+
+            template<typename Algo>
+          [[nodiscard]] bool playComputable( uint8_t channel_id, PackedRequestParams<nAudioOut> params, audioelement::FinalAudioElement<Algo> & e) {
                 if(closing) {
                     return false;
                 }
               if(auto c = getFirstXfadeInfiniteChans()) {
-                c->playComputable( channel_id, compute, std::move(req) );
+                c->playComputable( channel_id, params, e);
               }
               return false;
             }

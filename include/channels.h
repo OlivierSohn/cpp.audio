@@ -115,12 +115,15 @@ namespace imajuscule {
         }
 
         void toVolume(uint8_t channel_id, float volume, int nSteps) {
-            LockFromNRT l(get_lock());
-            editChannel(channel_id).toVolume(volume, nSteps);
+          auto & c = editChannel(channel_id);
+          LockFromNRT l(get_lock());
+          enqueueOneShot([volume, nSteps, &c](auto&){c.toVolume(volume, nSteps);});
         }
 
-        template<typename F>
-        [[nodiscard]] bool playComputable(uint8_t channel_id, F compute, Request && req) {
+      template<typename Algo>
+      [[nodiscard]] bool playComputable(uint8_t channel_id,
+                                        PackedRequestParams<nAudioOut> params,
+                                        audioelement::FinalAudioElement<Algo> & e) {
 
           // it's important to register and enqueue in the same lock cycle
           // else we miss some audio frames,
@@ -128,11 +131,19 @@ namespace imajuscule {
 
           LockCtrlFromNRT l(get_lock());
 
-          auto & c = editChannel(channel_id);
 
           bool res = false;
+          // TODO when lock-free, instead of disallowing reallocation,
+          // allocate the new buffer in the non-realtime thread,
+          // and swap buffers in the oneShot.
+          auto & c = editChannel(channel_id);
           if(reserveAndLock<canRealloc>(1,c.edit_requests(),l)) {
-            res = playComputableNoLock(c, compute, std::move(req));
+            enqueueOneShot([&e,params,channel_id](auto&chans){
+              // error is ignored
+              auto & c = chans.editChannel(channel_id);
+              chans.playComputableNoLock(c, e.fCompute(), {&e.buffer->buffer[0], {params.volumes}, params.length });
+            });
+            res = true;
           }
 
           l.unlock();
@@ -140,31 +151,28 @@ namespace imajuscule {
           return res;
         }
 
-
-        /* We expect that the caller has (if needed):
-         * - taken the out lock
-         * - grown the capacity of the channel request queue
-         */
-        template<typename F>
-        [[nodiscard]] bool playComputableNoLock( Channel & channel, F compute, Request && req) {
-
-            // we enqueue first, so that the buffer has the "queued" state
-            // because when registering compute lambdas, they can be executed right away
-            // so the buffer needs to be in the right state
-
-            Assert(req.valid());
-          if(!channel.addRequest( std::move(req) )) {
-            return false;
-          }
-
-          if(!this->registerCompute(compute)) {
-            // TODO 'channel.cancelLastRequest();' else there will be no compute associate to it,
-            // and the request will stay in the channel forever.
-            // (only ok if 'channel.addRequest' and 'registerCompute' are always called from the same thread)
-            return false;
-          }
-          return true;
+      /* We expect that the caller:
+       * - either took the out lock, or is in the audio realtime thread
+       * - has grown the capacity of the channel request queue, if needed
+       */
+      template<typename F>
+      [[nodiscard]] bool playComputableNoLock( Channel & channel, F compute, Request && req) {
+        
+        // we enqueue first, so that the buffer has the "queued" state
+        // because when registering compute lambdas, they can be executed right away
+        // so the buffer needs to be in the right state
+        
+        Assert(req.valid());
+        if(!channel.addRequest( std::move(req) )) {
+          return false;
         }
+        
+        if(!this->registerCompute(compute)) {
+          channel.cancelLastRequest();
+          return false;
+        }
+        return true;
+      }
 
         [[nodiscard]] bool play( uint8_t channel_id, StackVector<Request> && v) {
           LockCtrlFromNRT l(get_lock());
@@ -182,17 +190,19 @@ namespace imajuscule {
         }
 
         void closeAllChannels(int xfade) {
-            LockFromNRT l(get_lock());
+          LockFromNRT l(get_lock());
+          enqueueOneShot([xfade](auto&chans){
             if(!xfade) {
-                channels.clear();
+              chans.channels.clear();
             }
             else {
-                for(auto & c:channels) {
-                    if(c.isPlaying()) {
-                        c.stopPlayingByXFadeToZero(xfade);
-                    }
+              for(auto & c:chans.channels) {
+                if(c.isPlaying()) {
+                  c.stopPlayingByXFadeToZero(xfade);
                 }
+              }
             }
+          });
         }
 
         template<WithLock lock>
@@ -213,7 +223,7 @@ namespace imajuscule {
                     else {
                         // take the lock in the loop so that at the end of each iteration
                         // the audio thread has a chance to run
-                        LockFromNRT l(get_lock());
+                        LockFromNRT l(get_lock());  // TODO lockfree
                         if(channels[id].isPlaying()) {
                             id = AUDIO_CHANNEL_NONE;
                             continue;
@@ -270,7 +280,7 @@ namespace imajuscule {
 
         void closeChannel(uint8_t channel_id, CloseMode mode, int nStepsForXfadeToZeroMode = -1)
         {
-            LockFromNRT l(get_lock());
+            LockFromNRT l(get_lock());  // TODO lockfree
             closeChannelNoLock(channel_id, mode, nStepsForXfadeToZeroMode);
         }
 

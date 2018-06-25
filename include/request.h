@@ -179,16 +179,22 @@ namespace imajuscule {
 
     template<int nAudioOut>
     struct Volumes {
-        using array = std::array<float, nAudioOut>;
-        array volumes;
+        std::array<float, nAudioOut> volumes;
 
         Volumes() = default;
 
         Volumes(float f) {
             volumes.fill(f);
         }
+      
+      static constexpr float uint8_to_float = 1 / 255.f;
 
-        Volumes(array a) : volumes(std::move(a)) {}
+      Volumes(std::array<float, nAudioOut> a) : volumes(std::move(a)) {}
+      Volumes(std::array<uint8_t, nAudioOut> a) {
+        for(int i=0; i<nAudioOut; ++i) {
+          volumes[i] = uint8_to_float * static_cast<float>(a[i]);
+        }
+      }
 
         Volumes & operator =(float const f) {
             for(auto & v : volumes) {
@@ -405,4 +411,11 @@ namespace imajuscule {
             }
         }
     };
+  
+  template<int nAudioOuts>
+  struct PackedRequestParams {
+    int32_t length; // duration in samples
+    std::array<uint8_t, nAudioOuts> volumes; // 0 = muted, 255 = full
+  };
+
 }
