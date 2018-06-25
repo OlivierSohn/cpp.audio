@@ -174,7 +174,7 @@ namespace imajuscule {
                     return false;
                 }
               if(auto c = getFirstXfadeInfiniteChans()) {
-                c->playComputable( channel_id, params, e);
+                return c->playComputable( channel_id, params, e);
               }
               return false;
             }

@@ -414,7 +414,7 @@ namespace imajuscule {
   
   template<int nAudioOuts>
   struct PackedRequestParams {
-    int32_t length; // duration in samples
+    float length; // duration in milliseconds
     std::array<uint8_t, nAudioOuts> volumes; // 0 = muted, 255 = full
   };
 
