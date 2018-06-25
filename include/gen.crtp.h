@@ -424,8 +424,10 @@ namespace imajuscule::audio {
   {
     auto & tp = cs.corresponding(c);
     auto phase = mkNonDeterministicPhase();
+    auto & thisAlgo = c.elem.algo;
     for(auto &p : firsts(cs)) {
       if((&p == &tp) || (p != tp)) {
+        // same channel, or different frequency.
         continue;
       }
       // We found a matching TunedPitch
@@ -433,12 +435,14 @@ namespace imajuscule::audio {
       Assert(&otherChannel != &c);
       // To prevent phase cancellation, the phase of the new note will be
       // coherent with the phase of any active channel that plays a note at the same frequency.
-      if(!otherChannel.elem.isEnvelopeFinished()) {
-        phase = mkDeterministicPhase(c.elem.algo.angle());
-        break;
+      if(otherChannel.elem.isEnvelopeFinished()) {
+        continue;
       }
+      auto & otherAlgo = otherChannel.elem.algo;
+      phase = mkDeterministicPhase(otherAlgo.angle());
+      break;
     }
-    setAlgoPhase(phase, c.elem.algo);
+    setAlgoPhase(phase, thisAlgo);
   }
 
 } // NS imajuscule::audio
