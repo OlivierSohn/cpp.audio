@@ -9,25 +9,23 @@ namespace imajuscule::audio::vasine {
 
     static constexpr float get_gain() { return 1.f; };
 
-    // the caller is responsible for taking the out lock if needed
-    template<typename MonoNoteChannel, typename CS, typename Chans>
-    std::pair<std::function<void(void)>,std::function<bool(Chans&,int)>>
-    onStartNote(float freq, MonoNoteChannel & c, CS & cs, Chans & chans)
+    template<typename Element>
+    bool setupAudioElement(float freq, Element & e)
     {
-      using Request = typename Chans::Request;
+      e.algo.setLoudnessParams(5,
+                               1.f,
+                               30.f);
+      e.algo.setAngleIncrements(freq_to_angle_increment(freq));
+      return true;
+    }
 
-      auto & osc = c.elem;
-      osc.algo.setLoudnessParams(5,
-                                 1.f,
-                                 30.f);
-      osc.algo.setAngleIncrements(freq_to_angle_increment(freq));
-      return {
-        [&c, &cs]() {
-          setPhase(c,cs);
-          c.elem.onKeyPressed();
-        }
-        ,{}
-      };
+    // the caller is responsible for taking the out lock if needed
+    template<typename Chans, typename MonoNoteChannel, typename CS>
+    std::function<bool(Chans&,int)> onStartNote(Chans&, MonoNoteChannel & c, CS & cs)
+    {
+      setPhase(c,cs);
+      c.elem.onKeyPressed();
+      return {};
     }
 
   private:

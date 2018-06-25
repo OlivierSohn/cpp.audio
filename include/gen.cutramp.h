@@ -213,11 +213,9 @@ namespace imajuscule::audio::cutramp {
 
     float get_gain() const { return denorm<GAIN>(); }
 
-    // The caller is responsible for taking the out lock if needed.
-    template<typename MonoNoteChannel, typename CS, typename Chans>
-    std::pair<std::function<void(void)>,std::function<bool(Chans&,int)>>
-    onStartNote(float freq, MonoNoteChannel & c, CS & cs, Chans & chans) {
-
+    template<typename Element>
+    bool setupAudioElement(float freq, Element & e)
+    {
       if(adjustFreq) {
         auto r = (p - static_cast<float>(gap())) / p;
         freq *= r;
@@ -227,24 +225,25 @@ namespace imajuscule::audio::cutramp {
         ramp_size = adjusted(ramp_size);
       }
       auto start_freq = ramp_start_freq_denormalize(ramp_start_freq());
-      auto & osc = c.elem;
-      osc.algo.getOsc().setLoudnessParams(value<LOUDNESS_REF_FREQ_INDEX>(),
+      e.algo.getOsc().setLoudnessParams(value<LOUDNESS_REF_FREQ_INDEX>(),
                                           value<LOUDNESS_COMPENSATION_AMOUNT>(),
                                           denorm<LOUDNESS_LEVEL>());
 
-      osc.algo.getAlgo().getCtrl().set(freq - ramp_amount() * (freq-start_freq),
+      e.algo.getAlgo().getCtrl().set(freq - ramp_amount() * (freq-start_freq),
                                        freq,
                                        ramp_size,
                                        0.f,
                                        static_cast<itp::interpolation>(itp::interpolation_traversal().realValues()[static_cast<int>(.5f + params[Params::RAMP_INTERPOLATION])]));
+      return true;
+    }
 
-      return {
-        [&c, &cs]() {
-          setPhase(c,cs);
-          c.elem.onKeyPressed();
-        },
-        {}
-      };
+    // The caller is responsible for taking the out lock if needed.
+    template<typename Chans, typename MonoNoteChannel, typename CS>
+    std::function<bool(Chans&,int)> onStartNote(Chans&, MonoNoteChannel & c, CS & cs)
+    {
+      setPhase(c,cs);
+      c.elem.onKeyPressed();
+      return {};
     }
 
     template<typename T>

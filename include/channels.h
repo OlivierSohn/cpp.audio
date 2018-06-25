@@ -27,7 +27,7 @@ namespace imajuscule {
       /*
        * The function is executed once, and then removed from the queue.
        */
-      using OneShotFunc = std::function<void(void)>;
+      using OneShotFunc = std::function<void(Channels &)>;
 
       /*
        * returns false when the lambda can be removed
@@ -303,7 +303,7 @@ namespace imajuscule {
         }
 
         void run_computes(bool tictac, int nFrames) {
-          nOrchestratorsAndComputes -= oneShots.dequeueAll([this](auto const & f) { f(); });
+          nOrchestratorsAndComputes -= oneShots.dequeueAll([this](auto const & f) { f(*this); });
 
           nOrchestratorsAndComputes -= orchestrators.forEach([this](auto const & orchestrate) {
             return orchestrate(*this, audioelement::n_frames_per_buffer);

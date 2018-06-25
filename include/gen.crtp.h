@@ -143,11 +143,13 @@ namespace imajuscule::audio {
     static constexpr auto xfade_policy = xfade_policy_;
     static constexpr Atomicity atomicity = getAtomicity<outPolicy>();
 
-    using MonoNoteChannel = MonoNoteChannel<AE, Channel<atomicity, nOuts, xfade_policy_, MaxQueueSize::One>>;
+    using Element = AE;
+    using MonoNoteChannel = MonoNoteChannel<Element, Channel<atomicity, nOuts, xfade_policy_, MaxQueueSize::One>>;
 
     using Base::get_xfade_length;
     using Base::get_gain;
     using Base::onStartNote;
+    using Base::setupAudioElement;
 
     using Event = typename EventIterator::object;
 
@@ -216,7 +218,7 @@ namespace imajuscule::audio {
     template<typename Chans>
     void allNotesOff(Chans & chans) {
       MIDI_LG(INFO, "all notes off");
-      chans.enqueueOneShot([this](){
+      chans.enqueueOneShot([this](auto &){
         for(auto & c : seconds(channels)) {
           c.elem.onKeyReleased();
         }
@@ -226,7 +228,7 @@ namespace imajuscule::audio {
     template<typename Chans>
     void allSoundsOff(Chans & chans) {
       MIDI_LG(INFO, "all sounds off");
-      chans.enqueueOneShot([this](){
+      chans.enqueueOneShot([this](auto &){
         for(auto & c : seconds(channels)) {
           c.elem.onKeyReleased();
         }
@@ -281,54 +283,62 @@ namespace imajuscule::audio {
         channels.corresponding(*channel) = tp;
 
         c.elem.setEnvelopeCharacTime(get_xfade_length());
-        // unqueue the (potential) previous request, else an assert fails
-        // when we enqueue the next request, because it's already queued.
-        c.reset();
-        if constexpr (xfade_policy == XfadePolicy::UseXfade) {
-          c.channel->set_xfade(get_xfade_length());
-        }
-        c.channel->setVolume(get_gain());
 
         auto freq = to_freq(tp.getValue()-Do_midi, half_tone);
-        auto [oneShot, orchestrator] = onStartNote(freq, *channel, channels, chans);
-        Assert(!c.elem.isEnvelopeFinished());
-        if(!oneShot && !orchestrator) {
-          MIDI_LG(ERR,"failed to initialize");
+        // setupAudioElement is allowed to be slow, allocate / deallocate memory, etc...
+        // because it's not running in the audio realtime thread.
+        if(!setupAudioElement(freq, c.elem)) {
+          MIDI_LG(ERR,"setupAudioElement failed");
           return onDroppedNote(e.noteOn.pitch);
         }
 
+        Assert(!c.elem.isEnvelopeFinished());
+
         // 3. [with maybe-lock]
-        //      register the compute
         //      register the maybe-oneshot that does
-        //        - phase cancellation avoidance
-        //        - onKeyPress
+        //        - maybe phase cancellation avoidance (in onStartNote)
+        //        - either
+        //          - register the compute and trigger onKeyPress, or
+        //          - register the orchestrator (in onStartNote)
 
         {
           typename Out::LockFromNRT L(out.get_lock());
 
-          // The caller is responsible for growing the channel request queue if needed
-          if constexpr (std::remove_reference_t<decltype(c.elem)>::computable) {
-            if(!chans.playComputableNoLock(*c.channel,
-                                           c.elem.fCompute(),
-                                           Request{
-                                             &c.elem.buffer->buffer[0],
-                                             e.noteOn.velocity,
-                                             // e.noteOn.length is always 0, we must rely on noteOff
-                                             std::numeric_limits<decltype(std::declval<Request>().duration_in_frames)>::max()
-                                           }))
-            {
-              MIDI_LG(ERR,"failed to play");
-              return onDroppedNote(e.noteOn.pitch);
+          chans.enqueueOneShot([this, &c, velocity = e.noteOn.velocity](auto & chans){
+            // unqueue the (potential) previous request, else an assert fails
+            // when we enqueue the next request, because it's already queued.
+            c.reset();
+            if constexpr (xfade_policy == XfadePolicy::UseXfade) {
+              c.channel->set_xfade(get_xfade_length());
             }
-          }
+            c.channel->setVolume(get_gain());
 
-          if(orchestrator) {
-            chans.add_orchestrator(orchestrator);
-          }
-          if(oneShot) {
-            chans.enqueueOneShot(oneShot);
-          }
-          return onEventResult::OK;
+            if constexpr (std::remove_reference_t<decltype(c.elem)>::computable) {
+              // The caller is responsible for growing the channel request queue if needed
+              if(!chans.playComputableNoLock(*c.channel,
+                                             c.elem.fCompute(),
+                                             Request{
+                                               &c.elem.buffer->buffer[0],
+                                               velocity,
+                                               // e.noteOn.length is always 0, we must rely on noteOff
+                                               std::numeric_limits<decltype(std::declval<Request>().duration_in_frames)>::max()
+                                             }))
+              {
+                return;
+              }
+            }
+            // This fails to compile under clang (maybe gcc too?):
+            //   auto orchestrator = this -> template <Chans> onStartNote(c,channels);
+            // clang doesn't know what type is returned by 'onStartNote', eventhough
+            //   all information is available because 'Chans' is passed as template parameter.
+            // Adding a dummy parameter of type 'Chans' to 'onStartNote' method
+            //   helps clang figuring out what the method returns.
+            // I suspect this is a clang bug, but I'm not sure.
+            auto orchestrator = onStartNote(chans, c, channels);
+            if(orchestrator) {
+              chans.add_orchestrator(orchestrator);
+            }
+          });
         }
       }
       else if(e.type == Event::kNoteOffEvent)
@@ -345,7 +355,7 @@ namespace imajuscule::audio {
         {
           typename Out::LockFromNRT L(out.get_lock());
           static_assert(sizeof(decltype(tp))<=sizeof(void*)); // ensure that the std::function won't dynamically allocate / deallocate
-          chans.enqueueOneShot([this, tp](){
+          chans.enqueueOneShot([this, tp](auto &){
             // We can have multiple notes with the same pitch, and different durations.
             // Hence, here we just close the first opened channel with matching pitch.
             for(auto &tunedPitch : firsts(channels)) {
@@ -362,10 +372,12 @@ namespace imajuscule::audio {
             // The corresponding noteOn was skipped,
             // because too many notes were being played at the same time
           });
-          return onEventResult::OK;
         }
       }
-      return onEventResult::UNHANDLED;
+      else {
+        return onEventResult::UNHANDLED;
+      }
+      return onEventResult::OK;
     }
 
   protected:
