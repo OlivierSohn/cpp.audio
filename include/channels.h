@@ -77,7 +77,7 @@ namespace imajuscule {
           }
         }
         else {
-          f();
+          f(*this);
         }
       }
 
