@@ -1101,7 +1101,7 @@ namespace imajuscule::audio::voice {
     }
 
     bool tryAcquire() {
-      unsigned int cur = engine.getOddOnRelaxed();
+      unsigned int cur = engine.getOddOn();
       while(1) {
         if(!isEnvelopeFinished_internal(cur)) {
           return false;
@@ -1126,7 +1126,7 @@ namespace imajuscule::audio::voice {
       // is handled by the sound engine
     }
     bool isEnvelopeFinished() const {
-      return isEnvelopeFinished_internal(engine.getOddOnRelaxed());
+      return isEnvelopeFinished_internal(engine.getOddOn());
     }
     void onKeyPressed() {
       // we don't increment 'oddOn' here, or 'engine.set_active(true)' : it has been done in 'tryAcquire'.

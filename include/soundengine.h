@@ -641,15 +641,15 @@ namespace imajuscule::audio {
       }
 
       unsigned int goOn() const {
-        unsigned int i = getOddOnRelaxed();
+        unsigned int i = getOddOn();
         if(is_odd(i)) {
           return i;
         }
         return 0;
       }
 
-      unsigned int getOddOnRelaxed() const {
-        return oddOnTraits::read(oddOn, std::memory_order_relaxed);
+      unsigned int getOddOn() const {
+        return oddOnTraits::read(oddOn, std::memory_order_acquire);
       }
 
       void stop(unsigned int i) {
