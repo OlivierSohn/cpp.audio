@@ -151,14 +151,19 @@ namespace imajuscule {
                     return AUDIO_CHANNEL_NONE;
                 }
                 Init(minLazyLatency);
-                return getFirstXfadeInfiniteChans().template openChannel<WithLock::Yes>(volume, p, xfade_length);
+              if(auto c = getFirstXfadeInfiniteChans()) {
+                c->template openChannel<WithLock::Yes>(volume, p, xfade_length);
+              }
+              return AUDIO_CHANNEL_NONE;
             }
 
             void play( uint8_t channel_id, StackVector<Request> && v ) {
                 if(closing) {
                     return;
                 }
-                getFirstXfadeInfiniteChans().play( channel_id, std::move( v ) );
+              if(auto c = getFirstXfadeInfiniteChans()) {
+                c->play( channel_id, std::move( v ) );
+              }
             }
 
             template<typename F>
@@ -166,32 +171,42 @@ namespace imajuscule {
                 if(closing) {
                     return false;
                 }
-              return getFirstXfadeInfiniteChans().playComputable( channel_id, compute, std::move(req) );
+              if(auto c = getFirstXfadeInfiniteChans()) {
+                c->playComputable( channel_id, compute, std::move(req) );
+              }
+              return false;
             }
 
             void toVolume( uint8_t channel_id, float volume, int nSteps ) {
                 if(closing) {
                     return;
                 }
-                getFirstXfadeInfiniteChans().toVolume( channel_id, volume, nSteps);
+              if(auto c = getFirstXfadeInfiniteChans()) {
+                c->toVolume( channel_id, volume, nSteps);
+              }
             }
 
             void closeChannel(uint8_t channel_id, CloseMode mode) {
-                if(closing) {
-                    return;
-                }
-                getFirstXfadeInfiniteChans().closeChannel( channel_id, mode );
+              if(closing) {
+                  return;
+              }
+              if(auto c = getFirstXfadeInfiniteChans()) {
+                c->closeChannel( channel_id, mode );
+              }
             }
 
-          auto & getFirstXfadeInfiniteChans() {
-            auto p = getChannelHandler().getChannels().getChannelsXFadeInfinite()[0].get();
-            Assert(p);
-            return *p;
+          typename Chans::ChannelsT::XFadeInfiniteChans * getFirstXfadeInfiniteChans() {
+            if(auto m = getChannelHandler().getChannels().getChannelsXFadeInfinite().maybe_front()) {
+              return &get_value(m).first;
+            }
+            return {};
           }
-          auto & getFirstXfadeChans() {
-            auto p = getChannelHandler().getChannels().getChannelsXFade()[0].get();
-            Assert(p);
-            return *p;
+          
+          typename Chans::ChannelsT::XFadeChans * getFirstXfadeChans() {
+            if(auto m = getChannelHandler().getChannels().getChannelsXFade().maybe_front()) {
+              return &get_value(m).first;
+            }
+            return {};
           }
         };
 
