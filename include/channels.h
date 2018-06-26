@@ -138,7 +138,7 @@ namespace imajuscule {
           // and swap buffers in the oneShot.
           auto & c = editChannel(params.channel_id);
           if(reserveAndLock<canRealloc>(1,c.edit_requests(),l)) {
-            static_assert(sizeof(PackedRequestParams<nAudioOuts>) <= 8, "so that the lambda captures are <= 16 bytes");
+            static_assert(sizeof(PackedRequestParams<nAudioOut>) <= 8, "so that the lambda captures are <= 16 bytes");
             enqueueOneShot([&e,params](auto&chans){
               // error is ignored
               auto & c = chans.editChannel(params.channel_id);
