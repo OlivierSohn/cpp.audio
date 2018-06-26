@@ -1,14 +1,8 @@
 
-#ifndef NDEBUG
-#define DO_LOG_MIDI 1
+#ifdef IMJ_LOG_MIDI
+#  define MIDI_LG( x , y, ...) LG( x , y ,##__VA_ARGS__)
 #else
-#define DO_LOG_MIDI 0
-#endif
-
-#if DO_LOG_MIDI
-#define MIDI_LG( x , y, ...) LG( x , y ,##__VA_ARGS__)
-#else
-#define MIDI_LG(...)
+#  define MIDI_LG(...)
 #endif
 
 namespace imajuscule::audio {
