@@ -169,12 +169,12 @@ namespace imajuscule {
           }
 
             template<typename Algo>
-          [[nodiscard]] bool playComputable( uint8_t channel_id, PackedRequestParams<nAudioOut> params, audioelement::FinalAudioElement<Algo> & e) {
+          [[nodiscard]] bool playComputable( PackedRequestParams<nAudioOut> params, audioelement::FinalAudioElement<Algo> & e) {
                 if(closing) {
                     return false;
                 }
               if(auto c = getFirstXfadeInfiniteChans()) {
-                return c->playComputable( channel_id, params, e);
+                return c->playComputable( params, e);
               }
               return false;
             }
@@ -203,7 +203,7 @@ namespace imajuscule {
             }
             return {};
           }
-          
+
           typename Chans::ChannelsT::XFadeChans * getFirstXfadeChans() {
             if(auto m = getChannelHandler().getChannels().getChannelsXFade().maybe_front()) {
               return &get_value(m).first;

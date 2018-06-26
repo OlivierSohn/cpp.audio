@@ -852,7 +852,7 @@ namespace imajuscule {
 
             memset(outputBuffer, 0, nFrames * nOuts * sizeof(SAMPLE));
 
-            channelsT.forEach([outputBuffer, this, nFrames](auto & c) {
+            channelsT.forEach([outputBuffer, nFrames](auto & c) {
                 c.step(outputBuffer, nFrames);
                 if(c.shouldReset()) {
                     c.reset();

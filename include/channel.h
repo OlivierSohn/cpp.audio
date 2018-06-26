@@ -150,7 +150,7 @@ namespace imajuscule {
         Volume chan_vol;
 
         queue_t<QueuedRequest, MQS> requests;
-      
+
     public:
         Channel() {
           reset();
@@ -186,7 +186,7 @@ namespace imajuscule {
           volume_transition_remaining = 0;
           next = false;
           active = true;
-          
+
           // will mark buffers of used requests as "inactive"
           current = {};
           previous = {};
@@ -196,7 +196,7 @@ namespace imajuscule {
           remaining_samples_count = 0;
           current_next_sample_index = 0;
           other_next_sample_index = 0;
-        
+
           Assert(!isPlaying());
           Assert(!shouldReset());
           Assert(isActive());
@@ -786,7 +786,7 @@ namespace imajuscule {
     void Channel<A, nAudioOut, XF, MQS>::step(SAMPLE * outputBuffer, int n_max_writes)
     {
         Assert(n_max_writes <= audioelement::n_frames_per_buffer);
-      
+
         total_n_writes = n_max_writes;
 
         if(done(n_max_writes)) {

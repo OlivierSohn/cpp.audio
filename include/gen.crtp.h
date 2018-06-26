@@ -274,13 +274,14 @@ namespace imajuscule::audio {
           return onDroppedNote(e.noteOn.pitch);
         }
         auto & c = *channel;
+        int32_t channel_index = channels.index(c);
 
         // 2. [without maybe-lock]
         //      set the tunedpitch
         //      setup the channel (dynamic allocations allowed for soundengine)
 
         TunedPitch tp{e.noteOn.pitch, e.noteOn.tuning};
-        channels.corresponding(*channel) = tp;
+        channels.corresponding(*channel) = tp; // if we do that in the audio rt thread,
 
         c.elem.setEnvelopeCharacTime(get_xfade_length());
 
@@ -304,15 +305,15 @@ namespace imajuscule::audio {
         {
           typename Out::LockFromNRT L(out.get_lock());
 
-          // TODO based on stackoverflow answers, this allocates on g++ 64bits because > 16 bytes
-          chans.enqueueOneShot([this, &c, velocity = e.noteOn.velocity](Chans & chans){
+          chans.enqueueOneShot([this, velocity = e.noteOn.velocity, channel_index](Chans & chans){
             // unqueue the (potential) previous request, else an assert fails
             // when we enqueue the next request, because it's already queued.
+            auto & c = channels.seconds()[channel_index];
             c.reset();
+            c.channel->setVolume(get_gain() * velocity);
             if constexpr (xfade_policy == XfadePolicy::UseXfade) {
               c.channel->set_xfade(get_xfade_length());
             }
-            c.channel->setVolume(get_gain());
 
             if constexpr (std::remove_reference_t<decltype(c.elem)>::computable) {
               // The caller is responsible for growing the channel request queue if needed
@@ -320,7 +321,7 @@ namespace imajuscule::audio {
                                              c.elem.fCompute(),
                                              Request{
                                                &c.elem.buffer->buffer[0],
-                                               velocity,
+                                               1.f,
                                                // e.noteOn.length is always 0, we must rely on noteOff
                                                std::numeric_limits<decltype(std::declval<Request>().duration_in_frames)>::max()
                                              }))
@@ -347,7 +348,7 @@ namespace imajuscule::audio {
         TunedPitch tp{e.noteOff.pitch, e.noteOff.tuning};
         {
           typename Out::LockFromNRT L(out.get_lock());
-          static_assert(sizeof(decltype(tp))<=sizeof(void*)); // ensure that the std::function won't dynamically allocate / deallocate
+          static_assert(sizeof(decltype(tp))<=8); // ensure that the std::function won't dynamically allocate / deallocate
           chans.enqueueOneShot([this, tp](auto &){
             // We can have multiple notes with the same pitch, and different durations.
             // Hence, here we just close the first opened channel with matching pitch.

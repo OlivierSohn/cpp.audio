@@ -695,7 +695,7 @@ namespace imajuscule {
           auto & getOsc() {
             return osc;
           }
-          
+
             VolumeAdjusted() : log_ratio_(1.f), low_index_(0) {}
 
             void forgetPastSignals() {
@@ -1022,11 +1022,8 @@ namespace imajuscule {
 
             T imag() const {
                 T sum = 0.f;
-                int index = 0;
-                // not more than 3 captures to avoid dynamic allocation!
-                for_each(aes, [&sum, &index, this] (auto const & ae) {
-                    sum += gains[index] * ae.imag();
-                    ++index;
+                for_each_i(aes, [&sum, this] (int i, auto const & ae) {
+                    sum += gains[i] * ae.imag();
                 });
                 return sum;
             }
@@ -1736,10 +1733,8 @@ namespace imajuscule {
             void operator()(CTRLS & ctrls, ALGO & osc) {
                 constexpr auto sz = std::tuple_size<CTRLS>::value;
                 std::array<typename ALGO::FPT, sz> increments;
-                int i = 0;
-                for_each(ctrls, [&i, &increments] (auto & c) {
+                for_each_i(ctrls, [&increments] (int i, auto & c) {
                     increments[i] = freq_to_angle_increment(c.step());
-                    ++i;
                 });
                 osc.setAngleIncrements(std::move(increments));
             }

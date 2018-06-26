@@ -186,7 +186,7 @@ namespace imajuscule {
         Volumes(float f) {
             volumes.fill(f);
         }
-      
+
       static constexpr float uint8_to_float = 1 / 255.f;
 
       Volumes(std::array<float, nAudioOut> a) : volumes(std::move(a)) {}
@@ -411,11 +411,14 @@ namespace imajuscule {
             }
         }
     };
-  
+
   template<int nAudioOuts>
   struct PackedRequestParams {
     float length; // duration in milliseconds
     std::array<uint8_t, nAudioOuts> volumes; // 0 = muted, 255 = full
+    uint8_t channel_id;
+
+    static_assert(sizeof(PackedRequestParams<nAudioOuts>) <= 8, "so that the lambda captures are <= 16 bytes");
   };
 
 }

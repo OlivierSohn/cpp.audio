@@ -115,14 +115,14 @@ namespace imajuscule {
         }
 
         void toVolume(uint8_t channel_id, float volume, int nSteps) {
-          auto & c = editChannel(channel_id);
           LockFromNRT l(get_lock());
-          enqueueOneShot([volume, nSteps, &c](auto&){c.toVolume(volume, nSteps);});
+          enqueueOneShot([channel_id, volume, nSteps](auto&chans){
+            chans.editChannel(channel_id).toVolume(volume, nSteps);
+          });
         }
 
       template<typename Algo>
-      [[nodiscard]] bool playComputable(uint8_t channel_id,
-                                        PackedRequestParams<nAudioOut> params,
+      [[nodiscard]] bool playComputable(PackedRequestParams<nAudioOut> params,
                                         audioelement::FinalAudioElement<Algo> & e) {
 
           // it's important to register and enqueue in the same lock cycle
@@ -136,11 +136,11 @@ namespace imajuscule {
           // TODO when lock-free, instead of disallowing reallocation,
           // allocate the new buffer in the non-realtime thread,
           // and swap buffers in the oneShot.
-          auto & c = editChannel(channel_id);
+          auto & c = editChannel(params.channel_id);
           if(reserveAndLock<canRealloc>(1,c.edit_requests(),l)) {
-            enqueueOneShot([&e,params,channel_id](auto&chans){
+            enqueueOneShot([&e,params](auto&chans){
               // error is ignored
-              auto & c = chans.editChannel(channel_id);
+              auto & c = chans.editChannel(params.channel_id);
               chans.playComputableNoLock(c, e.fCompute(), {&e.buffer->buffer[0], {params.volumes}, params.length });
             });
             res = true;
