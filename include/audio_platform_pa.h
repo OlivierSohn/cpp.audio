@@ -7,6 +7,7 @@
 #endif
 
 namespace imajuscule {
+
     namespace audio {
 
         template<typename T>
@@ -16,6 +17,7 @@ namespace imajuscule {
         struct PortAudioSample<float> {
             static constexpr auto format = paFloat32;
         };
+
 
         template <Features F, typename Chans>
         struct Context<AudioPlatform::PortAudio, F, Chans> {
@@ -41,12 +43,16 @@ namespace imajuscule {
 #ifndef NDEBUG // verify that our thread is not killed during the call
                 static int flag = 0;
                 if(unlikely(flag != 0)) {
+                  ScopedNoMemoryLogs s; // because we log an error
                   LG(ERR, "The audio engine assumes that the playCallback call executes till the end, but the previous call has been killed.");
                   Assert(0);
                 }
                 flag = 1;
 #endif
 
+#ifdef IMJ_LOG_MEMORY
+                threadNature() = ThreadNature::RealTime_Program;
+#endif
                 // This global variable is used to dynamically optimize
                 // the reverb algorithms according to the
                 // number of frames we need to compute.
@@ -59,6 +65,7 @@ namespace imajuscule {
 
 #ifdef IMJ_LOG_OVERFLOW
                 if(f) {
+                  ScopedNoMemoryLogs s; // because we log an error
                   LG(ERR, "!!!!!!!!!!!!!!!!!! overflow flag: %d %d %d %d %d"
                     , f & paInputUnderflow
                     , f & paInputOverflow
@@ -74,6 +81,10 @@ namespace imajuscule {
 
 #ifndef NDEBUG
                 flag = 0;
+#endif
+
+#ifdef IMJ_LOG_MEMORY
+                threadNature() = ThreadNature::RealTime_OS;
 #endif
 
                 return paContinue;
