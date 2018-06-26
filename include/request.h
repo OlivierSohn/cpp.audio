@@ -417,8 +417,6 @@ namespace imajuscule {
     float length; // duration in milliseconds
     std::array<uint8_t, nAudioOuts> volumes; // 0 = muted, 255 = full
     uint8_t channel_id;
-
-    static_assert(sizeof(PackedRequestParams<nAudioOuts>) <= 8, "so that the lambda captures are <= 16 bytes");
   };
 
 }
