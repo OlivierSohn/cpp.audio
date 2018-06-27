@@ -323,7 +323,7 @@ namespace imajuscule {
                                                   , static_cast<T>(counter)
                                                   , _topValue
                                                   , - _topValue
-                                                  , getReleaseTime());
+                                                  , static_cast<T>(getReleaseTime()));
                         if(counter >= getReleaseTime()) {
                           stateTraits::write(state, EnvelopeState::EnvelopeDone1, std::memory_order_relaxed);
                           counter = 0;
@@ -442,7 +442,7 @@ namespace imajuscule {
                                     , static_cast<T>(counter)
                                     , static_cast<T>(0)
                                     , static_cast<T>(1)
-                                    , C));
+                                    , static_cast<T>(C)));
           }
 
           int32_t getReleaseTime() const { return C; }
@@ -597,7 +597,7 @@ namespace imajuscule {
                       , static_cast<T>(ahdCounter)
                       , from
                       , toMinusFrom
-                      , getMaxCounterForAHD());
+                      , static_cast<T>(getMaxCounterForAHD()));
                 }
             }
 
