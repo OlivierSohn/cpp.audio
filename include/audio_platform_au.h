@@ -57,7 +57,7 @@ namespace imajuscule {
                                                AudioBufferList             *buffers) {
 
                 n_audio_cb_frames.store(numFrames, std::memory_order_relaxed);
-                
+
                 auto ios_data = reinterpret_cast<iOSOutputData<Chans>*>(userData);
                 auto sizeBuffer = numFrames * nAudioOut;
                 for (UInt32 i=0; i<buffers->mNumberBuffers; ++i) {
@@ -129,15 +129,17 @@ namespace imajuscule {
 
         public:
             void TearDown() {
-                LG(INFO, "AudioOut::TearDown");
-                if( bInitialized ) {
-                    bInitialized = false;
-                    OSStatus err = stopProcessingAudio(audioUnit_out);
-                    if( noErr != err ) {
-                        LG(ERR, "AudioOut::TearDown : stopProcessingAudio failed : %d", err);
-                        Assert(0);
-                        return;
-                    }
+                if(!bInitialized) {
+                  LG(INFO, "AudioOut::TearDown : audio was not initialized.");
+                  return;
+                }
+                bInitialized = false;
+                LG(INFO, "AudioOut::TearDown : stopProcessingAudio.");
+                OSStatus err = stopProcessingAudio(audioUnit_out);
+                if( noErr != err ) {
+                    LG(ERR, "AudioOut::TearDown : stopProcessingAudio failed : %d", err);
+                    Assert(0);
+                    return;
                 }
                 LG(INFO, "AudioOut::TearDown : success");
             }

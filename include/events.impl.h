@@ -101,7 +101,7 @@ namespace imajuscule {
         };
 
         template<typename Voice, typename OutputData, typename Chans>
-        void playOneThing(Voice & v, OutputData & out, Chans & chans, Voicing const & b) {
+        onEventResult playOneThing(Voice & v, OutputData & out, Chans & chans, Voicing const & b) {
 
             v.initializeSlow(); // does something only the 1st time
             v.useProgram(b.program); // keep it first as it reinitializes params
@@ -117,15 +117,15 @@ namespace imajuscule {
             Event e;
             e.type = Event::kNoteOnEvent;
             e.noteOn = NoteOnEvent{0,b.midiPitch,0,1,0,0};
-            v.onEvent(e, out, chans);
+            return v.onEvent(e, out, chans);
         }
 
         template<typename Voice, typename OutputData, typename Chans>
-        void stopPlaying(Voice & v, OutputData & out, Chans & chans, int16_t midiPitch) {
+        onEventResult stopPlaying(Voice & v, OutputData & out, Chans & chans, int16_t midiPitch) {
             Event e;
             e.type = Event::kNoteOffEvent;
             e.noteOff = NoteOffEvent{0,midiPitch,1,0,0};
-            v.onEvent(e, out, chans);
+            return v.onEvent(e, out, chans);
         }
     }
 }

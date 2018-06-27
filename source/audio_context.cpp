@@ -55,22 +55,26 @@ namespace imajuscule {
 #  endif
 #endif
 
-        void setPortaudioLatencyMillis(int latency)
+        [[nodiscard]] bool overridePortaudioMinLatencyMillis(int latency)
         {
-            if(latency <= 0) {
-                LG(ERR, "setPortaudioLatencyMillis : negative latency %d", latency);
-                return;
-            }
 #if TARGET_OS_IOS
+            LG(ERR, "overridePortaudioMinLatencyMillis : not available on iOS");
+            return false;
 #else
-            // set minimum latency env var to speed things up
+            if(latency <= 0) {
+                LG(ERR, "overridePortaudioMinLatencyMillis : negative latency %d", latency);
+                return false;
+            }
+            // set minimum latency env var
             std::string lat = std::to_string(latency);
             int erri = setenv( PA_MIN_LATENCY_MSEC, lat.c_str(), true);
             if(unlikely(erri))
             {
                 LG(ERR, "AudioIn::get : Could not set env variable PA_MIN_LATENCY_MSEC: %d", errno);
                 Assert(0);
+                return false;
             }
+            return true;
 #endif
         }
     }

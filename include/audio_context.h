@@ -30,7 +30,7 @@ namespace imajuscule {
             }
         };
 
-        void setPortaudioLatencyMillis(int latency);
+        bool overridePortaudioMinLatencyMillis(int latency);
 
         constexpr auto initial_n_audio_cb_frames = -1;
 
@@ -122,13 +122,16 @@ namespace imajuscule {
                 chans.getChannels().closeAllChannels(0);
             }
 
-            void Init(float minLatency) {
+            [[nodiscard]] bool Init(float minLatency) {
                 if(bInitialized) {
-                    return;
+                  LG(WARN, "Audio is already initialized, skipping initialization.");
+                  return true;
                 }
                 if(doInit(minLatency)) {
-                    initializeConvolutionReverb();
+                  initializeConvolutionReverb();
+                  return true;
                 }
+                return false;
             }
 
             void initializeConvolutionReverb()

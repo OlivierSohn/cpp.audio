@@ -362,9 +362,6 @@ namespace imajuscule::audio {
           });
         }
       }
-      else {
-        return onEventResult::UNHANDLED;
-      }
       return onEventResult::OK;
     }
 

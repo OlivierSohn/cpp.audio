@@ -504,11 +504,11 @@ namespace imajuscule {
          Attack, decay and release interpolations are specified via parameters.
 
            | a |h| d |           |r|
-               ___                                      < 1
+               ---                                      < 1
               .   .
-             .      ._____________                      < s
+             .      .-------------                      < s
             .                     .
-         ___                       ___________________  < 0
+         ---                       -------------------  < 0
            ^                     ^ ^             ^
            |                     | envelopeDone1 envelopeDone2    <- state changes
            keyPressed            keyReleased                      <- state changes
