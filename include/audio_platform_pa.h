@@ -238,14 +238,14 @@ namespace imajuscule::audio {
     }
 
   public:
-      void TearDown() {
-          LG(INFO, "AudioOut::TearDown");
+      void doTearDown() {
+          LG(INFO, "AudioOut::doTearDown");
           if(stream)
           {
               PaError err = Pa_CloseStream( stream );
               stream = nullptr;
               if( unlikely(err != paNoError) ) {
-                  LG(ERR, "AudioOut::TearDown : Pa_CloseStream failed : %s", Pa_GetErrorText(err));
+                  LG(ERR, "AudioOut::doTearDown : Pa_CloseStream failed : %s", Pa_GetErrorText(err));
                   Assert(0);
                   return;
               }
@@ -257,11 +257,11 @@ namespace imajuscule::audio {
               PaError err = Pa_Terminate();
               if(err != paNoError)
               {
-                  LG(ERR, "AudioOut::TearDown : PA_Terminate failed : %s", Pa_GetErrorText(err));
+                  LG(ERR, "AudioOut::doTearDown : PA_Terminate failed : %s", Pa_GetErrorText(err));
                   return;
               }
           }
-          LG(INFO, "AudioOut::TearDown : success");
+          LG(INFO, "AudioOut::doTearDown : success");
       }
   };
 } // NS imajuscule::audio

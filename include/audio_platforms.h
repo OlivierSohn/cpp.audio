@@ -21,8 +21,11 @@ namespace imajuscule {
       */
       void disableDenormals();
 
+      constexpr auto initial_n_audio_cb_frames = -1;
+      // 'n_audio_cb_frames' is initially 'initial_n_audio_cb_frames', until the audio callback sets the value.
       extern std::atomic<int32_t> n_audio_cb_frames;
       static_assert(std::atomic<int32_t>::is_always_lock_free);
+
       extern int wait_for_first_n_audio_cb_frames();
 
     }

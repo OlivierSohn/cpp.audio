@@ -127,21 +127,20 @@ namespace imajuscule {
                 return true;
             }
 
-        public:
-            void TearDown() {
+            void doTearDown() {
                 if(!bInitialized) {
-                  LG(INFO, "AudioOut::TearDown : audio was not initialized.");
+                  LG(INFO, "AudioOut::doTearDown : audio was not initialized.");
                   return;
                 }
                 bInitialized = false;
-                LG(INFO, "AudioOut::TearDown : stopProcessingAudio.");
+                LG(INFO, "AudioOut::doTearDown : stopProcessingAudio.");
                 OSStatus err = stopProcessingAudio(audioUnit_out);
                 if( noErr != err ) {
-                    LG(ERR, "AudioOut::TearDown : stopProcessingAudio failed : %d", err);
+                    LG(ERR, "AudioOut::doTearDown : stopProcessingAudio failed : %d", err);
                     Assert(0);
                     return;
                 }
-                LG(INFO, "AudioOut::TearDown : success");
+                LG(INFO, "AudioOut::doTearDown : success");
             }
         };
 

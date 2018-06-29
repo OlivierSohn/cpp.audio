@@ -32,8 +32,6 @@ namespace imajuscule {
 
         bool overridePortaudioMinLatencyMillis(int latency);
 
-        constexpr auto initial_n_audio_cb_frames = -1;
-
         constexpr auto impulse_responses_root_dir = "audio.ir";
 
         int wait_for_first_n_audio_cb_frames();
@@ -70,6 +68,8 @@ namespace imajuscule {
             return true;
         }
 
+        constexpr int xfade_on_close = 200;
+
         template <typename T, Features Feat, AudioPlatform AUP >
         struct AudioOutContext : public Context<AUP, Feat, T> {
             static constexpr auto nAudioOut = T::nOuts;
@@ -83,20 +83,21 @@ namespace imajuscule {
             using Base::chans;
             using Base::bInitialized;
             using Base::doInit;
+            using Base::doTearDown;
 
             // the min latency used in case the initialization is done lazily
             static constexpr float minLazyLatency = 0.005f;
 
         private:
-            static constexpr auto xfade_on_close = 200;
 
-            bool closing : 1;
+            std::atomic_bool closing;
 
         public:
             template<typename ...Args>
             AudioOutContext(Args... args) : Base(GlobalAudioLock<policy>::get(), args ...)
-            , closing(false)
-            {}
+            {
+              closing.store(false, std::memory_order_relaxed);
+            }
 
             ~AudioOutContext() {
                 finalize();
@@ -107,52 +108,62 @@ namespace imajuscule {
             auto & getChannelHandler() { return chans; }
 
             void onApplicationShouldClose() {
-                if(closing) {
-                    return;
-                }
-                closing = true;
-                chans.getChannels().closeAllChannels(xfade_on_close);
-                LG(INFO, "Fading out Audio before shutdown...");
+              auto cur = false;
+              if(!closing.compare_exchange_strong(cur, true, std::memory_order_acq_rel)) {
+                // already done
+                return;
+              }
+              chans.getChannels().closeAllChannels(xfade_on_close);
+              LG(INFO, "Fading out Audio before shutdown...");
             }
 
             void finalize() {
-                if(!bInitialized) {
-                    return;
-                }
+              if(bInitialized) {
                 chans.getChannels().closeAllChannels(0);
+              }
+            }
+
+            /*
+            During this method call, no concurrent call to any other method is allowed.
+            */
+            void TearDown() {
+              // because we want to be able to use *this again after a successfull 'Init' :
+              closing.store(false, std::memory_order_release);
+              finalize();
+              doTearDown();
             }
 
             [[nodiscard]] bool Init(float minLatency) {
-                if(bInitialized) {
-                  LG(WARN, "Audio is already initialized, skipping initialization.");
-                  return true;
-                }
-                if(doInit(minLatency)) {
-                  initializeConvolutionReverb();
-                  return true;
-                }
-                return false;
+              if(bInitialized) {
+                LG(WARN, "Audio is already initialized, skipping initialization.");
+                return true;
+              }
+              if(doInit(minLatency)) {
+                initializeConvolutionReverb();
+                return true;
+              }
+              return false;
             }
 
             void initializeConvolutionReverb()
             {
-                // for Wind app we want to let the user decide to have reverb
-                dontUseConvolutionReverbs(chans);
+              // for Wind app we want to let the user decide to have reverb
+              dontUseConvolutionReverbs(chans);
 
-                // this one needs to be high pass filtered (5hz loud stuff)
-                /*    std::string dirname = std::string(impulse_responses_root_dir) + "/nyc.showroom";
-                 constexpr auto filename = "BigRoomStereo (16).wav";
-                 //std::string dirname = std::string(impulse_responses_root_dir) + "/im.reverbs";
-                 //constexpr auto filename = "Conic Long Echo Hall.wav";
-                 audio::useConvolutionReverb(chans, dirname, filename);
-                 */
+              // this one needs to be high pass filtered (5hz loud stuff)
+              /*    std::string dirname = std::string(impulse_responses_root_dir) + "/nyc.showroom";
+               constexpr auto filename = "BigRoomStereo (16).wav";
+               //std::string dirname = std::string(impulse_responses_root_dir) + "/im.reverbs";
+               //constexpr auto filename = "Conic Long Echo Hall.wav";
+               audio::useConvolutionReverb(chans, dirname, filename);
+               */
             }
 
 
           uint8_t openChannel(float volume, ChannelClosingPolicy p, int xfade_length)
           {
-            if(closing) {
-                return AUDIO_CHANNEL_NONE;
+            if(closing.load(std::memory_order_acquire)) {
+              return AUDIO_CHANNEL_NONE;
             }
             Init(minLazyLatency);
             if(auto c = getFirstXfadeInfiniteChans()) {
@@ -162,7 +173,7 @@ namespace imajuscule {
           }
 
           [[nodiscard]] bool play( uint8_t channel_id, StackVector<Request> && v ) {
-            if(closing) {
+            if(closing.load(std::memory_order_acquire)) {
               return false;
             }
             if(auto c = getFirstXfadeInfiniteChans()) {
@@ -171,34 +182,34 @@ namespace imajuscule {
             return false;
           }
 
-            template<typename Algo>
+          template<typename Algo>
           [[nodiscard]] bool playComputable( PackedRequestParams<nAudioOut> params, audioelement::FinalAudioElement<Algo> & e) {
-                if(closing) {
-                    return false;
-                }
-              if(auto c = getFirstXfadeInfiniteChans()) {
-                return c->playComputable( params, e);
-              }
+            if(closing.load(std::memory_order_acquire)) {
               return false;
             }
-
-            void toVolume( uint8_t channel_id, float volume, int nSteps ) {
-                if(closing) {
-                    return;
-                }
-              if(auto c = getFirstXfadeInfiniteChans()) {
-                c->toVolume( channel_id, volume, nSteps);
-              }
+            if(auto c = getFirstXfadeInfiniteChans()) {
+              return c->playComputable( params, e);
             }
+            return false;
+          }
 
-            void closeChannel(uint8_t channel_id, CloseMode mode) {
-              if(closing) {
-                  return;
-              }
-              if(auto c = getFirstXfadeInfiniteChans()) {
-                c->closeChannel( channel_id, mode );
-              }
+          void toVolume( uint8_t channel_id, float volume, int nSteps ) {
+            if(closing.load(std::memory_order_acquire)) {
+              return;
             }
+            if(auto c = getFirstXfadeInfiniteChans()) {
+              c->toVolume( channel_id, volume, nSteps);
+            }
+          }
+
+          void closeChannel(uint8_t channel_id, CloseMode mode) {
+            if(closing.load(std::memory_order_acquire)) {
+              return;
+            }
+            if(auto c = getFirstXfadeInfiniteChans()) {
+              c->closeChannel( channel_id, mode );
+            }
+          }
 
           typename Chans::ChannelsT::XFadeInfiniteChans * getFirstXfadeInfiniteChans() {
             if(auto m = getChannelHandler().getChannels().getChannelsXFadeInfinite().maybe_front()) {
