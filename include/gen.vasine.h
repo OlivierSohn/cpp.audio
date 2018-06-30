@@ -5,7 +5,6 @@ namespace imajuscule::audio::vasine {
   struct SynthImpl {
 
     int32_t get_xfade_length() const { return xfade_length; }
-    void set_xfade_length(int32_t l) { xfade_length = l; }
 
     static constexpr float get_gain() { return 1.f; };
 

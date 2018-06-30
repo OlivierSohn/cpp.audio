@@ -411,6 +411,10 @@ namespace imajuscule {
             int32_t counter = 0;
         };
 
+        // note that today, this envelope is not compatible with SynthT, as
+        // 'setEnvelopeCharacTime' will overwrite whatever the synth user has
+        // set.
+        // Prefer using 'EnvelopeCRT' instead.
         template <typename T, itp::interpolation AttackItp, itp::interpolation ReleaseItp>
         struct SimpleEnvelopeBase {
           static_assert(itp::intIsReal(AttackItp));
@@ -426,7 +430,7 @@ namespace imajuscule {
 
             // len is in samples
             void setEnvelopeCharacTime(int len) {
-                C = std::max(len,normalizedMinDt);
+              C = std::max(len,normalizedMinDt);
             }
         private:
           int32_t C = normalizedMinDt;
