@@ -555,8 +555,8 @@ namespace imajuscule {
                 bool hasDecay = s.sustain < 0.999999;
                 SMinusOne =
                   hasDecay ?
-                    clamp (s.sustain, static_cast<T>(0), static_cast<T>(1)) - static_cast<T>(1):
-                    static_cast<T>(0);
+                    clamp (s.sustain, 0.f, 1.f) - 1.f:
+                    0.f;
                 A = std::max( s.attack, normalizedMinDt );
                 H = std::max( s.hold, 0 );
                 D =
@@ -571,7 +571,9 @@ namespace imajuscule {
 
             // sets the min value of attack, decay and release.
             void setMinChangeDurationSamples(int nSamples) {
-              minChangeDuration = nSamples;
+              // we don't change 'minChangeDuration' now as it could break
+              // the envelope continuity.
+              nextMinChangeDuration = nSamples;
             }
 
         protected:
@@ -587,7 +589,7 @@ namespace imajuscule {
                 }
                 if(!ahdState) {
                     if constexpr (Rel == EnvelopeRelease::WaitForKeyRelease) {
-                      return static_cast<T>(1) + SMinusOne;
+                      return static_cast<T>(1) + static_cast<T>(SMinusOne);
                     }
                     else {
                       return {};
@@ -606,7 +608,7 @@ namespace imajuscule {
                             break;
                         case AHD::Decaying:
                             from = static_cast<T>(1);
-                            toMinusFrom = SMinusOne;
+                            toMinusFrom = static_cast<T>(SMinusOne);
                             break;
                         default:
                             toMinusFrom = from = static_cast<T>(0);
@@ -634,22 +636,41 @@ namespace imajuscule {
             }
 
         private:
+
+            // with an alignment of 4 (largest member)
+            // [0 bytes]
+
             int32_t ahdCounter = 0;
-            int32_t minChangeDuration = 0;
+            int32_t minChangeDuration = 0; // allowed to change when the counter is 0, to avoid discontinuities
+            int32_t nextMinChangeDuration = 0; // copied to 'minChangeDuration' when 'ahdCounter' == 0
             int32_t A = normalizedMinDt;
             int32_t H = 0;
             int32_t D = normalizedMinDt;
             int32_t R = normalizedMinDt;
-            itp::interpolation attackItp;
-            itp::interpolation decayItp;
-            itp::interpolation releaseItp;
-            T SMinusOne = static_cast<T>(-0.5);
+            float SMinusOne = -0.5f;
+
+            // [32 bytes]
 
             // this inner state is taken into account only while the outer state is KeyPressed:
             Optional<AHD> ahdState;
 
+            itp::interpolation attackItp;
+            itp::interpolation decayItp;
+
+            // [36 bytes]
+
+            itp::interpolation releaseItp;
+
+            // [40 bytes] (with 3 padding bytes)
+
+
             void onAHDStateChange() {
                 ahdCounter = 0;
+
+                // We are at a "safe point" where we can change 'minChangeDuration'
+                // while preserving the envelope continuity:
+                minChangeDuration = nextMinChangeDuration;
+
                 if(!ahdState) {
                     return;
                 }
