@@ -222,8 +222,7 @@ namespace imajuscule {
           {
             {
               FPT signalPeriodSamples = freq_to_period_in_continuous_samples(angle_increment_to_freq(a));
-              int minChangeDurationSamples = static_cast<int>(0.5f + characTimeMultiplier * signalPeriodSamples);
-              env.setMinChangeDurationSamples(minChangeDurationSamples);
+              env.setMinChangeDurationSamples(static_cast<int>(0.5f + characTimeMultiplier * signalPeriodSamples));
             }
             algo.setAngleIncrements(a);
           }
@@ -462,18 +461,19 @@ namespace imajuscule {
 
         template <Atomicity A, typename Base>
         struct EnvelopeCRT : public Base {
-            using FPT = typename Base::FPT;
-            using T = FPT;
-            static constexpr EnvelopeRelease Release = Base::Release;
-            static constexpr auto atomicity = A;
+          static constexpr auto atomicity = A;
+          using FPT = typename Base::FPT;
+          using T = FPT;
+          static constexpr EnvelopeRelease Release = Base::Release;
 
-            using NonAtomic = EnvelopeCRT<Atomicity::No, Base>;
+          using NonAtomic = EnvelopeCRT<Atomicity::No, Base>;
 
-            using Base::startPressed;
-            using Base::stepPressed;
-            using Base::getReleaseItp;
-            using Base::getReleaseTime;
-            using Base::isAfterAttackBeforeSustain;
+          using Base::startPressed;
+          using Base::stepPressed;
+          using Base::getReleaseItp;
+          using Base::getReleaseTime;
+          using Base::isAfterAttackBeforeSustain;
+          using Base::updateMinChangeDuration;
 
           /* on success, the thread calling this method has acquired ownership of the
            envelope. */
@@ -486,11 +486,12 @@ namespace imajuscule {
             void forgetPastSignals() {
               stateAcquisition.forget();
               counter = 0;
+              updateMinChangeDuration();
               // we don't set '_value', step() sets it.
             }
 
             void step() {
-                ++counter;
+              ++counter;
               switch(getRelaxedState()) {
                     case EnvelopeState::KeyPressed:
                     {
@@ -550,6 +551,7 @@ namespace imajuscule {
                 stateAcquisition.relaxedWrite(EnvelopeState::EnvelopeDone2);
               }
               else {
+                updateMinChangeDuration();
                 stateAcquisition.relaxedWrite(EnvelopeState::KeyReleased);
                 _topValue = _value;
                 counter = 0;
@@ -585,19 +587,38 @@ namespace imajuscule {
             auto getRelaxedState() const { return stateAcquisition.getRelaxedState(); }
 
         private:
-            // between 0 and 1.
-            FPT _value = static_cast<T>(0);
-            FPT _topValue = static_cast<T>(0); // the value when the key was released
-            EnvelopeStateAcquisition<A> stateAcquisition;
-            int32_t counter = 0;
+          // between 0 and 1.
+          FPT _value = static_cast<T>(0);
+          FPT _topValue = static_cast<T>(0); // the value when the key was released
+          EnvelopeStateAcquisition<A> stateAcquisition;
+          int32_t counter = 0;
         };
+      
+      struct WithMinChangeDuration {
+        void setMinChangeDurationSamples(int nSamples) {
+          // we don't change 'minChangeDuration' now as it could break
+          // the envelope continuity.
+          nextMinChangeDuration = nSamples;
+        }
+
+      protected:
+        int32_t minChangeDuration = 0; // allowed to change when the counter is 0, to avoid discontinuities
+        int32_t nextMinChangeDuration = 0; // copied to 'minChangeDuration' when 'ahdCounter' == 0
+
+        void updateMinChangeDuration() {
+          minChangeDuration = nextMinChangeDuration;
+        }
+        int32_t getMinChangeDuration() const {
+          return minChangeDuration;
+        }
+      };
 
         // note that today, this envelope is not compatible with SynthT, as
         // 'setEnvelopeCharacTime' will overwrite whatever the synth user has
         // set.
         // Prefer using 'EnvelopeCRT' instead.
         template <typename T, itp::interpolation AttackItp, itp::interpolation ReleaseItp>
-        struct SimpleEnvelopeBase {
+      struct SimpleEnvelopeBase : public WithMinChangeDuration {
           static_assert(itp::intIsReal(AttackItp));
           static_assert(itp::intIsReal(ReleaseItp));
           static_assert(AttackItp != itp::PROPORTIONAL_VALUE_DERIVATIVE);
@@ -615,6 +636,10 @@ namespace imajuscule {
             }
         private:
           int32_t C = normalizedMinDt;
+          
+          int32_t getCharacTime() const {
+            return std::max(getMinChangeDuration(), C);
+          }
 
         protected:
 
@@ -627,10 +652,10 @@ namespace imajuscule {
                                     , static_cast<T>(counter)
                                     , static_cast<T>(0)
                                     , static_cast<T>(1)
-                                    , static_cast<T>(C)));
+                                    , static_cast<T>(getCharacTime())));
           }
 
-          int32_t getReleaseTime() const { return C; }
+          int32_t getReleaseTime() const { return getCharacTime(); }
 
           static constexpr itp::interpolation getReleaseItp() { return ReleaseItp; }
 
@@ -667,7 +692,7 @@ namespace imajuscule {
         }
 
         template <typename T, EnvelopeRelease Rel>
-        struct AHDSREnvelopeBase {
+        struct AHDSREnvelopeBase : public WithMinChangeDuration {
             using FPT = T;
             using Param = AHDSR;
             static constexpr auto Release = Rel;
@@ -700,13 +725,6 @@ namespace imajuscule {
                 attackItp = s.attackItp;
                 decayItp = s.decayItp;
                 releaseItp = s.releaseItp;
-            }
-
-            // sets the min value of attack, decay and release.
-            void setMinChangeDurationSamples(int nSamples) {
-              // we don't change 'minChangeDuration' now as it could break
-              // the envelope continuity.
-              nextMinChangeDuration = nSamples;
             }
 
         protected:
@@ -759,7 +777,7 @@ namespace imajuscule {
             }
 
             int32_t getReleaseTime() const {
-              return std::max(minChangeDuration, R); // safe release
+              return std::max(getMinChangeDuration(), R); // safe release
             }
 
             itp::interpolation getReleaseItp() const { return releaseItp; }
@@ -774,15 +792,13 @@ namespace imajuscule {
             // [0 bytes]
 
             int32_t ahdCounter = 0;
-            int32_t minChangeDuration = 0; // allowed to change when the counter is 0, to avoid discontinuities
-            int32_t nextMinChangeDuration = 0; // copied to 'minChangeDuration' when 'ahdCounter' == 0
             int32_t A = normalizedMinDt;
             int32_t H = 0;
             int32_t D = normalizedMinDt;
             int32_t R = normalizedMinDt;
             float SMinusOne = -0.5f;
 
-            // [32 bytes]
+            // [28 bytes]
 
             // this inner state is taken into account only while the outer state is KeyPressed:
             Optional<AHD> ahdState;
@@ -790,26 +806,26 @@ namespace imajuscule {
             itp::interpolation attackItp;
             itp::interpolation decayItp;
 
-            // [36 bytes]
+            // [32 bytes]
 
             itp::interpolation releaseItp;
 
-            // [40 bytes] (with 3 padding bytes)
+            // [36 bytes] (with 3 padding bytes)
 
 
             void onAHDStateChange() {
-                ahdCounter = 0;
+              ahdCounter = 0;
 
-                // We are at a "safe point" where we can change 'minChangeDuration'
-                // while preserving the envelope continuity:
-                minChangeDuration = nextMinChangeDuration;
+              // We are at a "safe point" where we can change 'minChangeDuration'
+              // while preserving the envelope continuity:
+              updateMinChangeDuration();
 
-                if(!ahdState) {
-                    return;
-                }
-                if(0==getMaxCounterForAHD()) {
-                    stepAHD();
-                }
+              if(!ahdState) {
+                  return;
+              }
+              if(0==getMaxCounterForAHD()) {
+                  stepAHD();
+              }
             }
 
             void stepAHD() {
