@@ -193,7 +193,7 @@ namespace imajuscule {
         }
 
         template <typename ALGO, typename Envelope>
-        struct Envelopped {
+        struct Enveloped {
           static constexpr auto hasEnvelope = true;
           using FPT = typename ALGO::FPT;
           static_assert(std::is_same<typename ALGO::FPT, typename Envelope::FPT>::value);
@@ -681,7 +681,7 @@ namespace imajuscule {
         using AHDSREnvelope = EnvelopeCRT < A, AHDSREnvelopeBase <T, Rel> >;
 
         template <Atomicity A, typename ALGO>
-        using SimplyEnveloped = Envelopped<ALGO,SimpleLinearEnvelope<A, typename ALGO::FPT>>;
+        using SimplyEnveloped = Enveloped<ALGO,SimpleLinearEnvelope<A, typename ALGO::FPT>>;
 
         template<typename ALGO>
         struct VolumeAdjusted {
@@ -912,7 +912,7 @@ namespace imajuscule {
             }
         };
         template<typename Envel>
-        using Square = FinalAudioElement<Envelopped<SquareAlgo<typename Envel :: FPT>,Envel>>;
+        using Square = FinalAudioElement<Enveloped<SquareAlgo<typename Envel :: FPT>,Envel>>;
 
         /*
          * first pulse happends at angle = 0
@@ -1413,7 +1413,7 @@ namespace imajuscule {
         };
 
         template<typename Envel, eNormalizePolicy NormPolicy = eNormalizePolicy::FAST>
-        using Oscillator = FinalAudioElement<Envelopped<OscillatorAlgo<typename Envel::FPT, NormPolicy>, Envel>>;
+        using Oscillator = FinalAudioElement<Enveloped<OscillatorAlgo<typename Envel::FPT, NormPolicy>, Envel>>;
 
         template<typename T>
         struct LogRamp {
@@ -1833,7 +1833,7 @@ namespace imajuscule {
         using FreqRampAlgo = FreqRampOscillatorAlgo_<T, VolumeAdjust::Yes>;
 
         template<typename Envel>
-        using FreqRamp = FinalAudioElement<Envelopped<FreqRampAlgo<typename Envel::FPT>, Envel>>;
+        using FreqRamp = FinalAudioElement<Enveloped<FreqRampAlgo<typename Envel::FPT>, Envel>>;
 
         template<typename T, int ORDER>
         using FreqRampLPWhiteNoiseAlgo_ = FreqCtrl_<LPWhiteNoiseAlgo<T, ORDER>, LogRamp<T>>;

@@ -19,12 +19,12 @@ namespace imajuscule {
 
         std::array<audioelement::RingModulation<
         audioelement::LowPassAlgo<audioelement::PulseTrainAlgo<float>, 1>,
-        audioelement::Envelopped<audioelement::OscillatorAlgo<float>,audioelement::SimpleLinearEnvelope<A, float>>
+        audioelement::Enveloped<audioelement::OscillatorAlgo<float>,audioelement::SimpleLinearEnvelope<A, float>>
         >, 6> ringmods;
 
         std::array<audioelement::LowPass<audioelement::PulseTrainAlgo<float>, 1>, 6> lptrains;
     public:
-      
+
       Sounds() :
       squares{takeBuffer(), takeBuffer(), takeBuffer(), takeBuffer(), takeBuffer(), takeBuffer(), takeBuffer(), takeBuffer()}
       , oscillators{takeBuffer(), takeBuffer(), takeBuffer(), takeBuffer(), takeBuffer(), takeBuffer(), takeBuffer(), takeBuffer()}
