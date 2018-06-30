@@ -56,7 +56,7 @@ namespace imajuscule {
         soundId( Sound sound, float freq_hz = 1.f )
         :
         sound(sound),
-        period_length( (sound == Sound::SILENCE) ? 1 : freq_to_int_period( freq_hz ) )
+        period_length( (sound == Sound::SILENCE) ? 1 : freq_to_period_in_samples( freq_hz ) )
         {}
         
         Sound sound;

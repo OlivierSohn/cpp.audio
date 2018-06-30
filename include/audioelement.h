@@ -216,8 +216,19 @@ namespace imajuscule {
           }
           FPT angle() const { return algo.angle(); }
 
-          void setAngleIncrements(FPT a) {
-              algo.setAngleIncrements(a);
+          // [Based on observations]
+          // The attack and release lengths need to be longer for lower frequency notes,
+          // else we begin to hear cracks.
+          static constexpr FPT characTimeMultiplier = static_cast<FPT>(2.5);
+
+          void setAngleIncrements(FPT a)
+          {
+            {
+              FPT signalPeriodSamples = freq_to_period_in_continuous_samples(angle_increment_to_freq(a));
+              int minChangeDurationSamples = static_cast<int>(0.5f + characTimeMultiplier * signalPeriodSamples);
+              env.setMinChangeDurationSamples(minChangeDurationSamples);
+            }
+            algo.setAngleIncrements(a);
           }
 
           FPT real() const { return algo.real() * env.value(); }
@@ -233,7 +244,7 @@ namespace imajuscule {
             return env.tryAcquire();
           }
           void onKeyPressed() {
-              env.onKeyPressed();
+            env.onKeyPressed();
           }
           bool onKeyReleased() {
               return env.onKeyReleased();
@@ -541,19 +552,26 @@ namespace imajuscule {
             static_assert(normalizedMinDt > 0);
 
             void setAHDSR(AHDSR const & s) {
-                int32_t _A = s.attack;
-                int32_t _H = s.hold;
-                int32_t _D = s.decay;
-                int32_t _R = s.release;
-                auto S = clamp (s.sustain, static_cast<T>(0), static_cast<T>(1));
-                SMinusOne = S - static_cast<T>(1);
-                A = std::max( _A, normalizedMinDt );
-                H = std::max( _H, 0 );
-                D = std::max( _D, static_cast<int>(static_cast<T>(normalizedMinDt) * (static_cast<T>(1) - S)));
-                R = std::max( _R, static_cast<int>(static_cast<T>(normalizedMinDt) * S));
+                bool hasDecay = s.sustain < 0.999999;
+                SMinusOne =
+                  hasDecay ?
+                    clamp (s.sustain, static_cast<T>(0), static_cast<T>(1)) - static_cast<T>(1):
+                    static_cast<T>(0);
+                A = std::max( s.attack, normalizedMinDt );
+                H = std::max( s.hold, 0 );
+                D =
+                  hasDecay ?
+                    std::max( s.decay, normalizedMinDt) :
+                    0;
+                R = std::max( s.release, normalizedMinDt);
                 attackItp = s.attackItp;
                 decayItp = s.decayItp;
                 releaseItp = s.releaseItp;
+            }
+
+            // sets the min value of attack, decay and release.
+            void setMinChangeDurationSamples(int nSamples) {
+              minChangeDuration = nSamples;
             }
 
         protected:
@@ -605,7 +623,9 @@ namespace imajuscule {
                 }
             }
 
-            int32_t getReleaseTime() const { return R; }
+            int32_t getReleaseTime() const {
+              return std::max(minChangeDuration, R); // safe release
+            }
 
             itp::interpolation getReleaseItp() const { return releaseItp; }
 
@@ -615,6 +635,7 @@ namespace imajuscule {
 
         private:
             int32_t ahdCounter = 0;
+            int32_t minChangeDuration = 0;
             int32_t A = normalizedMinDt;
             int32_t H = 0;
             int32_t D = normalizedMinDt;
@@ -651,11 +672,14 @@ namespace imajuscule {
             int32_t getMaxCounterForAHD() const {
                 switch(get_value(ahdState)) {
                     case AHD::Attacking:
-                        return A;
+                        return std::max(minChangeDuration, A); // safe attack
                     case AHD::Holding:
                         return H;
                     case AHD::Decaying:
-                        return D;
+                        return
+                          (D == 0) ?
+                            0 : // skip decay
+                            std::max(minChangeDuration, D); // safe decay
                     default:
                         Assert(0);
                         return 0;
@@ -720,7 +744,7 @@ namespace imajuscule {
             }
 
             void setAngleIncrements(T ai) {
-                volume = loudness::equal_loudness_volume(angle_increment_to_freq(ai),
+                volume = loudness::equal_loudness_volume(angle_increment_to_freq<FPT>(ai),
                                                          low_index_,
                                                          log_ratio_,
                                                          loudness_level);

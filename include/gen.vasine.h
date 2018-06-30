@@ -18,7 +18,6 @@ namespace imajuscule::audio::vasine {
       return true;
     }
 
-    // the caller is responsible for taking the out lock if needed
     template<typename Chans, typename MonoNoteChannel, typename CS>
     std::function<bool(Chans&,int)> onStartNote(MonoNoteChannel & c, CS & cs)
     {

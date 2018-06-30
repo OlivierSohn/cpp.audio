@@ -237,7 +237,6 @@ namespace imajuscule::audio::cutramp {
       return true;
     }
 
-    // The caller is responsible for taking the out lock if needed.
     template<typename Chans, typename MonoNoteChannel, typename CS>
     std::function<bool(Chans&,int)> onStartNote(MonoNoteChannel & c, CS & cs)
     {

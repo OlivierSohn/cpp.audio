@@ -235,11 +235,6 @@ namespace imajuscule {
             return 1.f / (get_size_xfade() - 1);
         };
 
-        float duration_millis_xfade() const {
-            Assert(XF == XfadePolicy::UseXfade);
-            return frames_to_ms(static_cast<float>(get_size_xfade()));
-        }
-
         void step(SAMPLE * outputBuffer, int nFrames);
 
         bool addRequest(Request && r) {

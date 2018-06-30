@@ -68,7 +68,7 @@ namespace imajuscule {
             return true;
         }
 
-        constexpr int xfade_on_close = 200;
+        constexpr int xfade_on_close = 5000; // in samples
 
         template <typename T, Features Feat, AudioPlatform AUP >
         struct AudioOutContext : public Context<AUP, Feat, T> {
