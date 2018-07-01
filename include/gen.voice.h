@@ -1083,7 +1083,7 @@ namespace imajuscule::audio::voice {
       // in SoundEngine.playNextSpec (from the rt audio thread),
       // we onKeyPressed() the inactive ramp and onKeyReleased() the active ramp.
       for(auto & r: ramps) {
-        auto state = r.algo.getEnveloppe().getRelaxedState();
+        auto state = r.algo.getEnvelope().getRelaxedState();
         if(state == EnvelopeState::EnvelopeDone2) {
           if(engine.goOn()) {
             res.envelopeDone = &r;
@@ -1134,15 +1134,13 @@ namespace imajuscule::audio::voice {
     bool canHandleExplicitKeyReleaseNow() {
       return engine.goOn();
     }
-    bool onKeyReleased() {
+    void onKeyReleased() {
       if(auto i = engine.goOn()) {
         engine.stop(i);
         for(auto & r: ramps) {
-          r.onKeyReleased(); // ignore the result.
+          r.onKeyReleased();
         }
-        return true;
       }
-      return false;
     }
 
     // TODO forward params to the soundengine, let the soudengine do the call at onKeyPressed time.

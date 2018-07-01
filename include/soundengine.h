@@ -524,7 +524,7 @@ namespace imajuscule::audio {
         while(true) {
           auto rampsStatus = get_ramps();
           if(auto * prevRamp = rampsStatus.keyPressed) {
-            prevRamp->algo.onKeyReleased();
+            prevRamp->algo.editEnvelope().onKeyReleased();
           }
           auto new_ramp = rampsStatus.envelopeDone;
           if(!new_ramp) {
@@ -537,11 +537,11 @@ namespace imajuscule::audio {
           }
           new_ramp->algo.getAlgo().getCtrl() = new_spec->get();
           new_ramp->algo.forgetPastSignals();
-          new_ramp->algo.setEnvelopeCharacTime(xfade_len);
-          if(!new_ramp->algo.tryAcquire()) {
+          new_ramp->algo.editEnvelope().setEnvelopeCharacTime(xfade_len);
+          if(!new_ramp->algo.editEnvelope().tryAcquire()) {
             Assert(0);
           }
-          new_ramp->algo.onKeyPressed();
+          new_ramp->algo.editEnvelope().onKeyPressed();
 
           auto v = MakeVolume::run<nOuts>(1.f, pan) * (new_spec->volume()/Request::chan_base_amplitude);
           // note that by design (see code of caller), the channel request queue is empty at this point
@@ -560,7 +560,7 @@ namespace imajuscule::audio {
         // release all keys
 
         while(auto * prevRamp = get_ramps().keyPressed) {
-          prevRamp->algo.onKeyReleased();
+          prevRamp->algo.editEnvelope().onKeyReleased();
         }
         return false;
       }
@@ -569,7 +569,7 @@ namespace imajuscule::audio {
         Assert(articulative_pause_length > 2*channel.get_size_xfade());
 
         if(auto * prevRamp = get_ramps().keyPressed) {
-          prevRamp->algo.onKeyReleased();
+          prevRamp->algo.editEnvelope().onKeyReleased();
         }
         // note that by design (see code of caller), the channel request queue is empty at this point
         // no lock : the caller is responsible for taking the out lock

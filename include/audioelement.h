@@ -64,7 +64,7 @@ namespace imajuscule {
             FinalAudioElement& operator = (FinalAudioElement &&) = delete;
 
             bool isEnvelopeFinished() const {
-              return algo.isEnvelopeFinished();
+              return algo.getEnvelope().isEnvelopeFinished();
             }
 
             template <class... Args>
@@ -74,24 +74,24 @@ namespace imajuscule {
                 algo.forgetPastSignals();
             }
             void setEnvelopeCharacTime(int len) {
-              algo.setEnvelopeCharacTime(len);
+              algo.editEnvelope().setEnvelopeCharacTime(len);
             }
           bool canHandleExplicitKeyReleaseNow() const {
             if constexpr (hasEnvelope) {
-              return algo.canHandleExplicitKeyReleaseNow();
+              return algo.getEnvelope().canHandleExplicitKeyReleaseNow();
             }
             else {
               return false;
             }
           }
           bool tryAcquire() {
-            return algo.tryAcquire();
+            return algo.editEnvelope().tryAcquire();
           }
             void onKeyPressed() {
-                algo.onKeyPressed();
+                algo.editEnvelope().onKeyPressed();
             }
-            bool onKeyReleased() {
-                return algo.onKeyReleased();
+            void onKeyReleased() {
+                algo.editEnvelope().onKeyReleased();
             }
 
             FPT angle() const { return algo.angle(); }
@@ -202,9 +202,6 @@ namespace imajuscule {
             env.forgetPastSignals();
             algo.forgetPastSignals();
           }
-          void setEnvelopeCharacTime(int len) {
-            env.setEnvelopeCharacTime(len);
-          }
 
           void step() {
               env.step();
@@ -234,26 +231,10 @@ namespace imajuscule {
           FPT real() const { return algo.real() * env.value(); }
           FPT imag() const { return algo.imag() * env.value(); }
 
-          bool isEnvelopeFinished() const {
-              return env.isEnvelopeFinished();
-          }
-          bool canHandleExplicitKeyReleaseNow() const {
-            return env.canHandleExplicitKeyReleaseNow();
-          }
-          bool tryAcquire() {
-            return env.tryAcquire();
-          }
-          void onKeyPressed() {
-            env.onKeyPressed();
-          }
-          bool onKeyReleased() {
-              return env.onKeyReleased();
-          }
-
           auto & getOsc() { return algo.getOsc(); }
           auto & getAlgo() { return algo; }
-          auto const & getEnveloppe() const { return env; }
-          auto & editEnveloppe() { return env; }
+          auto const & getEnvelope() const { return env; }
+          auto & editEnvelope() { return env; }
 
           void setLoudnessParams(int low_index, float log_ratio, float loudness_level) {
               algo.setLoudnessParams(low_index, log_ratio, loudness_level);
@@ -271,6 +252,209 @@ namespace imajuscule {
           ALGO algo;
         };
 
+
+        /* The AHDSR envelope is like an ADSR envelope, except we allow to hold the value after the attack:
+
+           | a |h| d |           |r|
+               ---                                      < 1
+              .   .
+             .      .-------------                      < s
+            .                     .
+         ---                       -------------------  < 0
+           ^                     ^ ^             ^
+           |                     | envelopeDone1 envelopeDone2    <- state changes
+           keyPressed            keyReleased                      <- state changes
+           attacking                                              <- inner pressed state changes
+               holding                                            <- inner pressed state changes
+                 decaying                                         <- inner pressed state changes
+                    sustaining                                    <- inner pressed state changes
+
+         Attack, decay and release interpolations are configurable.
+
+         */
+         struct AHDSR {
+            int32_t attack;
+            itp::interpolation attackItp;
+            int32_t hold;
+            int32_t decay;
+            itp::interpolation decayItp;
+            int32_t release;
+            itp::interpolation releaseItp;
+            float sustain;
+        };
+
+        inline bool operator < (AHDSR const& l, AHDSR const& r)
+        {
+            return
+            std::make_tuple(l.attack,l.attackItp,l.hold,l.decay,l.decayItp,l.release,l.releaseItp,l.sustain) <
+            std::make_tuple(r.attack,r.attackItp,r.hold,r.decay,r.decayItp,r.release,r.releaseItp,r.sustain);
+        }
+
+        struct HarmonicProperties {
+          float phase, volume;
+        };
+
+
+        template <Atomicity A>
+        struct EnvelopeStateAcquisition {
+          using stateTraits = maybeAtomic<A,EnvelopeState>;
+          using stateType = typename stateTraits::type;
+
+          EnvelopeStateAcquisition() {
+            stateTraits::write(state, EnvelopeState::EnvelopeDone2, std::memory_order_relaxed);
+          }
+          void forget() {
+            relaxedWrite(EnvelopeState::EnvelopeDone2);
+          }
+          bool tryAcquire() {
+            auto cur = EnvelopeState::EnvelopeDone2;
+            return stateTraits::compareExchangeStrong(state,
+                                                      cur,
+                                                      EnvelopeState::SoonKeyPressed,
+                                                      std::memory_order_acq_rel);
+          }
+
+          auto getRelaxedState() const { return stateTraits::read(state, std::memory_order_relaxed); }
+
+          void relaxedWrite(EnvelopeState s) {
+            stateTraits::write(state, s, std::memory_order_relaxed);
+          }
+
+          bool isEnvelopeFinished() const {
+            return getRelaxedState() == EnvelopeState::EnvelopeDone2;
+          }
+        private:
+          stateType state;
+        };
+
+        template <typename ALGO, typename Envelope>
+        struct MultiEnveloped {
+
+          static constexpr bool hasEnvelope = true;
+
+          static constexpr auto atomicity = Envelope::atomicity;
+
+          using NonAtomicEnvelope = typename Envelope::NonAtomic;
+          // all inner-envelopes state reads / writes are done in the realtime
+          // thread, so we don't need atomicity:
+          using EA = Enveloped<ALGO, NonAtomicEnvelope>;
+
+          using FPT = typename ALGO::FPT;
+
+          void setHarmonics(std::vector<HarmonicProperties> const & props) {
+            harmonics.clear();
+            harmonics.reserve(props.size());
+            for(auto const & p : props) {
+              harmonics.emplace_back(EA{},p);
+            }
+          }
+
+          void forgetPastSignals() {
+            stateAcquisition.forget();
+            forEachHarmonic([](auto & algo) { algo.forgetPastSignals(); } );
+          }
+          void setEnvelopeCharacTime(int len) {
+            forEachHarmonic([len](auto & algo) { algo.editEnvelope().setEnvelopeCharacTime(len); } );
+          }
+
+          void step() {
+            imagValue = {};
+            bool goOn = false;
+            for(auto & [algo,property] : harmonics) {
+              algo.step();
+              if(!goOn) {
+                if(!algo.getEnvelope().isEnvelopeFinished()) {
+                  goOn = true;
+                }
+              }
+              imagValue += algo.imag() * property.volume;
+            }
+            if(!goOn) {
+              stateAcquisition.relaxedWrite(EnvelopeState::EnvelopeDone2);
+            }
+          }
+
+          auto &       editEnvelope()       { return *this; }
+          auto const & getEnvelope() const { return *this; }
+
+          void setAHDSR(AHDSR const & s) {
+            forEachHarmonic([&s](auto & algo) { algo.editEnvelope().setAHDSR(s); } );
+          }
+
+          bool tryAcquire() {
+            return stateAcquisition.tryAcquire();
+          }
+          void onKeyPressed() {
+            forEachHarmonic([](auto & algo) { algo.editEnvelope().onKeyPressed(); } );
+          }
+          void onKeyReleased() {
+            forEachHarmonic([](auto & algo) { algo.editEnvelope().onKeyReleased(); } );
+          }
+          bool canHandleExplicitKeyReleaseNow() const {
+            // using any_of here to support (in the future) having
+            //   ** some ** of the envelopes autorelease.
+            return std::any_of(
+              harmonics.begin(), harmonics.end(),
+              [](auto const & a){ return a.first.getEnvelope().canHandleExplicitKeyReleaseNow(); });
+          }
+          bool isEnvelopeFinished() const {
+            return stateAcquisition.isEnvelopeFinished();
+          }
+
+          auto & getOsc() {
+            return *this;
+          }
+
+          void setAngle(FPT a) {
+            for(auto & [algo,property] : harmonics) {
+              algo.setAngle(a + property.phase);
+            }
+          }
+
+          FPT angle() const {
+            if(unlikely(harmonics.empty())) {
+              return static_cast<FPT>(0);
+            }
+            return harmonics[0].first.angle() - harmonics[0].second.phase;
+          }
+
+          void setAngleIncrements(FPT a)
+          {
+            forEachIndexedHarmonic([a](int i, auto & algo) { algo.setAngleIncrements(a * static_cast<FPT>(i)); });
+          }
+
+          FPT imag() const { return imagValue; }
+
+          void setLoudnessParams(int low_index, float log_ratio, float loudness_level) {
+            forEachHarmonic([low_index, log_ratio, loudness_level](auto & algo) {
+              algo.setLoudnessParams(low_index, log_ratio, loudness_level);
+            });
+          }
+
+        private:
+          // the order of elements in the pair is optimized to have linear memory accesses in step():
+          std::vector<std::pair<EA, HarmonicProperties>> harmonics;
+          EnvelopeStateAcquisition<atomicity> stateAcquisition;
+          FPT imagValue;
+
+          template<typename F>
+          void forEachHarmonic(F f) {
+            for(auto & [a,_] : harmonics) {
+              f(a);
+            }
+          }
+
+          template<typename F>
+          void forEachIndexedHarmonic(F f) {
+            int i=0;
+            for(auto & [a,_] : harmonics) {
+              ++i;
+              f(i,a);
+            }
+          }
+
+        };
+
         enum class EnvelopeRelease {
           WaitForKeyRelease,
           ReleaseAfterDecay
@@ -281,9 +465,9 @@ namespace imajuscule {
             using FPT = typename Base::FPT;
             using T = FPT;
             static constexpr EnvelopeRelease Release = Base::Release;
+            static constexpr auto atomicity = A;
 
-          using stateTraits = maybeAtomic<A,EnvelopeState>;
-          using stateType = typename stateTraits::type;
+            using NonAtomic = EnvelopeCRT<Atomicity::No, Base>;
 
             using Base::startPressed;
             using Base::stepPressed;
@@ -291,24 +475,16 @@ namespace imajuscule {
             using Base::getReleaseTime;
             using Base::isAfterAttackBeforeSustain;
 
-          EnvelopeCRT() : Base() {
-            stateTraits::write(state, EnvelopeState::EnvelopeDone2, std::memory_order_relaxed);
-          }
-
           /* on success, the thread calling this method has acquired ownership of the
            envelope. */
           bool tryAcquire() {
-            auto cur = EnvelopeState::EnvelopeDone2;
-            return stateTraits::compareExchangeStrong(state,
-                                                      cur,
-                                                      EnvelopeState::SoonKeyPressed,
-                                                      std::memory_order_acq_rel);
+            return stateAcquisition.tryAcquire();
             // we don't 'onKeyPressed' yet : maybe the audio element using
             // this envelope needs to be initialized first.
           }
 
             void forgetPastSignals() {
-              state = EnvelopeState::EnvelopeDone2;
+              stateAcquisition.forget();
               counter = 0;
               // we don't set '_value', step() sets it.
             }
@@ -336,7 +512,7 @@ namespace imajuscule {
                                                   , - _topValue
                                                   , static_cast<T>(getReleaseTime()));
                         if(counter >= getReleaseTime()) {
-                          stateTraits::write(state, EnvelopeState::EnvelopeDone1, std::memory_order_relaxed);
+                          stateAcquisition.relaxedWrite(EnvelopeState::EnvelopeDone1);
                           counter = 0;
                           _value = static_cast<T>(0);
                         }
@@ -344,7 +520,7 @@ namespace imajuscule {
                     case EnvelopeState::EnvelopeDone1:
                         if(counter > n_frames_per_buffer) { // to be sure that all non-zero computed signals
                           // were used
-                          stateTraits::write(state, EnvelopeState::EnvelopeDone2, std::memory_order_relaxed);
+                          stateAcquisition.relaxedWrite(EnvelopeState::EnvelopeDone2);
                           counter = 0;
                         }
                         [[fallthrough]];
@@ -360,34 +536,29 @@ namespace imajuscule {
             }
 
             void onKeyPressed() {
-                stateTraits::write(state, EnvelopeState::KeyPressed, std::memory_order_relaxed);
-                counter = 0;
-                startPressed();
+              stateAcquisition.relaxedWrite(EnvelopeState::KeyPressed);
+              counter = 0;
+              startPressed();
             }
 
-            bool onKeyReleased() {
-                if(getRelaxedState() == EnvelopeState::KeyPressed) {
-                    if(0 == counter) {
-                      // the key was pressed, but immediately released, so we skip the note.
-                      stateTraits::write(state, EnvelopeState::EnvelopeDone2, std::memory_order_relaxed);
-                    }
-                    else {
-                      stateTraits::write(state, EnvelopeState::KeyReleased, std::memory_order_relaxed);
-                      _topValue = _value;
-                      counter = 0;
-                    }
-                    return true;
-                }
-                return false;
+            void onKeyReleased() {
+              if(getRelaxedState() != EnvelopeState::KeyPressed) {
+                return;
+              }
+              if(0 == counter) {
+                // the key was pressed, but immediately released, so we skip the note.
+                stateAcquisition.relaxedWrite(EnvelopeState::EnvelopeDone2);
+              }
+              else {
+                stateAcquisition.relaxedWrite(EnvelopeState::KeyReleased);
+                _topValue = _value;
+                counter = 0;
+              }
             }
 
             bool isEnvelopeFinished() const {
-              return getRelaxedState() == EnvelopeState::EnvelopeDone2;
+              return stateAcquisition.isEnvelopeFinished();
             }
-
-          void unsafeForceFinish() {
-            stateTraits::write(state, EnvelopeState::EnvelopeDone2, std::memory_order_relaxed);
-          }
 
             bool afterAttackBeforeSustain() const {
               return isAfterAttackBeforeSustain(counter);
@@ -411,14 +582,13 @@ namespace imajuscule {
             }
 #endif
 
-            auto getRelaxedState() const { return stateTraits::read(state, std::memory_order_relaxed); }
+            auto getRelaxedState() const { return stateAcquisition.getRelaxedState(); }
 
         private:
             // between 0 and 1.
             FPT _value = static_cast<T>(0);
             FPT _topValue = static_cast<T>(0); // the value when the key was released
-
-            stateType state;
+            EnvelopeStateAcquisition<A> stateAcquisition;
             int32_t counter = 0;
         };
 
@@ -496,43 +666,6 @@ namespace imajuscule {
             }
         }
 
-        struct AHDSR {
-            int32_t attack;
-            itp::interpolation attackItp;
-            int32_t hold;
-            int32_t decay;
-            itp::interpolation decayItp;
-            int32_t release;
-            itp::interpolation releaseItp;
-            float sustain;
-        };
-
-        inline bool operator < (AHDSR const& l, AHDSR const& r)
-        {
-            return
-            std::make_tuple(l.attack,l.attackItp,l.hold,l.decay,l.decayItp,l.release,l.releaseItp,l.sustain) <
-            std::make_tuple(r.attack,r.attackItp,r.hold,r.decay,r.decayItp,r.release,r.releaseItp,r.sustain);
-        }
-
-        /* The AHDSR envelope is like an ADSR envelope, except we allow to hold the value after the attack:
-
-         Attack, decay and release interpolations are specified via parameters.
-
-           | a |h| d |           |r|
-               ---                                      < 1
-              .   .
-             .      .-------------                      < s
-            .                     .
-         ---                       -------------------  < 0
-           ^                     ^ ^             ^
-           |                     | envelopeDone1 envelopeDone2    <- state changes
-           keyPressed            keyReleased                      <- state changes
-           attacking                                              <- inner pressed state changes
-               holding                                            <- inner pressed state changes
-                 decaying                                         <- inner pressed state changes
-                    sustaining                                    <- inner pressed state changes
-
-         */
         template <typename T, EnvelopeRelease Rel>
         struct AHDSREnvelopeBase {
             using FPT = T;
@@ -754,10 +887,10 @@ namespace imajuscule {
               osc.setEnvelopeCharacTime(len);
             }
             void onKeyPressed() {
-                osc.onKeyPressed();
+              osc.onKeyPressed();
             }
-            bool onKeyReleased() {
-                return osc.onKeyReleased();
+            void onKeyReleased() {
+              osc.onKeyReleased();
             }
 
             void setFiltersOrder(int order) {
@@ -853,9 +986,8 @@ namespace imajuscule {
             void onKeyPressed() {
                 Assert(0);
             }
-            bool onKeyReleased() {
+            void onKeyReleased() {
                 Assert(0);
-                return false;
             }
 
             T real() const { return std::cos(static_cast<T>(M_PI) * angle_); }
@@ -885,9 +1017,8 @@ namespace imajuscule {
             void onKeyPressed() {
                 Assert(0);
             }
-            bool onKeyReleased() {
+            void onKeyReleased() {
                 Assert(0);
-                return false;
             }
 
             T imag() const { return sb[index]; }
@@ -928,9 +1059,8 @@ namespace imajuscule {
           void onKeyPressed() {
             Assert(0);
           }
-          bool onKeyReleased() {
+          void onKeyReleased() {
             Assert(0);
-            return false;
           }
         };
 
@@ -951,9 +1081,8 @@ namespace imajuscule {
             void onKeyPressed() {
                 Assert(0);
             }
-            bool onKeyReleased() {
+            void onKeyReleased() {
                 Assert(0);
-                return false;
             }
         };
         template<typename Envel>
@@ -994,9 +1123,8 @@ namespace imajuscule {
             void onKeyPressed() {
                 Assert(0);
             }
-            bool onKeyReleased() {
+            void onKeyReleased() {
                 Assert(0);
-                return false;
             }
         private:
             T pulse_width{};
@@ -1016,9 +1144,8 @@ namespace imajuscule {
             void onKeyPressed() {
                 Assert(0);
             }
-            bool onKeyReleased() {
+            void onKeyReleased() {
                 Assert(0);
-                return false;
             }
 
             using T = typename NthTypeOf<0, AEs...>::FPT;
@@ -1116,10 +1243,10 @@ namespace imajuscule {
               return audio_element.isEnvelopeFinished();
             }
             void onKeyPressed() {
-                return audio_element.onKeyPressed();
+              audio_element.onKeyPressed();
             }
-            bool onKeyReleased() {
-                return audio_element.onKeyReleased();
+            void onKeyReleased() {
+              audio_element.onKeyReleased();
             }
 
           bool canHandleExplicitKeyReleaseNow() const {
@@ -1209,10 +1336,10 @@ namespace imajuscule {
               return cascade.isEnvelopeFinished();
             }
             void onKeyPressed() {
-                return cascade.onKeyPressed();
+                cascade.onKeyPressed();
             }
-            bool onKeyReleased() {
-                return cascade.onKeyReleased();
+            void onKeyReleased() {
+                cascade.onKeyReleased();
             }
 
         protected:
@@ -1245,13 +1372,12 @@ namespace imajuscule {
               return lp.isEnvelopeFinished() && hp.isEnvelopeFinished();
             }
             void onKeyPressed() {
-                lp.onKeyPressed();
-                hp.onKeyPressed();
+              lp.onKeyPressed();
+              hp.onKeyPressed();
             }
-            bool onKeyReleased() {
-                auto res = lp.onKeyReleased();
-                auto res2 = hp.onKeyReleased();
-                return res || res2;
+            void onKeyReleased() {
+              lp.onKeyReleased();
+              hp.onKeyReleased();
             }
 
         private:
@@ -1406,9 +1532,8 @@ namespace imajuscule {
             void onKeyPressed() {
                 Assert(0);
             }
-            bool onKeyReleased() {
+            void onKeyReleased() {
                 Assert(0);
-                return false;
             }
 
             void setFiltersOrder(int order) const {
@@ -1459,6 +1584,9 @@ namespace imajuscule {
 
         template<typename Envel, eNormalizePolicy NormPolicy = eNormalizePolicy::FAST>
         using Oscillator = FinalAudioElement<Enveloped<OscillatorAlgo<typename Envel::FPT, NormPolicy>, Envel>>;
+
+        template<typename Envel, eNormalizePolicy NormPolicy = eNormalizePolicy::FAST>
+        using MultiOscillator = FinalAudioElement<MultiEnveloped<OscillatorAlgo<typename Envel::FPT, NormPolicy>, Envel>>;
 
         template<typename T>
         struct LogRamp {
@@ -1862,8 +1990,8 @@ namespace imajuscule {
             void onKeyPressed() {
                 osc.onKeyPressed();
             }
-            bool onKeyReleased() {
-                return osc.onKeyReleased();
+            void onKeyReleased() {
+                osc.onKeyReleased();
             }
 
         private:
@@ -1949,18 +2077,16 @@ namespace imajuscule {
                     Assert(0);
                 }
             }
-            bool onKeyReleased() {
-                bool res = false;
+            void onKeyReleased() {
                 if(A1::hasEnvelope) {
-                    res = osc1.onKeyReleased();
+                    osc1.onKeyReleased();
                 }
                 if(A2::hasEnvelope) {
-                    res = osc2.onKeyReleased() || res;
+                    osc2.onKeyReleased();
                 }
                 if(!A1::hasEnvelope && !A2::hasEnvelope) {
                     Assert(0);
                 }
-                return res;
             }
 
           bool canHandleExplicitKeyReleaseNow() const {
