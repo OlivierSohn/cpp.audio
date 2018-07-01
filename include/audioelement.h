@@ -577,7 +577,7 @@ namespace imajuscule {
 
 #ifndef NDEBUG
             void logDiagnostic() {
-              std::cout << "state:     " << toString(state) << std::endl;
+              std::cout << "state:     " << toString(stateAcquisition.getRelaxedState()) << std::endl;
               std::cout << "counter:   " << counter << std::endl;
               std::cout << "_value:    " << _value << std::endl;
               std::cout << "_topValue: " << _topValue << std::endl;
