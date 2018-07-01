@@ -57,21 +57,23 @@ namespace imajuscule {
       // or we need to constrain the implementation to add requests in realtime, using orchestrators.
       , computes(2*nChannelsMax)
       , oneShots(2*nChannelsMax)
-        {
-            Assert(nChannelsMax >= 0);
-            Assert(nChannelsMax <= std::numeric_limits<uint8_t>::max()); // else need to update AUDIO_CHANNEL_NONE
+      {
+        Assert(nChannelsMax >= 0);
+        Assert(nChannelsMax <= std::numeric_limits<uint8_t>::max()); // else need to update AUDIO_CHANNEL_NONE
 
-            channels.reserve(nChannelsMax);
-            autoclosing_ids.reserve(nChannelsMax);
-            available_ids.reserve(nChannelsMax);
-        }
+        channels.reserve(nChannelsMax);
+        autoclosing_ids.reserve(nChannelsMax);
+        available_ids.reserve(nChannelsMax);
+
+        nRealtimeFuncs.store(0,std::memory_order_relaxed);
+      }
 
       // this method should not be called from the real-time thread
       // because it yields() and retries.
       template<typename F>
       void enqueueOneShot(F f) {
         if constexpr(shouldNRTThreadUseOneshotsQueue<policy>()) {
-          ++nOrchestratorsAndComputes;
+          nRealtimeFuncs.fetch_add(1, std::memory_order_relaxed);
           while(!oneShots.tryEnqueue(f)) {
             std::this_thread::yield();
           }
@@ -85,7 +87,7 @@ namespace imajuscule {
           if(!orchestrators.tryInsert(std::move(f))) {
             return false;
           }
-          ++nOrchestratorsAndComputes;
+          nRealtimeFuncs.fetch_add(1, std::memory_order_relaxed);
           return true;
         }
 
@@ -94,7 +96,7 @@ namespace imajuscule {
           if(!computes.tryInsert(std::move(f))) {
             return false;
           }
-          ++nOrchestratorsAndComputes;
+          nRealtimeFuncs.fetch_add(1, std::memory_order_relaxed);
           return true;
         }
 
@@ -110,8 +112,8 @@ namespace imajuscule {
 
         bool empty() const { return channels.empty(); }
 
-        bool hasOrchestratorsOrComputes() const {
-          return nOrchestratorsAndComputes > 0;
+        bool hasRealtimeFunctions() const {
+          return nRealtimeFuncs.load(std::memory_order_relaxed) > 0;
         }
 
         void toVolume(uint8_t channel_id, float volume, int nSteps) {
@@ -313,16 +315,23 @@ namespace imajuscule {
             available_ids.Return(channel_id);
         }
 
+        /*
+        * Called from the audio realtime trhead.
+        */
         void run_computes(bool tictac, int nFrames) {
-          nOrchestratorsAndComputes -= oneShots.dequeueAll([this](auto const & f) { f(*this); });
+          int nRemoved(0);
 
-          nOrchestratorsAndComputes -= orchestrators.forEach([this](auto const & orchestrate) {
+          nRemoved += oneShots.dequeueAll([this](auto const & f) { f(*this); });
+
+          nRemoved += orchestrators.forEach([this](auto const & orchestrate) {
             return orchestrate(*this, audioelement::n_frames_per_buffer);
           });
 
-          nOrchestratorsAndComputes -= computes.forEach([tictac, nFrames](auto const & compute) {
+          nRemoved += computes.forEach([tictac, nFrames](auto const & compute) {
             return compute(tictac, nFrames);
           });
+
+          nRealtimeFuncs.fetch_sub(nRemoved, std::memory_order_relaxed);
         }
 
         template <typename F>
@@ -354,7 +363,8 @@ namespace imajuscule {
 
         // This counter is used to be able to know, without locking, if there are
         // any computes / orchestrators / oneshot functions ATM.
-        int32_t nOrchestratorsAndComputes = 0;
+        std::atomic_int nRealtimeFuncs; // all operations are 'memory_order_relaxed'
+        static_assert(std::atomic_int::is_always_lock_free);
 
         [[nodiscard]] bool playNolock( uint8_t channel_id, StackVector<Request> && v) {
             bool res = true;

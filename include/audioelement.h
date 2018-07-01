@@ -271,7 +271,7 @@ namespace imajuscule {
           ALGO algo;
         };
 
-        enum class EnvelopeRelease : unsigned char {
+        enum class EnvelopeRelease {
           WaitForKeyRelease,
           ReleaseAfterDecay
         };
