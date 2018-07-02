@@ -214,7 +214,7 @@ namespace imajuscule::audio {
       MIDI_LG(INFO, "all notes off");
       chans.enqueueOneShot([this](auto &){
         for(auto & c : seconds(channels)) {
-          c.elem.onKeyReleased();
+          c.elem.editEnvelope().onKeyReleased();
         }
       });
     }
@@ -224,7 +224,7 @@ namespace imajuscule::audio {
       MIDI_LG(INFO, "all sounds off");
       chans.enqueueOneShot([this](auto &){
         for(auto & c : seconds(channels)) {
-          c.elem.onKeyReleased();
+          c.elem.editEnvelope().onKeyReleased();
         }
       });
     }
