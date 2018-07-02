@@ -241,7 +241,7 @@ namespace imajuscule::audio::cutramp {
     std::function<bool(Chans&,int)> onStartNote(MonoNoteChannel & c, CS & cs)
     {
       setPhase(c,cs);
-      c.elem.onKeyPressed();
+      c.elem.editEnvelope().onKeyPressed();
       return {};
     }
 

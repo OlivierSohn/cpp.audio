@@ -254,10 +254,10 @@ namespace imajuscule::audio {
           typename Out::LockFromNRT L(out.get_lock());
 
           for(auto & c : seconds(channels)) {
-            if(!c.elem.tryAcquire()) {
+            if(!c.elem.editEnvelope().tryAcquire()) {
               continue;
             }
-            Assert(!c.elem.isEnvelopeFinished()); // because we just acquired it.
+            Assert(!c.elem.getEnvelope().isEnvelopeFinished()); // because we just acquired it.
             channel = &c;
             break;
           }
@@ -277,7 +277,7 @@ namespace imajuscule::audio {
         TunedPitch tp{e.noteOn.pitch, e.noteOn.tuning};
         channels.corresponding(*channel) = tp; // if we do that in the audio rt thread,
 
-        c.elem.setEnvelopeCharacTime(get_xfade_length());
+        c.elem.editEnvelope().setEnvelopeCharacTime(get_xfade_length());
 
         auto freq = to_freq(tp.getValue()-Do_midi, half_tone);
         // setupAudioElement is allowed to be slow, allocate / deallocate memory, etc...
@@ -287,7 +287,7 @@ namespace imajuscule::audio {
           return onDroppedNote(e.noteOn.pitch);
         }
 
-        Assert(!c.elem.isEnvelopeFinished());
+        Assert(!c.elem.getEnvelope().isEnvelopeFinished());
 
         // 3. [with maybe-lock]
         //      register the maybe-oneshot that does
@@ -351,10 +351,10 @@ namespace imajuscule::audio {
                 continue;
               }
               auto & c = channels.corresponding(tunedPitch);
-              if(!c.elem.canHandleExplicitKeyReleaseNow()) {
+              if(!c.elem.getEnvelope().canHandleExplicitKeyReleaseNow()) {
                 continue;
               }
-              c.elem.onKeyReleased();
+              c.elem.editEnvelope().onKeyReleased();
               return;
             }
             // The corresponding noteOn was skipped,
@@ -428,7 +428,7 @@ namespace imajuscule::audio {
       Assert(&otherChannel != &c);
       // To prevent phase cancellation, the phase of the new note will be
       // coherent with the phase of any active channel that plays a note at the same frequency.
-      if(otherChannel.elem.isEnvelopeFinished()) {
+      if(otherChannel.elem.getEnvelope().isEnvelopeFinished()) {
         continue;
       }
       auto & otherAlgo = otherChannel.elem.algo;

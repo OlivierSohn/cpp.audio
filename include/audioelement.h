@@ -63,36 +63,20 @@ namespace imajuscule {
             FinalAudioElement(FinalAudioElement &&) = delete;
             FinalAudioElement& operator = (FinalAudioElement &&) = delete;
 
-            bool isEnvelopeFinished() const {
-              return algo.getEnvelope().isEnvelopeFinished();
-            }
-
             template <class... Args>
             FinalAudioElement(buffer_t & b, Args&&... args) : buffer(&b), algo(std::forward<Args>(args)...) {}
 
             void forgetPastSignals() {
                 algo.forgetPastSignals();
             }
-            void setEnvelopeCharacTime(int len) {
-              algo.editEnvelope().setEnvelopeCharacTime(len);
-            }
-          bool canHandleExplicitKeyReleaseNow() const {
-            if constexpr (hasEnvelope) {
-              return algo.getEnvelope().canHandleExplicitKeyReleaseNow();
-            }
-            else {
-              return false;
-            }
+          template <class U=ALGO,typename=std::enable_if_t<U::hasEnvelope>>
+          auto & getEnvelope() const {
+            return algo.getEnvelope();
           }
-          bool tryAcquire() {
-            return algo.editEnvelope().tryAcquire();
+          template <class U=ALGO,typename=std::enable_if_t<U::hasEnvelope>>
+          auto & editEnvelope() {
+            return algo.editEnvelope();
           }
-            void onKeyPressed() {
-                algo.editEnvelope().onKeyPressed();
-            }
-            void onKeyReleased() {
-                algo.editEnvelope().onKeyReleased();
-            }
 
             FPT angle() const { return algo.angle(); }
 
@@ -142,7 +126,7 @@ namespace imajuscule {
             if constexpr (hasEnvelope) {
               // it is important that isEnvelopeFinished() returns true only one buffer cycle after
               // the real enveloppe end, to avoid race conditions.
-              if(isEnvelopeFinished()) {
+              if(getEnvelope().isEnvelopeFinished()) {
                 return false;
               };
             }
@@ -2041,7 +2025,7 @@ namespace imajuscule {
 
             using Tr = NumTraits<T>;
 
-            RingModulationAlgo() = default;
+            auto & getOsc() { return *this; }
 
             void set(T angle_increments1, T angle_increments2, bool reset = true) {
                 osc1.setAngleIncrements(angle_increments1);

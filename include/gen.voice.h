@@ -1073,7 +1073,7 @@ namespace imajuscule::audio::voice {
     using buffer_t = std::array<Buf,3>;
 
     static constexpr auto computable = false; // uses the notion of orchestrators instead
-    static constexpr auto hasEnvelope = audioElt::hasEnvelope;
+    static constexpr auto hasEnvelope = true;
 
     EngineAndRamps(buffer_t&b) :
     ramps{b[0],b[1],b[2]},
@@ -1099,6 +1099,8 @@ namespace imajuscule::audio::voice {
     }}
     {
     }
+    auto &       editEnvelope()       { return *this; }
+    auto const & getEnvelope()  const { return *this; }
 
     bool tryAcquire() {
       unsigned int cur = engine.getOddOn();
@@ -1131,14 +1133,14 @@ namespace imajuscule::audio::voice {
     void onKeyPressed() {
       // we don't increment 'oddOn' here, or 'engine.set_active(true)' : it has been done in 'tryAcquire'.
     }
-    bool canHandleExplicitKeyReleaseNow() {
+    bool canHandleExplicitKeyReleaseNow() const {
       return engine.goOn();
     }
     void onKeyReleased() {
       if(auto i = engine.goOn()) {
         engine.stop(i);
         for(auto & r: ramps) {
-          r.onKeyReleased();
+          r.editEnvelope().onKeyReleased();
         }
       }
     }
@@ -1191,7 +1193,7 @@ namespace imajuscule::audio::voice {
         return false;
       }
       for(auto & r: ramps) {
-        if(!r.isEnvelopeFinished()) {
+        if(!r.getEnvelope().isEnvelopeFinished()) {
           return false;
         }
       }
