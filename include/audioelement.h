@@ -273,11 +273,6 @@ namespace imajuscule {
             std::make_tuple(r.attack,r.attackItp,r.hold,r.decay,r.decayItp,r.release,r.releaseItp,r.sustain);
         }
 
-        struct HarmonicProperties {
-          float phase, volume;
-        };
-
-
         template <Atomicity A>
         struct EnvelopeStateAcquisition {
           using stateTraits = maybeAtomic<A,EnvelopeState>;
@@ -324,7 +319,8 @@ namespace imajuscule {
 
           using FPT = typename ALGO::FPT;
 
-          void setHarmonics(std::vector<HarmonicProperties> const & props) {
+          template <typename Arr>
+          void setHarmonics(Arr const & props) {
             harmonics.clear();
             harmonics.reserve(props.size());
             for(auto const & p : props) {
@@ -416,7 +412,7 @@ namespace imajuscule {
 
         private:
           // the order of elements in the pair is optimized to have linear memory accesses in step():
-          std::vector<std::pair<EA, HarmonicProperties>> harmonics;
+          std::vector<std::pair<EA, harmonicProperties_t>> harmonics;
           EnvelopeStateAcquisition<atomicity> stateAcquisition;
           FPT imagValue;
 
@@ -577,7 +573,7 @@ namespace imajuscule {
           EnvelopeStateAcquisition<A> stateAcquisition;
           int32_t counter = 0;
         };
-      
+
       struct WithMinChangeDuration {
         void setMinChangeDurationSamples(int nSamples) {
           // we don't change 'minChangeDuration' now as it could break
@@ -620,7 +616,7 @@ namespace imajuscule {
             }
         private:
           int32_t C = normalizedMinDt;
-          
+
           int32_t getCharacTime() const {
             return std::max(getMinChangeDuration(), C);
           }

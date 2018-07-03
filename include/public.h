@@ -12,6 +12,8 @@
 
 #include "../../cpp.algorithms/include/public.h"
 
+#include "c.h"
+
 #include "audio_platforms.h"
 
 #include "sound.defines.h"
