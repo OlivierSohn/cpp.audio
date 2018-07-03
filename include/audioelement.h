@@ -305,6 +305,57 @@ namespace imajuscule {
           stateType state;
         };
 
+        inline bool isAudible(harmonicProperties_t const & h) {
+          return std::abs(h.volume) > 0.000001f;
+        }
+
+        /* returns -1 when no harmonic is audible. */
+        template <typename Arr>
+        int indexOfLastAudibleHarmonic(Arr const & props) {
+          auto sz = props.size();
+          for(int i = sz-1; i >= 0; --i) {
+            if (isAudible(props[i])) {
+              return i;
+            }
+          }
+          return -1;
+        }
+
+
+        template<typename Arr>
+        std::size_t hashHarmonics(Arr const & harmonics) {
+          std::size_t res = 0;
+          auto add_to_hash = [&res](auto v) {
+            hash_combine(res, v);
+          };
+
+          int n = 1 + indexOfLastAudibleHarmonic(harmonics);
+
+          // TODO should we allow small differences by reducing the float precision?
+          for(auto const & har : take(n, harmonics)) {
+            float volume(0.f), nfPhase(0.f);
+            // Even if an harmonic is not audible, we must add information in the hash,
+            // else [1,0,1] would have the same hash as [1,1].
+            if(isAudible(har)) {
+              volume = har.volume;
+              // Put the phase in [0,2] interval:
+              constexpr float modPhase = 2.f;
+              nfPhase = std::fmod(har.phase,modPhase);
+              if(nfPhase < 0.f) {
+                nfPhase += modPhase;
+              }
+              Assert(nfPhase >= 0.f);
+              Assert(nfPhase <= modPhase);
+            }
+            add_to_hash(volume);
+            add_to_hash(nfPhase);
+          }
+
+
+          return res;
+        }
+
+
         template <typename ALGO, typename Envelope>
         struct MultiEnveloped {
 
@@ -322,9 +373,15 @@ namespace imajuscule {
           template <typename Arr>
           void setHarmonics(Arr const & props) {
             harmonics.clear();
-            harmonics.reserve(props.size());
-            for(auto const & p : props) {
-              harmonics.emplace_back(EA{},p);
+
+            // discard the last consecutive harmonics of zero volume.
+            int sz = 1 + indexOfLastAudibleHarmonic(props);
+            Assert(sz >= 0);
+            Assert(sz <= props.size());
+
+            harmonics.reserve(sz);
+            for(int i=0; i<sz; ++i) {
+              harmonics.emplace_back(EA{},props[i]);
             }
           }
 
@@ -340,6 +397,7 @@ namespace imajuscule {
             imagValue = {};
             bool goOn = false;
             for(auto & [algo,property] : harmonics) {
+              // we could skip zero-volume harmonics.
               algo.step();
               if(!goOn) {
                 if(!algo.getEnvelope().isEnvelopeFinished()) {

@@ -12,7 +12,10 @@
 
 #include "../../cpp.algorithms/include/public.h"
 
+extern "C"
+{
 #include "c.h"
+}
 
 #include "audio_platforms.h"
 
