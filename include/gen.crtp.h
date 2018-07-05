@@ -424,10 +424,10 @@ namespace imajuscule::audio {
       if(otherChannel.elem.getEnvelope().isEnvelopeFinished()) {
         continue;
       }
-      thisAlgo.synchronizeAngles(otherChannel.elem.algo);
+      thisAlgo.getOsc().synchronizeAngles(otherChannel.elem.algo.getOsc());
       return;
     }
-    thisAlgo.setAngle(std::uniform_real_distribution<float>{-1.f, 1.f}(mersenne<SEEDED::Yes>()));
+    thisAlgo.getOsc().setAngle(std::uniform_real_distribution<float>{-1.f, 1.f}(mersenne<SEEDED::Yes>()));
   }
 
 } // NS imajuscule::audio

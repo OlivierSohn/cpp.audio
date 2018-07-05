@@ -458,7 +458,7 @@ namespace imajuscule {
             for(int i=0, sz = std::min(harmonics.size(), other.harmonics.size());
                 i != sz;
                 ++i) {
-              harmonics[i].first.setAngle(other.harmonics[i].first.angle());
+              harmonics[i].first.getOsc().synchronizeAngles(other.harmonics[i].first.getOsc());
             }
           }
 
@@ -935,6 +935,8 @@ namespace imajuscule {
 
         template<typename ALGO>
         struct VolumeAdjusted {
+            using MeT = VolumeAdjusted<ALGO>;
+          
             static constexpr auto hasEnvelope = ALGO::hasEnvelope;
             using T = typename ALGO::FPT;
             using FPT = T;
@@ -980,6 +982,10 @@ namespace imajuscule {
             void setAngle(T ai) {
                 osc.setAngle(ai);
             }
+          
+          void synchronizeAngles(MeT const & other) {
+            osc.synchronizeAngles(other.osc);
+          }
 
             void setLoudnessParams(int low_index, float log_ratio, float loudness_level) {
                 Assert(low_index >= 0);
@@ -1589,6 +1595,7 @@ namespace imajuscule {
 
         template<typename T, eNormalizePolicy NormPolicy = eNormalizePolicy::FAST>
         struct OscillatorAlgo {
+          using MeT = OscillatorAlgo<T,NormPolicy>;
             static constexpr auto hasEnvelope = false;
             using Tr = NumTraits<T>;
             using FPT = T;
@@ -1611,7 +1618,11 @@ namespace imajuscule {
             void setFiltersOrder(int order) const {
             }
 
-            void setAngle(T f) {
+          void synchronizeAngles(MeT const & other) {
+            cur = other.cur;
+          }
+
+          void setAngle(T f) {
                 cur = polar(static_cast<T>(M_PI)*f);
             }
             void setAngleIncrements(T f) {
