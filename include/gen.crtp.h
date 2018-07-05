@@ -109,14 +109,6 @@ namespace imajuscule::audio {
   static inline Phase mkDeterministicPhase(float v) { return Phase{true,v}; }
   static inline Phase mkNonDeterministicPhase() { return Phase{false,{}}; }
 
-  template<typename T>
-  void setAlgoPhase (Phase const & phase, T&algo) {
-    auto angle =
-    phase.isDeterministic() ?
-    phase.getDeterministicValue() :
-    std::uniform_real_distribution<float>{-1.f, 1.f}(mersenne<SEEDED::Yes>());
-    algo.getOsc().setAngle(angle);
-  }
 
   template<
   AudioOutPolicy outPolicy,
@@ -200,7 +192,7 @@ namespace imajuscule::audio {
     // returns true if at least one channel has an active enveloppe.
     bool areEnvelopesFinished() const {
       for(auto const & c : seconds(channels)) {
-        if(!c.elem.isEnvelopeFinished()) {
+        if(!c.elem.getEnvelope().isEnvelopeFinished()) {
           return false;
         }
       }
@@ -320,12 +312,14 @@ namespace imajuscule::audio {
                                                std::numeric_limits<decltype(std::declval<Request>().duration_in_frames)>::max()
                                              }))
               {
+                // there is currently no error reporting from the realtime thread.
                 return;
               }
             }
             if(auto orchestrator = this -> template onStartNote<Chans>(c,channels)) {
               chans.add_orchestrator(orchestrator);
             }
+            c.elem.editEnvelope().onKeyPressed();
           });
         }
       }
@@ -416,7 +410,6 @@ namespace imajuscule::audio {
   void setPhase(MonoNoteChannel & c, CS & cs)
   {
     auto & tp = cs.corresponding(c);
-    auto phase = mkNonDeterministicPhase();
     auto & thisAlgo = c.elem.algo;
     for(auto &p : firsts(cs)) {
       if((&p == &tp) || (p != tp)) {
@@ -431,11 +424,10 @@ namespace imajuscule::audio {
       if(otherChannel.elem.getEnvelope().isEnvelopeFinished()) {
         continue;
       }
-      auto & otherAlgo = otherChannel.elem.algo;
-      phase = mkDeterministicPhase(otherAlgo.angle());
-      break;
+      thisAlgo.synchronizeAngles(otherChannel.elem.algo);
+      return;
     }
-    setAlgoPhase(phase, thisAlgo);
+    thisAlgo.setAngle(std::uniform_real_distribution<float>{-1.f, 1.f}(mersenne<SEEDED::Yes>()));
   }
 
 } // NS imajuscule::audio

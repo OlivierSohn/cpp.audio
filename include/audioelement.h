@@ -355,9 +355,14 @@ namespace imajuscule {
           return res;
         }
 
+        template<typename FPT>
+        constexpr FPT harmonic_angle(int i, FPT a) {
+          return static_cast<FPT>(i) * a;
+        }
 
         template <typename ALGO, typename Envelope>
         struct MultiEnveloped {
+          using MeT = MultiEnveloped<ALGO, Envelope>;
 
           static constexpr bool hasEnvelope = true;
 
@@ -411,7 +416,7 @@ namespace imajuscule {
             }
           }
 
-          auto &       editEnvelope()       { return *this; }
+          auto &       editEnvelope()      { return *this; }
           auto const & getEnvelope() const { return *this; }
 
           void setAHDSR(AHDSR const & s) {
@@ -443,11 +448,21 @@ namespace imajuscule {
           }
 
           void setAngle(FPT a) {
-            for(auto & [algo,property] : harmonics) {
-              algo.setAngle(a + property.phase);
+            forEachIndexedHarmonic([a](int i, auto & algo, auto const & property) {
+              algo.setAngle(property.phase + harmonic_angle(i,a));
+            });
+          }
+
+          void synchronizeAngles(MeT const & other) {
+            Assert(harmonics.size() == other.harmonics.size());
+            for(int i=0, sz = std::min(harmonics.size(), other.harmonics.size());
+                i != sz;
+                ++i) {
+              harmonics[i].first.setAngle(other.harmonics[i].first.angle());
             }
           }
 
+          /* Returns the angle of the first harmonic. */
           FPT angle() const {
             if(unlikely(harmonics.empty())) {
               return static_cast<FPT>(0);
@@ -455,9 +470,12 @@ namespace imajuscule {
             return harmonics[0].first.angle() - harmonics[0].second.phase;
           }
 
+          /* Where the i-th harmonic has a frequency i times the frequency of the first harmonic */
           void setAngleIncrements(FPT a)
           {
-            forEachIndexedHarmonic([a](int i, auto & algo) { algo.setAngleIncrements(a * static_cast<FPT>(i)); });
+            forEachIndexedHarmonic([a](int i, auto & algo, auto const & property [[maybe_unused]]) {
+              algo.setAngleIncrements(harmonic_angle(i,a));
+            });
           }
 
           FPT imag() const { return imagValue; }
@@ -484,9 +502,9 @@ namespace imajuscule {
           template<typename F>
           void forEachIndexedHarmonic(F f) {
             int i=0;
-            for(auto & [a,_] : harmonics) {
+            for(auto & [algo,property] : harmonics) {
               ++i;
-              f(i,a);
+              f(i,algo,property);
             }
           }
 
@@ -855,7 +873,7 @@ namespace imajuscule {
               ahdCounter = 0;
 
               // We are at a "safe point" where we can change 'minChangeDuration'
-              // while preserving the envelope continuity:
+              // whilst preserving the envelope continuity:
               updateMinChangeDuration();
 
               if(!ahdState) {
@@ -987,7 +1005,7 @@ namespace imajuscule {
             ALGO osc;
         };
 
-        // the unit of angle increments is "radian / pi"
+        // the unit of angle and angle increments is "radian / pi"
 
         template<typename T>
         struct Phased {

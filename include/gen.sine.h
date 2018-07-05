@@ -16,7 +16,6 @@ namespace imajuscule::audio::sine {
     std::function<bool(Chans&,int)> onStartNote(MonoNoteChannel & c, CS & cs)
     {
       setPhase(c,cs);
-      c.elem.onKeyPressed();
       return {};
     }
   private:
