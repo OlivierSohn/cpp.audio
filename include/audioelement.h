@@ -214,7 +214,8 @@ namespace imajuscule {
           FPT real() const { return algo.real() * env.value(); }
           FPT imag() const { return algo.imag() * env.value(); }
 
-          auto & getOsc() { return algo.getOsc(); }
+          auto const & getOsc() const { return algo.getOsc(); }
+          auto       & getOsc()       { return algo.getOsc(); }
           auto & getAlgo() { return algo; }
           auto const & getEnvelope() const { return env; }
           auto & editEnvelope() { return env; }
@@ -443,9 +444,8 @@ namespace imajuscule {
             return stateAcquisition.isEnvelopeFinished();
           }
 
-          auto & getOsc() {
-            return *this;
-          }
+          auto       & getOsc()       { return *this; }
+          auto const & getOsc() const { return *this; }
 
           void setAngle(FPT a) {
             forEachIndexedHarmonic([a](int i, auto & algo, auto const & property) {
@@ -936,7 +936,7 @@ namespace imajuscule {
         template<typename ALGO>
         struct VolumeAdjusted {
             using MeT = VolumeAdjusted<ALGO>;
-          
+
             static constexpr auto hasEnvelope = ALGO::hasEnvelope;
             using T = typename ALGO::FPT;
             using FPT = T;
@@ -948,9 +948,8 @@ namespace imajuscule {
             T angleIncrements() const { return osc.angleIncrements(); }
             T angle() const { return osc.angle(); }
 
-          auto & getOsc() {
-            return osc;
-          }
+          auto       & getOsc()       { return osc; }
+          auto const & getOsc() const { return osc; }
 
             VolumeAdjusted() : log_ratio_(1.f), low_index_(0) {}
 
@@ -982,7 +981,7 @@ namespace imajuscule {
             void setAngle(T ai) {
                 osc.setAngle(ai);
             }
-          
+
           void synchronizeAngles(MeT const & other) {
             osc.synchronizeAngles(other.osc);
           }
@@ -2057,7 +2056,8 @@ namespace imajuscule {
             T real() const { return osc.real(); }
             T imag() const { return osc.imag(); }
 
-            auto & getOsc() { return osc; }
+            auto const & getOsc() const { return osc; }
+            auto       & getOsc()       { return osc; }
 
             auto & getCtrl() {
                 assert(std::tuple_size<Ctrl>::value == 1);
@@ -2108,7 +2108,8 @@ namespace imajuscule {
 
             using Tr = NumTraits<T>;
 
-            auto & getOsc() { return *this; }
+            auto const & getOsc() const { return *this; }
+            auto       & getOsc()       { return *this; }
 
             void set(T angle_increments1, T angle_increments2, bool reset = true) {
                 osc1.setAngleIncrements(angle_increments1);
