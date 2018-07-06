@@ -1662,6 +1662,11 @@ namespace imajuscule {
             constexpr OscillatorAlgo(T angle_increments) { setAngleIncrements(angle_increments); }
             constexpr OscillatorAlgo() : mult(Tr::one(), Tr::zero()) {}
 
+            auto const & getOsc() const { return *this; }
+            auto       & getOsc()       { return *this; }
+
+            void setLoudnessParams(int low_index, float log_ratio, float loudness_level) {
+            }
             void forgetPastSignals() {
             }
             void setEnvelopeCharacTime(int len) {
