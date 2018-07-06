@@ -41,15 +41,15 @@ namespace imajuscule {
     }
 
     /*
-     struct Compressor {
+     struct SoftCompressor {
      // some parts inspired from https://github.com/audacity/audacity/blob/master/src/effects/Compressor.cpp
 
      static constexpr auto length_sliding_avg = 40;
 
-     Compressor(Compressor&&) = default;
-     Compressor& operator=(Compressor&&) = default;
+     SoftCompressor(SoftCompressor&&) = default;
+     SoftCompressor& operator=(SoftCompressor&&) = default;
 
-     Compressor() : avgs(makeArray<slidingAverage<float, KEEP_INITIAL_VALUES>, nAudioOut>(length_sliding_avg)) {
+     SoftCompressor() : avgs(makeArray<slidingAverage<float, KEEP_INITIAL_VALUES>, nAudioOut>(length_sliding_avg)) {
      }
      std::array<slidingAverage<float, KEEP_INITIAL_VALUES>, nAudioOut> avgs;
 
@@ -461,7 +461,7 @@ namespace imajuscule {
                 }
             }
 
-            // run delays before hardlimiting...
+            // run delays
 #if WITH_DELAY
             for( auto & delay : delays ) {
                 // todo low pass filter for more realism
@@ -469,6 +469,7 @@ namespace imajuscule {
             }
 #endif
 
+            // compress / hardlimit
             for(int i=0; i<nFrames; ++i) {
                 for(auto const & f: post_process) {
                     f(&buffer[i*nAudioOut]); // or call the lambda for the whole buffer at once?
@@ -557,7 +558,12 @@ namespace imajuscule {
         using readyType = typename readyTraits::type;
 
         readyType ready = false;
-        std::vector<postProcessFunc> post_process = {{ [](float v[nAudioOut]) {
+      std::vector<postProcessFunc> post_process = {
+        { [this](float v[nAudioOut]) {
+          CArray<nAudioOut, float> a{v};
+          compressor.feed(a);
+        }},
+        { [](float v[nAudioOut]) {
             for(int i=0; i<nAudioOut; ++i) {
                 if(likely(-1.f <= v[i] && v[i] <= 1.f)) {
                     continue;
@@ -756,6 +762,7 @@ namespace imajuscule {
           readyTraits::write(ready, true, std::memory_order_relaxed);
         }
 
+      audio::Compressor compressor;
     };
 
     template< typename ChannelsType >
