@@ -322,6 +322,18 @@ namespace imajuscule {
           return -1;
         }
 
+        // Returns a phase in [0,2] interval
+        template<typename T>
+        T phaseToNormalForm(T phase) {
+          constexpr T modPhase = 2;
+          T nfPhase = std::fmod(phase,modPhase);
+          if(nfPhase < 0) {
+            nfPhase += modPhase;
+          }
+          Assert(nfPhase >= 0);
+          Assert(nfPhase <= modPhase);
+          return nfPhase;
+        }
 
         template<typename Arr>
         std::size_t hashHarmonics(Arr const & harmonics) {
@@ -339,14 +351,7 @@ namespace imajuscule {
             // else [1,0,1] would have the same hash as [1,1].
             if(isAudible(har)) {
               volume = har.volume;
-              // Put the phase in [0,2] interval:
-              constexpr float modPhase = 2.f;
-              nfPhase = std::fmod(har.phase,modPhase);
-              if(nfPhase < 0.f) {
-                nfPhase += modPhase;
-              }
-              Assert(nfPhase >= 0.f);
-              Assert(nfPhase <= modPhase);
+              nfPhase = phaseToNormalForm(har.phase);
             }
             add_to_hash(volume);
             add_to_hash(nfPhase);
@@ -933,9 +938,14 @@ namespace imajuscule {
         template <Atomicity A, typename ALGO>
         using SimplyEnveloped = Enveloped<ALGO,SimpleLinearEnvelope<A, typename ALGO::FPT>>;
 
+        /* Adjusts the volume of a mono-frequency algorithm. */
         template<typename ALGO>
         struct VolumeAdjusted {
             using MeT = VolumeAdjusted<ALGO>;
+            // if the underlying algo has more than one frequency
+            // then we can't use this volume adjustment algorithm
+            // because it would make sense only for the fundamental frequency.
+            static_assert(ALGO::isMonoHarmonic);
 
             static constexpr auto hasEnvelope = ALGO::hasEnvelope;
             using T = typename ALGO::FPT;
@@ -1014,43 +1024,78 @@ namespace imajuscule {
 
         template<typename T>
         struct Phased {
-            using FPT = T;
-            static_assert(std::is_floating_point<FPT>::value);
-            using Tr = NumTraits<T>;
+          using FPT = T;
+          static_assert(std::is_floating_point<FPT>::value);
+          using Tr = NumTraits<T>;
 
-            Phased() = default;
-            Phased(T angle_increments) { setAngleIncrements(angle_increments); }
+          Phased() = default;
+          Phased(T angle_increments) { setAngleIncrements(angle_increments); }
 
-            void setAngle( T angle ) { angle_ = angle; }
-            T angle() const { return angle_; }
+          void setEnvelopeCharacTime(int len) {
+              Assert(0);
+          }
 
-            void setAngleIncrements(T v) {
-                Assert(std::abs(v) < Tr::two()); // else need to modulo it
-                angle_increments = v;
+          bool isEnvelopeFinished() const {
+            Assert(0);
+            return false;
+          }
+          void onKeyPressed() {
+              Assert(0);
+          }
+          void onKeyReleased() {
+              Assert(0);
+          }
+
+          void forgetPastSignals() {
+          }
+
+          void synchronizeAngles(Phased<T> const & other) {
+            setAngle(other.angle_);
+          }
+
+          void setAngle( T angle ) { angle_ = phaseToNormalForm(angle); }
+          T angle() const { return angle_; }
+
+          void setAngleIncrements(T v) {
+            Assert(std::abs(v) < Tr::two()); // else need to modulo it
+            angle_increments = v;
+          }
+          T angleIncrements() const { return angle_increments; }
+
+          void step() {
+            angle_ += angle_increments;
+            if(angle_ > Tr::two()) {
+              angle_ -= Tr::two();
+              if(angle_ > Tr::two()) {
+                LG(ERR, "step 1 : %f (%f)", angle_, angle_increments);
+              }
+              Assert(angle_ <= Tr::two());
             }
-            T angleIncrements() const { return angle_increments; }
-
-            void step() {
-                angle_ += angle_increments;
-                if(angle_ > Tr::two()) {
-                    angle_ -= Tr::two();
-                }
-                else if(angle_ < Tr::zero()) {
-                    angle_ += Tr::two();
-                }
+            else if(angle_ < Tr::zero()) {
+              angle_ += Tr::two();
+              if(angle_ < Tr::zero()) {
+                LG(ERR, "step 2 : %f (%f)", angle_, angle_increments);
+              }
+              Assert(angle_ >= Tr::zero());
             }
+          }
 
-            protected:
-            T angle_ = Tr::zero();
-            T angle_increments;
+          protected:
+          T angle_ = {};
+          T angle_increments;
         };
 
         /*
          * Phase controlled oscillator
+         *
+         * Uses 'sin' and 'cos' function, hence it will be less performant
+         * than 'OscillatorAlgo'.
          */
         template<typename T>
         struct PCOscillatorAlgo : public Phased<T> {
             static constexpr auto hasEnvelope = false;
+            static constexpr auto isMonoHarmonic = true;
+
             using Phased<T>::angle_;
 
             PCOscillatorAlgo() = default;
@@ -1141,29 +1186,55 @@ namespace imajuscule {
           }
         };
 
-        template<typename T>
-        struct SquareAlgo : public Phased<T> {
-            static constexpr auto hasEnvelope = false;
-            using Phased<T>::angle_;
+        enum class FOscillator {
+          SAW, SQUARE, TRIANGLE
+        };
 
-            SquareAlgo() = default;
-            SquareAlgo(T angle_increments) : Phased<T>(angle_increments) {}
-
-            T imag() const { return square(angle_); }
-
-            bool isEnvelopeFinished() const {
+        constexpr bool monoHarmonic(FOscillator o) {
+          switch(o) {
+            case FOscillator::SAW:
+            case FOscillator::TRIANGLE:
+            case FOscillator::SQUARE:
+              return false;
+            default:
               Assert(0);
               return false;
+          }
+        }
+
+        template<typename T, FOscillator O>
+        struct FOscillatorAlgo : public Phased<T> {
+          static constexpr auto hasEnvelope = false;
+          static constexpr auto isMonoHarmonic = monoHarmonic(O);
+          using Phased<T>::angle_;
+
+          FOscillatorAlgo() = default;
+          FOscillatorAlgo(T angle_increments) : Phased<T>(angle_increments) {}
+
+          auto       & getOsc()       {return *this; }
+          auto const & getOsc() const {return *this; }
+
+          void setLoudnessParams(int low_index, float log_ratio, float loudness_level) {}
+
+          T imag() const {
+            if constexpr (O == FOscillator::SAW) {
+              return saw(angle_);
             }
-            void onKeyPressed() {
-                Assert(0);
+            else if constexpr(O == FOscillator::SQUARE) {
+              return square(angle_);
             }
-            void onKeyReleased() {
-                Assert(0);
+            else if constexpr(O == FOscillator::TRIANGLE) {
+              return triangle(angle_);
             }
+            else {
+              Assert(0);
+              return 0;
+            }
+          }
         };
+
         template<typename Envel>
-        using Square = FinalAudioElement<Enveloped<SquareAlgo<typename Envel :: FPT>,Envel>>;
+        using Square = FinalAudioElement<Enveloped<FOscillatorAlgo<typename Envel :: FPT, FOscillator::SQUARE>,Envel>>;
 
         /*
          * first pulse happends at angle = 0
@@ -1182,9 +1253,6 @@ namespace imajuscule {
                 Assert(pulse_width >= angle_increments); // else it's always 0
             }
 
-            void forgetPastSignals() {
-            }
-
             void set(T angle_increments, T pulse_width_) {
                 Assert(pulse_width_ >= angle_increments); // else it's always 0
                 this->setAngleIncrements(angle_increments);
@@ -1193,16 +1261,6 @@ namespace imajuscule {
 
             T imag() const { return pulse(angle_, pulse_width); }
 
-            bool isEnvelopeFinished() const {
-              Assert(0);
-              return false;
-            }
-            void onKeyPressed() {
-                Assert(0);
-            }
-            void onKeyReleased() {
-                Assert(0);
-            }
         private:
             T pulse_width{};
         };
@@ -1596,6 +1654,8 @@ namespace imajuscule {
         struct OscillatorAlgo {
           using MeT = OscillatorAlgo<T,NormPolicy>;
             static constexpr auto hasEnvelope = false;
+            static constexpr auto isMonoHarmonic = true;
+
             using Tr = NumTraits<T>;
             using FPT = T;
 

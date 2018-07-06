@@ -57,14 +57,8 @@ static float triangle_( float angle_radians ) {
     static const float inv_pi = 1.f / (float)M_PI;
 
     angle_radians *= inv_pi;
-    if( angle_radians < 0.5f ) {        // 0 .. 0.5   ->  0 .. 1
-        return 2.f * angle_radians;
-    } else if( angle_radians < 1.5f ) { // 0.5 .. 1.5 ->  1 .. -1
-        return 2.f - 2.f * angle_radians;
-    } else {                            // 1.5 .. 2   ->  -1 .. 0
-        Assert( angle_radians <= 2.f );
-        return -4.f + 2.f * angle_radians;
-    }
+
+    return triangle(angle_radians);
 }
 static float saw_( float angle_radians ) {
     Assert(angle_radians >= 0.f);
@@ -73,12 +67,7 @@ static float saw_( float angle_radians ) {
     constexpr float inv_pi = 1.f / (float)M_PI;
 
     angle_radians *= inv_pi;
-    if( angle_radians <= 1.f ) {        // 0 .. 1   ->  0 .. 1
-        return angle_radians;
-    } else {                            // 1 .. 2   ->  -1 .. 0
-        Assert( angle_radians <= 2.f );
-        return -2.f + angle_radians;
-    }
+    return saw(angle_radians);
 }
 
 static float square_( float angle_radians ) {
@@ -196,7 +185,7 @@ soundBuffer::soundBuffer( soundId const & id ) {
                 logSummary();
                 break;
             }
-            
+
             default:
               Assert(0);
               break;

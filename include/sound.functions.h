@@ -47,13 +47,13 @@ namespace imajuscule {
     // angle increment unit is "rad / pi"
     template<typename T>
     constexpr T freq_to_angle_increment(T freq) {
-        static_assert(std::is_floating_point<T>::value);
+        static_assert(std::is_floating_point_v<T>);
         return 2 * freq / SAMPLE_RATE;
     }
 
     template<typename T>
     constexpr T angle_increment_to_freq(T i) {
-        static_assert(std::is_floating_point<T>::value);
+        static_assert(std::is_floating_point_v<T>);
         return i * half_sample_rate<T>();
     }
 
@@ -70,29 +70,55 @@ namespace imajuscule {
       return seconds * SAMPLE_RATE;
     }
 
-    template<typename T>
-    constexpr T square(T ang) {
-        static_assert(std::is_floating_point<T>::value);
-        using Tr = NumTraits<T>;
-        if( Tr::half() < ang && ang < Tr::one_and_half() ) {
-            return -Tr::one();
-        } else {
-            return Tr::one();
-        }
+  template<typename T>
+  constexpr T square(T ang) {
+    static_assert(std::is_floating_point_v<T>);
+    using Tr = NumTraits<T>;
+    if( Tr::half() < ang && ang < Tr::one_and_half() ) {
+      return -Tr::one();
+    } else {
+      return Tr::one();
     }
+  }
 
-    template<typename T>
-    constexpr T pulse(T ang, T pulse_width) {
-        static_assert(std::is_floating_point<T>::value);
-        using Tr = NumTraits<T>;
-        Assert(pulse_width >= 0);
-        Assert(ang >= 0);
-        Assert(ang <= 2);
-        if( ang < pulse_width ) {
-            return Tr::one();
-        } else {
-            return Tr::zero();
-        }
+  template<typename T>
+  constexpr T pulse(T ang, T pulse_width) {
+    static_assert(std::is_floating_point_v<T>);
+    using Tr = NumTraits<T>;
+    Assert(pulse_width >= 0);
+    Assert(ang >= 0);
+    Assert(ang <= 2);
+    if( ang < pulse_width ) {
+      return Tr::one();
+    } else {
+      return Tr::zero();
     }
+  }
+
+  template<typename T>
+  constexpr T triangle(T ang) {
+    static_assert(std::is_floating_point_v<T>);
+    if( ang < static_cast<T>(0.5) ) {        // 0 .. 0.5   ->  0 .. 1
+      return static_cast<T>(2) * ang;
+    } else if( ang < static_cast<T>(1.5) ) { // 0.5 .. 1.5 ->  1 .. -1
+      return static_cast<T>(2) + static_cast<T>(-2) * ang;
+    } else {                                 // 1.5 .. 2   ->  -1 .. 0
+      Assert( ang <= static_cast<T>(2) );
+      return static_cast<T>(-4) + static_cast<T>(2) * ang;
+    }
+  }
+
+  template<typename T>
+  constexpr T saw(T ang) {
+    if( ang <= static_cast<T>(1) ) {        // 0 .. 1   ->  0 .. 1
+      return ang;
+    } else {                                // 1 .. 2   ->  -1 .. 0
+      if(ang > static_cast<T>(2)) {
+        LG(ERR, "%f", ang);
+      }
+      Assert( ang <= static_cast<T>(2) );
+      return static_cast<T>(-2) + ang;
+    }
+  }
 
 }
