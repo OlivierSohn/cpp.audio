@@ -1074,6 +1074,7 @@ namespace imajuscule::audio::voice {
 
     static constexpr auto computable = false; // uses the notion of orchestrators instead
     static constexpr auto hasEnvelope = true;
+    static constexpr auto baseVolume = audioElt::baseVolume;
 
     EngineAndRamps(buffer_t&b) :
     ramps{b[0],b[1],b[2]},

@@ -301,13 +301,13 @@ namespace imajuscule::audio {
               c.channel->set_xfade(get_xfade_length());
             }
 
-            if constexpr (std::remove_reference_t<decltype(c.elem)>::computable) {
+            if constexpr (Element::computable) {
               // The caller is responsible for growing the channel request queue if needed
               if(!chans.playComputableNoLock(*c.channel,
                                              c.elem.fCompute(),
                                              Request{
                                                &c.elem.buffer->buffer[0],
-                                               1.f,
+                                               Element::baseVolume,
                                                // e.noteOn.length is always 0, we must rely on noteOff
                                                std::numeric_limits<decltype(std::declval<Request>().duration_in_frames)>::max()
                                              }))

@@ -53,6 +53,7 @@ namespace imajuscule {
         struct FinalAudioElement {
             static constexpr auto hasEnvelope = ALGO::hasEnvelope;
             static constexpr bool computable = true;
+            static constexpr auto baseVolume = ALGO::baseVolume;
             using FPT = typename ALGO::FPT;
             static_assert(std::is_floating_point<FPT>::value);
             using buffer_t = AEBuffer<FPT>;
@@ -77,8 +78,6 @@ namespace imajuscule {
           auto & editEnvelope() {
             return algo.editEnvelope();
           }
-
-            FPT angle() const { return algo.angle(); }
 
             constexpr bool isInactive() const { return buffer->isInactive(); }
             auto getState() const { return buffer->getState(); }
@@ -179,6 +178,7 @@ namespace imajuscule {
         template <typename ALGO, typename Envelope>
         struct Enveloped {
           static constexpr auto hasEnvelope = true;
+          static constexpr auto baseVolume = ALGO::baseVolume;
           using FPT = typename ALGO::FPT;
           static_assert(std::is_same<typename ALGO::FPT, typename Envelope::FPT>::value);
 
@@ -371,6 +371,7 @@ namespace imajuscule {
           using MeT = MultiEnveloped<ALGO, Envelope>;
 
           static constexpr bool hasEnvelope = true;
+          static constexpr auto baseVolume = ALGO::baseVolume;
 
           static constexpr auto atomicity = Envelope::atomicity;
 
@@ -948,6 +949,7 @@ namespace imajuscule {
             static_assert(ALGO::isMonoHarmonic);
 
             static constexpr auto hasEnvelope = ALGO::hasEnvelope;
+            static constexpr auto baseVolume = ALGO::baseVolume;
             using T = typename ALGO::FPT;
             using FPT = T;
             static_assert(std::is_floating_point<FPT>::value);
@@ -1122,6 +1124,7 @@ namespace imajuscule {
         template<Sound::Type SOUND>
         struct soundBufferWrapperAlgo {
             static constexpr auto hasEnvelope = false;
+            static constexpr auto baseVolume = 1.f; // TODO tune
             using F_GET_BUFFER = FGetBuffer<SOUND>;
             using T = soundBuffer::FPT;
             using FPT = T;
@@ -1187,7 +1190,9 @@ namespace imajuscule {
         };
 
         enum class FOscillator {
-          SAW, SQUARE, TRIANGLE
+          SAW,
+          SQUARE,
+          TRIANGLE
         };
 
         constexpr bool monoHarmonic(FOscillator o) {
@@ -1202,10 +1207,32 @@ namespace imajuscule {
           }
         }
 
+
+        /*
+        Volume factor to apply to have the same perceived loudness.
+        */
+        template<FOscillator O>
+        constexpr float refVolume() {
+          if constexpr (O == FOscillator::TRIANGLE) {
+            return 1.f;
+          }
+          else if constexpr (O == FOscillator::SAW) {
+            return 0.3f;
+          }
+          else if constexpr (O == FOscillator::SQUARE) {
+            return 0.2f;
+          }
+          else {
+            return 1.f;
+          }
+        }
+
         template<typename T, FOscillator O>
         struct FOscillatorAlgo : public Phased<T> {
           static constexpr auto hasEnvelope = false;
           static constexpr auto isMonoHarmonic = monoHarmonic(O);
+          // 0.8f is to match the perceived loudness of a sine oscilator
+          static constexpr auto baseVolume = 0.8f * refVolume<O>();
           using Phased<T>::angle_;
 
           FOscillatorAlgo() = default;
@@ -1242,6 +1269,7 @@ namespace imajuscule {
         template<typename T>
         struct PulseTrainAlgo : public Phased<T> {
             static constexpr auto hasEnvelope = false;
+            static constexpr auto baseVolume = 1.f; // TODO adjust
 
             using Tr = NumTraits<T>;
             using Phased<T>::angle_;
@@ -1269,9 +1297,38 @@ namespace imajuscule {
         using PulseTrain = FinalAudioElement<PulseTrainAlgo<T>>;
 
 
+      template<typename T>
+      struct BaseVolume {
+        static constexpr float value() {
+          return T::baseVolume;
+        }
+      };
+
+      template <template <typename> typename F>
+      constexpr float minValue(float m) {
+        return m;
+      }
+
+      template <template <typename> typename F, typename T>
+      constexpr float minValue(float m) {
+        return std::min(m, F<T>::value());
+      }
+
+      template<template <typename> typename F, typename T, typename...Ts>
+      typename std::enable_if<sizeof...(Ts) != 0, float>::type
+      constexpr minValue(float m) {
+        return minValue<F, Ts...>(minValue<F, T>(m));
+      }
+
+        template<class...AEs>
+        constexpr float minBaseVolume() {
+          return minValue<BaseVolume, AEs...>(1.f); // or std::numeric_limits<float>::max() ?
+        }
+
         template<class...AEs>
         struct Mix {
             static constexpr auto hasEnvelope = false; // TODO all hasEnvelope AEs ?
+            static constexpr auto baseVolume = minBaseVolume<AEs...>(); // be conservative.
             bool isEnvelopeFinished() const {
               Assert(0);
               return false;
@@ -1369,6 +1426,8 @@ namespace imajuscule {
         template<typename AEAlgo, FilterType KIND, int ORDER>
         struct FilterAlgo {
             static constexpr auto hasEnvelope = AEAlgo::hasEnvelope;
+            static constexpr auto baseVolume = AEAlgo::baseVolume;
+
             using T = typename AEAlgo::FPT;
             using FPT = T;
             using FilterFPT = typename InternalFilterFPTFromOrder<ORDER, FPT>::type;
@@ -1440,6 +1499,7 @@ namespace imajuscule {
 
         template<typename AEAlgo, int ORDER>
         struct BandPassAlgo_ {
+            using Algo = AEAlgo;
             static constexpr auto hasEnvelope = AEAlgo::hasEnvelope;
             using FPT = typename AEAlgo::FPT;
             using T = FPT;
@@ -1497,6 +1557,7 @@ namespace imajuscule {
 
         template<typename AEAlgo, int ORDER>
         struct BandRejectAlgo_ {
+            using Algo = AEAlgo;
             static constexpr auto hasEnvelope = AEAlgo::hasEnvelope;
             using FPT = typename AEAlgo::FPT;
             using T = FPT;
@@ -1540,6 +1601,7 @@ namespace imajuscule {
         template<typename AEAlgoWidth, typename Base>
         struct BandAlgo_ : public Base {
             using FPT = typename Base::FPT;
+            using Algo = typename Base::Algo;
             using T = FPT;
             using Tr = NumTraits<T>;
             using AEWidth = AEAlgoWidth;
@@ -1551,6 +1613,7 @@ namespace imajuscule {
             using Base::getLP;
             using Base::doStep;
 
+            static constexpr auto baseVolume = Algo::baseVolume;
 
             void forgetPastSignals() {
                 getHP().forgetPastSignals();
@@ -1655,6 +1718,7 @@ namespace imajuscule {
           using MeT = OscillatorAlgo<T,NormPolicy>;
             static constexpr auto hasEnvelope = false;
             static constexpr auto isMonoHarmonic = true;
+            static constexpr auto baseVolume = 1.f;
 
             using Tr = NumTraits<T>;
             using FPT = T;
@@ -2080,6 +2144,7 @@ namespace imajuscule {
         template<typename ALGO, typename ...CTRLS>
         struct FreqCtrl_ {
             static constexpr auto hasEnvelope = ALGO::hasEnvelope;
+            static constexpr auto baseVolume = ALGO::baseVolume;
             using Ctrl = std::tuple<CTRLS...>;
             using T = typename ALGO::FPT;
             using FPT = T;

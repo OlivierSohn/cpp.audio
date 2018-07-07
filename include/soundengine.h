@@ -543,7 +543,7 @@ namespace imajuscule::audio {
           }
           new_ramp->algo.editEnvelope().onKeyPressed();
 
-          auto v = MakeVolume::run<nOuts>(1.f, pan) * (new_spec->volume()/Request::chan_base_amplitude);
+          auto v = MakeVolume::run<nOuts>(1.f, pan) * (new_spec->volume()/chan_base_amplitude);
           // note that by design (see code of caller), the channel request queue is empty at this point
           // no lock : the caller is responsible for taking the out lock
           if(chans.playComputableNoLock(channel, new_ramp->fCompute(),
@@ -576,7 +576,7 @@ namespace imajuscule::audio {
         bool res = channel.addRequest({
           &getSilence(),
           // to propagate the volume of previous spec to the next spec
-          channel.get_current().volumes * (1.f/Request::chan_base_amplitude),
+          channel.get_current().volumes * (1.f/chan_base_amplitude),
           articulative_pause_length
         });
 

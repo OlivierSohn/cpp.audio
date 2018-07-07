@@ -266,11 +266,11 @@ namespace imajuscule {
         }
     };
 
+    constexpr float chan_base_amplitude = 0.3f; // ok to have 3 channels at max amplitude at the same time
+
     template<Atomicity A, int nAudioOut>
     struct Request {
         using Volumes = Volumes<nAudioOut>;
-
-        static constexpr float chan_base_amplitude = 0.3f; // ok to have3 chanels at max amplitude at the same time
 
         Request( Sounds<A> & sounds, Sound const sound, float freq_hz, Volumes vol, float duration_ms ) :
         volumes(vol*chan_base_amplitude),
