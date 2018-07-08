@@ -1101,6 +1101,7 @@ namespace imajuscule::audioelement {
   struct PCOscillatorAlgo : public Phased<T> {
     static constexpr auto hasEnvelope = false;
     static constexpr auto isMonoHarmonic = true;
+    static constexpr auto baseVolume = 1.f;
 
     using Phased<T>::angle_;
 
