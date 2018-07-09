@@ -85,6 +85,8 @@ namespace imajuscule::audio {
   constexpr int64_t secondsToNanos(PaTime t) {
     return static_cast<int64_t>(0.5 + t * 1e9);
   }
+  
+  constexpr int64_t noTime = std::numeric_limits<int64_t>::min();
 
   template <Features F, typename Chans>
   struct Context<AudioPlatform::PortAudio, F, Chans> {
@@ -134,17 +136,12 @@ namespace imajuscule::audio {
       // number of frames we need to compute per callback.
       n_audio_cb_frames.store(numFrames, std::memory_order_relaxed);
 
-      Assert(timeInfo); // the time is not unique, and computes won't work.
-
-      int64_t tNanos = [timeInfo](){
-        static int64_t t = 0;
+      Assert(timeInfo);
+      int64_t tNanos = [timeInfo]() -> int64_t {
         if(likely(timeInfo)) {
-          t = secondsToNanos(timeInfo->outputBufferDacTime);
+          return secondsToNanos(timeInfo->outputBufferDacTime);
         }
-        else {
-          ++t; // it's important that the time is different at each step.
-        }
-        return t;
+        return noTime; // then, MIDI synchronizatin will not work.
       }();
 
       reinterpret_cast<Chans*>(userData)->step(reinterpret_cast<SAMPLE*>(outputBuffer), static_cast<int>(numFrames), tNanos);
