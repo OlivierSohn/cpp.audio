@@ -850,16 +850,23 @@ namespace imajuscule {
             }
 
             int start = 0;
+          
+          auto t = tNanos;
+          constexpr int64_t nanos_per_iteration =
+            static_cast<int64_t>(
+            0.5f + nanos_per_frame<float>() * static_cast<float>(audioelement::n_frames_per_buffer)
+                                 );
 
             while(nFrames > 0) {
                 // how many frames are we going to compute?
                 auto nLocalFrames = std::min(nFrames, audioelement::n_frames_per_buffer);
 
-                channelsT.run_computes(nLocalFrames, tNanos);
+                channelsT.run_computes(nLocalFrames, t);
 
-                consume_buffers(&outputBuffer[start], nLocalFrames, tNanos);
-                start += nLocalFrames * nOuts;
-                nFrames -= nLocalFrames;
+                consume_buffers(&outputBuffer[start], nLocalFrames, t);
+                start += audioelement::n_frames_per_buffer * nOuts;
+                nFrames -= audioelement::n_frames_per_buffer;
+              t += nanos_per_iteration;
             }
         }
 

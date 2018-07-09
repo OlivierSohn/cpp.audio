@@ -9,6 +9,11 @@ namespace imajuscule {
   constexpr T sample_rate_milliseconds() { return static_cast<T>(SAMPLE_RATE) / static_cast<T>(1000); };
   template<typename T>
   constexpr T inverse_sample_rate() { return static_cast<T>(1) / static_cast<T>(SAMPLE_RATE); };
+  template<typename T>
+  constexpr T nanos_per_frame() {
+    static_assert(std::is_floating_point_v<T>);
+    return inverse_sample_rate<T>() * static_cast<T>(1e9);
+  };
 
     constexpr int ms_to_frames(float duration_ms) {
         Assert(duration_ms >= 0.f);
