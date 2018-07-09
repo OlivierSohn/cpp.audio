@@ -1110,8 +1110,8 @@ namespace imajuscule::audioelement {
 
   protected:
     T angle_ = {};
-    T angle_increments;
-    T aliasingMult;
+    T angle_increments = {};
+    T aliasingMult = static_cast<T>(1);
   };
 
   /*
@@ -1796,8 +1796,8 @@ namespace imajuscule::audioelement {
 
   private:
     complex<T> cur = {Tr::one(), Tr::zero()};
-    complex<T> mult;
-    T aliasingMult;
+    complex<T> mult = {Tr::one(), Tr::zero()};
+    T aliasingMult = static_cast<T>(1);
 
     void approx_normalize() {
       // http://dsp.stackexchange.com/questions/971/how-to-create-a-sine-wave-generator-that-can-smoothly-transition-between-frequen
