@@ -38,8 +38,8 @@ namespace imajuscule {
       /*
        * returns false when the lambda can be removed
        */
-      using ComputeFunc = std::function<bool(bool // the clock
-                                            ,int  // the number of frames to skip
+      using ComputeFunc = std::function<bool(const int  // the number of frames to compute
+                                             , const int64_t // the time
                                              )>;
 
         Channels() : _lock(GlobalAudioLock<policy>::get()) {

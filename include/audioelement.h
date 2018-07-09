@@ -132,8 +132,8 @@ namespace imajuscule::audioelement {
     }
 
     auto fCompute() {
-      return [this](bool sync_clock, int nFrames) {
-        return compute(sync_clock,nFrames);
+      return [this](int const nFrames, int64_t const tNanos) {
+        return compute(nFrames, tNanos);
       };
     }
   };
