@@ -365,6 +365,30 @@ namespace imajuscule::audioelement {
     return static_cast<FPT>(i) * a;
   }
 
+  /*
+  * Returns the multiplicator that should be applied to a signal of
+  * the given frequency. The returned value ensures that we have a smooth
+  * transition, when we approach the frequency aliasing limit.
+  */
+  template <typename T>
+  constexpr T freqAliasingMultiplicator(T angle_increment) {
+    if(angle_increment == static_cast<T>(0)) {
+      return static_cast<T>(1);
+    }
+    auto halfNSamplesPerPeriod = static_cast<T>(1) / angle_increment;
+    constexpr auto minHalfSPP = static_cast<T>(1);
+    constexpr auto maxHalfSPP = static_cast<T>(4);
+    constexpr auto invDist = static_cast<T>(1) / (maxHalfSPP - minHalfSPP);
+    if(halfNSamplesPerPeriod < minHalfSPP) {
+      return static_cast<T>(0);
+    }
+    if(halfNSamplesPerPeriod > maxHalfSPP) {
+      return static_cast<T>(1);
+    }
+    // halfNSamplesPerPeriod is now in [minHalfSPP, maxHalfSPP]
+    return (halfNSamplesPerPeriod - minHalfSPP) * invDist;
+  }
+
   template <typename ALGO, typename Envelope>
   struct MultiEnveloped {
     using MeT = MultiEnveloped<ALGO, Envelope>;
@@ -1035,7 +1059,9 @@ namespace imajuscule::audioelement {
     using Tr = NumTraits<T>;
 
     Phased() = default;
-    Phased(T angle_increments) { setAngleIncrements(angle_increments); }
+    Phased(T f) {
+      setAngleIncrements(f);
+    }
 
     void setEnvelopeCharacTime(int len) {
       Assert(0);
@@ -1059,12 +1085,14 @@ namespace imajuscule::audioelement {
       setAngle(other.angle_);
     }
 
-    void setAngle( T angle ) { angle_ = phaseToNormalForm(angle); }
+    void setAngle( T angle ) {
+      angle_ = phaseToNormalForm(angle);
+    }
     T angle() const { return angle_; }
 
     void setAngleIncrements(T v) {
-      Assert(std::abs(v) < Tr::two()); // else need to modulo it
-      angle_increments = v;
+      angle_increments = phaseToNormalForm(v);
+      aliasingMult = freqAliasingMultiplicator(v); // it's important to pass v instead of angle_increments here.
     }
     T angleIncrements() const { return angle_increments; }
 
@@ -1072,16 +1100,10 @@ namespace imajuscule::audioelement {
       angle_ += angle_increments;
       if(angle_ > Tr::two()) {
         angle_ -= Tr::two();
-        if(angle_ > Tr::two()) {
-          LG(ERR, "step 1 : %f (%f)", angle_, angle_increments);
-        }
         Assert(angle_ <= Tr::two());
       }
       else if(angle_ < Tr::zero()) {
         angle_ += Tr::two();
-        if(angle_ < Tr::zero()) {
-          LG(ERR, "step 2 : %f (%f)", angle_, angle_increments);
-        }
         Assert(angle_ >= Tr::zero());
       }
     }
@@ -1089,13 +1111,14 @@ namespace imajuscule::audioelement {
   protected:
     T angle_ = {};
     T angle_increments;
+    T aliasingMult;
   };
 
   /*
    * Phase controlled oscillator
    *
-   * Uses 'sin' and 'cos' function, hence it will be less performant
-   * than 'OscillatorAlgo'.
+   * Mostly for test purposes, as it uses 'sin' and 'cos' functions
+   * which are less performant than 'OscillatorAlgo'.
    */
   template<typename T>
   struct PCOscillatorAlgo : public Phased<T> {
@@ -1104,6 +1127,7 @@ namespace imajuscule::audioelement {
     static constexpr auto baseVolume = 1.f;
 
     using Phased<T>::angle_;
+    using Phased<T>::aliasingMult;
 
     PCOscillatorAlgo() = default;
     PCOscillatorAlgo(T angle_increments) : Phased<T>(angle_increments) {}
@@ -1119,8 +1143,8 @@ namespace imajuscule::audioelement {
       Assert(0);
     }
 
-    T real() const { return std::cos(static_cast<T>(M_PI) * angle_); }
-    T imag() const { return std::sin(static_cast<T>(M_PI) * angle_); }
+    T real() const { return aliasingMult * std::cos(static_cast<T>(M_PI) * angle_); }
+    T imag() const { return aliasingMult * std::sin(static_cast<T>(M_PI) * angle_); }
   };
 
   template<typename T>
@@ -1239,6 +1263,7 @@ namespace imajuscule::audioelement {
     static constexpr auto isMonoHarmonic = monoHarmonic(O);
     static constexpr auto baseVolume = reduceUnadjustedVolumes * refVolume<O>();
     using Phased<T>::angle_;
+    using Phased<T>::aliasingMult;
 
     FOscillatorAlgo() = default;
     FOscillatorAlgo(T angle_increments) : Phased<T>(angle_increments) {}
@@ -1250,13 +1275,13 @@ namespace imajuscule::audioelement {
 
     T imag() const {
       if constexpr (O == FOscillator::SAW) {
-        return saw(angle_);
+        return aliasingMult * saw(angle_);
       }
       else if constexpr(O == FOscillator::SQUARE) {
-        return square(angle_);
+        return aliasingMult * square(angle_);
       }
       else if constexpr(O == FOscillator::TRIANGLE) {
-        return triangle(angle_);
+        return aliasingMult * triangle(angle_);
       }
       else {
         Assert(0);
@@ -1278,6 +1303,7 @@ namespace imajuscule::audioelement {
 
     using Tr = NumTraits<T>;
     using Phased<T>::angle_;
+    using Phased<T>::aliasingMult;
 
     PulseTrainAlgo() = default;
     PulseTrainAlgo(T angle_increments, T pulse_width) :
@@ -1292,7 +1318,7 @@ namespace imajuscule::audioelement {
       pulse_width = pulse_width_;
     }
 
-    T imag() const { return pulse(angle_, pulse_width); }
+    T imag() const { return aliasingMult * pulse(angle_, pulse_width); }
 
   private:
     T pulse_width{};
@@ -1744,6 +1770,7 @@ namespace imajuscule::audioelement {
     }
     void setAngleIncrements(T f) {
       mult = polar(static_cast<T>(M_PI)*f);
+      aliasingMult = freqAliasingMultiplicator(f);
     }
 
     void step() {
@@ -1756,8 +1783,8 @@ namespace imajuscule::audioelement {
       }
     }
 
-    T real() const { return cur.real(); }
-    T imag() const { return cur.imag(); }
+    T real() const { return aliasingMult * cur.real(); }
+    T imag() const { return aliasingMult * cur.imag(); }
 
     T angle() const { return arg(cur)/M_PI; }
     T angleIncrements() const { return arg(mult)/M_PI; }
@@ -1770,6 +1797,7 @@ namespace imajuscule::audioelement {
   private:
     complex<T> cur = {Tr::one(), Tr::zero()};
     complex<T> mult;
+    T aliasingMult;
 
     void approx_normalize() {
       // http://dsp.stackexchange.com/questions/971/how-to-create-a-sine-wave-generator-that-can-smoothly-transition-between-frequen
