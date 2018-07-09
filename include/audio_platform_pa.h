@@ -82,6 +82,10 @@ namespace imajuscule::audio {
   };
 #endif
 
+  constexpr int64_t secondsToNanos(PaTime t) {
+    return static_cast<int64_t>(0.5 + t * 1e9);
+  }
+
   template <Features F, typename Chans>
   struct Context<AudioPlatform::PortAudio, F, Chans> {
     static constexpr auto nAudioOut = Chans::nOuts;
@@ -99,7 +103,7 @@ namespace imajuscule::audio {
 
     static int playCallback( const void *inputBuffer, void *outputBuffer,
                             unsigned long numFrames,
-                            const PaStreamCallbackTimeInfo* timeInfo [[maybe_unused]],
+                            const PaStreamCallbackTimeInfo* timeInfo,
                             PaStreamCallbackFlags f [[maybe_unused]],
                             void *userData )
     {
@@ -130,7 +134,20 @@ namespace imajuscule::audio {
       // number of frames we need to compute per callback.
       n_audio_cb_frames.store(numFrames, std::memory_order_relaxed);
 
-      reinterpret_cast<Chans*>(userData)->step(reinterpret_cast<SAMPLE*>(outputBuffer), static_cast<int>(numFrames));
+      Assert(timeInfo); // the time is not unique, and computes won't work.
+
+      int64_t tNanos = [timeInfo](){
+        static int64_t t = 0;
+        if(likely(timeInfo)) {
+          t = secondsToNanos(timeInfo->outputBufferDacTime);
+        }
+        else {
+          ++t; // it's important that the time is different at each step.
+        }
+        return t;
+      }();
+
+      reinterpret_cast<Chans*>(userData)->step(reinterpret_cast<SAMPLE*>(outputBuffer), static_cast<int>(numFrames), tNanos);
 
       return paContinue;
     }

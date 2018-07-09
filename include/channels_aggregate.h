@@ -26,10 +26,10 @@ namespace imajuscule {
         cXInf.forEach([&f] (auto & c) { c.forEach(f); });
       }
 
-      void run_computes(bool tictac, int nFrames) {
-        cX.forEach(   [tictac, nFrames] (auto & c) { c.run_computes(tictac, nFrames); });
-        cNoX.forEach( [tictac, nFrames] (auto & c) { c.run_computes(tictac, nFrames); });
-        cXInf.forEach([tictac, nFrames] (auto & c) { c.run_computes(tictac, nFrames); });
+      void run_computes(int nFrames, int64_t tNanos) {
+        cX.forEach(   [nFrames, tNanos] (auto & c) { c.run_computes(nFrames, tNanos); });
+        cNoX.forEach( [nFrames, tNanos] (auto & c) { c.run_computes(nFrames, tNanos); });
+        cXInf.forEach([nFrames, tNanos] (auto & c) { c.run_computes(nFrames, tNanos); });
       }
 
       void closeAllChannels(int xfade) {

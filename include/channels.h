@@ -318,7 +318,7 @@ namespace imajuscule {
         /*
         * Called from the audio realtime trhead.
         */
-        void run_computes(bool tictac, int nFrames) {
+        void run_computes(int const nFrames, int64_t const tNanos) {
           int nRemoved(0);
 
           nRemoved += oneShots.dequeueAll([this](auto const & f) { f(*this); });
@@ -327,8 +327,8 @@ namespace imajuscule {
             return orchestrate(*this, audioelement::n_frames_per_buffer);
           });
 
-          nRemoved += computes.forEach([tictac, nFrames](auto const & compute) {
-            return compute(tictac, nFrames);
+          nRemoved += computes.forEach([tNanos, nFrames](auto const & compute) {
+            return compute(nFrames, tNanos);
           });
 
           nRealtimeFuncs.fetch_sub(nRemoved, std::memory_order_relaxed);

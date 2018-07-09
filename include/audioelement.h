@@ -82,10 +82,10 @@ namespace imajuscule::audioelement {
     auto getState() const { return buffer->getState(); }
 
     AEBuffer<FPT> * buffer;
-    bool clock_ : 1;
+    int64_t lastComputeTime = std::numeric_limits<int64_t>::min();
     ALGO algo;
 
-    bool compute(bool sync_clock, int nFrames) {
+    bool compute(int const nFrames, int64_t const tNanos) {
 
       auto * buf = buffer->buffer;
       auto st = state(buf);
@@ -106,12 +106,12 @@ namespace imajuscule::audioelement {
         return false;
       }
       if(likely(st != buffer_t::queued())) {
-        if(sync_clock == clock_) {
+        if(lastComputeTime == tNanos) {
           // we already computed this step.
           return true;
         }
       }
-      clock_ = sync_clock;
+      lastComputeTime = tNanos;
 
       Assert(nFrames > 0);
       Assert(nFrames <= n_frames_per_buffer);

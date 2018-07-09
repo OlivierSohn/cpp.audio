@@ -235,7 +235,7 @@ namespace imajuscule {
             return 1.f / (get_size_xfade() - 1);
         };
 
-        void step(SAMPLE * outputBuffer, int nFrames);
+        void step(SAMPLE * outputBuffer, int nFrames, int64_t const tNanos);
 
         bool addRequest(Request && r) {
             if constexpr (XF == XfadePolicy::UseXfade) {
@@ -778,7 +778,7 @@ namespace imajuscule {
     }
 
     template<Atomicity A, int nAudioOut, XfadePolicy XF, MaxQueueSize MQS>
-    void Channel<A, nAudioOut, XF, MQS>::step(SAMPLE * outputBuffer, int n_max_writes)
+    void Channel<A, nAudioOut, XF, MQS>::step(SAMPLE * outputBuffer, int n_max_writes, int64_t const tNanos)
     {
         Assert(n_max_writes <= audioelement::n_frames_per_buffer);
 

@@ -765,6 +765,21 @@ namespace imajuscule {
       audio::Compressor compressor;
     };
 
+    namespace detail {
+      struct Compute {
+        template<typename T>
+        void operator () (T & c) const {
+          c.step(buf, n, t);
+          if(c.shouldReset()) {
+              c.reset();
+          }
+        }
+        SAMPLE * buf;
+        int const n;
+        int64_t const t;
+      };
+    }
+
     template< typename ChannelsType >
     struct outputDataBase {
         using T = SAMPLE;
@@ -814,7 +829,7 @@ namespace imajuscule {
         decltype(std::declval<AudioLockPolicyImpl<policy>>().lock()) get_lock() { return _lock.lock(); }
 
         // called from audio callback
-        void step(SAMPLE *outputBuffer, int nFrames) {
+        void step(SAMPLE *outputBuffer, int nFrames, int64_t const tNanos) {
             /*
             static bool first(true);
             if(first) {
@@ -837,34 +852,25 @@ namespace imajuscule {
             int start = 0;
 
             while(nFrames > 0) {
-                clock_ = !clock_; // keep that BEFORE passing clock_ to compute functions (dependency on registerCompute)
-
                 // how many frames are we going to compute?
                 auto nLocalFrames = std::min(nFrames, audioelement::n_frames_per_buffer);
 
-                channelsT.run_computes(clock_, nLocalFrames);
+                channelsT.run_computes(nLocalFrames, tNanos);
 
-                consume_buffers(&outputBuffer[start], nLocalFrames);
+                consume_buffers(&outputBuffer[start], nLocalFrames, tNanos);
                 start += nLocalFrames * nOuts;
                 nFrames -= nLocalFrames;
             }
         }
 
-        bool getTicTac() const { return clock_;}
-
     private:
 
-        void consume_buffers(SAMPLE * outputBuffer, int nFrames) {
+        void consume_buffers(SAMPLE * outputBuffer, int nFrames, int64_t const tNanos) {
             Assert(nFrames <= audioelement::n_frames_per_buffer); // by design
 
             memset(outputBuffer, 0, nFrames * nOuts * sizeof(SAMPLE));
 
-            channelsT.forEach([outputBuffer, nFrames](auto & c) {
-                c.step(outputBuffer, nFrames);
-                if(c.shouldReset()) {
-                    c.reset();
-                }
-            });
+            channelsT.forEach(detail::Compute{outputBuffer, nFrames, tNanos});
 
             post.postprocess(outputBuffer, nFrames);
         }
