@@ -84,7 +84,7 @@ namespace imajuscule::audioelement {
     AEBuffer<FPT> * buffer;
     ALGO algo;
 
-    bool compute(int const nFrames, int64_t const tNanos) {
+    bool compute(int const nFrames, uint64_t const tNanos) {
 
       auto * buf = buffer->buffer;
       auto st = state(buf);
@@ -124,7 +124,7 @@ namespace imajuscule::audioelement {
     }
 
     auto fCompute() {
-      return [this](int const nFrames, int64_t const tNanos) {
+      return [this](int const nFrames, uint64_t const tNanos) {
         return compute(nFrames, tNanos);
       };
     }
@@ -144,7 +144,7 @@ namespace imajuscule::audioelement {
    */
   enum class EnvelopeState : unsigned char {
     SoonKeyPressed
-    , KeyPressed // the envelope is raising or sustained
+    , KeyPressed // the envelope is scheduled to be raising, raising or sustained
     , KeyReleased // the envelope is closing
     , EnvelopeDone1 // the envelope has closed, but the last buffer contains samples where the enveloppe was still opened.
     , EnvelopeDone2 // the envelope has closed, the last buffer contains only samples where the enveloppe was closed.
@@ -448,18 +448,18 @@ namespace imajuscule::audioelement {
     bool tryAcquire() {
       return stateAcquisition.tryAcquire();
     }
-    void onKeyPressed() {
-      forEachHarmonic([](auto & algo) { algo.editEnvelope().onKeyPressed(); } );
+    void onKeyPressed(int32_t delay) {
+      forEachHarmonic([delay](auto & algo) { algo.editEnvelope().onKeyPressed(delay); } );
     }
-    void onKeyReleased() {
-      forEachHarmonic([](auto & algo) { algo.editEnvelope().onKeyReleased(); } );
+    void onKeyReleased(int32_t delay) {
+      forEachHarmonic([delay](auto & algo) { algo.editEnvelope().onKeyReleased(delay); } );
     }
-    bool canHandleExplicitKeyReleaseNow() const {
+    bool canHandleExplicitKeyReleaseNow(int32_t delay) const {
       // using any_of here to support (in the future) having
       //   ** some ** of the envelopes autorelease.
       return std::any_of(
                          harmonics.begin(), harmonics.end(),
-                         [](auto const & a){ return a.first.getEnvelope().canHandleExplicitKeyReleaseNow(); });
+                         [delay](auto const & a){ return a.first.getEnvelope().canHandleExplicitKeyReleaseNow(delay); });
     }
     bool isEnvelopeFinished() const {
       return stateAcquisition.isEnvelopeFinished();
@@ -568,16 +568,30 @@ namespace imajuscule::audioelement {
     }
 
     void step() {
+      if(currentReleaseDelay >= 0) {
+        if(currentReleaseDelay == 0) {
+          startReleased();
+        }
+        --currentReleaseDelay;
+      }
       ++counter;
       switch(getRelaxedState()) {
         case EnvelopeState::KeyPressed:
         {
+          constexpr auto firstCounter = 1;
+          if(counter < firstCounter) {
+            // we are not done with the delay yet.
+            return;
+          }
+          if(unlikely(counter == firstCounter)) {
+            startPressed();
+          }
           auto maybeV = stepPressed(counter);
-          if(maybeV) {
+          if(likely(maybeV)) {
             _value = *maybeV;
           }
           else {
-            onKeyReleased();
+            onKeyReleased(0);
             step(); // recursion, and note that we won't infinite loop because
             // onKeyReleased() changes the state.
           }
@@ -613,25 +627,24 @@ namespace imajuscule::audioelement {
       return _value;
     }
 
-    void onKeyPressed() {
+    void onKeyPressed(int32_t delay) {
       stateAcquisition.relaxedWrite(EnvelopeState::KeyPressed);
-      counter = 0;
-      startPressed();
+      counter = -delay;
+      currentReleaseDelay = -1;
+      _value = static_cast<T>(0);
     }
 
-    void onKeyReleased() {
+    void onKeyReleased(int32_t delay) {
+      Assert(delay >= 0);
       if(getRelaxedState() != EnvelopeState::KeyPressed) {
         return;
       }
-      if(0 == counter) {
+      if(counter + delay <= 0) {
         // the key was pressed, but immediately released, so we skip the note.
         stateAcquisition.relaxedWrite(EnvelopeState::EnvelopeDone2);
       }
       else {
-        updateMinChangeDuration();
-        stateAcquisition.relaxedWrite(EnvelopeState::KeyReleased);
-        _topValue = _value;
-        counter = 0;
+        currentReleaseDelay = delay;
       }
     }
 
@@ -643,12 +656,14 @@ namespace imajuscule::audioelement {
       return isAfterAttackBeforeSustain(counter);
     }
 
-    bool canHandleExplicitKeyReleaseNow() const {
+    bool canHandleExplicitKeyReleaseNow(int32_t delay) const {
       if constexpr (Release == EnvelopeRelease::ReleaseAfterDecay) {
         return false;
       }
       else {
-        return getRelaxedState() == EnvelopeState::KeyPressed;
+        return getRelaxedState() == EnvelopeState::KeyPressed &&
+               (currentReleaseDelay == -1) && // else a release is scheduled
+               (-counter <= delay); // else the release would happen before the keyPress.
       }
     }
 
@@ -669,6 +684,18 @@ namespace imajuscule::audioelement {
     FPT _topValue = static_cast<T>(0); // the value when the key was released
     EnvelopeStateAcquisition<A> stateAcquisition;
     int32_t counter = 0;
+    // counter stores the neagted last 'onKeyPressed' delay.
+    // It is incremented at each step. The actual release happens when it is 0.
+    int32_t currentReleaseDelay = -1;
+    // 'currentDelay' stores the last 'onKeyReleased' delay.
+    // It is decremented at each step. The actual release happens when it is 0.
+
+    void startReleased() {
+      updateMinChangeDuration();
+      stateAcquisition.relaxedWrite(EnvelopeState::KeyReleased);
+      _topValue = _value;
+      counter = 0;
+    }
   };
 
   struct WithMinChangeDuration {
@@ -747,7 +774,8 @@ namespace imajuscule::audioelement {
   template <Atomicity A, typename T>
   using SimpleLinearEnvelope = SimpleEnvelope < A, T, itp::LINEAR, itp::LINEAR >;
 
-  /* This inner state describes states when the outer state is 'KeyPressed'. */
+  /* This inner state describes states when the outer state is 'KeyPressed',
+  and the outer state counter is >= 1. */
   enum class AHD : unsigned char {
     Attacking,
     Holding,
@@ -877,7 +905,8 @@ namespace imajuscule::audioelement {
 
     // [28 bytes]
 
-    // this inner state is taken into account only while the outer state is KeyPressed:
+    // this inner state is taken into account only while the outer state is KeyPressed
+    // and the outer state counter is >= 1:
     Optional<AHD> ahdState;
 
     itp::interpolation attackItp;
@@ -991,11 +1020,11 @@ namespace imajuscule::audioelement {
     void setEnvelopeCharacTime(int len) {
       osc.setEnvelopeCharacTime(len);
     }
-    void onKeyPressed() {
-      osc.onKeyPressed();
+    void onKeyPressed(int32_t delay) {
+      osc.onKeyPressed(delay);
     }
-    void onKeyReleased() {
-      osc.onKeyReleased();
+    void onKeyReleased(int32_t delay) {
+      osc.onKeyReleased(delay);
     }
 
     void setFiltersOrder(int order) {
@@ -1063,10 +1092,10 @@ namespace imajuscule::audioelement {
       Assert(0);
       return false;
     }
-    void onKeyPressed() {
+    void onKeyPressed(int32_t) {
       Assert(0);
     }
-    void onKeyReleased() {
+    void onKeyReleased(int32_t) {
       Assert(0);
     }
 
@@ -1128,10 +1157,10 @@ namespace imajuscule::audioelement {
       Assert(0);
       return false;
     }
-    void onKeyPressed() {
+    void onKeyPressed(int32_t) {
       Assert(0);
     }
-    void onKeyReleased() {
+    void onKeyReleased(int32_t) {
       Assert(0);
     }
 
@@ -1160,10 +1189,10 @@ namespace imajuscule::audioelement {
     void setEnvelopeCharacTime(int len) {
       Assert(0);
     }
-    void onKeyPressed() {
+    void onKeyPressed(int32_t) {
       Assert(0);
     }
-    void onKeyReleased() {
+    void onKeyReleased(int32_t) {
       Assert(0);
     }
 
@@ -1203,10 +1232,10 @@ namespace imajuscule::audioelement {
       Assert(0);
       return false;
     }
-    void onKeyPressed() {
+    void onKeyPressed(int32_t) {
       Assert(0);
     }
-    void onKeyReleased() {
+    void onKeyReleased(int32_t) {
       Assert(0);
     }
   };
@@ -1340,10 +1369,10 @@ namespace imajuscule::audioelement {
       Assert(0);
       return false;
     }
-    void onKeyPressed() {
+    void onKeyPressed(int32_t) {
       Assert(0);
     }
-    void onKeyReleased() {
+    void onKeyReleased(int32_t) {
       Assert(0);
     }
 
@@ -1443,16 +1472,16 @@ namespace imajuscule::audioelement {
     bool isEnvelopeFinished() const {
       return audio_element.isEnvelopeFinished();
     }
-    void onKeyPressed() {
-      audio_element.onKeyPressed();
+    void onKeyPressed(int32_t delay) {
+      audio_element.onKeyPressed(delay);
     }
-    void onKeyReleased() {
-      audio_element.onKeyReleased();
+    void onKeyReleased(int32_t delay) {
+      audio_element.onKeyReleased(delay);
     }
 
-    bool canHandleExplicitKeyReleaseNow() const {
+    bool canHandleExplicitKeyReleaseNow(int32_t delay) const {
       if constexpr (hasEnvelope) {
-        return audio_element.canHandleExplicitKeyReleaseNow();
+        return audio_element.canHandleExplicitKeyReleaseNow(delay);
       }
       else {
         Assert(0);
@@ -1537,11 +1566,11 @@ namespace imajuscule::audioelement {
     bool isEnvelopeFinished() const {
       return cascade.isEnvelopeFinished();
     }
-    void onKeyPressed() {
-      cascade.onKeyPressed();
+    void onKeyPressed(int32_t delay) {
+      cascade.onKeyPressed(delay);
     }
-    void onKeyReleased() {
-      cascade.onKeyReleased();
+    void onKeyReleased(int32_t delay) {
+      cascade.onKeyReleased(delay);
     }
 
   protected:
@@ -1574,13 +1603,13 @@ namespace imajuscule::audioelement {
     bool isEnvelopeFinished() const {
       return lp.isEnvelopeFinished() && hp.isEnvelopeFinished();
     }
-    void onKeyPressed() {
-      lp.onKeyPressed();
-      hp.onKeyPressed();
+    void onKeyPressed(int32_t delay) {
+      lp.onKeyPressed(delay);
+      hp.onKeyPressed(delay);
     }
-    void onKeyReleased() {
-      lp.onKeyReleased();
-      hp.onKeyReleased();
+    void onKeyReleased(int32_t delay) {
+      lp.onKeyReleased(delay);
+      hp.onKeyReleased(delay);
     }
 
   private:
@@ -1743,10 +1772,10 @@ namespace imajuscule::audioelement {
     void setEnvelopeCharacTime(int len) {
       Assert(0);
     }
-    void onKeyPressed() {
+    void onKeyPressed(int32_t) {
       Assert(0);
     }
-    void onKeyReleased() {
+    void onKeyReleased(int32_t) {
       Assert(0);
     }
 
@@ -2209,11 +2238,11 @@ namespace imajuscule::audioelement {
     void setEnvelopeCharacTime(int len) {
       osc.setEnvelopeCharacTime(len);
     }
-    void onKeyPressed() {
-      osc.onKeyPressed();
+    void onKeyPressed(int32_t delay) {
+      osc.onKeyPressed(delay);
     }
-    void onKeyReleased() {
-      osc.onKeyReleased();
+    void onKeyReleased(int32_t delay) {
+      osc.onKeyReleased(delay);
     }
 
   private:
@@ -2290,36 +2319,36 @@ namespace imajuscule::audioelement {
       }
       return false;
     }
-    void onKeyPressed() {
+    void onKeyPressed(int32_t delay) {
       if(A1::hasEnvelope) {
-        osc1.onKeyPressed();
+        osc1.onKeyPressed(delay);
       }
       if(A2::hasEnvelope) {
-        osc2.onKeyPressed();
+        osc2.onKeyPressed(delay);
       }
       if(!A1::hasEnvelope && !A2::hasEnvelope) {
         Assert(0);
       }
     }
-    void onKeyReleased() {
+    void onKeyReleased(int32_t delay) {
       if(A1::hasEnvelope) {
-        osc1.onKeyReleased();
+        osc1.onKeyReleased(delay);
       }
       if(A2::hasEnvelope) {
-        osc2.onKeyReleased();
+        osc2.onKeyReleased(delay);
       }
       if(!A1::hasEnvelope && !A2::hasEnvelope) {
         Assert(0);
       }
     }
 
-    bool canHandleExplicitKeyReleaseNow() const {
+    bool canHandleExplicitKeyReleaseNow(int32_t delay) const {
       bool res = false;
       if(A1::hasEnvelope) {
-        res = osc1.canHandleExplicitKeyReleaseNow();
+        res = osc1.canHandleExplicitKeyReleaseNow(delay);
       }
       if(A2::hasEnvelope) {
-        res = res || osc2.canHandleExplicitKeyReleaseNow();
+        res = res || osc2.canHandleExplicitKeyReleaseNow(delay);
       }
       if(!A1::hasEnvelope && !A2::hasEnvelope) {
         Assert(0);

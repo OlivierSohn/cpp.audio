@@ -69,6 +69,8 @@ namespace imajuscule::audio {
       return f;
     }
   };
+
+  void analyzeTime(uint64_t t, int nFrames);
 #endif
 
 #ifdef IMJ_LOG_MEMORY
@@ -82,11 +84,11 @@ namespace imajuscule::audio {
   };
 #endif
 
-  constexpr int64_t secondsToNanos(PaTime t) {
-    return static_cast<int64_t>(0.5 + t * 1e9);
+  constexpr uint64_t secondsToNanos(PaTime t) {
+    return static_cast<uint64_t>(0.5 + t * 1e9);
   }
-  
-  constexpr int64_t noTime = std::numeric_limits<int64_t>::min();
+
+  constexpr uint64_t noTime = std::numeric_limits<uint64_t>::min();
 
   template <Features F, typename Chans>
   struct Context<AudioPlatform::PortAudio, F, Chans> {
@@ -137,12 +139,16 @@ namespace imajuscule::audio {
       n_audio_cb_frames.store(numFrames, std::memory_order_relaxed);
 
       Assert(timeInfo);
-      int64_t tNanos = [timeInfo]() -> int64_t {
+      uint64_t tNanos = [timeInfo]() -> uint64_t {
         if(likely(timeInfo)) {
           return secondsToNanos(timeInfo->outputBufferDacTime);
         }
         return noTime; // then, MIDI synchronizatin will not work.
       }();
+
+#ifndef NDEBUG
+      analyzeTime(tNanos, numFrames);
+#endif
 
       reinterpret_cast<Chans*>(userData)->step(reinterpret_cast<SAMPLE*>(outputBuffer), static_cast<int>(numFrames), tNanos);
 

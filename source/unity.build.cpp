@@ -18,3 +18,29 @@
 #endif
 #include "audio_context.cpp"
 
+namespace imajuscule::audio {
+  /*
+      The first call is expensive, as the array is allocated.
+
+      TODO to hear exactly what other players are hearing,
+      each client should use the same delays for the same sources,
+      plus a per-client global offset.
+  */
+  std::array<TimeDelay, MIDITimestampAndSource::nSources> & midiDelays() {
+    // 'TimeDelay's will be default initialized by the array.
+    static std::array<TimeDelay, MIDITimestampAndSource::nSources> arr;
+    return arr;
+  }
+
+  /*
+  * Can be deduced from the source characteristics:
+  *  - poll period, on the source client
+  *  - network characteristics
+  *  - etc...
+  */
+  uint64_t & maxMIDIJitter() {
+    static uint64_t v = 0;
+    return v;
+  }
+
+}

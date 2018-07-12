@@ -1,30 +1,29 @@
 
-namespace imajuscule {
-    namespace audio {
+namespace imajuscule::audio {
 
       struct TunedPitch {
         // instead of noteId, on note off we receive the pitch, so pitch + tuning is the key
         TunedPitch(int pitch, float tuning):
         note (midi::tuned_note(pitch, tuning))
         {}
-        
+
         TunedPitch() :
         note(sentinel)
         {}
-        
+
         void clear() {
           note = sentinel;
         }
-        
+
         bool hasValue() const {
           return note != sentinel;
         }
-        
+
         float getValue() const {
           Assert(hasValue());
           return note;
         }
-        
+
         bool operator != (const TunedPitch & other) const {
           return !(*this==other);
         }
@@ -37,7 +36,7 @@ namespace imajuscule {
 
         static constexpr auto sentinel = std::numeric_limits<decltype(TunedPitch::note)>::min();
       };
-      
+
         template<typename AudioElem, typename Chan>
         struct MonoNoteChannel {
             static_assert(AudioElem::hasEnvelope);
@@ -47,6 +46,7 @@ namespace imajuscule {
 
             Chan * channel = nullptr;
             AudioElem elem;
+            Optional<MIDITimestampAndSource> midiDelay;
 
             template<WithLock lock_policy, typename ChannelsT>
             bool open(ChannelsT & out, float inital_volume) {
@@ -82,6 +82,4 @@ namespace imajuscule {
                 channel->setVolume(volume);
             }
         };
-
-    }
-} // namespace
+} // NS imajuscule::audio

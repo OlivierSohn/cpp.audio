@@ -776,7 +776,7 @@ namespace imajuscule {
         }
         SAMPLE * buf;
         int const n;
-        int64_t const t;
+        uint64_t const t;
       };
     }
 
@@ -829,7 +829,7 @@ namespace imajuscule {
         decltype(std::declval<AudioLockPolicyImpl<policy>>().lock()) get_lock() { return _lock.lock(); }
 
         // called from audio callback
-        void step(SAMPLE *outputBuffer, int nFrames, int64_t const tNanos) {
+        void step(SAMPLE *outputBuffer, int nFrames, uint64_t const tNanos) {
             /*
             static bool first(true);
             if(first) {
@@ -850,10 +850,10 @@ namespace imajuscule {
             }
 
             int start = 0;
-          
+
           auto t = tNanos;
-          constexpr int64_t nanos_per_iteration =
-            static_cast<int64_t>(
+          constexpr uint64_t nanos_per_iteration =
+            static_cast<uint64_t>(
             0.5f + nanos_per_frame<float>() * static_cast<float>(audioelement::n_frames_per_buffer)
                                  );
 
@@ -872,7 +872,7 @@ namespace imajuscule {
 
     private:
 
-        void consume_buffers(SAMPLE * outputBuffer, int nFrames, int64_t const tNanos) {
+        void consume_buffers(SAMPLE * outputBuffer, int nFrames, uint64_t const tNanos) {
             Assert(nFrames <= audioelement::n_frames_per_buffer); // by design
 
             memset(outputBuffer, 0, nFrames * nOuts * sizeof(SAMPLE));

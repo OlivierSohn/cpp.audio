@@ -91,7 +91,6 @@ namespace imajuscule::audio {
     Parameters params;
     InterleavedBuffer interleaved;
     float half_tone = compute_half_tone(tune_stretch);
-
   };
 
   // When another oscillator with the same frequency exists,
@@ -109,6 +108,26 @@ namespace imajuscule::audio {
   static inline Phase mkDeterministicPhase(float v) { return Phase{true,v}; }
   static inline Phase mkNonDeterministicPhase() { return Phase{false,{}}; }
 
+
+  struct TimeDelay {
+
+    Optional<uint64_t> get() const {
+      return (delay == noValue) ? Optional<uint64_t>{} : Optional<uint64_t>{delay};
+    }
+
+    void set(uint64_t v) {
+      delay = v;
+    }
+
+  private:
+    static constexpr uint64_t noValue = std::numeric_limits<uint64_t>::max();
+    uint64_t delay = noValue;
+  };
+
+  // The first call is expensive, as the array is allocated.
+  std::array<TimeDelay, MIDITimestampAndSource::nSources> & midiDelays();
+
+  uint64_t & maxMIDIJitter();
 
   template<
   AudioOutPolicy outPolicy,
@@ -206,7 +225,7 @@ namespace imajuscule::audio {
       MIDI_LG(INFO, "all notes off");
       chans.enqueueOneShot([this](auto &){
         for(auto & c : seconds(channels)) {
-          c.elem.editEnvelope().onKeyReleased();
+          c.elem.editEnvelope().onKeyReleased(0);
         }
       });
     }
@@ -216,7 +235,7 @@ namespace imajuscule::audio {
       MIDI_LG(INFO, "all sounds off");
       chans.enqueueOneShot([this](auto &){
         for(auto & c : seconds(channels)) {
-          c.elem.editEnvelope().onKeyReleased();
+          c.elem.editEnvelope().onKeyReleased(0);
         }
       });
     }
@@ -229,7 +248,7 @@ namespace imajuscule::audio {
     }
 
     template<typename Out, typename Chans>
-    onEventResult onEvent2(Event const & e, Out & out, Chans & chans)
+    onEventResult onEvent2(Event const & e, Out & out, Chans & chans, Optional<MIDITimestampAndSource> maybeMidiTimeAndSource)
     {
       using Request = typename Chans::Request;
       static_assert(Out::policy == outPolicy);
@@ -267,7 +286,7 @@ namespace imajuscule::audio {
         //      setup the channel (dynamic allocations allowed for soundengine)
 
         TunedPitch tp{e.noteOn.pitch, e.noteOn.tuning};
-        channels.corresponding(*channel) = tp; // if we do that in the audio rt thread,
+        channels.corresponding(*channel) = tp;
 
         c.elem.editEnvelope().setEnvelopeCharacTime(get_xfade_length());
 
@@ -291,7 +310,7 @@ namespace imajuscule::audio {
         {
           typename Out::LockFromNRT L(out.get_lock());
 
-          chans.enqueueOneShot([this, velocity = e.noteOn.velocity, channel_index](Chans & chans){
+          chans.enqueueOneShot([this, velocity = e.noteOn.velocity, channel_index](Chans & chans, uint64_t){
             // unqueue the (potential) previous request, else an assert fails
             // when we enqueue the next request, because it's already queued.
             auto & c = channels.seconds()[channel_index];
@@ -319,8 +338,61 @@ namespace imajuscule::audio {
             if(auto orchestrator = this -> template onStartNote<Chans>(c,channels)) {
               chans.add_orchestrator(orchestrator);
             }
-            c.elem.editEnvelope().onKeyPressed();
           });
+
+          if(maybeMidiTimeAndSource) {
+            chans.enqueueMIDIOneShot(get_value(maybeMidiTimeAndSource)
+                                   , [&c](Chans & chans, auto midiTimingAndSrc, uint64_t curTimeNanos){
+
+              auto srcKey = midiTimingAndSrc.getSourceKey();
+              uint64_t midiTimeNanos = midiTimingAndSrc.getNanosTime();
+
+              /*
+              * We introduce an artificial MIDI delay to avoid jitter.
+              */
+
+              Assert(srcKey < midiDelays().size());
+              auto & srcDelay = midiDelays()[srcKey];
+              {
+                auto const margin = maxMIDIJitter();
+                uint64_t candidateDelay = margin + (curTimeNanos - midiTimeNanos);
+                auto mayDelay = srcDelay.get();
+                if(!mayDelay) {
+                  srcDelay.set(candidateDelay);
+                }
+                else {
+                  // a delay is already registered.
+                  if(cyclic_unsigned_dist(candidateDelay, get_value(mayDelay)) > 2 * (margin + 100000)) {
+                    // The change is significant enough, so we apply the change.
+                    // The previous delay was maybe determined based
+                    // on events that were generated while the program was starting,
+                    // hence their timings were off.
+                    srcDelay.set(candidateDelay);
+                  }
+                }
+              }
+              auto delayNanos = get_value(srcDelay.get());
+
+              uint64_t targetNanos = midiTimeNanos + delayNanos;
+
+              if(targetNanos < curTimeNanos) {
+                // we're late.
+                c.elem.editEnvelope().onKeyPressed(0);
+                c.midiDelay = {{delayNanos + (curTimeNanos - targetNanos), srcKey}};
+              }
+              else {
+                // we're on time.
+                c.elem.editEnvelope().onKeyPressed(nanoseconds_to_frames(targetNanos-curTimeNanos));
+                c.midiDelay = {{delayNanos, srcKey}};
+              }
+            });
+          }
+          else {
+            chans.enqueueOneShot([&c](Chans & chans, uint64_t tNanos){
+              c.elem.editEnvelope().onKeyPressed(0);
+              c.midiDelay = {};
+            });
+          }
         }
       }
       else if(e.type == Event::kNoteOffEvent)
@@ -334,10 +406,49 @@ namespace imajuscule::audio {
         }
         MIDI_LG(INFO, "off %d", e.noteOff.pitch);
         TunedPitch tp{e.noteOff.pitch, e.noteOff.tuning};
-        {
+        if(maybeMidiTimeAndSource) {
           typename Out::LockFromNRT L(out.get_lock());
           static_assert(sizeof(decltype(tp))<=8); // ensure that the std::function won't dynamically allocate / deallocate
-          chans.enqueueOneShot([this, tp](auto &){
+          chans.enqueueMIDIOneShot(get_value(maybeMidiTimeAndSource)
+                                 , [this, tp](auto &, auto midiTimingAndSrc, uint64_t curTimeNanos){
+            // We can have multiple notes with the same pitch, and different durations.
+            // Hence, here we just close the first opened channel with matching pitch
+            // and matching midi source.
+            for(auto &tunedPitch : firsts(channels)) {
+              if (tunedPitch != tp) {
+                continue;
+              }
+              auto & c = channels.corresponding(tunedPitch);
+
+              if(!c.midiDelay) {
+                // the note-on had no MIDI timestamp, but this note-off has one
+                // so it's not what we are looking for.
+                continue;
+              }
+
+              auto d = get_value(c.midiDelay);
+              if(d.getSourceKey() != midiTimingAndSrc.getSourceKey()) {
+                // not the same MIDI source.
+                continue;
+              }
+
+              uint64_t targetNanos = midiTimingAndSrc.getNanosTime() + d.getNanosTime();
+
+              auto delay = (targetNanos < curTimeNanos) ? 0 : nanoseconds_to_frames(targetNanos-curTimeNanos);
+
+              if(!c.elem.getEnvelope().canHandleExplicitKeyReleaseNow(delay)) {
+                continue;
+              }
+              c.elem.editEnvelope().onKeyReleased(delay);
+              return;
+            }
+            // The corresponding noteOn was skipped,
+            // because too many notes were being played at the same time
+          });
+        }
+        else {
+          typename Out::LockFromNRT L(out.get_lock());
+          chans.enqueueOneShot([this, tp](auto &, uint64_t curTimeNanos){
             // We can have multiple notes with the same pitch, and different durations.
             // Hence, here we just close the first opened channel with matching pitch.
             for(auto &tunedPitch : firsts(channels)) {
@@ -345,10 +456,15 @@ namespace imajuscule::audio {
                 continue;
               }
               auto & c = channels.corresponding(tunedPitch);
-              if(!c.elem.getEnvelope().canHandleExplicitKeyReleaseNow()) {
+              if(c.midiDelay) {
+                // the note-one had a corresponding MIDI timestamp, but this note-off has no MIDI timestamp
+                // so it's not what we are ooking for.
                 continue;
               }
-              c.elem.editEnvelope().onKeyReleased();
+              if(!c.elem.getEnvelope().canHandleExplicitKeyReleaseNow(0)) {
+                continue;
+              }
+              c.elem.editEnvelope().onKeyReleased(0);
               return;
             }
             // The corresponding noteOn was skipped,

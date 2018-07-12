@@ -1065,6 +1065,9 @@ namespace imajuscule::audio::voice {
     }
   };
 
+   // TODO implement as a computable (drop the orchestrator notion for soundengine):
+   //   also, do not use on channel xfade, instead use 3 different monorequest channels and
+   //   use ramps envelopes.
   template<typename SoundEngine>
   struct EngineAndRamps {
     using audioElt = typename SoundEngine::audioElt;
@@ -1131,17 +1134,18 @@ namespace imajuscule::audio::voice {
     bool isEnvelopeFinished() const {
       return isEnvelopeFinished_internal(engine.getOddOn());
     }
-    void onKeyPressed() {
+    void onKeyPressed(int32_t delay) { // TODO use
       // we don't increment 'oddOn' here, or 'engine.set_active(true)' : it has been done in 'tryAcquire'.
     }
-    bool canHandleExplicitKeyReleaseNow() const {
+    bool canHandleExplicitKeyReleaseNow(int32_t delay) const { // TODO use
       return engine.goOn();
     }
-    void onKeyReleased() {
+    void onKeyReleased(int32_t delay) { // TODO use (this would be easier to implement if this was a Computable, we could try it.)
+      // TODO we should delay the engine stop.
       if(auto i = engine.goOn()) {
         engine.stop(i);
         for(auto & r: ramps) {
-          r.editEnvelope().onKeyReleased();
+          r.editEnvelope().onKeyReleased(0); // TODO
         }
       }
     }
@@ -1255,7 +1259,7 @@ namespace imajuscule::audio::voice {
     template<typename Out, typename Chans>
     onEventResult onEvent(Event const & e, Out & out, Chans & chans)
     {
-      return onEvent2(e, out, chans);
+      return onEvent2(e, out, chans, {});
     }
 
     template<typename Out, typename Chans>

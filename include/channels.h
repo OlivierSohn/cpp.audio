@@ -1,6 +1,60 @@
 
-namespace imajuscule {
-  namespace audio {
+namespace imajuscule::audio {
+
+
+
+  // The MIDI timestamps don't need sub-frame precision:
+  // we drop bits strictly after the highest 1-bit of 'nanosPerFrame',
+  // and use those dropped bits to store information about the source.
+  //
+  // 0000000000000000000000011100101 = nanosPerFrame
+  //                        |
+  //                        highest 1-bit of 'nanosPerFrame'
+  //                        |
+  // 1100010101011100100010010101011 = MIDI timestamp A
+  //                         vvvvvvv : these bits are dropped, but taken into account for rounding.
+  // 1100010101011100100010010000000 = MIDI timestamp A, rounded (down)
+  //
+  // 1100010101011100100010011101011 = MIDI timestamp B
+  //                         vvvvvvv : these bits are dropped, but taken into account for rounding.
+  // 1100010101011100100010100000000 = MIDI timestamp B, rounded (up)
+  //
+  struct MIDITimestampAndSource {
+
+    static constexpr uint64_t nanosPerFrame = static_cast<uint64_t>(0.5f + nanos_per_frame<float>());
+    static constexpr uint64_t highestBitNanosPerFrame = relevantBits(nanosPerFrame);
+    static constexpr uint64_t nSourceKeyBits = highestBitNanosPerFrame - 1;
+    static constexpr uint64_t nTimingBits = 64 - nSourceKeyBits;
+    using SplitT = Split<uint64_t, nTimingBits, nSourceKeyBits>;
+    static constexpr uint64_t nSources = 1 + SplitT::maxLow;
+    static_assert(nSources == pow2(nSourceKeyBits));
+
+    static constexpr uint64_t getNanosTimeGranularity() {
+      return 1 << nSourceKeyBits;
+    }
+
+    MIDITimestampAndSource():split(0,0) {}
+
+    MIDITimestampAndSource(uint64_t t, uint64_t sourceKey) : split(approximate(t),sourceKey) {
+    }
+
+    uint64_t getNanosTime() const {
+      return split.getHighWithZeros();
+    }
+    uint64_t getSourceKey() const {
+      return split.getLow();
+    }
+
+private:
+    SplitT split;
+
+    static constexpr uint64_t approximate(uint64_t t) {
+      // round up or down, depending on the first ignored bit value.
+      uint64_t firstIgnoredBit = t & (static_cast<uint64_t>(1) << (nSourceKeyBits - 1));
+      uint64_t floored = t >> nSourceKeyBits;
+      return (firstIgnoredBit == 0) ? floored : floored + 1;
+    }
+  };
 
     template<
     int nOuts,
@@ -27,8 +81,19 @@ namespace imajuscule {
       /*
        * The function is executed once, and then removed from the queue.
        */
-      using OneShotFunc = std::function<void(Channels &)>;
+      using OneShotFunc = std::function<void(Channels &
+                                            , const uint64_t // the time of the start of the buffer that will be computed.
+                                            )>;
 
+      /*
+       * The function is executed once, and then removed from the queue.
+       */
+       // I added this because I needed to capture 'MIDITimestampAndSource' and
+       // didn't have any space left in the std::function (and didn't want to dynamically allocate)
+      using OneShotMidiFunc = std::function<void(Channels &
+                                                , MIDITimestampAndSource
+                                                , const uint64_t // the time of the start of the buffer that will be computed.
+                                                )>;
       /*
        * returns false when the lambda can be removed
        */
@@ -39,7 +104,7 @@ namespace imajuscule {
        * returns false when the lambda can be removed
        */
       using ComputeFunc = std::function<bool(const int  // the number of frames to compute
-                                             , const int64_t // the time
+                                             , const uint64_t // the time of the first frame
                                              )>;
 
         Channels() : _lock(GlobalAudioLock<policy>::get()) {
@@ -57,6 +122,7 @@ namespace imajuscule {
       // or we need to constrain the implementation to add requests in realtime, using orchestrators.
       , computes(2*nChannelsMax)
       , oneShots(2*nChannelsMax)
+      , oneShotsMIDI(2*nChannelsMax)
       {
         Assert(nChannelsMax >= 0);
         Assert(nChannelsMax <= std::numeric_limits<uint8_t>::max()); // else need to update AUDIO_CHANNEL_NONE
@@ -80,6 +146,21 @@ namespace imajuscule {
         }
         else {
           f(*this);
+        }
+      }
+
+      // this method should not be called from the real-time thread
+      // because it yields() and retries.
+      template<typename F>
+      void enqueueMIDIOneShot(MIDITimestampAndSource m, F f) {
+        if constexpr(shouldNRTThreadUseOneshotsQueue<policy>()) {
+          nRealtimeFuncs.fetch_add(1, std::memory_order_relaxed);
+          while(!oneShotsMIDI.tryEnqueue({m,f})) {
+            std::this_thread::yield();
+          }
+        }
+        else {
+          f(*this, m);
         }
       }
 
@@ -118,7 +199,7 @@ namespace imajuscule {
 
         void toVolume(uint8_t channel_id, float volume, int nSteps) {
           LockFromNRT l(get_lock());
-          enqueueOneShot([channel_id, volume, nSteps](auto&chans){
+          enqueueOneShot([channel_id, volume, nSteps](auto&chans, uint64_t){
             chans.editChannel(channel_id).toVolume(volume, nSteps);
           });
         }
@@ -141,7 +222,7 @@ namespace imajuscule {
           auto & c = editChannel(params.channel_id);
           if(reserveAndLock<canRealloc>(1,c.edit_requests(),l)) {
             static_assert(sizeof(PackedRequestParams<nAudioOut>) <= 8, "so that the lambda captures are <= 16 bytes");
-            enqueueOneShot([&e,params](auto&chans){
+            enqueueOneShot([&e,params](auto&chans, uint64_t){
               // error is ignored
               auto & c = chans.editChannel(params.channel_id);
               chans.playComputableNoLock(c, e.fCompute(), {&e.buffer->buffer[0], {params.volumes}, params.length });
@@ -194,7 +275,7 @@ namespace imajuscule {
 
         void closeAllChannels(int xfade) {
           LockFromNRT l(get_lock());
-          enqueueOneShot([xfade](auto&chans){
+          enqueueOneShot([xfade](auto&chans, uint64_t){
             if(!xfade) {
               chans.channels.clear();
             }
@@ -318,10 +399,16 @@ namespace imajuscule {
         /*
         * Called from the audio realtime trhead.
         */
-        void run_computes(int const nFrames, int64_t const tNanos) {
+        void run_computes(int const nFrames, uint64_t const tNanos) {
           int nRemoved(0);
 
-          nRemoved += oneShots.dequeueAll([this](auto const & f) { f(*this); });
+          nRemoved += oneShotsMIDI.dequeueAll([this, tNanos](auto const & p) {
+            p.second(*this, p.first, tNanos);
+          });
+
+          nRemoved += oneShots.dequeueAll([this, tNanos](auto const & f) {
+            f(*this, tNanos);
+          });
 
           nRemoved += orchestrators.forEach([this](auto const & orchestrate) {
             return orchestrate(*this, audioelement::n_frames_per_buffer);
@@ -351,6 +438,7 @@ namespace imajuscule {
         std::vector<Channel> channels;
         std::vector<uint8_t> autoclosing_ids;
 
+        lockfree::scmp::fifo<std::pair<MIDITimestampAndSource,OneShotMidiFunc>> oneShotsMIDI;
         lockfree::scmp::fifo<OneShotFunc> oneShots;
 
         // orchestrators and computes could be owned by the channels but it is maybe cache-wise more efficient
@@ -385,5 +473,4 @@ namespace imajuscule {
         }
 
     };
-  }
-}
+} // NS imajuscule::audio
