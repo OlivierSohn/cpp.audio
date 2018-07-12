@@ -223,7 +223,7 @@ namespace imajuscule::audio {
     template<typename Chans>
     void allNotesOff(Chans & chans) {
       MIDI_LG(INFO, "all notes off");
-      chans.enqueueOneShot([this](auto &){
+      chans.enqueueOneShot([this](auto &, auto){
         for(auto & c : seconds(channels)) {
           c.elem.editEnvelope().onKeyReleased(0);
         }
@@ -233,7 +233,7 @@ namespace imajuscule::audio {
     template<typename Chans>
     void allSoundsOff(Chans & chans) {
       MIDI_LG(INFO, "all sounds off");
-      chans.enqueueOneShot([this](auto &){
+      chans.enqueueOneShot([this](auto &, auto){
         for(auto & c : seconds(channels)) {
           c.elem.editEnvelope().onKeyReleased(0);
         }

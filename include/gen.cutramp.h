@@ -337,7 +337,7 @@ namespace imajuscule::audio::cutramp {
       if(!period.hasValue()) {
         updateParams();
       }
-      return onEvent2(e, out, chans);
+      return onEvent2(e, out, chans, {});
     }
 
     void updateParams()
@@ -452,7 +452,7 @@ namespace imajuscule::audio::cutramp {
           nFramesToProcess = std::min<int>(nFramesToProcess, p-c);
         }
 
-        out.step(&interleaved[most_recent_buf_idx][nAudioOut*c], nFramesToProcess);
+        out.step(&interleaved[most_recent_buf_idx][nAudioOut*c], nFramesToProcess, 0);
 
         int last = c + nFramesToProcess;
 
