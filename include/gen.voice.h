@@ -1124,6 +1124,11 @@ namespace imajuscule::audio::voice {
       }
     }
 
+    bool acquireStates() const {
+      unsigned int cur = engine.getOddOn();
+      return is_odd(cur);
+    }
+
     void setEnvelopeCharacTime(int len) {
       engine.setEnvelopeCharacTime(len);
     }

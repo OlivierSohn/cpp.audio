@@ -397,7 +397,7 @@ private:
         }
 
         /*
-        * Called from the audio realtime trhead.
+        * Called from the audio realtime thread.
         */
         void run_computes(int const nFrames, uint64_t const tNanos) {
           int nRemoved(0);

@@ -295,6 +295,7 @@ namespace imajuscule::audio {
         // because it's not running in the audio realtime thread.
         if(!setupAudioElement(freq, c.elem)) {
           MIDI_LG(ERR,"setupAudioElement failed");
+          // we let the noteoff reset the envelope state.
           return onDroppedNote(e.noteOn.pitch);
         }
 
@@ -318,6 +319,14 @@ namespace imajuscule::audio {
             c.channel->setVolume(get_gain() * velocity);
             if constexpr (xfade_policy == XfadePolicy::UseXfade) {
               c.channel->set_xfade(get_xfade_length());
+            }
+
+            // we issue this call to make sure that the 'tryAcquire' effect will be visible in this thread.
+            if(unlikely(!c.elem.editEnvelope().acquireStates())) {
+              // error : we did 'tryAcquire' but now, it's not acquired anymore!
+              LG(ERR,"state was not acquired");
+              Assert(0);
+              return;
             }
 
             if constexpr (Element::computable) {

@@ -276,12 +276,21 @@ namespace imajuscule::audioelement {
     void forget() {
       relaxedWrite(EnvelopeState::EnvelopeDone2);
     }
+
+    // called from nrt threads and rt thread
     bool tryAcquire() {
       auto cur = EnvelopeState::EnvelopeDone2;
       return stateTraits::compareExchangeStrong(state,
                                                 cur,
                                                 EnvelopeState::SoonKeyPressed,
                                                 std::memory_order_acq_rel);
+    }
+
+    /* Eventhough this method is 'const', it ensures that after it returned,
+    * the thread owns the state.
+    */
+    bool acquireStates() const {
+      return EnvelopeState::SoonKeyPressed == stateTraits::read(state, std::memory_order_acquire);
     }
 
     auto getRelaxedState() const { return stateTraits::read(state, std::memory_order_relaxed); }
@@ -448,6 +457,11 @@ namespace imajuscule::audioelement {
     bool tryAcquire() {
       return stateAcquisition.tryAcquire();
     }
+
+    bool acquireStates() const {
+      return stateAcquisition.acquireStates();
+    }
+
     void onKeyPressed(int32_t delay) {
       forEachHarmonic([delay](auto & algo) { algo.editEnvelope().onKeyPressed(delay); } );
     }
@@ -558,6 +572,11 @@ namespace imajuscule::audioelement {
       return stateAcquisition.tryAcquire();
       // we don't 'onKeyPressed' yet : maybe the audio element using
       // this envelope needs to be initialized first.
+    }
+
+    /* Makes sure this thread owns the state. */
+    bool acquireStates() const {
+      return stateAcquisition.acquireStates();
     }
 
     void forgetPastSignals() {
