@@ -429,7 +429,9 @@ namespace imajuscule {
 #if WITH_DELAY
         , delays{{1000, 0.6f},{4000, 0.2f}, {4300, 0.3f}, {5000, 0.1f}},
 #endif
-        {}
+        {
+          readyTraits::write(ready, false, std::memory_order_relaxed);
+        }
 
         LockPolicy & _lock;
 
@@ -519,7 +521,6 @@ namespace imajuscule {
 
             // having the audio thread compute reverbs at the same time would make our calibration not very reliable
             // (due to cache effects for roots and possibly other) so we disable them now
-            // (when ready is false, the audio thread doesn't use reverbs)
             muteAudio();
 
             PartitionningSpec partitionning;
@@ -545,7 +546,7 @@ namespace imajuscule {
           if constexpr (disable) {
             return true;
           }
-          return readyTraits::read(ready, std::memory_order_relaxed);
+          return readyTraits::read(ready, std::memory_order_acquire);
         }
 
 
@@ -557,7 +558,7 @@ namespace imajuscule {
         using readyTraits = maybeAtomic<getAtomicity<policy>(),unsigned int>;
         using readyType = typename readyTraits::type;
 
-        readyType ready = false;
+        readyType ready;
       std::vector<postProcessFunc> post_process = {
         { [this](float v[nAudioOut]) {
           CArray<nAudioOut, float> a{v};
@@ -745,7 +746,7 @@ namespace imajuscule {
 
         void muteAudio() {
           LockFromNRT l(_lock.lock());
-          readyTraits::write(ready, false, std::memory_order_relaxed);
+          readyTraits::write(ready, false, std::memory_order_release);
           if constexpr (policy == AudioOutPolicy::MasterLockFree) {
             // To avoid modifying postprocessing data while postprocessing is used,
             // we sleep a duration corresponding to twice the size of a callback buffer,
@@ -759,7 +760,7 @@ namespace imajuscule {
         }
 
         void unmuteAudio() {
-          readyTraits::write(ready, true, std::memory_order_relaxed);
+          readyTraits::write(ready, true, std::memory_order_release);
         }
 
       audio::Compressor compressor;

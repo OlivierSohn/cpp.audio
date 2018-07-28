@@ -49,9 +49,9 @@ namespace imajuscule {
                 return false;
             }
 
-            auto mod = reader.countChannels() % OutputData::nOut;
-            if((reader.countChannels() > OutputData::nOut) && mod) {
-                LG(ERR, "cannot use a '%d' channels reverb for '%d' outs", reader.countChannels(), OutputData::nOut);
+            auto mod = reader.countChannels() % OutputData::nOuts;
+            if((reader.countChannels() > OutputData::nOuts) && mod) {
+                LG(ERR, "cannot use a '%d' channels reverb for '%d' outs", reader.countChannels(), OutputData::nOuts);
                 return false;
             }
 
@@ -62,7 +62,7 @@ namespace imajuscule {
             mci.Read(buf.begin(), buf.end(), stride);
             buf.resize(std::distance(buf.begin(), buf.end()));
 
-            chans.setConvolutionReverbIR(std::move(buf),
+            chans.getPost().setConvolutionReverbIR(std::move(buf),
                                         reader.countChannels(),
                                         wait_for_first_n_audio_cb_frames());
             return true;
@@ -147,7 +147,6 @@ namespace imajuscule {
 
             void initializeConvolutionReverb()
             {
-              // for Wind app we want to let the user decide to have reverb
               dontUseConvolutionReverbs(chans);
 
               // this one needs to be high pass filtered (5hz loud stuff)
