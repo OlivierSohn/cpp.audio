@@ -418,7 +418,8 @@ namespace imajuscule {
         //using ConvolutionReverb = FIRFilter<T>;
         //using ConvolutionReverb = FFTConvolution<FFT_T>;
         //using ConvolutionReverb = PartitionnedFFTConvolution<T>;
-        using ConvolutionReverb = FinegrainedPartitionnedFFTConvolution<T>;
+        //using ConvolutionReverb = FinegrainedPartitionnedFFTConvolution<T>;
+        using ConvolutionReverb = RealTimeConvolution<T>;
         using Spatializer = audio::Spatializer<nAudioOut, ConvolutionReverb>;
 
         using SetupParam = typename ConvolutionReverb::SetupParam;
@@ -627,6 +628,8 @@ namespace imajuscule {
                 for(auto & rev : conv_reverbs)
                 {
                     rev.set_partition_size(spec.size);
+                  // needs to be called before setCoefficients
+                  rev.applySetup(spec.cost);
                     {
                         auto & coeffs = deinterlaced_coeffs[i];
                         if(n < static_cast<int>(conv_reverbs.size()) - static_cast<int>(deinterlaced_coeffs.size())) {
@@ -636,7 +639,6 @@ namespace imajuscule {
                             rev.setCoefficients(move(coeffs));
                         }
                     }
-                    rev.applySetup(spec.cost);
                     if(use_spread) {
                         // to "dispatch" or "spread" the computations of each channel's convolution reverbs
                         // on different audio callback calls, we separate them as much as possible using a phase:
