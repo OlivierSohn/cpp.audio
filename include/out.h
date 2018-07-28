@@ -720,14 +720,14 @@ namespace imajuscule {
                     auto lat = r.getLatency();
                     cout
                     << "  latency : " << lat << " frames ("
-                    << lat * 1000.f / SAMPLE_RATE <<  " ms)" << endl;
+                    << frames_to_ms(lat) <<  " ms)" << endl;
                 }
 
                 {
                     auto per = r.getGranularMinPeriod();
                     cout
                     << "  grain compute period : " << per << " frames ("
-                    << per * 1000.f / SAMPLE_RATE <<  " ms)" << endl;
+                    << frames_to_ms(per) <<  " ms)" << endl;
                 }
                 ++index;
             }
@@ -754,8 +754,8 @@ namespace imajuscule {
             // will be finished when we wake up (and subsequent cb calls will see the updated
             // 'ready' value)
             int n = audio::wait_for_first_n_audio_cb_frames();
-            float millisPerBuffer = ceil(1000 * n/static_cast<float>(SAMPLE_RATE));
-            std::this_thread::sleep_for(std::chrono::milliseconds(static_cast<int>(0.5f + 2.f * millisPerBuffer)));
+            float millisPerBuffer = frames_to_ms(n);
+            std::this_thread::sleep_for(std::chrono::milliseconds(static_cast<int>(0.5f + 2.f * ceil(millisPerBuffer))));
           }
         }
 

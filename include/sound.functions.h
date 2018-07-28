@@ -10,11 +10,17 @@ namespace imajuscule {
   template<typename T>
   constexpr T sample_rate_nanoseconds() { return static_cast<T>(SAMPLE_RATE) / static_cast<T>(1e9); };
   template<typename T>
-  constexpr T inverse_sample_rate() { return static_cast<T>(1) / static_cast<T>(SAMPLE_RATE); };
+  constexpr T inverse_sample_rate() {
+    static_assert(std::is_floating_point_v<T>);
+    return static_cast<T>(1) / static_cast<T>(SAMPLE_RATE);
+  };
   template<typename T>
   constexpr T nanos_per_frame() {
-    static_assert(std::is_floating_point_v<T>);
     return inverse_sample_rate<T>() * static_cast<T>(1e9);
+  };
+  template<typename T>
+  constexpr T millis_per_frame() {
+    return inverse_sample_rate<T>() * static_cast<T>(1e3);
   };
 
   constexpr int32_t nanoseconds_to_frames(uint64_t ns) {
@@ -29,6 +35,11 @@ namespace imajuscule {
         Assert(fval >= 0.f);
         Assert(fval < static_cast<float>(std::numeric_limits<int>::max()));
         return static_cast<int>( 0.5f + fval );
+    }
+
+    constexpr float frames_to_ms(int n) {
+        Assert(n >= 0);
+        return millis_per_frame<float>() * static_cast<float>(n);
     }
 
     template<typename T>
