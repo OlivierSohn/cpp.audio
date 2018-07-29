@@ -293,15 +293,18 @@ namespace imajuscule {
                                                       relevant_level,
                                                       sliding_average_size);
                 auto dist = distance(v.begin(), it);
-                LG(INFO, "dist : %d", dist);
                 start = min(start, static_cast<size_t>(dist));
             }
 
             if(start < size()) {
+                LG(INFO, "truncating %d first sample(s)", start);
                 for(auto & v : deinterlaced) {
                     v.erase(v.begin(), v.begin() + start);
                     v.shrink_to_fit();
                 }
+            }
+            else {
+                LG(INFO, "no truncation");
             }
             initial_size_impulse_response = size();
         }
@@ -446,10 +449,12 @@ namespace imajuscule {
 
             // apply convolution reverbs
             if(nAudioOut && !conv_reverbs[0].empty()) {
+              Assert(conv_reverbs.size() == nAudioOut);
                 for(int i=0; i<nFrames; ++i) {
                     for(int j=0; j<nAudioOut; ++j) {
                         auto & conv_reverb = conv_reverbs[j];
                         auto & sample = buffer[i*nAudioOut + j];
+                        // TODO merge these 2 calls in 1
                         conv_reverb.step(sample);
                         sample = conv_reverb.get();
                     }
@@ -547,7 +552,8 @@ namespace imajuscule {
           if constexpr (disable) {
             return true;
           }
-          return readyTraits::read(ready, std::memory_order_acquire);
+          std::atomic_thread_fence(std::memory_order_acquire);
+          return readyTraits::read(ready, std::memory_order_relaxed);
         }
 
 
@@ -628,8 +634,6 @@ namespace imajuscule {
                 for(auto & rev : conv_reverbs)
                 {
                     rev.set_partition_size(spec.size);
-                  // needs to be called before setCoefficients
-                  rev.applySetup(spec.cost);
                     {
                         auto & coeffs = deinterlaced_coeffs[i];
                         if(n < static_cast<int>(conv_reverbs.size()) - static_cast<int>(deinterlaced_coeffs.size())) {
@@ -639,6 +643,7 @@ namespace imajuscule {
                             rev.setCoefficients(move(coeffs));
                         }
                     }
+                    rev.applySetup(spec.cost);
                     if(use_spread) {
                         // to "dispatch" or "spread" the computations of each channel's convolution reverbs
                         // on different audio callback calls, we separate them as much as possible using a phase:
@@ -748,7 +753,8 @@ namespace imajuscule {
 
         void muteAudio() {
           LockFromNRT l(_lock.lock());
-          readyTraits::write(ready, false, std::memory_order_release);
+          readyTraits::write(ready, false, std::memory_order_relaxed);
+          std::atomic_thread_fence(std::memory_order_release);
           if constexpr (policy == AudioOutPolicy::MasterLockFree) {
             // To avoid modifying postprocessing data while postprocessing is used,
             // we sleep a duration corresponding to twice the size of a callback buffer,
@@ -757,12 +763,15 @@ namespace imajuscule {
             // 'ready' value)
             int n = audio::wait_for_first_n_audio_cb_frames();
             float millisPerBuffer = frames_to_ms(n);
-            std::this_thread::sleep_for(std::chrono::milliseconds(static_cast<int>(0.5f + 2.f * ceil(millisPerBuffer))));
+            std::this_thread::sleep_for(std::chrono::milliseconds(static_cast<int>(0.5f + 20.f * ceil(millisPerBuffer))));
           }
         }
 
         void unmuteAudio() {
-          readyTraits::write(ready, true, std::memory_order_release);
+          // we use a fence to ensure that previous non atomic writes
+          // will not appear after the write of 'ready'.
+          std::atomic_thread_fence(std::memory_order_release);
+          readyTraits::write(ready, true, std::memory_order_relaxed);
         }
 
       audio::Compressor compressor;
@@ -881,7 +890,6 @@ namespace imajuscule {
             memset(outputBuffer, 0, nFrames * nOuts * sizeof(SAMPLE));
 
             channelsT.forEach(detail::Compute{outputBuffer, nFrames, tNanos});
-
             post.postprocess(outputBuffer, nFrames);
         }
     };
