@@ -40,31 +40,6 @@ namespace imajuscule {
         return makeArrayImpl<T, Init>(val, std::make_index_sequence<N>{});
     }
 
-    /*
-     struct SoftCompressor {
-     // some parts inspired from https://github.com/audacity/audacity/blob/master/src/effects/Compressor.cpp
-
-     static constexpr auto length_sliding_avg = 40;
-
-     SoftCompressor(SoftCompressor&&) = default;
-     SoftCompressor& operator=(SoftCompressor&&) = default;
-
-     SoftCompressor() : avgs(makeArray<slidingAverage<float, KEEP_INITIAL_VALUES>, nAudioOut>(length_sliding_avg)) {
-     }
-     std::array<slidingAverage<float, KEEP_INITIAL_VALUES>, nAudioOut> avgs;
-
-     float threshold = 0.5f;
-     static constexpr auto ratio = 3.f;
-     float compression = 1.f-1.f/ratio;
-     float compute(float value, float env)
-     {
-     if(env <= 0.f) {
-     return 0.f;
-     }
-     return value * powf(threshold/env, compression);
-     }
-     };*/
-
     // reserved number to indicate "no channel"
     static constexpr auto AUDIO_CHANNEL_NONE = std::numeric_limits<uint8_t>::max();
 
@@ -360,23 +335,8 @@ namespace imajuscule {
             using namespace std;
             FFT_T scale = 1;
             for(auto & v : deinterlaced) {
-                //auto res = avg_windowed_abs_integrated(v.begin(), v.end(), 20, [](auto r){ return 1.f; });
-                //auto res = max_auto_corr(v);
-
-                //scale = max(scale, res);
-
-                /*auto res = max_freq_amplitude(v.begin(), v.end());
-
-                LG(INFO,
-                   "max bin: freq %f amplitude %f",
-                   res.relative_freq * SAMPLE_RATE,
-                   res.amplitude);
-                constexpr auto security_factor = 3;
-                scale = max(scale, security_factor * res.amplitude);*/
                 auto lobe = max_abs_integrated_lobe(v.begin(), v.end());
                 LG(INFO, "lobe : %f", lobe);
-                //auto sum = abs_integrated(v.begin(), v.end());
-                //LG(INFO, "sum : %f", sum);
                 constexpr auto security_lobe_factor = 10; // 3,5 not enough for long reverbs
                 scale = max(scale, security_lobe_factor*lobe);
             }
