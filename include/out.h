@@ -323,6 +323,10 @@ namespace imajuscule {
                 }
                 constexpr auto reduce_amount = .5f;
                 auto amount = static_cast<int>(size_impulse_response * reduce_amount);
+                LG(WARN,
+                  "cost %f >= %d. impulse response too big : %d (reducing by %d)",
+                  part.getCost(), max_avg_time_per_sample, size_impulse_response, amount);
+
                 if(!amount) {
                     throw logic_error("I expect the audio system to be able to process small"
                                       " impulse responses easily");
