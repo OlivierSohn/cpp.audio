@@ -219,7 +219,7 @@ namespace imajuscule {
     template<typename ConvolutionReverb>
     struct ImpulseResponseOptimizer {
         using PartitionAlgo = PartitionAlgo<ConvolutionReverb>;
-        using PartitionningSpec = typename PartitionAlgo::PartitionningSpec;
+        using PS = typename PartitionAlgo::PS;
 
         static constexpr bool use_spread = true;
 
@@ -284,7 +284,7 @@ namespace imajuscule {
             initial_size_impulse_response = size();
         }
     public:
-        void optimize_length(int n_channels, int max_avg_time_per_sample, PartitionningSpec & partitionning) {
+        void optimize_length(int n_channels, int max_avg_time_per_sample, PS & partitionning) {
             // truncate the tail if it is too long
 
             auto sz = size();
@@ -308,7 +308,7 @@ namespace imajuscule {
 
     private:
         void optimize_reverb_parameters(int n_channels, bool use_spread, int n_audiocb_frames, int max_avg_time_per_sample,
-                                        size_t & size_impulse_response, PartitionningSpec & partitionning) const {
+                                        size_t & size_impulse_response, PS & partitionning) const {
             using namespace std;
 
             while(1) {
@@ -354,7 +354,7 @@ namespace imajuscule {
             }
         }
 
-        void logReport(PartitionningSpec const  & partitionning) const {
+        void logReport(PS const  & partitionning) const {
             using namespace std;
             cout << endl;
             cout << "finished optimizing partition size for " << n_audiocb_frames << " cb frames" << endl;
@@ -390,7 +390,7 @@ namespace imajuscule {
         using Spatializer = audio::Spatializer<nAudioOut, ConvolutionReverb>;
 
         using SetupParam = typename ConvolutionReverb::SetupParam;
-        using PartitionningSpec = PartitionningSpec<SetupParam>;
+        using PS = PartitionningSpec<SetupParam>;
 
         AudioPostPolicyImpl(LockPolicy &l) :
         _lock(l)
@@ -493,7 +493,7 @@ namespace imajuscule {
             // (due to cache effects for roots and possibly other) so we disable them now
             muteAudio();
 
-            PartitionningSpec partitionning;
+            PS partitionning;
 
             algo.optimize_length(n_channels, theoretical_max_avg_time_per_frame * ratio_soft_limit / static_cast<float>(n_channels),
                                  partitionning);
@@ -566,7 +566,7 @@ namespace imajuscule {
 
         Spatializer spatializer;
 
-        void setCoefficients(PartitionningSpec const & spec,
+        void setCoefficients(PS const & spec,
                              std::vector<a64::vector<FFT_T>> deinterlaced_coeffs,
                              bool use_spread) {
 
@@ -656,7 +656,7 @@ namespace imajuscule {
             }
         }
 
-        void logReport(int n_channels, PartitionningSpec & partitionning) {
+        void logReport(int n_channels, PS & partitionning) {
             using namespace std;
             cout << "[per sample, with 0-overhead hypothesis] allowed computation time : "
             << theoretical_max_avg_time_per_frame / static_cast<float>(n_channels)
