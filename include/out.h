@@ -382,7 +382,7 @@ namespace imajuscule {
         //using ConvolutionReverb = FFTConvolution<FFT_T>;
         //using ConvolutionReverb = PartitionnedFFTConvolution<T>;
         //using ConvolutionReverb = FinegrainedPartitionnedFFTConvolution<T>;
-        using ConvolutionReverb = RealTimeConvolution<T>;
+        using ConvolutionReverb = ZeroLatencyScaledFineGrainedPartitionnedConvolution<T>;
         using Spatializer = audio::Spatializer<nAudioOut, ConvolutionReverb>;
 
         using SetupParam = typename ConvolutionReverb::SetupParam;
