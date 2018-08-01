@@ -39,7 +39,7 @@ namespace imajuscule {
             signal.reserve(n_samples);
             
             {
-                auto noise = make_loudness_adapted_noise(getWhiteNoise, num_taps, num_taps);
+              auto noise = make_loudness_adapted_noise(getWhiteNoise, num_taps, num_taps);
                 for(auto s=0; s<n_samples; ++s) {
                     noise.step();
                     real_signal.push_back(noise.get());

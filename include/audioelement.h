@@ -1736,12 +1736,15 @@ namespace imajuscule::audioelement {
 
   template<typename AEAlgo, typename AEAlgoWidth, int ORDER>
   using BandRejectAlgo = BandAlgo_<AEAlgoWidth, BandRejectAlgo_<AEAlgo, ORDER>>;
-
+  
   template<typename T>
   struct LoudnessCompensationFilter {
     LoudnessCompensationFilter(unsigned int fft_length, unsigned int NumTaps) :
-    filter(imajuscule::loudness::getLoudnessCompensationFIRCoefficients<T>(fft_length, NumTaps))
-    {}
+    sz(NumTaps)
+    {
+      applySetup(filter,typename F::SetupParam{});
+      filter.setCoefficients(imajuscule::loudness::getLoudnessCompensationFIRCoefficients<T>(fft_length, NumTaps));
+    }
 
     void step(T val) {
       filter.step(val);
@@ -1749,9 +1752,11 @@ namespace imajuscule::audioelement {
 
     T get() const { return filter.get(); }
 
-    auto size() const { return filter.size(); }
+    auto size() const { return sz; }
   private:
-    FIRFilter<T> filter;
+    using F = ZeroLatencyFilter<T,AudioProcessing::Offline>;
+    F filter;
+    unsigned int sz;
   };
 
   template<typename T, int ORDER>
