@@ -588,12 +588,15 @@ namespace imajuscule {
 
             auto const n_channels = deinterlaced_coeffs.size();
             auto nSources = n_channels / nAudioOut;
+            // if we have enough sources, we can spatialize them, i.e each ear will receive
+            // the sum of multiple convolutions.
             if(nSources <= 1) {
                 int i=0;
                 auto n = 0;
                 for(auto & rev : conv_reverbs)
                 {
-                    rev.set_partition_size(spec.size);
+                    setPartitionSize(rev,spec.size);
+                    applySetup(rev,SetupParam{{}, spec.cost});
                     {
                         auto & coeffs = deinterlaced_coeffs[i];
                         if(n < static_cast<int>(conv_reverbs.size()) - static_cast<int>(deinterlaced_coeffs.size())) {
@@ -603,7 +606,6 @@ namespace imajuscule {
                             rev.setCoefficients(move(coeffs));
                         }
                     }
-                    rev.applySetup(spec.cost);
                     if(use_spread) {
                         // to "dispatch" or "spread" the computations of each channel's convolution reverbs
                         // on different audio callback calls, we separate them as much as possible using a phase:
@@ -625,8 +627,6 @@ namespace imajuscule {
                 }
 
                 assert(spatializer.empty());
-                spatializer.set_partition_size(spec.size);
-                assert(spatializer.empty());
                 for(int i=0; i<nSources; ++i) {
                     std::array<a64::vector<double>, nAudioOut> a;
                     for(int j=0; j<nAudioOut; ++j) {
@@ -641,10 +641,9 @@ namespace imajuscule {
 
                         a[j] = std::move(deinterlaced_coeffs[i+nAudioOut*j]);
                     }
-                    spatializer.addSourceLocation(std::move(a));
+                    spatializer.addSourceLocation(std::move(a), std::pair<int,SetupParam>{spec.size, {{}, spec.cost}});
                     assert(!spatializer.empty());
                 }
-                spatializer.applySetup(spec.cost);
                 assert(!spatializer.empty());
                 if(use_spread) {
                     spatializer.dephaseComputations(spec.cost.phase);
@@ -830,11 +829,11 @@ namespace imajuscule {
           double precisionBuffer[audioelement::n_frames_per_buffer * nOuts];
             while(nFrames > 0) {
               auto const nLocalFrames = std::min(nFrames, audioelement::n_frames_per_buffer);
-              
+
               channelsT.run_computes(nLocalFrames, t);
-              
+
               const int nSamples = nLocalFrames * nOuts;
-              
+
               memset(precisionBuffer, 0, nSamples * sizeof(double));
               consume_buffers(precisionBuffer, nLocalFrames, t);
               for(int i=0;
