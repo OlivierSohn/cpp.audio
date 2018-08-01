@@ -55,9 +55,9 @@ namespace imajuscule {
                 return false;
             }
 
-            FFT_T stride = reader.getSampleRate() / static_cast<float>(SAMPLE_RATE);
+            double stride = reader.getSampleRate() / static_cast<double>(SAMPLE_RATE);
 
-            std::vector<FFT_T> buf(static_cast<int>(reader.countFrames() / stride) * reader.countChannels());
+            std::vector<double> buf(static_cast<int>(reader.countFrames() / stride) * reader.countChannels());
             MultiChannelReSampling<decltype(reader)> mci(reader);
             mci.Read(buf.begin(), buf.end(), stride);
             buf.resize(std::distance(buf.begin(), buf.end()));

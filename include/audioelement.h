@@ -15,7 +15,7 @@ namespace imajuscule::audioelement {
   // lifecycle :
   // upon creation, state is inactive()
   // when in a queue state is queued()
-  // when processed state is a float
+  // when processed state is a float or double
   // when done being played state is inactive()
   template<typename T>
   struct AEBuffer {

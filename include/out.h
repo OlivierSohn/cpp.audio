@@ -4,9 +4,9 @@ namespace imajuscule {
 
     template<int nAudioOut>
     struct DelayLine {
-        DelayLine(int size, float attenuation): delay(size,{{}}), it(0), end(size), attenuation(attenuation) {}
+        DelayLine(int size, double attenuation): delay(size,{{}}), it(0), end(size), attenuation(attenuation) {}
 
-        void step(SAMPLE *outputBuffer, int nFrames) {
+        void step(double *outputBuffer, int nFrames) {
             for( int i=0; i < nFrames; i++ ) {
                 auto & d = delay[it];
                 for(auto j=0; j<nAudioOut; ++j) {
@@ -22,9 +22,9 @@ namespace imajuscule {
             }
         }
 
-        std::vector<std::array<float, nAudioOut>> delay;
+        std::vector<std::array<double, nAudioOut>> delay;
         int32_t it, end;
-        float attenuation;
+        double attenuation;
     };
 
 
@@ -210,11 +210,7 @@ namespace imajuscule {
     return OutTraits::sync == Synchronization::Lockfree_SingleConsumerMultipleProducer;
   }
 
-    // cooley-tukey leads to error growths of O(log n) (worst case) and O(sqrt(log n)) (mean for random input)
-    // so float is good enough
-    using FFT_T = float;
-
-    constexpr auto seconds_to_nanos = 1e9f;
+    constexpr auto seconds_to_nanos = 1e9;
 
     template<typename ConvolutionReverb>
     struct ImpulseResponseOptimizer {
@@ -223,7 +219,7 @@ namespace imajuscule {
 
         static constexpr bool use_spread = true;
 
-        ImpulseResponseOptimizer(std::vector<FFT_T> ir, int n_channels, int n_audiocb_frames, int nAudioOut) :
+        ImpulseResponseOptimizer(std::vector<double> ir, int n_channels, int n_audiocb_frames, int nAudioOut) :
         n_channels(n_channels),
         n_audiocb_frames(n_audiocb_frames),
         nAudioOut(nAudioOut),
@@ -236,12 +232,12 @@ namespace imajuscule {
         }
 
     private:
-        std::vector<a64::vector<FFT_T>> deinterlaced;
+        std::vector<a64::vector<double>> deinterlaced;
         int n_channels, n_audiocb_frames, nAudioOut, initial_size_impulse_response, final_size_impulse_response;
 
         auto size() const { return deinterlaced.empty()? 0 : deinterlaced[0].size(); }
 
-        void deinterlace(std::vector<FFT_T> ir) {
+        void deinterlace(std::vector<double> ir) {
             auto sz = ir.size() / n_channels;
             Assert(sz * n_channels == ir.size());
             for(auto & v : deinterlaced) {
@@ -337,7 +333,7 @@ namespace imajuscule {
     public:
         void symetrically_scale() {
             using namespace std;
-            FFT_T scale = 1;
+            double scale = 1.;
             for(auto & v : deinterlaced) {
                 auto lobe = max_abs_integrated_lobe(v.begin(), v.end());
                 LG(INFO, "lobe : %f", lobe);
@@ -371,7 +367,7 @@ namespace imajuscule {
     };
 
 
-    template<typename T, int nAudioOut, AudioOutPolicy policy>
+    template<int nAudioOut, AudioOutPolicy policy>
     struct AudioPostPolicyImpl {
         static constexpr auto nOut = nAudioOut;
         using LockPolicy = AudioLockPolicyImpl<policy>;
@@ -382,15 +378,15 @@ namespace imajuscule {
       using LockFromRT = LockIf<LockPolicy::useLock, ThreadType::RealTime>;
       using LockFromNRT = LockIf<LockPolicy::useLock, ThreadType::NonRealTime>;
 
-        //using ConvolutionReverb = FIRFilter<T>;
-        //using ConvolutionReverb = FFTConvolution<FFT_T>;
-        //using ConvolutionReverb = PartitionnedFFTConvolution<T>;
-        //using ConvolutionReverb = FinegrainedPartitionnedFFTConvolution<T>;
-        using ConvolutionReverb = ZeroLatencyScaledFineGrainedPartitionnedConvolution<T>;
+        //using ConvolutionReverb = FIRFilter<double>;
+        //using ConvolutionReverb = FFTConvolution<double>;
+        //using ConvolutionReverb = PartitionnedFFTConvolution<double>;
+        //using ConvolutionReverb = FinegrainedPartitionnedFFTConvolution<double>;
+        using ConvolutionReverb = ZeroLatencyScaledFineGrainedPartitionnedConvolution<double>;
         using Spatializer = audio::Spatializer<nAudioOut, ConvolutionReverb>;
 
         using SetupParam = typename ConvolutionReverb::SetupParam;
-        using PS = PartitionningSpec<SetupParam>;
+      using PS = PartitionningSpec<typename SetupParam::BParam>;
 
         AudioPostPolicyImpl(LockPolicy &l) :
         _lock(l)
@@ -404,9 +400,9 @@ namespace imajuscule {
         LockPolicy & _lock;
 
         /////////////////////////////// postprocess
-        using postProcessFunc = std::function<void(float*)>;
+        using postProcessFunc = std::function<void(double*)>;
 
-        void postprocess(T*buffer, int nFrames) {
+        void postprocess(double*buffer, int nFrames) {
           if(disable) {
             return;
           }
@@ -472,9 +468,9 @@ namespace imajuscule {
         // at 0.38f on ios release we have glitches when putting the app in the background
         static constexpr auto ratio_soft_limit = 0.3f * ratio_hard_limit;
 
-        static constexpr auto theoretical_max_avg_time_per_frame = seconds_to_nanos / static_cast<float>(SAMPLE_RATE);
+      static constexpr auto theoretical_max_avg_time_per_frame = nanos_per_frame<double>();
 
-        void setConvolutionReverbIR(std::vector<FFT_T> ir, int n_channels, int n_audiocb_frames)
+        void setConvolutionReverbIR(std::vector<double> ir, int n_channels, int n_audiocb_frames)
         {
           if constexpr (disable) {
             Assert(0);
@@ -493,7 +489,7 @@ namespace imajuscule {
             // (due to cache effects for roots and possibly other) so we disable them now
             muteAudio();
 
-            PS partitionning;
+          PS partitionning;
 
             algo.optimize_length(n_channels, theoretical_max_avg_time_per_frame * ratio_soft_limit / static_cast<float>(n_channels),
                                  partitionning);
@@ -531,11 +527,11 @@ namespace imajuscule {
 
         readyType ready;
       std::vector<postProcessFunc> post_process = {
-        { [this](float v[nAudioOut]) {
-          CArray<nAudioOut, float> a{v};
+        { [this](double v[nAudioOut]) {
+          CArray<nAudioOut, double> a{v};
           compressor.feed(a);
         }},
-        { [](float v[nAudioOut]) {
+        { [](double v[nAudioOut]) {
             for(int i=0; i<nAudioOut; ++i) {
                 if(likely(-1.f <= v[i] && v[i] <= 1.f)) {
                     continue;
@@ -567,7 +563,7 @@ namespace imajuscule {
         Spatializer spatializer;
 
         void setCoefficients(PS const & spec,
-                             std::vector<a64::vector<FFT_T>> deinterlaced_coeffs,
+                             std::vector<a64::vector<double>> deinterlaced_coeffs,
                              bool use_spread) {
 
             // debugging
@@ -632,7 +628,7 @@ namespace imajuscule {
                 spatializer.set_partition_size(spec.size);
                 assert(spatializer.empty());
                 for(int i=0; i<nSources; ++i) {
-                    std::array<a64::vector<T>, nAudioOut> a;
+                    std::array<a64::vector<double>, nAudioOut> a;
                     for(int j=0; j<nAudioOut; ++j) {
                         // for wir files of wave, it seems the order is by "ears" then by "source":
 
@@ -750,7 +746,7 @@ namespace imajuscule {
               c.reset();
           }
         }
-        SAMPLE * buf;
+        double * buf;
         int const n;
         uint64_t const t;
       };
@@ -764,7 +760,7 @@ namespace imajuscule {
         static constexpr auto nOuts = ChannelsType::nAudioOut;
         using ChannelsT = ChannelsType;
         using Request = typename ChannelsType::Request;
-        using PostImpl = AudioPostPolicyImpl<T, nOuts, policy>;
+        using PostImpl = AudioPostPolicyImpl<nOuts, policy>;
         using LockFromRT = LockIf<AudioLockPolicyImpl<policy>::useLock, ThreadType::RealTime>;
       using LockFromNRT = LockIf<AudioLockPolicyImpl<policy>::useLock, ThreadType::NonRealTime>;
       using LockCtrlFromNRT = LockCtrlIf<AudioLockPolicyImpl<policy>::useLock, ThreadType::NonRealTime>;
@@ -825,33 +821,36 @@ namespace imajuscule {
                 return;
             }
 
-            int start = 0;
-
           auto t = tNanos;
           constexpr uint64_t nanos_per_iteration =
             static_cast<uint64_t>(
             0.5f + nanos_per_frame<float>() * static_cast<float>(audioelement::n_frames_per_buffer)
                                  );
 
+          double precisionBuffer[audioelement::n_frames_per_buffer * nOuts];
             while(nFrames > 0) {
-                // how many frames are we going to compute?
-                auto nLocalFrames = std::min(nFrames, audioelement::n_frames_per_buffer);
-
-                channelsT.run_computes(nLocalFrames, t);
-
-                consume_buffers(&outputBuffer[start], nLocalFrames, t);
-                start += audioelement::n_frames_per_buffer * nOuts;
-                nFrames -= audioelement::n_frames_per_buffer;
+              auto const nLocalFrames = std::min(nFrames, audioelement::n_frames_per_buffer);
+              
+              channelsT.run_computes(nLocalFrames, t);
+              
+              const int nSamples = nLocalFrames * nOuts;
+              
+              memset(precisionBuffer, 0, nSamples * sizeof(double));
+              consume_buffers(precisionBuffer, nLocalFrames, t);
+              for(int i=0;
+                  i != nSamples;
+                  ++i, ++outputBuffer) {
+                *outputBuffer = static_cast<SAMPLE>(precisionBuffer[i]);
+              }
+              nFrames -= audioelement::n_frames_per_buffer;
               t += nanos_per_iteration;
             }
         }
 
     private:
 
-        void consume_buffers(SAMPLE * outputBuffer, int nFrames, uint64_t const tNanos) {
+        void consume_buffers(double * outputBuffer, int const nFrames, uint64_t const tNanos) {
             Assert(nFrames <= audioelement::n_frames_per_buffer); // by design
-
-            memset(outputBuffer, 0, nFrames * nOuts * sizeof(SAMPLE));
 
             channelsT.forEach(detail::Compute{outputBuffer, nFrames, tNanos});
             post.postprocess(outputBuffer, nFrames);

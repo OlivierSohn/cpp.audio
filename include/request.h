@@ -179,38 +179,38 @@ namespace imajuscule {
 
     template<int nAudioOut>
     struct Volumes {
-        std::array<float, nAudioOut> volumes;
+        std::array<double, nAudioOut> volumes;
 
         Volumes() = default;
 
-        Volumes(float f) {
+        Volumes(double f) {
             volumes.fill(f);
         }
 
-      static constexpr float uint8_to_float = 1 / 255.f;
+      static constexpr double uint8_to_float = 1 / 255.;
 
-      Volumes(std::array<float, nAudioOut> a) : volumes(std::move(a)) {}
+      Volumes(std::array<double, nAudioOut> a) : volumes(std::move(a)) {}
       Volumes(std::array<uint8_t, nAudioOut> a) {
         for(int i=0; i<nAudioOut; ++i) {
-          volumes[i] = uint8_to_float * static_cast<float>(a[i]);
+          volumes[i] = uint8_to_float * static_cast<double>(a[i]);
         }
       }
 
-        Volumes & operator =(float const f) {
+        Volumes & operator =(double const f) {
             for(auto & v : volumes) {
                 v = f;
             }
             return *this;
         }
 
-        Volumes & operator *=(float const f)  {
+        Volumes & operator *=(double const f)  {
             for(auto & v : volumes) {
                 v *= f;
             }
             return *this;
         }
 
-        Volumes operator *(float const f) const {
+        Volumes operator *(double const f) const {
             Volumes v(*this);
             v *= f;
             return v;
@@ -258,15 +258,15 @@ namespace imajuscule {
             return true;
         }
 
-        float & operator[](int i) {
+        double & operator[](int i) {
             return volumes[i];
         }
-        float operator[](int i) const {
+        double operator[](int i) const {
             return volumes[i];
         }
     };
 
-    constexpr float chan_base_amplitude = 0.3f; // ok to have 3 channels at max amplitude at the same time
+    constexpr double chan_base_amplitude = 0.3; // ok to have 3 channels at max amplitude at the same time
 
     template<Atomicity A, int nAudioOut>
     struct Request {
