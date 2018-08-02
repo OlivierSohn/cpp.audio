@@ -416,7 +416,21 @@ namespace imajuscule {
       T current, target, increment;
     };
 
-    template<int nAudioOut, AudioOutPolicy policy>
+#ifndef NDEBUG
+  inline bool checkDryWet(double dry, double wet) {
+    if(wet < 0. || wet > 1.) {
+      LG(ERR, "wet %f", wet);
+      return false;
+    }
+    if(dry < 0. || dry > 1.) {
+      LG(ERR, "dry %f", dry);
+      return false;
+    }
+    return true;
+  }
+#endif
+
+  template<int nAudioOut, AudioOutPolicy policy>
     struct AudioPostPolicyImpl {
         static constexpr auto nOut = nAudioOut;
         using LockPolicy = AudioLockPolicyImpl<policy>;
@@ -464,18 +478,12 @@ namespace imajuscule {
                     double const wet = wetRatio.step();
                     double const dry = 1.-wet;
 #ifndef NDEBUG
-                    if(wet < 0. || wet > 1.) {
-                      LG(ERR, "wet %f", wet);
-                      Assert(0);
-                    }
-                    if(dry < 0. || dry > 1.) {
-                      LG(ERR, "dry %f", wet);
-                      Assert(0);
-                    }
+                  Assert(checkDryWet(dry,wet));
 #endif
                     for(int j=0; j<nAudioOut; ++j) {
                         auto & conv_reverb = conv_reverbs[j];
                         auto & sample = buffer[i*nAudioOut + j];
+                        Assert(dry == 0 || conv_reverb.getLatency() == 0); // else dry and wet signals are out of sync
                         // TODO merge these 2 calls in 1
                         conv_reverb.step(sample);
                         sample = dry * sample + wet * conv_reverb.get();
@@ -487,14 +495,7 @@ namespace imajuscule {
                     double const wet = wetRatio.step();
                     double const dry = 1.-wet;
 #ifndef NDEBUG
-                    if(wet < 0. || wet > 1.) {
-                      LG(ERR, "wet %f", wet);
-                      Assert(0);
-                    }
-                    if(dry < 0. || dry > 1.) {
-                      LG(ERR, "dry %f", wet);
-                      Assert(0);
-                    }
+                  Assert(checkDryWet(dry,wet));
 #endif
                     auto & samples = buffer[i*nAudioOut];
                     spatializer.step(&samples);
