@@ -36,7 +36,6 @@ namespace imajuscule {
 
         int wait_for_first_n_audio_cb_frames();
 
-
         template<typename OutputData>
         bool useConvolutionReverb(OutputData & chans,
                                   std::string const & dirname, std::string const & filename) {

@@ -837,7 +837,7 @@ namespace imajuscule::audioelement {
       bool hasDecay = s.sustain < 0.999999;
       SMinusOne =
       hasDecay ?
-      clamp (s.sustain, 0.f, 1.f) - 1.f:
+      clamp_ret (s.sustain, 0.f, 1.f) - 1.f:
       0.f;
       A = std::max( s.attack, normalizedMinDt );
       H = std::max( s.hold, 0 );
@@ -1736,7 +1736,7 @@ namespace imajuscule::audioelement {
 
   template<typename AEAlgo, typename AEAlgoWidth, int ORDER>
   using BandRejectAlgo = BandAlgo_<AEAlgoWidth, BandRejectAlgo_<AEAlgo, ORDER>>;
-  
+
   template<typename T>
   struct LoudnessCompensationFilter {
     LoudnessCompensationFilter(unsigned int fft_length, unsigned int NumTaps) :

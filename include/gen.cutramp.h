@@ -482,7 +482,7 @@ namespace imajuscule::audio::cutramp {
               ratio_c -= 0.5f;
 
               ratio_c *= xfade_amount;
-              ratio_c = 0.5f + clamp(ratio_c, -0.5f, 0.5f);
+              ratio_c = 0.5f + clamp_ret(ratio_c, -0.5f, 0.5f);
               return ratio_c;
             }();
 

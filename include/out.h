@@ -366,6 +366,55 @@ namespace imajuscule {
 
     };
 
+    /*
+    Not thread safe.
+
+    Allows to control the variation of a value, to avoid brusk changes.
+    */
+    template<typename T>
+    struct smoothVar {
+      smoothVar(T v) {
+        smoothly(v,0);
+      }
+
+      /*
+      * Sets the target value and the count of steps of the interpolation.
+      */
+      void smoothly(T v, int nSteps) {
+        if(nSteps == 0) {
+          current = target = v;
+          increment = 0;
+          return;
+        }
+        if(unlikely(nSteps < 0)) {
+          nSteps = -nSteps;
+        }
+        target = v;
+        increment = std::abs(target - current) / static_cast<T>(nSteps);
+        Assert(increment >= 0);
+      }
+
+      /*
+      * Gets the current value, using linear interpolation to perform the transition.
+      */
+      T step() {
+        Assert(increment >= 0);
+        if(current == target) {
+        }
+        else if(current < target-increment) {
+          current += increment;
+        }
+        else if(current > target+increment) {
+          current -= increment;
+        }
+        else {
+          current = target;
+        }
+        return current;
+      }
+    private:
+      T current, target, increment;
+    };
 
     template<int nAudioOut, AudioOutPolicy policy>
     struct AudioPostPolicyImpl {
@@ -407,25 +456,49 @@ namespace imajuscule {
             return;
           }
 
-            // apply convolution reverbs
+            // apply convolution reverbs: raw convolutions and spatializer are mutually exclusive.
             if(nAudioOut && !conv_reverbs[0].empty()) {
               Assert(conv_reverbs.size() == nAudioOut);
+              Assert(spatializer.empty());
                 for(int i=0; i<nFrames; ++i) {
+                    double const wet = wetRatio.step();
+                    double const dry = 1.-wet;
+#ifndef NDEBUG
+                    if(wet < 0. || wet > 1.) {
+                      LG(ERR, "wet %f", wet);
+                      Assert(0);
+                    }
+                    if(dry < 0. || dry > 1.) {
+                      LG(ERR, "dry %f", wet);
+                      Assert(0);
+                    }
+#endif
                     for(int j=0; j<nAudioOut; ++j) {
                         auto & conv_reverb = conv_reverbs[j];
                         auto & sample = buffer[i*nAudioOut + j];
                         // TODO merge these 2 calls in 1
                         conv_reverb.step(sample);
-                        sample = conv_reverb.get();
+                        sample = dry * sample + wet * conv_reverb.get();
                     }
                 }
             }
-
-            if(!spatializer.empty()) {
+            else if(!spatializer.empty()) {
                 for(int i=0; i<nFrames; ++i) {
+                    double const wet = wetRatio.step();
+                    double const dry = 1.-wet;
+#ifndef NDEBUG
+                    if(wet < 0. || wet > 1.) {
+                      LG(ERR, "wet %f", wet);
+                      Assert(0);
+                    }
+                    if(dry < 0. || dry > 1.) {
+                      LG(ERR, "dry %f", wet);
+                      Assert(0);
+                    }
+#endif
                     auto & samples = buffer[i*nAudioOut];
                     spatializer.step(&samples);
-                    spatializer.get(&samples);
+                    spatializer.get(&samples, dry, wet);
                 }
             }
 
@@ -507,6 +580,11 @@ namespace imajuscule {
             logReport(n_channels, partitionning);
         }
 
+        // Must be called from the audio realtime thread.
+        void transitionConvolutionReverbWetRatio(double wet) {
+          wetRatio.smoothly(clamp_ret(wet,0.,1.), ms_to_frames(200));
+        }
+
         bool isReady() const
         {
           if constexpr (disable) {
@@ -515,7 +593,6 @@ namespace imajuscule {
           std::atomic_thread_fence(std::memory_order_acquire);
           return readyTraits::read(ready, std::memory_order_relaxed);
         }
-
 
         bool hasSpatializer() const { return !spatializer.empty(); }
 
@@ -557,6 +634,7 @@ namespace imajuscule {
 #endif
 
         //////////////////////////////// convolution reverb
+        smoothVar<double> wetRatio = {1};
         using Reverbs = std::array<ConvolutionReverb, nAudioOut>;
         Reverbs conv_reverbs;
 
@@ -765,15 +843,23 @@ namespace imajuscule {
       using LockCtrlFromNRT = LockCtrlIf<AudioLockPolicyImpl<policy>::useLock, ThreadType::NonRealTime>;
 
     private:
-        //////////////////////////
-        /// state of last write:
-        bool clock_ : 1; /// "tic tac" flag, inverted at each new AudioElements buffer writes
-        ///
-        //////////////////////////
+      /*
+       * The function is executed once, and then removed from the queue.
+       */
+      using OneShotFunc = std::function<void(outputDataBase &)>;
+      // Today, oneshots are only used to change the reverb dry/wet ratio,
+      // hence we need just a few.
+      // We use a power of 2 minus 1 so that the size of the underlying fifo vector is a power of 2.
+      // Keeping the queue small has the advantage of making the work per callback minimal:
+      //   if suddenly many elements were added to the queue, maybe the audio callback would miss
+      //   its deadline due to the work it has to do. Instead here, only some elements are immediately
+      //   added, and remaining elements will retry.
+      static constexpr auto nMaxOneshotsPerCb = 16 - 1;
 
         AudioLockPolicyImpl<policy> & _lock;
         ChannelsT channelsT;
         PostImpl post;
+        lockfree::scmp::fifo<OneShotFunc> oneShots{nMaxOneshotsPerCb};
 
     public:
 
@@ -782,13 +868,11 @@ namespace imajuscule {
         channelsT(l, args ...)
         , post(l)
         , _lock(l)
-        , clock_(false)
         {}
 
         outputDataBase(AudioLockPolicyImpl<policy>&l):
           post(l)
         , _lock(l)
-        , clock_(false)
         {}
 
         ChannelsT & getChannels() { return channelsT; }
@@ -798,6 +882,20 @@ namespace imajuscule {
 
         AudioLockPolicyImpl<policy> & get_lock_policy() { return _lock; }
         decltype(std::declval<AudioLockPolicyImpl<policy>>().lock()) get_lock() { return _lock.lock(); }
+
+    // this method should not be called from the real-time thread
+    // because it yields() and retries.
+    template<typename F>
+    void enqueueOneShot(F f) {
+      if constexpr(shouldNRTThreadUseOneshotsQueue<policy>()) {
+        while(!oneShots.tryEnqueue(f)) {
+          std::this_thread::yield();
+        }
+      }
+      else {
+        f(*this);
+      }
+    }
 
         // called from audio callback
         void step(SAMPLE *outputBuffer, int nFrames, uint64_t const tNanos) {
@@ -809,10 +907,11 @@ namespace imajuscule {
                 thread::logSchedParams();
             }*/
 
-            // To avoid priority inversion, we make sure that other threads
-            // taking this lock have their priority raised to realtime before taking the lock.
             LockFromRT l(_lock.lock());
-            // TODO locking in the realtime thread should be avoided.
+
+            oneShots.dequeueAll([this](auto const & f) {
+              f(*this);
+            });
 
             if(unlikely(!post.isReady())) {
                 // post is being initialized in another thread
