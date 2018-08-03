@@ -178,8 +178,7 @@ soundBuffer::soundBuffer( soundId const & id ) {
                     256;
 #endif
                   static auto a = make_loudness_adapted_noise(getPinkNoise, length_ftt, length_ftt);
-                    a.step();
-                    return a.get();
+                  return a.step();
                 } );
                 normalize();
                 logSummary();

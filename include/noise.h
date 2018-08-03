@@ -174,22 +174,18 @@ namespace imajuscule {
             }
         }
         
-        void step() {
-            auto & noise = source();
-            assert(counter < noise.size());
-            
-            auto v = noise[counter];
-            loudness_compensation_filter.step(v);
-            ++counter;
-            if(counter == noise.size()) {
-                counter = 0;
-            }
-        }
+      T step() {
+        auto & noise = source();
+        assert(counter < noise.size());
         
-        T get() const {
-            return loudness_compensation_filter.get();
+        auto r = loudness_compensation_filter.step(noise[counter]);
+        ++counter;
+        if(counter == noise.size()) {
+          counter = 0;
         }
-        
+        return r;
+      }
+      
     private:
         unsigned int counter = 0;
         audioelement::LoudnessCompensationFilter<T> loudness_compensation_filter;

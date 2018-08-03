@@ -536,23 +536,19 @@ namespace imajuscule {
                         auto & conv_reverb = conv_reverbs[j];
                         auto & sample = buffer[i*nAudioOut + j];
                         Assert(dry == 0 || conv_reverb.getLatency() == 0); // else dry and wet signals are out of sync
-                        // TODO merge these 2 calls in 1
-                        conv_reverb.step(sample);
-                        sample = dry * sample + wet * conv_reverb.get();
+                        sample = dry * sample + wet * conv_reverb.step(sample);
                     }
                 }
             }
             else if(!spatializer.empty()) {
-                for(int i=0; i<nFrames; ++i) {
-                    double const wet = wetRatio.step();
-                    double const dry = 1.-wet;
+              for(int i=0; i<nFrames; ++i) {
+                double const wet = wetRatio.step();
+                double const dry = 1.-wet;
 #ifndef NDEBUG
-                  Assert(checkDryWet(dry,wet));
+                Assert(checkDryWet(dry,wet));
 #endif
-                    auto & samples = buffer[i*nAudioOut];
-                    spatializer.step(&samples);
-                    spatializer.get(&samples, dry, wet);
-                }
+                spatializer.step(&buffer[i*nAudioOut], dry, wet);
+              }
             }
 
             // run delays

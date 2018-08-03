@@ -1746,11 +1746,9 @@ namespace imajuscule::audioelement {
       filter.setCoefficients(imajuscule::loudness::getLoudnessCompensationFIRCoefficients<T>(fft_length, NumTaps));
     }
 
-    void step(T val) {
-      filter.step(val);
+    T step(T val) {
+      return filter.step(val);
     }
-
-    T get() const { return filter.get(); }
 
     auto size() const { return sz; }
   private:
