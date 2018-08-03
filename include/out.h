@@ -331,17 +331,69 @@ namespace imajuscule {
             }
         }
     public:
-        void symetrically_scale() {
+        void symmetrically_scale() {
             using namespace std;
-            double scale = 1.;
+            double avg = 0.;
             for(auto & v : deinterlaced) {
-                auto lobe = max_abs_integrated_lobe(v.begin(), v.end());
-                LG(INFO, "lobe : %f", lobe);
-                constexpr auto security_lobe_factor = 10; // 3,5 not enough for long reverbs
-                scale = max(scale, security_lobe_factor*lobe);
+              using namespace imajuscule::fft;
+              using namespace imajuscule::fft::slow_debug;
+
+              using Tag = Fastest;
+
+              using ScopedContext = ScopedContext_<Tag, double>;
+              using Algo = Algo_<Tag, double>;
+              using RealSignal = typename fft::RealSignal_<Tag, double>::type;
+              using CplxFreqs = typename fft::RealFBins_<Tag, double>::type;
+
+              auto N = ceil_power_of_two(v.size());
+
+              ScopedContext setup(N);
+
+              Algo fft_algo(setup.get());
+              CplxFreqs fft_of_coeffs;
+              fft_of_coeffs.resize(N);
+              // make a copy when passing by value
+              auto coeffVec = fft::RealSignal_<Tag, double>::make(v);
+              coeffVec.resize(N);
+              Assert(N == coeffVec.size());
+              fft_algo.forward(coeffVec.begin(), fft_of_coeffs, N);
+              auto unwrapped_fft_of_coeffs = unwrap_frequencies<Tag>(fft_of_coeffs, N);
+              for(auto &e : unwrapped_fft_of_coeffs) {
+                e *= 1 / Algo::scale;
+              }
+
+              auto it = unwrapped_fft_of_coeffs.begin();
+              auto end = unwrapped_fft_of_coeffs.end();
+              // the second half is the conjugate of the first half, so we use the first half only.
+              auto mid = it + (1 + std::distance(it, end)) / 2;
+
+              a64::vector<double> norms;
+              norms.reserve(std::distance(it, mid));
+
+              for(; it < mid; ++it) {
+                // TODO avoid overrepresenting frequencies: we could group (average)
+                // by frequency band (f, f*1.05)
+                norms.push_back(abs(*it));
+              }
+
+              std::sort(norms.begin(), norms.end());
+
+              Assert(!norms.empty());
+
+              auto median = *(norms.begin() + norms.size() / 2);
+              auto mean = std::accumulate(norms.begin(), norms.end(), 0.) / static_cast<double>(norms.size());
+              LG(INFO,"avg: %f median: %f", mean, median);
+              if(mean > avg) {
+                avg = mean;
+              }
+
+              // TODO maybe ignore too low / too high freqs ?
             }
 
-            scale = 1. / scale;
+            if(avg == 0) {
+              return;
+            }
+            auto scale = 1. / avg;
             LG(INFO, "impulse response volume scaled by : %f", scale);
             for(auto & v : deinterlaced) {
                 for(auto &s : v) {
@@ -567,7 +619,7 @@ namespace imajuscule {
 
             algo.optimize_length(n_channels, theoretical_max_avg_time_per_frame * ratio_soft_limit / static_cast<float>(n_channels),
                                  partitionning);
-            algo.symetrically_scale();
+            algo.symmetrically_scale();
 
             // locking here would possibly incur dropped audio frames due to the time spent setting the coefficients.
             // we ensured reverbs are not used so we don't need to lock.
