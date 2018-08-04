@@ -65,8 +65,8 @@ bool WAVReader::readHeader() {
     ReadData(&header.byte_rate, sizeof(int32_t), 1);
     ReadData(&header.block_align, sizeof(int16_t), 1);
     ReadData(&header.bits_per_sample, sizeof(int16_t), 1);
-    
-    
+
+
     if(is_wave_ir) {
         //
         // wir format found here : http://freeverb3vst.osdn.jp/tips.shtml says
@@ -81,9 +81,9 @@ bool WAVReader::readHeader() {
             return false;
         }
     }
-    
+
     // skip irrelevant subchunks, until "data" subchunk
-    
+
     while(1) {
         ReadData(&header.subchunk2_id[0], 4, 1);
         ReadData(&header.subchunk2_size, sizeof(int32_t), 1);
@@ -121,9 +121,9 @@ namespace imajuscule {
         void makeDescription(std::string &desc, int16_t num_channels, float length_in_seconds, int32_t sample_rate) {
             desc.clear();
             desc.reserve(14 + 10);
-            
+
             makeDescription(desc, num_channels, length_in_seconds);
-            
+
             // to avoid float rounding error when doing '/ 1000.f' :
             auto s1 = sample_rate/1000;
             auto s2 = sample_rate - 1000 * s1;
@@ -140,11 +140,11 @@ namespace imajuscule {
             }
             desc += " kHz";
         }
-        
+
         void makeDescription(std::string &desc, int16_t num_channels, float length_in_seconds) {
             desc.clear();
             desc.reserve(14);
-            
+
             desc.append(num_channels, '.');
             desc += " ";
             constexpr auto n_decimals_total = 2;
@@ -180,4 +180,24 @@ bool WAVReader::HasMore() const {
     Assert(audio_bytes_read <= header.subchunk2_size);
     //LG(INFO, "%d %d", audio_bytes_read, header.subchunk2_size);
     return audio_bytes_read < header.subchunk2_size;
+}
+
+namespace imajuscule::audio {
+  bool getConvolutionReverbSignature(std::string const & dirname, std::string const & filename, spaceResponse_t & r) {
+    WAVReader reader(dirname, filename);
+
+    auto res = reader.Initialize();
+
+    if(ILE_SUCCESS != res) {
+      LG(WARN, "Cannot read '%s' as a '.wav' file. If the file exists in '%s', it might be corrupted.", filename.c_str(), dirname.c_str());
+      return false;
+    }
+
+    r.nChannels = reader.countChannels();
+    r.sampleRate = reader.getSampleRate();
+    r.nFrames = reader.countFrames();
+    r.sampleSize = reader.getSampleSize();
+    r.lengthInSeconds = reader.getLengthInSeconds();
+    return true;
+  }
 }

@@ -1,6 +1,5 @@
 
-namespace imajuscule {
-    namespace audio {
+namespace imajuscule::audio {
 
         // http://www-mmsp.ece.mcgill.ca/Documents/AudioFormats/WAVE/WAVE.html
 
@@ -376,7 +375,7 @@ namespace imajuscule {
             eResult Initialize();
 
             void makeDescription(std::string &s, bool with_sample_rate = false) const {
-                return header.makeDescription(s, with_sample_rate);
+                header.makeDescription(s, with_sample_rate);
             }
 
             unsigned int getSampleSize() const { return header.getSampleSize(); }
@@ -494,6 +493,8 @@ namespace imajuscule {
                 throw std::logic_error("unsupported format");
             }
         };
+
+        bool getConvolutionReverbSignature(std::string const & dirname, std::string const & filename, spaceResponse_t & r);
 
         struct WAVWriter : public WritableStorage {
             WAVWriter(DirectoryPath d, FileName f, WAVPCMHeader h) : WritableStorage(d,f), header(h) {}
@@ -850,6 +851,4 @@ namespace imajuscule {
                     throw std::logic_error("unsupported xx-bit format");;
             }
         }
-
-    }
 }

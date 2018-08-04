@@ -311,6 +311,7 @@ namespace imajuscule {
                 auto partit = PartitionAlgo::run(n_channels,
                                                  n_audiocb_frames,
                                                  size_impulse_response);
+                LG(INFO,""); // to return to the beginning of a line
                 auto & part = partit.getWithSpread(use_spread);
 
                 if(part.getCost() < max_avg_time_per_sample) {
