@@ -273,7 +273,7 @@ namespace imajuscule {
     }
     
     
-    void setConvolutionReverbIR(std::vector<double> ir, int n_channels, int n_audiocb_frames)
+    [[nodiscard]] bool setConvolutionReverbIR(std::vector<double> ir, int n_channels, int n_audiocb_frames)
     {
       if constexpr (disable) {
         Assert(0);
@@ -285,9 +285,11 @@ namespace imajuscule {
       
       // locking here would possibly incur dropped audio frames due to the time spent setting the coefficients.
       // we ensured reverbs are not used so we don't need to lock.
-      reverbs.setConvolutionReverbIR(std::move(ir), n_channels, n_audiocb_frames, sample_rate<double>());
+      auto res = reverbs.setConvolutionReverbIR(std::move(ir), n_channels, n_audiocb_frames, sample_rate<double>());
       
       unmuteAudio();
+      
+      return res;
     }
     
     // Must be called from the audio realtime thread.

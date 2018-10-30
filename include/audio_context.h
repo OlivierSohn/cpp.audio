@@ -61,10 +61,9 @@ namespace imajuscule {
             mci.Read(buf.begin(), buf.end(), stride);
             buf.resize(std::distance(buf.begin(), buf.end()));
 
-            chans.getPost().setConvolutionReverbIR(std::move(buf),
-                                        reader.countChannels(),
-                                        wait_for_first_n_audio_cb_frames());
-            return true;
+            return chans.getPost().setConvolutionReverbIR(std::move(buf),
+                                                          reader.countChannels(),
+                                                          wait_for_first_n_audio_cb_frames());
         }
 
         constexpr int xfade_on_close = 5000; // in samples
