@@ -38,7 +38,7 @@ namespace imajuscule {
 
         template<typename OutputData>
         bool useConvolutionReverb(OutputData & chans,
-                                  std::string const & dirname, std::string const & filename) {
+                                  std::string const & dirname, std::string const & filename, ResponseTailSubsampling rts) {
             WAVReader reader(dirname, filename);
 
             auto res = reader.Initialize();
@@ -63,7 +63,8 @@ namespace imajuscule {
 
             return chans.getPost().setConvolutionReverbIR(std::move(buf),
                                                           reader.countChannels(),
-                                                          wait_for_first_n_audio_cb_frames());
+                                                          wait_for_first_n_audio_cb_frames(),
+                                                        rts);
         }
 
         constexpr int xfade_on_close = 5000; // in samples
