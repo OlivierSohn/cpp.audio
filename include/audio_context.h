@@ -134,14 +134,13 @@ namespace imajuscule {
 
             [[nodiscard]] bool Init(float minLatency) {
               if(bInitialized) {
-                LG(WARN, "Audio is already initialized, skipping initialization.");
                 return true;
               }
-              if(doInit(minLatency)) {
-                initializeConvolutionReverb();
-                return true;
+              if(!doInit(minLatency)) {
+                return false;
               }
-              return false;
+              initializeConvolutionReverb();
+              return true;
             }
 
             void initializeConvolutionReverb()
@@ -163,7 +162,9 @@ namespace imajuscule {
             if(closing.load(std::memory_order_acquire)) {
               return AUDIO_CHANNEL_NONE;
             }
-            Init(minLazyLatency);
+            if(!Init(minLazyLatency)) {
+              return AUDIO_CHANNEL_NONE;
+            }
             if(auto c = getFirstXfadeInfiniteChans()) {
               return c->template openChannel<WithLock::Yes>(volume, p, xfade_length);
             }
