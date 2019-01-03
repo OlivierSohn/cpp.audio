@@ -533,7 +533,7 @@ namespace imajuscule::audio {
           }
           auto new_spec = ramp_specs.get_next_ramp_for_run();
           if(!new_spec) {
-            break;
+            return false;
           }
           new_ramp->algo.getAlgo().getCtrl() = new_spec->get();
           new_ramp->algo.forgetPastSignals();
@@ -557,11 +557,7 @@ namespace imajuscule::audio {
             return true;
           }
         }
-        // release all keys
-
-        while(auto * prevRamp = get_ramps().keyPressed) {
-          prevRamp->algo.editEnvelope().onKeyReleased(0);
-        }
+        Assert(0);
         return false;
       }
 
