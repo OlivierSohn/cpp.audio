@@ -273,19 +273,26 @@ namespace imajuscule {
     }
 
 
-    [[nodiscard]] bool setConvolutionReverbIR(std::vector<double> ir, int n_channels, int n_audiocb_frames, ResponseTailSubsampling rts)
+    [[nodiscard]] bool setConvolutionReverbIR(InterlacedBuffer const & ib, int n_audiocb_frames, ResponseTailSubsampling rts)
     {
       if constexpr (disable) {
         Assert(0);
         return false;
       }
+        bool res = false;
       // having the audio thread compute reverbs at the same time would make our calibration not very reliable
       // (due to cache effects for roots and possibly other) so we disable them now
       muteAudio();
 
       // locking here would possibly incur dropped audio frames due to the time spent setting the coefficients.
       // we ensured reverbs are not used so we don't need to lock.
-      auto res = reverbs.setConvolutionReverbIR(std::move(ir), n_channels, n_audiocb_frames, sample_rate<double>(), rts);
+        try {
+            reverbs.setConvolutionReverbIR(ib, n_audiocb_frames, sample_rate<double>(), rts);
+            res = true;
+        }
+        catch(std::exception const & e) {
+            LG(ERR, "setConvolutionReverbIR error : %s", e.what());
+        }
 
       unmuteAudio();
 
@@ -477,7 +484,7 @@ namespace imajuscule {
       }
 
       auto t = tNanos;
-      constexpr uint64_t nanos_per_iteration =
+      MAYBE_CONSTEXPR_SAMPLE_RATE uint64_t nanos_per_iteration =
       static_cast<uint64_t>(
                             0.5f + nanos_per_frame<float>() * static_cast<float>(audioelement::n_frames_per_buffer)
                             );

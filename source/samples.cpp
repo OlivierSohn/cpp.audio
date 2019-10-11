@@ -1,5 +1,5 @@
 namespace imajuscule {
-    namespace audioelement {
-       
-    } // NS audioelement
+#ifdef CUSTOM_SAMPLE_RATE
+  int SAMPLE_RATE = 44100;
+#endif
 } // NS imajuscule

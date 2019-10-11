@@ -815,6 +815,7 @@ namespace imajuscule::audioelement {
     }
   }
 
+#ifndef CUSTOM_SAMPLE_RATE
   template <typename T, EnvelopeRelease Rel>
   struct AHDSREnvelopeBase : public WithMinChangeDuration {
     using FPT = T;
@@ -995,9 +996,10 @@ namespace imajuscule::audioelement {
       }
     }
   };
-
+  
   template <Atomicity A, typename T, EnvelopeRelease Rel>
   using AHDSREnvelope = EnvelopeCRT < A, AHDSREnvelopeBase <T, Rel> >;
+#endif
 
   template <Atomicity A, typename ALGO>
   using SimplyEnveloped = Enveloped<ALGO,SimpleLinearEnvelope<A, typename ALGO::FPT>>;

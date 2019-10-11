@@ -2,6 +2,7 @@
 namespace imajuscule::audio {
 
 
+#ifndef CUSTOM_SAMPLE_RATE
 
   // The MIDI timestamps don't need sub-frame precision:
   // we drop bits strictly after the highest 1-bit of 'nanosPerFrame',
@@ -55,7 +56,8 @@ private:
       return (firstIgnoredBit == 0) ? floored : floored + 1;
     }
   };
-
+#endif
+  
     template<
     int nOuts,
     XfadePolicy XF,
@@ -85,6 +87,7 @@ private:
                                             , const uint64_t // the time of the start of the buffer that will be computed.
                                             )>;
 
+#ifndef CUSTOM_SAMPLE_RATE
       /*
        * The function is executed once, and then removed from the queue.
        */
@@ -94,6 +97,8 @@ private:
                                                 , MIDITimestampAndSource
                                                 , const uint64_t // the time of the start of the buffer that will be computed.
                                                 )>;
+#endif
+
       /*
        * returns false when the lambda can be removed
        */
@@ -113,16 +118,19 @@ private:
 
         Channels(AudioLockPolicyImpl<policy> & l
                 , int nChannelsMax
-                , int nOrchestratorsMaxPerChannel=0):
+                , int nOrchestratorsMaxPerChannel=0
+                 , int nComputesMin = 0):
         _lock(l)
       , orchestrators(nOrchestratorsMaxPerChannel * nChannelsMax)
       // (almost) worst case scenario : each channel is playing an audiolement crossfading with another audio element
       // "almost" only because the assumption is that requests vector holds at most one audioelement at any time
       // if there are multiple audioelements in request vector, we need to be more precise about when audioelements start to be computed...
       // or we need to constrain the implementation to add requests in realtime, using orchestrators.
-      , computes(2*nChannelsMax)
+      , computes(std::max(nComputesMin, 2*nChannelsMax))
       , oneShots(2*nChannelsMax)
+#ifndef CUSTOM_SAMPLE_RATE
       , oneShotsMIDI(2*nChannelsMax)
+#endif
       {
         Assert(nChannelsMax >= 0);
         Assert(nChannelsMax <= std::numeric_limits<uint8_t>::max()); // else need to update AUDIO_CHANNEL_NONE
@@ -149,6 +157,7 @@ private:
         }
       }
 
+#ifndef CUSTOM_SAMPLE_RATE
       // this method should not be called from the real-time thread
       // because it yields() and retries.
       template<typename F>
@@ -163,7 +172,8 @@ private:
           f(*this, m, 0);
         }
       }
-
+#endif
+      
         bool add_orchestrator(OrchestratorFunc f) {
           if(!orchestrators.tryInsert(std::move(f))) {
             return false;
@@ -402,10 +412,12 @@ private:
         void run_computes(int const nFrames, uint64_t const tNanos) {
           int nRemoved(0);
 
+#ifndef CUSTOM_SAMPLE_RATE
           nRemoved += oneShotsMIDI.dequeueAll([this, tNanos](auto const & p) {
             p.second(*this, p.first, tNanos);
           });
-
+#endif
+          
           nRemoved += oneShots.dequeueAll([this, tNanos](auto const & f) {
             f(*this, tNanos);
           });
@@ -438,7 +450,9 @@ private:
         std::vector<Channel> channels;
         std::vector<uint8_t> autoclosing_ids;
 
+#ifndef CUSTOM_SAMPLE_RATE
         lockfree::scmp::fifo<std::pair<MIDITimestampAndSource,OneShotMidiFunc>> oneShotsMIDI;
+#endif
         lockfree::scmp::fifo<OneShotFunc> oneShots;
 
         // orchestrators and computes could be owned by the channels but it is maybe cache-wise more efficient

@@ -294,9 +294,6 @@
 		09A8F2291E442C3A0071C141 /* soundengine.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = soundengine.cpp; path = source/soundengine.cpp; sourceTree = "<group>"; };
 		09B839AD2092468B00D776E1 /* gen.vasine.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = gen.vasine.h; path = include/gen.vasine.h; sourceTree = "<group>"; };
 		09BA14861E3877BD00A05F83 /* libaudio.ios.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = libaudio.ios.a; sourceTree = BUILT_PRODUCTS_DIR; };
-		09C02B0B1E9A64BD00E570F5 /* read.wav.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; lineEnding = 0; name = read.wav.cpp; path = source/read.wav.cpp; sourceTree = "<group>"; xcLanguageSpecificationIdentifier = xcode.lang.cpp; };
-		09C02B0C1E9A64BD00E570F5 /* write.wav.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; lineEnding = 0; name = write.wav.cpp; path = source/write.wav.cpp; sourceTree = "<group>"; xcLanguageSpecificationIdentifier = xcode.lang.cpp; };
-		09C02B121E9A64F700E570F5 /* read.wav.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = read.wav.h; path = include/read.wav.h; sourceTree = "<group>"; };
 		09D4BAC11E883BA400C9472E /* events.impl.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = events.impl.h; path = include/events.impl.h; sourceTree = "<group>"; };
 		09DC9A0B208F4CDC0057F6EE /* gen.sine.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = gen.sine.h; path = include/gen.sine.h; sourceTree = "<group>"; };
 		09F16A7B20B7130000555324 /* audio_context.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = audio_context.h; path = include/audio_context.h; sourceTree = "<group>"; };
@@ -455,7 +452,6 @@
 				091E76EA1E46C02F009CFBA5 /* normalization.cpp */,
 				099E06DC1E36EC6D0012348E /* parse.music.cpp */,
 				099E06DD1E36EC6D0012348E /* private.h */,
-				09C02B0B1E9A64BD00E570F5 /* read.wav.cpp */,
 				092412A01E56F04500A848A8 /* samples.cpp */,
 				099E06DF1E36EC6D0012348E /* sound.cpp */,
 				09A8F2291E442C3A0071C141 /* soundengine.cpp */,
@@ -464,7 +460,6 @@
 				093A24C81E9B8C47009874DF /* unity.build.joinnonzeros.cpp */,
 				093A24E31E9B8D73009874DF /* unity.build.testfft.cpp */,
 				096C6D641E9F860300389746 /* unity.build.wir_2_wav.cpp */,
-				09C02B0C1E9A64BD00E570F5 /* write.wav.cpp */,
 			);
 			name = source;
 			sourceTree = "<group>";
@@ -507,7 +502,6 @@
 				091E76EB1E46C08F009CFBA5 /* pernamespace.implparams.h */,
 				09529DFC1E439EC000705B99 /* program.h */,
 				099E06E91E36EC920012348E /* public.h */,
-				09C02B121E9A64F700E570F5 /* read.wav.h */,
 				099E06EA1E36EC920012348E /* request.h */,
 				097D56C71E86D42D00018F14 /* samples.h */,
 				09529DFD1E439F2700705B99 /* smoothparam.h */,
@@ -748,6 +742,7 @@
 			developmentRegion = English;
 			hasScannedForEncodings = 0;
 			knownRegions = (
+				English,
 				en,
 			);
 			mainGroup = 09FF3F1A1E36EBBB00C81351;

@@ -46,8 +46,10 @@ namespace imajuscule::audio {
 
             Chan * channel = nullptr;
             AudioElem elem;
+#ifndef CUSTOM_SAMPLE_RATE
             Optional<MIDITimestampAndSource> midiDelay;
-
+#endif
+          
             template<WithLock lock_policy, typename ChannelsT>
             bool open(ChannelsT & out, float inital_volume) {
                 constexpr auto xfadeLen = (Chan::XFPolicy==XfadePolicy::UseXfade)?401:0;

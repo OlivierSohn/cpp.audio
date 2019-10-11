@@ -55,6 +55,7 @@ namespace imajuscule {
 #endif
     };
     
+#ifndef CUSTOM_SAMPLE_RATE
     namespace pinkNoise {
         constexpr auto lowest_pink_frequency = 10.f; // Hz
         constexpr auto n_changes_min_per_sec = lowest_pink_frequency * 2.f;
@@ -75,7 +76,7 @@ namespace imajuscule {
         
         constexpr auto n_levels = relevantBits(static_cast<unsigned int>(SAMPLE_RATE / n_changes_min_per_sec));
     }
- 
+
     // http://www.firstpr.com.au/dsp/pink-noise/
     
     struct GaussianPinkNoiseAlgo {
@@ -156,7 +157,8 @@ namespace imajuscule {
             return sum/levels.size();
         }
     };
-    
+#endif
+
     
     template<typename SOURCE_NOISE>
     struct GaussianGreyNoiseAlgo {

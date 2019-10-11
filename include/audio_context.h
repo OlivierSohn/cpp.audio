@@ -36,35 +36,22 @@ namespace imajuscule {
 
         int wait_for_first_n_audio_cb_frames();
 
-        template<typename OutputData>
-        bool useConvolutionReverb(OutputData & chans,
+        template<typename Post>
+        bool useConvolutionReverb(Post & post,
                                   std::string const & dirname, std::string const & filename, ResponseTailSubsampling rts) {
-            WAVReader reader(dirname, filename);
 
-            auto res = reader.Initialize();
-
-            if(ILE_SUCCESS != res) {
-                LG(WARN, "Cannot read '%s' as a '.wav' file. If the file exists in '%s', it might be corrupted.", filename.c_str(), dirname.c_str());
+            try{
+                InterlacedBuffer ib;
+                readReverbFromFile(Post::nouts, SAMPLE_RATE, dirname, filename, ib);
+                post.setConvolutionReverbIR(ib,
+                                            wait_for_first_n_audio_cb_frames(),
+                                            rts);
+            }
+            catch(std::exception const & e) {
+                LG(ERR, "useConvolutionReverb error : %s", e.what());
                 return false;
             }
-
-            auto mod = reader.countChannels() % OutputData::nOuts;
-            if((reader.countChannels() > OutputData::nOuts) && mod) {
-                LG(ERR, "cannot use a '%d' channels reverb for '%d' outs", reader.countChannels(), OutputData::nOuts);
-                return false;
-            }
-
-            double stride = reader.getSampleRate() / static_cast<double>(SAMPLE_RATE);
-
-            std::vector<double> buf(static_cast<int>(reader.countFrames() / stride) * reader.countChannels());
-            MultiChannelReSampling<decltype(reader)> mci(reader);
-            mci.Read(buf.begin(), buf.end(), stride);
-            buf.resize(std::distance(buf.begin(), buf.end()));
-
-            return chans.getPost().setConvolutionReverbIR(std::move(buf),
-                                                          reader.countChannels(),
-                                                          wait_for_first_n_audio_cb_frames(),
-                                                        rts);
+            return true;
         }
 
         constexpr int xfade_on_close = 5000; // in samples

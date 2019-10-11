@@ -16,10 +16,6 @@ namespace imajuscule {
         template<AudioPlatform A, Features F, typename Chans>
         struct Context;
 
-      /*
-      * Denormals can appear in reverb algorithm, when signal becomes close to 0.
-      */
-      void disableDenormals();
 
       constexpr auto initial_n_audio_cb_frames = -1;
       // 'n_audio_cb_frames' is initially 'initial_n_audio_cb_frames', until the audio callback sets the value.

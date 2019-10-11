@@ -124,9 +124,11 @@ namespace imajuscule::audio {
     uint64_t delay = noValue;
   };
 
+#ifndef CUSTOM_SAMPLE_RATE
   // The first call is expensive, as the array is allocated.
   std::array<TimeDelay, MIDITimestampAndSource::nSources> & midiDelays();
-
+#endif
+  
   uint64_t & maxMIDIJitter();
 
   template<
@@ -248,7 +250,11 @@ namespace imajuscule::audio {
     }
 
     template<typename Out, typename Chans>
-    onEventResult onEvent2(Event const & e, Out & out, Chans & chans, Optional<MIDITimestampAndSource> maybeMidiTimeAndSource)
+    onEventResult onEvent2(Event const & e, Out & out, Chans & chans
+#ifndef CUSTOM_SAMPLE_RATE
+                           ,Optional<MIDITimestampAndSource> maybeMidiTimeAndSource
+#endif
+                           )
     {
       using Request = typename Chans::Request;
       static_assert(Out::policy == outPolicy);
@@ -349,6 +355,7 @@ namespace imajuscule::audio {
             }
           });
 
+#ifndef CUSTOM_SAMPLE_RATE
           if(maybeMidiTimeAndSource) {
             chans.enqueueMIDIOneShot(get_value(maybeMidiTimeAndSource)
                                    , [&c](Chans & chans, auto midiTimingAndSrc, uint64_t curTimeNanos){
@@ -396,7 +403,9 @@ namespace imajuscule::audio {
               }
             });
           }
-          else {
+          else
+#endif
+          {
             chans.enqueueOneShot([&c](Chans & chans, uint64_t tNanos){
               c.elem.editEnvelope().onKeyPressed(0);
               c.midiDelay = {};
@@ -415,6 +424,7 @@ namespace imajuscule::audio {
         }
         MIDI_LG(INFO, "off %d", e.noteOff.pitch);
         TunedPitch tp{e.noteOff.pitch, e.noteOff.tuning};
+#ifndef CUSTOM_SAMPLE_RATE
         if(maybeMidiTimeAndSource) {
           typename Out::LockFromNRT L(out.get_lock());
           static_assert(sizeof(decltype(tp))<=8); // ensure that the std::function won't dynamically allocate / deallocate
@@ -455,7 +465,9 @@ namespace imajuscule::audio {
             // because too many notes were being played at the same time
           });
         }
-        else {
+        else
+#endif
+        {
           typename Out::LockFromNRT L(out.get_lock());
           chans.enqueueOneShot([this, tp](auto &, uint64_t curTimeNanos){
             // We can have multiple notes with the same pitch, and different durations.

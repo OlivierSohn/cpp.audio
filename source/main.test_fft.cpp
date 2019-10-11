@@ -46,7 +46,7 @@ namespace imajuscule {
                 }
             }
             
-            write_wav({}, "signal_" + std::to_string(num_taps) + ".wav", real_signal, NChannels::ONE);
+            write_wav({}, "signal_" + std::to_string(num_taps) + ".wav", real_signal, NChannels::ONE, SAMPLE_RATE);
             
             frequencies.resize(length_fft);
 

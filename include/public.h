@@ -12,16 +12,10 @@
 
 #include "../../cpp.algorithms/include/public.h"
 
-extern "C"
-{
-#include "c.h"
-}
-
 #include "audio_platforms.h"
 
 #include "sound.defines.h"
 
-#include "samples.h"
 #include "loudness_filter_coefficients.h"
 #include "loudness.h"
 #include "sound.functions.h"
@@ -30,12 +24,14 @@ extern "C"
 #include "loudness_filter.h"
 #include "audioelement.h"
 
-#if TARGET_OS_IOS
-# import <AudioToolbox/AudioToolbox.h>
-# include "audio_platform_au.h"
-#else
-# include "portaudio.h"
-# include "audio_platform_pa.h"
+#ifndef NO_OUTPUT
+# if TARGET_OS_IOS
+#  import <AudioToolbox/AudioToolbox.h>
+#  include "audio_platform_au.h"
+# else
+#  include "portaudio.h"
+#  include "audio_platform_pa.h"
+# endif
 #endif
 
 #include "midi.h"
@@ -43,7 +39,6 @@ extern "C"
 #include "sounds.h"
 #include "request.h"
 #include "channel.h"
-#include "read.wav.h"
 #include "out.h"
 #include "audio_context.h"
 #include "channels.h"
