@@ -996,7 +996,7 @@ namespace imajuscule::audioelement {
       }
     }
   };
-  
+
   template <Atomicity A, typename T, EnvelopeRelease Rel>
   using AHDSREnvelope = EnvelopeCRT < A, AHDSREnvelopeBase <T, Rel> >;
 #endif
@@ -1740,13 +1740,16 @@ namespace imajuscule::audioelement {
   using BandRejectAlgo = BandAlgo_<AEAlgoWidth, BandRejectAlgo_<AEAlgo, ORDER>>;
 
   template<typename T>
-  struct LoudnessCompensationFilter {
-    LoudnessCompensationFilter(unsigned int fft_length, unsigned int NumTaps) :
+  struct LoudnessCompensationFilterWithLatency {
+    LoudnessCompensationFilterWithLatency(unsigned int const fft_length, unsigned int const NumTaps) :
     sz(NumTaps)
     {
-      applySetup(filter,typename F::SetupParam{});
-      filter.setCoefficients(imajuscule::loudness::getLoudnessCompensationFIRCoefficients<T>(fft_length, NumTaps));
+      filter.setupAndSetCoefficients(FFTConvolutionCRTPSetupParam{static_cast<int>(fft_length)},
+                  1, // we sample by sample so max vector size is 1
+                  imajuscule::loudness::getLoudnessCompensationFIRCoefficients<T>(fft_length, NumTaps));
     }
+
+    Latency getLatency() const { return filter.getLatency(); }
 
     T step(T val) {
       return filter.step(val);
@@ -1754,7 +1757,9 @@ namespace imajuscule::audioelement {
 
     auto size() const { return sz; }
   private:
-    using F = ZeroLatencyFilter<T,AudioProcessing::Offline>;
+    // to have a lowest cpu usage on average, we use a single fft
+    using Algo = AlgoFFTConvolutionIntermediate<AlgoFFTConvolutionCRTP<T, a64::Alloc, fft::Fastest>>;
+    using F = SelfContainedXYConvolution<Algo>;
     F filter;
     unsigned int sz;
   };

@@ -38,14 +38,16 @@ namespace imajuscule {
 
         template<typename Post>
         bool useConvolutionReverb(Post & post,
-                                  std::string const & dirname, std::string const & filename, ResponseTailSubsampling rts) {
+                                  std::string const & dirname, std::string const & filename) {
 
             try{
-                InterlacedBuffer ib;
-                readReverbFromFile(Post::nouts, SAMPLE_RATE, dirname, filename, ib);
-                post.setConvolutionReverbIR(ib,
-                                            wait_for_first_n_audio_cb_frames(),
-                                            rts);
+                WAVReader reader(dirname, filename);
+                ResampleSincStats stats;
+                using T = double;
+                InterlacedBuffer ib(reader, SAMPLE_RATE, stats);
+                DeinterlacedBuffers<T> db(ib);
+                return post.setConvolutionReverbIR(db,
+                                            wait_for_first_n_audio_cb_frames());
             }
             catch(std::exception const & e) {
                 LG(ERR, "useConvolutionReverb error : %s", e.what());

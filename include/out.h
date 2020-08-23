@@ -1,6 +1,6 @@
 #define WITH_DELAY 0
 
-namespace imajuscule {
+namespace imajuscule::audio {
 
   template<int nAudioOut>
   struct DelayLine {
@@ -210,9 +210,59 @@ namespace imajuscule {
     return OutTraits::sync == Synchronization::Lockfree_SingleConsumerMultipleProducer;
   }
 
-  template<int nAudioOut, AudioOutPolicy policy>
+  /**
+   * Performs data transpositions
+   */
+  template<typename T, int nAudioIn, int nAudioOut, int nFramesMax>
+  struct Conversion {
+      Conversion()
+      : ins(nAudioIn * nFramesMax)
+      , outs(nAudioOut * nFramesMax)
+      , inputBuffers(nAudioIn)
+      , outputBuffers(nAudioOut) {
+          for (int in = 0; in < nAudioIn; ++in) {
+              inputBuffers[in] = &ins[in * nFramesMax];
+          }
+          for (int out = 0; out < nAudioOut; ++out) {
+              outputBuffers[out] = &outs[out * nFramesMax];
+          }
+      }
+
+      // data   = frame1 frame2 ...
+      // frameN = in1 in2 ...
+      T ** transposeInput(T const * data, int const nFrames) {
+          for (int i=0; i<nFrames; ++i) {
+              for (int in = 0; in < nAudioIn; ++in) {
+                  ins[in * nFramesMax + i] = data[i*nAudioIn + in];
+              }
+          }
+          return inputBuffers.data();
+      }
+
+      T ** editOutput() { return outputBuffers.data(); }
+
+      // data   = frame1 frame2 ...
+      // frameN = out1 out2 ...
+      void transposeOutput(T * data, int const nFrames) {
+          for (int i=0; i<nFrames; ++i) {
+              for (int out = 0; out < nAudioOut; ++out) {
+                  data[i*nAudioOut + out] = outs[out * nFramesMax + i];
+              }
+          }
+      }
+
+  private:
+      // ins = "frames of input1" "frames of input2" ...
+      // outs = "frames of output1" "frames of output2" ...
+      std::vector<T> ins, outs;
+      std::vector<T*> inputBuffers;
+      std::vector<T*> outputBuffers;
+  };
+
+  template<int nAudioOut, ReverbType ReverbT, AudioOutPolicy policy>
   struct AudioPostPolicyImpl {
     static constexpr auto nOut = nAudioOut;
+    static constexpr auto nAudioIn = nAudioOut;
     using LockPolicy = AudioLockPolicyImpl<policy>;
 
     // We disable postprocessing for audio plugins (i.e 'AudioOutPolicy::Slave')
@@ -240,8 +290,6 @@ namespace imajuscule {
         return;
       }
 
-      reverbs.apply(buffer,nFrames);
-
 #if WITH_DELAY
       for( auto & delay : delays ) {
         // todo low pass filter for more realism
@@ -249,8 +297,15 @@ namespace imajuscule {
       }
 #endif
 
-      // compress / hardlimit
+      {
+        Assert(nFrames <= audioelement::n_frames_per_buffer);
+        auto ** ins = conversion.transposeInput(buffer, nFrames);
+        reverbs.apply(ins, nAudioIn, conversion.editOutput(), nAudioOut, nFrames);
+        conversion.transposeOutput(buffer, nFrames);
+      }
+
       for(int i=0; i<nFrames; ++i) {
+        // compress / hardlimit
         for(auto const & f: post_process) {
           f(&buffer[i*nAudioOut]); // or call the lambda for the whole buffer at once?
         }
@@ -267,13 +322,14 @@ namespace imajuscule {
 
       muteAudio();
 
-      reverbs.disable();
+      reverbs.flushToSilence();
+      reverbs.clear();
 
       unmuteAudio();
     }
 
-
-    [[nodiscard]] bool setConvolutionReverbIR(InterlacedBuffer const & ib, int n_audiocb_frames, ResponseTailSubsampling rts)
+    template<typename T>
+    [[nodiscard]] bool setConvolutionReverbIR(DeinterlacedBuffers<T> const & db, int n_audiocb_frames)
     {
       if constexpr (disable) {
         Assert(0);
@@ -287,7 +343,8 @@ namespace imajuscule {
       // locking here would possibly incur dropped audio frames due to the time spent setting the coefficients.
       // we ensured reverbs are not used so we don't need to lock.
         try {
-            reverbs.setConvolutionReverbIR(ib, n_audiocb_frames, sample_rate<double>(), rts);
+            std::map<int, ConvReverbOptimizationReport> results;
+            reverbs.setConvolutionReverbIR(nAudioIn, db, n_audiocb_frames, n_audiocb_frames, sample_rate<double>(), results);
             res = true;
         }
         catch(std::exception const & e) {
@@ -351,7 +408,8 @@ namespace imajuscule {
 #if WITH_DELAY
     std::vector< DelayLine > delays;
 #endif
-    Reverbs<nAudioOut> reverbs;
+    Conversion<double, nAudioIn, nAudioOut, audioelement::n_frames_per_buffer> conversion;
+    ConvReverbsByBlockSize<Reverbs<nAudioOut, ReverbT, PolicyOnWorkerTooSlow::PermanentlySwitchToDry>> reverbs;
     audio::Compressor compressor;
 
     void muteAudio() {
@@ -393,7 +451,7 @@ namespace imajuscule {
     };
   }
 
-  template< typename ChannelsType >
+  template< typename ChannelsType, ReverbType ReverbT>
   struct outputDataBase {
     using T = SAMPLE;
 
@@ -401,7 +459,7 @@ namespace imajuscule {
     static constexpr auto nOuts = ChannelsType::nAudioOut;
     using ChannelsT = ChannelsType;
     using Request = typename ChannelsType::Request;
-    using PostImpl = AudioPostPolicyImpl<nOuts, policy>;
+    using PostImpl = AudioPostPolicyImpl<nOuts, ReverbT, policy>;
     using LockFromRT = LockIf<AudioLockPolicyImpl<policy>::useLock, ThreadType::RealTime>;
     using LockFromNRT = LockIf<AudioLockPolicyImpl<policy>::useLock, ThreadType::NonRealTime>;
     using LockCtrlFromNRT = LockCtrlIf<AudioLockPolicyImpl<policy>::useLock, ThreadType::NonRealTime>;

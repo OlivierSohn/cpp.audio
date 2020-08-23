@@ -128,7 +128,7 @@ namespace imajuscule::audio {
   // The first call is expensive, as the array is allocated.
   std::array<TimeDelay, MIDITimestampAndSource::nSources> & midiDelays();
 #endif
-  
+
   uint64_t & maxMIDIJitter();
 
   template<
@@ -503,15 +503,16 @@ namespace imajuscule::audio {
     }
   };
 
-  template<typename T>
+  template<typename T, ReverbType ReverbT>
   struct Wrapper {
     static constexpr auto n_channels = T::n_channels;
-    static constexpr auto with_lock = imajuscule::WithLock::No;
+    static constexpr auto with_lock = WithLock::No;
 
     using ProcessData = typename T::ProcessData;
 
     using OutputData = outputDataBase<
-    Channels<T::nAudioOut, T::xfade_policy, T::max_queue_size, AudioOutPolicy::Slave>
+    Channels<T::nAudioOut, T::xfade_policy, T::max_queue_size, AudioOutPolicy::Slave>,
+    ReverbT
     >;
 
     template <class... Args>

@@ -192,7 +192,8 @@ soundBuffer::soundBuffer( soundId const & id ) {
         if( id.period_length < 20 ) {
             {
                 // center
-                auto avg_ = profiling::avg(values);
+                auto avg_ = std::accumulate(values.begin(), values.end(), 0.f) /
+                            static_cast<float>(values.size());
 
                 for( auto & v : values ) {
                     v -= avg_;
