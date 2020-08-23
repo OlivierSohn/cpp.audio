@@ -285,6 +285,10 @@ namespace imajuscule::audio {
     /////////////////////////////// postprocess
     using postProcessFunc = std::function<void(double*)>;
 
+    void declareBlockSize(int sz) {
+        reverbs.declareBlockSize(sz);
+    }
+
     void postprocess(double*buffer, int nFrames) {
       if(disable) {
         return;
@@ -297,7 +301,7 @@ namespace imajuscule::audio {
       }
 #endif
 
-      {
+      if (reverbs.isActive()) {
         Assert(nFrames <= audioelement::n_frames_per_buffer);
         auto ** ins = conversion.transposeInput(buffer, nFrames);
         reverbs.apply(ins, nAudioIn, conversion.editOutput(), nAudioOut, nFrames);
@@ -540,6 +544,7 @@ namespace imajuscule::audio {
         memset(outputBuffer, 0, nFrames * nOuts * sizeof(SAMPLE));
         return;
       }
+      post.declareBlockSize(nFrames);
 
       auto t = tNanos;
       MAYBE_CONSTEXPR_SAMPLE_RATE uint64_t nanos_per_iteration =
