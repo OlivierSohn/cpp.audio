@@ -42,9 +42,16 @@ namespace imajuscule {
 
             try{
                 WAVReader reader(dirname, filename);
+                reader.Initialize();
                 ResampleSincStats stats;
                 using T = double;
                 InterlacedBuffer ib(reader, SAMPLE_RATE, stats);
+                if (ib.countChannels() <= 0) {
+                    throw std::runtime_error("negative count channels");
+                }
+                if (ib.countFrames() <= 0) {
+                    throw std::runtime_error("negative count frames");
+                }
                 DeinterlacedBuffers<T> db(ib);
                 return post.setConvolutionReverbIR(db,
                                             wait_for_first_n_audio_cb_frames());
