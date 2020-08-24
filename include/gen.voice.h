@@ -1082,7 +1082,7 @@ namespace imajuscule::audio::voice {
     EngineAndRamps(buffer_t&b) :
     ramps{b[0],b[1],b[2]},
     engine{[this]()-> Ramps<audioElt> {
-      using namespace imajuscule::audioelement;
+      using namespace imajuscule::audio::audioelement;
       Ramps<audioElt> res;
       // in SoundEngine.playNextSpec (from the rt audio thread),
       // we onKeyPressed() the inactive ramp and onKeyReleased() the active ramp.

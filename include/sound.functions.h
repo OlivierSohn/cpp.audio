@@ -1,5 +1,5 @@
 
-namespace imajuscule {
+namespace imajuscule::audio {
 
   template<typename T>
   constexpr T sample_rate() { return static_cast<T>(SAMPLE_RATE); };

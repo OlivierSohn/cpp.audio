@@ -1,5 +1,5 @@
 
-namespace imajuscule {
+namespace imajuscule::audio {
   namespace detail {
     extern std::map< soundId, soundBuffer > & getSounds();
   }

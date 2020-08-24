@@ -1,5 +1,5 @@
 
-namespace imajuscule {
+namespace imajuscule::audio {
     static inline float white_gaussian_noise(float f = 0.f) {
         return std::normal_distribution<float>{0.f, 1.f}(mersenne<SEEDED::No>());
     }
@@ -191,7 +191,7 @@ namespace imajuscule {
 
     private:
         unsigned int counter = 0;
-        audioelement::LoudnessCompensationFilterWithLatency<T> loudness_compensation_filter;
+        audio::audioelement::LoudnessCompensationFilterWithLatency<T> loudness_compensation_filter;
         SOURCE_NOISE source;
     };
 

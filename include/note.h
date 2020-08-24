@@ -1,5 +1,5 @@
 
-namespace imajuscule {
+namespace imajuscule::audio {
     enum Note : unsigned char{
         NOTE_ERROR,
         Silence,

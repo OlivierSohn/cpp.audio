@@ -11,7 +11,7 @@
 #define LG_XFADE(...)
 #endif
 
-namespace imajuscule {
+namespace imajuscule::audio {
 
     struct MakeVolume {
         template<int J>

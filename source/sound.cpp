@@ -1,5 +1,5 @@
 
-namespace imajuscule {
+namespace imajuscule::audio {
 
     constexpr auto noise_duration = .05f;
     // take into account the fact that to compute gray noise, a filter needs to be initialized using some pink noise samples
@@ -45,10 +45,6 @@ namespace imajuscule {
         static auto val = getAbsMean(getGreyNoise());
         return val;
     }
-
-}
-
-using namespace imajuscule;
 
 static float triangle_( float angle_radians ) {
     Assert(angle_radians >= 0.f);
@@ -290,8 +286,6 @@ void soundBuffer::normalize() {
         v *= M;
     }
 }
-
-namespace imajuscule {
 
   namespace detail {
     std::map< soundId, soundBuffer > & getSounds() {

@@ -1,5 +1,5 @@
 
-namespace imajuscule {
+namespace imajuscule::audio {
     namespace audioelement {
         template<typename T>
         void onQueued(T * buffer) {

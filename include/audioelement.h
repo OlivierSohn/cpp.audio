@@ -1,4 +1,4 @@
-namespace imajuscule::audioelement {
+namespace imajuscule::audio::audioelement {
 
   constexpr auto n_frames_per_buffer = 16;
 
@@ -1746,7 +1746,7 @@ namespace imajuscule::audioelement {
     {
       filter.setupAndSetCoefficients(FFTConvolutionCRTPSetupParam{static_cast<int>(fft_length)},
                   1, // we sample by sample so max vector size is 1
-                  imajuscule::loudness::getLoudnessCompensationFIRCoefficients<T>(fft_length, NumTaps));
+                  loudness::getLoudnessCompensationFIRCoefficients<T>(fft_length, NumTaps));
     }
 
     Latency getLatency() const { return filter.getLatency(); }
@@ -2393,4 +2393,4 @@ namespace imajuscule::audioelement {
   template<typename A1, typename A2>
   using RingModulation = FinalAudioElement<RingModulationAlgo<A1,A2>>;
 
-} // NS imajuscule::audioelement
+} // NS imajuscule::audio::audioelement

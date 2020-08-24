@@ -1,4 +1,4 @@
-namespace imajuscule {
+namespace imajuscule::audio {
     namespace loudness {
         
         // based on http://mariobon.com/Glossario/Loudness_ISO_226_2003b.pdf

@@ -1,6 +1,6 @@
 #define WITH_DELAY 0
 
-namespace imajuscule::audio {
+namespace imajuscule {
 
   template<int nAudioOut>
   struct DelayLine {
@@ -259,7 +259,7 @@ namespace imajuscule::audio {
       std::vector<T*> outputBuffers;
   };
 
-  template<int nAudioOut, ReverbType ReverbT, AudioOutPolicy policy>
+  template<int nAudioOut, audio::ReverbType ReverbT, AudioOutPolicy policy>
   struct AudioPostPolicyImpl {
     static constexpr auto nOut = nAudioOut;
     static constexpr auto nAudioIn = nAudioOut;
@@ -302,7 +302,7 @@ namespace imajuscule::audio {
 #endif
 
       if (reverbs.isActive()) {
-        Assert(nFrames <= audioelement::n_frames_per_buffer);
+        Assert(nFrames <= audio::audioelement::n_frames_per_buffer);
         auto ** ins = conversion.transposeInput(buffer, nFrames);
         reverbs.apply(ins, nAudioIn, conversion.editOutput(), nAudioOut, nFrames);
         conversion.transposeOutput(buffer, nFrames);
@@ -333,7 +333,7 @@ namespace imajuscule::audio {
     }
 
     template<typename T>
-    [[nodiscard]] bool setConvolutionReverbIR(DeinterlacedBuffers<T> const & db, int n_audiocb_frames)
+    [[nodiscard]] bool setConvolutionReverbIR(audio::DeinterlacedBuffers<T> const & db, int n_audiocb_frames)
     {
       if constexpr (disable) {
         Assert(0);
@@ -347,8 +347,8 @@ namespace imajuscule::audio {
       // locking here would possibly incur dropped audio frames due to the time spent setting the coefficients.
       // we ensured reverbs are not used so we don't need to lock.
         try {
-            std::map<int, ConvReverbOptimizationReport> results;
-            reverbs.setConvolutionReverbIR(nAudioIn, db, n_audiocb_frames, n_audiocb_frames, sample_rate<double>(), results);
+            std::map<int, audio::ConvReverbOptimizationReport> results;
+            reverbs.setConvolutionReverbIR(nAudioIn, db, n_audiocb_frames, n_audiocb_frames, audio::sample_rate<double>(), results);
             res = true;
         }
         catch(std::exception const & e) {
@@ -362,7 +362,7 @@ namespace imajuscule::audio {
 
     // Must be called from the audio realtime thread.
     void transitionConvolutionReverbWetRatio(double wet) {
-      reverbs.transitionConvolutionReverbWetRatio(wet, ms_to_frames(200));
+        reverbs.transitionConvolutionReverbWetRatio(wet, audio::ms_to_frames(200));
     }
 
     bool isReady() const
@@ -412,8 +412,8 @@ namespace imajuscule::audio {
 #if WITH_DELAY
     std::vector< DelayLine > delays;
 #endif
-    Conversion<double, nAudioIn, nAudioOut, audioelement::n_frames_per_buffer> conversion;
-    ConvReverbsByBlockSize<Reverbs<nAudioOut, ReverbT, PolicyOnWorkerTooSlow::PermanentlySwitchToDry>> reverbs;
+    Conversion<double, nAudioIn, nAudioOut, audio::audioelement::n_frames_per_buffer> conversion;
+    audio::ConvReverbsByBlockSize<audio::Reverbs<nAudioOut, ReverbT, audio::PolicyOnWorkerTooSlow::PermanentlySwitchToDry>> reverbs;
     audio::Compressor compressor;
 
     void muteAudio() {
@@ -427,7 +427,7 @@ namespace imajuscule::audio {
         // will be finished when we wake up (and subsequent cb calls will see the updated
         // 'ready' value)
         int n = audio::wait_for_first_n_audio_cb_frames();
-        float millisPerBuffer = frames_to_ms(n);
+          float millisPerBuffer = audio::frames_to_ms(n);
         std::this_thread::sleep_for(std::chrono::milliseconds(static_cast<int>(0.5f + 20.f * ceil(millisPerBuffer))));
       }
     }
@@ -455,7 +455,7 @@ namespace imajuscule::audio {
     };
   }
 
-  template< typename ChannelsType, ReverbType ReverbT>
+  template< typename ChannelsType, audio::ReverbType ReverbT>
   struct outputDataBase {
     using T = SAMPLE;
 
@@ -549,12 +549,12 @@ namespace imajuscule::audio {
       auto t = tNanos;
       MAYBE_CONSTEXPR_SAMPLE_RATE uint64_t nanos_per_iteration =
       static_cast<uint64_t>(
-                            0.5f + nanos_per_frame<float>() * static_cast<float>(audioelement::n_frames_per_buffer)
+                            0.5f + audio::nanos_per_frame<float>() * static_cast<float>(audio::audioelement::n_frames_per_buffer)
                             );
 
-      double precisionBuffer[audioelement::n_frames_per_buffer * nOuts];
+      double precisionBuffer[audio::audioelement::n_frames_per_buffer * nOuts];
       while(nFrames > 0) {
-        auto const nLocalFrames = std::min(nFrames, audioelement::n_frames_per_buffer);
+        auto const nLocalFrames = std::min(nFrames, audio::audioelement::n_frames_per_buffer);
 
         channelsT.run_computes(nLocalFrames, t);
 
@@ -567,7 +567,7 @@ namespace imajuscule::audio {
             ++i, ++outputBuffer) {
           *outputBuffer = static_cast<SAMPLE>(precisionBuffer[i]);
         }
-        nFrames -= audioelement::n_frames_per_buffer;
+        nFrames -= audio::audioelement::n_frames_per_buffer;
         t += nanos_per_iteration;
       }
     }
@@ -575,7 +575,7 @@ namespace imajuscule::audio {
   private:
 
     void consume_buffers(double * outputBuffer, int const nFrames, uint64_t const tNanos) {
-      Assert(nFrames <= audioelement::n_frames_per_buffer); // by design
+      Assert(nFrames <= audio::audioelement::n_frames_per_buffer); // by design
 
       channelsT.forEach(detail::Compute{outputBuffer, nFrames, tNanos});
       post.postprocess(outputBuffer, nFrames);

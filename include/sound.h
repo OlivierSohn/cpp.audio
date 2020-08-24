@@ -1,5 +1,5 @@
 
-namespace imajuscule {
+namespace imajuscule::audio {
 
     struct Sound {
         enum Type : unsigned char {
