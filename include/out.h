@@ -395,16 +395,18 @@ namespace imajuscule {
           }
 
           if(v[i] > 1.f) {
-            Assert(0);
+            std::cout << "clamp " << v[i] << std::endl;
             v[i] = 1.f;
+            Assert(0);
           }
           else if(v[i] < -1.f) {
-            Assert(0);
+            std::cout << "clamp " << v[i] << std::endl;
             v[i] = -1.f;
+            Assert(0);
           }
           else {
-            Assert(0);
             v[i] = 0.f; // v[i] is NaN
+            Assert(0);
           }
         }
       }}};
