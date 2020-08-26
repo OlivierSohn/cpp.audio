@@ -416,7 +416,7 @@ namespace imajuscule {
 #endif
     Conversion<double, nAudioIn, nAudioOut, audio::audioelement::n_frames_per_buffer> conversion;
     audio::ConvReverbsByBlockSize<audio::Reverbs<nAudioOut, ReverbT, audio::PolicyOnWorkerTooSlow::PermanentlySwitchToDry>> reverbs;
-    audio::Compressor compressor;
+    audio::Compressor<double> compressor;
 
     void muteAudio() {
       LockFromNRT l(_lock.lock());
