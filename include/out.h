@@ -387,8 +387,10 @@ namespace imajuscule {
       { [this](double v[nAudioOut]) {
         CArray<nAudioOut, double> a{v};
         compressor.feed(a);
+        // by now, the signal is compressed and limited...
       }},
       { [](double v[nAudioOut]) {
+        // but just in case, we add this extra post-processing:
         for(int i=0; i<nAudioOut; ++i) {
           if(likely(-1.f <= v[i] && v[i] <= 1.f)) {
             continue;
@@ -405,6 +407,7 @@ namespace imajuscule {
             Assert(0);
           }
           else {
+            std::cout << "NaN" << std::endl;
             v[i] = 0.f; // v[i] is NaN
             Assert(0);
           }
