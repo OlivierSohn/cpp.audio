@@ -549,6 +549,7 @@ namespace imajuscule::audio::audioelement {
     WaitForKeyRelease,
     ReleaseAfterDecay
   };
+  std::ostream & operator << (std::ostream &, EnvelopeRelease);
 
   template <Atomicity A, typename Base>
   struct EnvelopeCRT : public Base {

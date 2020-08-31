@@ -89,22 +89,12 @@ namespace imajuscule::audio {
             } l;
 
             for(int i=levels.size()-1; i >= 1; --i) {
-#ifndef NDEBUG
-                Assert(!levels[i].was_stepped_once());
-#endif
                 counter = (1 << (levels.size()-2)) - (1 << (i-1));
 #ifndef NDEBUG
                 levels[i].last = counter-1; // to satisfy assert in levels[i].step
 #endif
                 do_step();
-#ifndef NDEBUG
-                Assert(levels[i].was_stepped_once());
-#endif
             }
-
-#ifndef NDEBUG
-            Assert(!levels[0].was_stepped_once());
-#endif
 
 #ifndef NDEBUG
             for(int i=0; i<levels.size(); ++i) {
@@ -133,7 +123,12 @@ namespace imajuscule::audio {
         std::array<InterpolatedSignal, pinkNoise::n_levels> levels;
 
         void do_step() {
-            auto index = 1 + count_trailing_zeroes(counter);
+            unsigned int index;
+            if (likely(counter)) {
+                index = 1 + count_trailing_zeroes(counter);
+            } else {
+                index = 1 + sizeof(decltype(counter)) * 8;
+            }
             if(index > levels.size()-1) {
                 index = levels.size()-1;
             }

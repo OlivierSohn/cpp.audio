@@ -41,4 +41,15 @@ namespace imajuscule::audio {
     return v;
   }
 
+  namespace audioelement {
+    std::ostream & operator << (std::ostream & os, EnvelopeRelease e) {
+        switch(e) {
+            case EnvelopeRelease::WaitForKeyRelease:
+              os << "WaitForKeyRelease"; break;
+            case EnvelopeRelease::ReleaseAfterDecay:
+              os << "ReleaseAfterDecay"; break;
+        }
+        return os;
+    }
+  }
 }
