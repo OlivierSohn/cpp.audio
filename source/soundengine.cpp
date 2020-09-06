@@ -41,8 +41,8 @@ namespace imajuscule {
             return et;
         }
 
-        soundBuffer & getSilence() {
-            static soundBuffer silence{1, 0.f};
+        soundBuffer<double> & getSilence() {
+            static soundBuffer<double> silence{1, 0.};
             return silence;
         }
     }

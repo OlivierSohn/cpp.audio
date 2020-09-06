@@ -1167,7 +1167,7 @@ namespace imajuscule::audio::audioelement {
   struct PCOscillatorAlgo : public Phased<T> {
     static constexpr auto hasEnvelope = false;
     static constexpr auto isMonoHarmonic = true;
-    static constexpr auto baseVolume = 1.f;
+    static constexpr auto baseVolume = reduceUnadjustedVolumes * soundBaseVolume(Sound::SINE);
 
     using Phased<T>::angle_;
     using Phased<T>::aliasingMult;
@@ -1195,10 +1195,12 @@ namespace imajuscule::audio::audioelement {
 
   template<Sound::Type SOUND>
   struct soundBufferWrapperAlgo {
+    using MeT = soundBufferWrapperAlgo<SOUND>;
+
     static constexpr auto hasEnvelope = false;
-    static constexpr auto baseVolume = 1.f; // TODO tune
+    static constexpr auto baseVolume = reduceUnadjustedVolumes * soundBaseVolume(SOUND);
     using F_GET_BUFFER = FGetBuffer<SOUND>;
-    using T = soundBuffer::FPT;
+    using T = double;
     using FPT = T;
     static_assert(std::is_floating_point<FPT>::value);
 
@@ -1206,8 +1208,16 @@ namespace imajuscule::audio::audioelement {
       F_GET_BUFFER().getAbsMean(); // just to initialize the static in it
     }
 
+    auto       & getOsc()       {return *this; }
+    auto const & getOsc() const {return *this; }
+
+    void synchronizeAngles(MeT const & other) {}
+
     void forgetPastSignals() {
     }
+    void setLoudnessParams(int low_index, float log_ratio, float loudness_level) {}
+    void setAngleIncrements(T ai) {}
+    void setAngle(T a) {}
     void setEnvelopeCharacTime(int len) {
       Assert(0);
     }
@@ -1233,7 +1243,7 @@ namespace imajuscule::audio::audioelement {
     }
 
     int index = -1;
-    soundBuffer const & sb = F_GET_BUFFER()();
+    soundBuffer<double> const & sb = F_GET_BUFFER()();
   };
 
   template<typename T>
@@ -1274,9 +1284,6 @@ namespace imajuscule::audio::audioelement {
       case FOscillator::TRIANGLE:
       case FOscillator::SQUARE:
         return false;
-      default:
-        Assert(0);
-        return false;
     }
   }
 
@@ -1285,18 +1292,18 @@ namespace imajuscule::audio::audioelement {
    Volume factor to apply to have the same perceived loudness.
    */
   template<FOscillator O>
-  constexpr float refVolume() {
+  constexpr double refVolume() {
     if constexpr (O == FOscillator::TRIANGLE) {
-      return 1.f;
+      return soundBaseVolume(Sound::TRIANGLE);
     }
     else if constexpr (O == FOscillator::SAW) {
-      return 0.3f;
+      return soundBaseVolume(Sound::SAW);
     }
     else if constexpr (O == FOscillator::SQUARE) {
-      return 0.2f;
+      return soundBaseVolume(Sound::SQUARE);
     }
     else {
-      return 1.f;
+      return 1.;
     }
   }
 
@@ -1342,7 +1349,7 @@ namespace imajuscule::audio::audioelement {
   template<typename T>
   struct PulseTrainAlgo : public Phased<T> {
     static constexpr auto hasEnvelope = false;
-    static constexpr auto baseVolume = reduceUnadjustedVolumes; // TODO adjust
+    static constexpr auto baseVolume = reduceUnadjustedVolumes * soundBaseVolume(Sound::SQUARE);
 
     using Tr = NumTraits<T>;
     using Phased<T>::angle_;
@@ -1779,12 +1786,13 @@ namespace imajuscule::audio::audioelement {
     ACCURATE
   };
 
+  // TODO rename : SineOscillatorAlgo
   template<typename T, eNormalizePolicy NormPolicy = eNormalizePolicy::FAST>
   struct OscillatorAlgo {
     using MeT = OscillatorAlgo<T,NormPolicy>;
     static constexpr auto hasEnvelope = false;
     static constexpr auto isMonoHarmonic = true;
-    static constexpr auto baseVolume = reduceUnadjustedVolumes;
+    static constexpr auto baseVolume = reduceUnadjustedVolumes * soundBaseVolume(Sound::SINE);
 
     using Tr = NumTraits<T>;
     using FPT = T;

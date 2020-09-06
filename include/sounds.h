@@ -1,7 +1,7 @@
 
 namespace imajuscule::audio {
   namespace detail {
-    extern std::map< soundId, soundBuffer > & getSounds();
+    extern std::map< soundId, soundBuffer<double> > & getSounds();
   }
     template<Atomicity A>
     class Sounds {
@@ -19,7 +19,7 @@ namespace imajuscule::audio {
 
       std::array<
         audioelement::FinalAudioElement<
-          audioelement::SimplyEnveloped< A, 
+          audioelement::SimplyEnveloped< A,
             audioelement::RingModulationAlgo<
               audioelement::LowPassAlgo<audioelement::PulseTrainAlgo<float>, 1>,
               audioelement::OscillatorAlgo<float>
@@ -37,7 +37,7 @@ namespace imajuscule::audio {
       , lptrains{takeBuffer(), takeBuffer(), takeBuffer(), takeBuffer(), takeBuffer(), takeBuffer()}
       {}
 
-      soundBuffer & get( soundId id )
+      soundBuffer<double> & get( soundId id )
       {
         auto & sounds = detail::getSounds();
         {

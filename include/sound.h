@@ -7,9 +7,9 @@ namespace imajuscule::audio {
             ATOM_NOISE, // white, -1 or 1
             PINK_NOISE, // pink, gaussian
             GREY_NOISE, // grey, gaussian
-            
+
             END_NOISE,
-            
+
             SINE = END_NOISE,
             TRIANGLE,
             SAW,
@@ -17,9 +17,9 @@ namespace imajuscule::audio {
             SILENCE,
             ONE
         } type : 4;
-        
+
         static constexpr auto ConstantSoundDummyFrequency = 1.f;
-        
+
         constexpr bool zeroOnPeriodBoundaries() const { return type == SINE || type == TRIANGLE; }
         constexpr bool operator == (const Sound & other) const { return type == other.type; }
         constexpr bool operator < (const Sound & other) const { return type < other.type; }
@@ -49,16 +49,16 @@ namespace imajuscule::audio {
             return 1;
         }
     };
-    
+
     struct soundId {
         soundId() = default;
-        
+
         soundId( Sound sound, float freq_hz = 1.f )
         :
         sound(sound),
         period_length( (sound == Sound::SILENCE) ? 1 : freq_to_period_in_samples( freq_hz ) )
         {}
-        
+
         Sound sound;
         int32_t period_length;
         bool operator < (const soundId & other) const {
@@ -68,41 +68,67 @@ namespace imajuscule::audio {
             return( sound < other.sound );
         }
     };
-    
+
+    static constexpr double soundBaseVolume(Sound::Type t) {
+        switch(t) {
+            case Sound::SILENCE:
+                return 1.;
+            case Sound::ONE:
+                return 1.;
+            case Sound::NOISE:
+                return 0.5;
+            case Sound::ATOM_NOISE:
+                return 0.5;
+            case Sound::PINK_NOISE:
+                return 0.6;
+            case Sound::GREY_NOISE:
+                return 0.5;
+            case Sound::SINE:
+                return 1.; // TODO adjust?
+            case Sound::TRIANGLE:
+                return 1.;
+            case Sound::SAW:
+                return 0.3;
+            case Sound::SQUARE:
+                return 0.2;
+        }
+    }
+
+    template<typename T>
     struct soundBuffer {
-        using value_type = float;
+        using value_type = T;
         using FPT = value_type;
-        
+
         using buffer = a64::vector<value_type>;
         static constexpr bool computable = false;
 
-        
+
         // no copy
         soundBuffer(const soundBuffer &) = delete;
         soundBuffer & operator=(const soundBuffer&) = delete;
 
         soundBuffer(soundBuffer &&) = default;
         soundBuffer& operator = (soundBuffer &&) = default;
-        
+
         bool empty() const { return values.empty(); }
         auto size() const { return values.size(); }
-        
+
         auto begin() const { return values.begin(); }
         auto end() const { return values.end(); }
-        
+
         auto operator [] (int i) const { return values[i]; }
-        
+
         soundBuffer(size_t n, float value) : values(n, value) {}
-        
+
         soundBuffer( soundId const & );
-        
+
         auto & getBuffer() { return values; }
-        
+
         void logSummary(int nsamples_per_extremity = 3) const;
     private:
         template < typename F >
         void generate( int period, F );
-        
+
         template < typename F >
         void generate_with_smooth_transition( int period, F );
 
@@ -112,28 +138,28 @@ namespace imajuscule::audio {
         auto & operator [] (int i) { return values[i]; }
 
         buffer values;
-        
+
         void normalize();
     };
-    
+
     template<typename T, size_t N>
     T * editInactiveAudioElement(std::array<T, N> & aes) {
         auto it = std::find_if(aes.begin(), aes.end(), [](T const & elt){ return elt.isInactive(); });
         return (it == aes.end()) ? nullptr : &*it;
     }
-    
+
     template<Sound::Type SOUND>
     struct FGetBuffer;
-    
+
     template<Sound::Type SOUND>
     struct BufferIter {
         using F_GET_BUFFER = FGetBuffer<SOUND>;
         using FPT = float;
-        
+
         BufferIter() {
             initializeForRun();
         }
-        
+
         void initializeForRun() {
             it = F_GET_BUFFER()().begin();
             // randomize start position
@@ -141,29 +167,29 @@ namespace imajuscule::audio {
                 0.f,
                 static_cast<float>(F_GET_BUFFER()().size()-1)
             }(mersenne<SEEDED::No>()));
-            
+
             it += add;
             Assert(it < end);
         }
-        
+
         void log() const {
             LG(INFO, "pink noise iterator @[%d]", getPosition());
         }
-        
+
         void operator ++() {
             ++it;
             if(it == end) {
                 it = F_GET_BUFFER()().begin();
             }
         }
-        
+
         float operator *() const {
             auto v = *it;
             Assert(v <=  1.f);
             Assert(v >= -1.f);
             return v;
         }
-        
+
         int getPosition() const { return static_cast<int>(std::distance(F_GET_BUFFER()().begin(), it)); }
 
         float getAbsMean() const { return F_GET_BUFFER().getAbsMean(); }
@@ -174,16 +200,16 @@ namespace imajuscule::audio {
     /////////////////
     // instantiations
     /////////////////
-    
-    soundBuffer const & getWhiteNoise();
+
+    soundBuffer<double> const & getWhiteNoise();
     float getWhiteNoiseAbsMean();
-    
-    soundBuffer const & getPinkNoise();
+
+    soundBuffer<double> const & getPinkNoise();
     float getPinkNoiseAbsMean();
 
-    soundBuffer const & getGreyNoise();
+    soundBuffer<double> const & getGreyNoise();
     float getGreyNoiseAbsMean();
-    
+
     template<>
     struct FGetBuffer<Sound::PINK_NOISE> {
         auto const & operator()() {

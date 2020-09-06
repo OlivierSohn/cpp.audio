@@ -1,6 +1,6 @@
 
 namespace imajuscule::audio {
-  soundBuffer & getSilence();
+  soundBuffer<double> & getSilence();
 
   enum class FreqXfade : unsigned char {
     BEGIN,

@@ -352,17 +352,19 @@ namespace imajuscule::audio {
         void write_single(double * outputBuffer, int n_writes) {
             Assert(n_writes > 0);
             if(current.buffer.isSoundBuffer()) {
-                write_single_SoundBuffer(outputBuffer, n_writes, current.buffer.asSoundBuffer(), current.volumes);
+                write_single_SoundBuffer<double>(outputBuffer, n_writes, current.buffer.asSoundBuffer64(), current.volumes);
             }
             else if(current.buffer.is32()) {
                 write_single_AudioElement(outputBuffer, n_writes, current.buffer.asAudioElement32(), current.volumes);
             }
             else {
+                Assert(current.buffer.isAudioElement());
                 write_single_AudioElement(outputBuffer, n_writes, current.buffer.asAudioElement64(), current.volumes);
             }
         }
 
-        void write_single_SoundBuffer(double * outputBuffer, int n_writes, soundBuffer::buffer const & buf, Volumes const & volume) {
+        template<typename T>
+        void write_single_SoundBuffer(double * outputBuffer, int n_writes, typename soundBuffer<T>::buffer const & buf, Volumes const & volume) {
             auto const s = (int) buf.size();
             for( int i=0; i<n_writes; ++i) {
                 if( current_next_sample_index == s ) {
@@ -474,8 +476,8 @@ namespace imajuscule::audio {
             Assert(!current.buffer || current.buffer.isSoundBuffer());
 
             LG_XFADE(INFO, ".xfade %.5f", xfade_ratio);
-            int const s = current.buffer ? (int) current.buffer.asSoundBuffer().size() : 0;
-            int const other_s = (other && other->buffer) ? safe_cast<int>(other->buffer.asSoundBuffer().size()) : 0;
+            int const s = current.buffer ? (int) current.buffer.asSoundBuffer64().size() : 0;
+            int const other_s = (other && other->buffer) ? safe_cast<int>(other->buffer.asSoundBuffer64().size()) : 0;
             for( int i=0; i<n_writes; i++ ) {
                 stepVolume();
                 Volumes val{0.};
@@ -484,8 +486,8 @@ namespace imajuscule::audio {
                         current_next_sample_index = 0;
                     }
                     Assert(current_next_sample_index < s);
-                    Assert(std::abs(current.buffer.asSoundBuffer()[current_next_sample_index]) < 100000.);
-                    val = current.volumes * (xfade_ratio * chan_vol.current * current.buffer.asSoundBuffer()[current_next_sample_index]);
+                    Assert(std::abs(current.buffer.asSoundBuffer64()[current_next_sample_index]) < 100000.);
+                    val = current.volumes * (xfade_ratio * chan_vol.current * current.buffer.asSoundBuffer64()[current_next_sample_index]);
                     ++current_next_sample_index;
                 }
                 if(other_s) {
@@ -495,8 +497,8 @@ namespace imajuscule::audio {
                         other_next_sample_index = 0;
                     }
                     Assert(other_next_sample_index <= other_s);
-                    Assert(std::abs((other->buffer.asSoundBuffer())[other_next_sample_index]) < 100000.);
-                    val += other->volumes * ((1. - xfade_ratio) * chan_vol.current * (other->buffer.asSoundBuffer())[other_next_sample_index]);
+                    Assert(std::abs((other->buffer.asSoundBuffer64())[other_next_sample_index]) < 100000.);
+                    val += other->volumes * ((1. - xfade_ratio) * chan_vol.current * (other->buffer.asSoundBuffer64())[other_next_sample_index]);
                     ++other_next_sample_index;
                 }
                 xfade_ratio -= xfade_increment;
@@ -527,7 +529,7 @@ namespace imajuscule::audio {
                                                     T const & buf2, Volumes const & volBuf2) {
             LG_XFADE(INFO, ".xfade %.5f", xfade_ratio);
             Assert(XF==XfadePolicy::UseXfade);
-            int const s = current.buffer ? (int) current.buffer.asSoundBuffer().size() : 0;
+            int const s = current.buffer ? (int) current.buffer.asSoundBuffer64().size() : 0;
             for( int i=0; i<n_writes; i++ ) {
                 stepVolume();
 
@@ -542,8 +544,8 @@ namespace imajuscule::audio {
                         current_next_sample_index = 0;
                     }
                     Assert(current_next_sample_index < s);
-                    Assert(std::abs(current.buffer.asSoundBuffer()[current_next_sample_index]) < 100000.);
-                    val += current.volumes * xfade_ratio * chan_vol.current * current.buffer.asSoundBuffer()[current_next_sample_index];
+                    Assert(std::abs(current.buffer.asSoundBuffer64()[current_next_sample_index]) < 100000.);
+                    val += current.volumes * xfade_ratio * chan_vol.current * current.buffer.asSoundBuffer64()[current_next_sample_index];
                     ++current_next_sample_index;
                 }
 
@@ -582,7 +584,7 @@ namespace imajuscule::audio {
                                                         , Request const * other) {
             LG_XFADE(INFO, ".xfade %.5f", xfade_ratio);
             Assert(XF==XfadePolicy::UseXfade);
-            int const other_s = (other && other->buffer) ? safe_cast<int>(other->buffer.asSoundBuffer().size()) : 0;
+            int const other_s = (other && other->buffer) ? safe_cast<int>(other->buffer.asSoundBuffer64().size()) : 0;
             for( int i=0; i<n_writes; ++i, ++current_next_sample_index) {
                 stepVolume();
 
@@ -598,8 +600,8 @@ namespace imajuscule::audio {
                         other_next_sample_index = 0;
                     }
                     Assert(other_next_sample_index <= other_s);
-                    Assert(std::abs((other->buffer.asSoundBuffer())[other_next_sample_index]) < 100000.);
-                    val += other->volumes * ((1. - xfade_ratio) * chan_vol.current * (other->buffer.asSoundBuffer())[other_next_sample_index]);
+                    Assert(std::abs((other->buffer.asSoundBuffer64())[other_next_sample_index]) < 100000.);
+                    val += other->volumes * ((1. - xfade_ratio) * chan_vol.current * (other->buffer.asSoundBuffer64())[other_next_sample_index]);
                     ++other_next_sample_index;
                 }
                 xfade_ratio -= xfade_increment;
@@ -718,7 +720,7 @@ namespace imajuscule::audio {
                     // so we want to start playing the next soundBuffer so that at the middle of the crossfade, it is exactly
                     // at the first sample of the buffer.
 
-                    int sz_buffer = safe_cast<int>(requests.front().buffer.asSoundBuffer().size());
+                    int sz_buffer = safe_cast<int>(requests.front().buffer.asSoundBuffer64().size());
                     other_next_sample_index = sz_buffer - 1 - size_half_xfade;
                     while(other_next_sample_index < 0) {
                         other_next_sample_index += sz_buffer;

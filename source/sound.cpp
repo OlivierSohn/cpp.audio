@@ -5,23 +5,24 @@ namespace imajuscule::audio {
     // take into account the fact that to compute gray noise, a filter needs to be initialized using some pink noise samples
     constexpr auto grey_noise_duration = 2.f * noise_duration;
 
-    soundBuffer const & getPinkNoise() {
-        static soundBuffer n(soundId{Sound::PINK_NOISE, noise_duration});
+    soundBuffer<double> const & getPinkNoise() {
+        static soundBuffer<double> n(soundId{Sound::PINK_NOISE, noise_duration});
         return n;
     }
 
-    soundBuffer const & getGreyNoise() {
-        static soundBuffer n(soundId{Sound::GREY_NOISE, grey_noise_duration});
+    soundBuffer<double> const & getGreyNoise() {
+        static soundBuffer<double> n(soundId{Sound::GREY_NOISE, grey_noise_duration});
         return n;
     }
 
-    soundBuffer const & getWhiteNoise() {
-        static soundBuffer n(soundId{Sound::NOISE, noise_duration});
+    soundBuffer<double> const & getWhiteNoise() {
+        static soundBuffer<double> n(soundId{Sound::NOISE, noise_duration});
         return n;
     }
 
-    float getAbsMean(soundBuffer const & b) {
-        auto sum = 0.f;
+    template<typename T>
+    T getAbsMean(soundBuffer<T> const & b) {
+        T sum = 0;
         for(auto v : b) {
             sum += std::abs(v);
         }
@@ -78,8 +79,9 @@ static float square_( float angle_radians ) {
 }
 
 
-template < typename F >
-void soundBuffer::generate( int period, F f ) {
+template<typename T>
+template<typename F>
+void soundBuffer<T>::generate( int period, F f ) {
 
     // Let's compute the waveform. First sample is non zero, last sample is zero, so the mapping is:
     //
@@ -95,8 +97,9 @@ void soundBuffer::generate( int period, F f ) {
     Assert( (int)values.size() == period );
 }
 
+template<typename T>
 template<typename F>
-void soundBuffer::generate_with_smooth_transition(int period, F f) {
+void soundBuffer<T>::generate_with_smooth_transition(int period, F f) {
     constexpr auto min_transition_length = 10;
     constexpr auto transition_ratio = 10;
 
@@ -128,7 +131,8 @@ void soundBuffer::generate_with_smooth_transition(int period, F f) {
     }
 }
 
-soundBuffer::soundBuffer( soundId const & id ) {
+template<typename T>
+soundBuffer<T>::soundBuffer( soundId const & id ) {
     values.reserve( id.period_length );
 
     if(id.sound.type < Sound::END_NOISE) {
@@ -197,12 +201,12 @@ soundBuffer::soundBuffer( soundId const & id ) {
             }
             {
                 // maximize
-                auto M(0.f);
+                T M(0);
                 for (auto const & v : values) {
                     M = std::max( M, std::abs( v ) );
                 }
-                if( M < 0.5f ) {
-                    auto fact = 0.7f/M;
+                if( M < 0.5 ) {
+                    T fact = 0.7/M;
                     for( auto & v : values ) {
                         v *= fact;
                     }
@@ -243,7 +247,8 @@ soundBuffer::soundBuffer( soundId const & id ) {
     }
 }
 
-void soundBuffer::logSummary(int nsamples_per_extremity) const {
+template<typename T>
+void soundBuffer<T>::logSummary(int nsamples_per_extremity) const {
     std::vector<float> startend;
     startend.reserve(nsamples_per_extremity*2);
     for(int i=0; i < nsamples_per_extremity; ++i) {
@@ -266,7 +271,8 @@ void soundBuffer::logSummary(int nsamples_per_extremity) const {
     LG(INFO, "signal range [%.2f %.2f] avg power %.3f", range.getMin(), range.getMax(), power);
 }
 
-void soundBuffer::normalize() {
+template<typename T>
+void soundBuffer<T>::normalize() {
     if(values.empty()) {
         return;
     }
@@ -287,9 +293,12 @@ void soundBuffer::normalize() {
     }
 }
 
+template class soundBuffer<double>;
+template class soundBuffer<float>;
+
   namespace detail {
-    std::map< soundId, soundBuffer > & getSounds() {
-      static std::map< soundId, soundBuffer > sounds;
+    std::map< soundId, soundBuffer<double> > & getSounds() {
+      static std::map< soundId, soundBuffer<double> > sounds;
       return sounds;
     }
   }

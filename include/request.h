@@ -36,13 +36,13 @@ namespace imajuscule::audio {
             *this = TaggedBuffer{nullptr};
         }
 
-        void reset(soundBuffer * buf) {
+        void reset(soundBuffer<double> * buf) {
             *this = TaggedBuffer{buf};
         }
 
-        soundBuffer::buffer & asSoundBuffer() const {
-            auto ptr = buffer.soundBuffer();
-            Assert(is32() && !isAudioElement() && ptr);
+        soundBuffer<double>::buffer & asSoundBuffer64() const {
+            auto ptr = buffer.soundBuffer64();
+            Assert(!is32() && !isAudioElement() && ptr);
             return *ptr;
         }
 
@@ -61,7 +61,7 @@ namespace imajuscule::audio {
         bool null() const {
             // this is not strictly legal, as we dont check the tags
             // to see which of the union members is active...
-            return !buffer.soundBuffer();
+            return !buffer.soundBuffer64();
         }
 
         bool valid() const {
@@ -71,7 +71,7 @@ namespace imajuscule::audio {
             if(!is32()) {
                 return false;
             }
-            auto ptr = buffer.soundBuffer();
+            auto ptr = buffer.soundBuffer64();
             return ptr && !ptr->empty();
         }
 
@@ -90,11 +90,11 @@ namespace imajuscule::audio {
                 Assert(0);
                 return false;
             }
-            if(!buffer.soundBuffer()) {
+            if(!buffer.soundBuffer64()) {
                 return true;
             }
-            for(auto b : *buffer.soundBuffer()) {
-                if(b != 0.f) {
+            for(auto b : *buffer.soundBuffer64()) {
+                if(b != 0.) {
                     return false;
                 }
             }
@@ -112,9 +112,9 @@ namespace imajuscule::audio {
                 Assert(!flags.is_32);
                 Assert(!flags.is_AudioElement);
             }
-            buffer(soundBuffer * buf) : sound(buf ? &buf->getBuffer() : nullptr) {
+            buffer(soundBuffer<double> * buf) : sound(buf ? &buf->getBuffer() : nullptr) {
                 Assert(as_uintptr_t == ptr());
-                flags.is_32 = true;
+                flags.is_32 = false;
                 Assert(!flags.is_AudioElement);
             }
             buffer(AE32Buffer buf) : audioelement_32(buf) {
@@ -132,7 +132,7 @@ namespace imajuscule::audio {
 
             uintptr_t ptr() const { return removeLowBits<n_low_bits_used>(as_uintptr_t); }
 
-            soundBuffer::buffer * soundBuffer() const { return reinterpret_cast<soundBuffer::buffer *>(ptr()); }
+            soundBuffer<double>::buffer * soundBuffer64() const { return reinterpret_cast<soundBuffer<double>::buffer *>(ptr()); }
             AE32Buffer audioElement32() const { return reinterpret_cast<AE32Buffer>(ptr()); }
             AE64Buffer audioElement64() const { return reinterpret_cast<AE64Buffer>(ptr()); }
 
@@ -143,7 +143,7 @@ namespace imajuscule::audio {
             } flags;
 
             uintptr_t as_uintptr_t;
-            soundBuffer::buffer * sound;
+            soundBuffer<double>::buffer * sound;
             AE32Buffer audioelement_32;
             AE64Buffer audioelement_64;
         } buffer;
@@ -330,7 +330,7 @@ namespace imajuscule::audio {
             }
         }
 
-        Request( soundBuffer * buffer, Volumes volume, int duration_in_frames) :
+        Request( soundBuffer<double> * buffer, Volumes volume, int duration_in_frames) :
         buffer(buffer), volumes(volume*chan_base_amplitude), duration_in_frames(duration_in_frames) { }
 
         Request( AE32Buffer buffer, Volumes volume, int duration_in_frames) :
