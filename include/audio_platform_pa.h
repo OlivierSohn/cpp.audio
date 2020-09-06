@@ -141,6 +141,8 @@ namespace imajuscule::audio {
       Assert(timeInfo);
       uint64_t tNanos = [timeInfo]() -> uint64_t {
         if(likely(timeInfo)) {
+          // on osx, it seems the outputBufferDacTime value is incorrect, see traces of analyzeTime.
+          // the error becomes large (sometimes 5 samples offset) with the UA Apollo x4 soundcard
           return secondsToNanos(timeInfo->outputBufferDacTime);
         }
         return noTime; // then, MIDI synchronizatin will not work.
