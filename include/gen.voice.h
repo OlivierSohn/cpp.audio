@@ -1010,9 +1010,15 @@ namespace imajuscule::audio::voice {
       return false;
     }
 
-    template<typename Chans, typename MonoNoteChannel, typename CS>
+    template<
+      SynchronizePhase Sync,
+      DefaultStartPhase Phase,
+      typename Chans,
+      typename MonoNoteChannel,
+      typename CS>
     std::function<bool(Chans&,int)> onStartNote(MonoNoteChannel & c, CS & cs)
     {
+      // TODO pass Sync and Phase and use them inside getOrchestrator
       return c.elem.engine.template getOrchestrator<Chans>(*c.channel);
     }
 
@@ -1233,6 +1239,8 @@ namespace imajuscule::audio::voice {
   outPolicy,
   nAudioOut, XfadePolicy::UseXfade, // TODO reassess the use of xfades, now that we have enveloppes
   EngineAndRamps<SoundEngine<MODE, nAudioOut, getAtomicity<outPolicy>(), Logger>>,
+  SynchronizePhase::No, // TODO Yes when MODE uses no sweep?
+  DefaultStartPhase::Zero, // TODO Randomize when MODe uses no sweep?
   withNoteOff,
   EventIterator, NoteOnEvent, NoteOffEvent, Base >
   >

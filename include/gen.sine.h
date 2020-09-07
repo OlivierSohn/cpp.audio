@@ -12,10 +12,15 @@ namespace imajuscule::audio::sine {
       return true;
     }
 
-    template<typename Chans, typename MonoNoteChannel, typename CS>
+    template<
+      SynchronizePhase Sync,
+      DefaultStartPhase Phase,
+      typename Chans,
+      typename MonoNoteChannel,
+      typename CS>
     std::function<bool(Chans&,int)> onStartNote(MonoNoteChannel & c, CS & cs)
     {
-      setPhase(c,cs);
+      setPhase<Sync, Phase>(c,cs);
       return {};
     }
   private:
@@ -27,6 +32,8 @@ namespace imajuscule::audio::sine {
     int nOuts,
     XfadePolicy xfade_policy_,
     typename AE,
+    SynchronizePhase Sync,
+    DefaultStartPhase Phase,
     bool close_channel_on_note_off,
     typename EventIterator,
     typename NoteOnEvent,
@@ -37,6 +44,8 @@ namespace imajuscule::audio::sine {
     nOuts,
     xfade_policy_,
     AE,
+    Sync,
+    Phase,
     close_channel_on_note_off,
     EventIterator,
     NoteOnEvent,

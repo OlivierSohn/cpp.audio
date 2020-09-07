@@ -527,6 +527,7 @@ namespace imajuscule::audio::audioelement {
     EnvelopeStateAcquisition<atomicity> stateAcquisition;
     FPT imagValue;
 
+  public:
     template<typename F>
     void forEachHarmonic(F f) {
       for(auto & [a,_] : harmonics) {
@@ -1211,13 +1212,28 @@ namespace imajuscule::audio::audioelement {
     auto       & getOsc()       {return *this; }
     auto const & getOsc() const {return *this; }
 
-    void synchronizeAngles(MeT const & other) {}
+    void synchronizeAngles(MeT const & other) {
+        Assert(other.sb.size() == sb.size());
+        index = other.index;
+    }
 
     void forgetPastSignals() {
     }
     void setLoudnessParams(int low_index, float log_ratio, float loudness_level) {}
     void setAngleIncrements(T ai) {}
-    void setAngle(T a) {}
+    void setAngle(T a) {
+        // a is between -1 and 1
+        Assert(a <= 1.);
+        Assert(a >= -1.);
+
+        // -1. -> 0
+        //  1. -> 0
+        index = static_cast<int>(((a + 1.) * sb.size() * 0.5) + 0.5);
+        if (index < 0) {
+            index = 0;
+        }
+        --index; // because index will be incremented in step before being used
+    }
     void setEnvelopeCharacTime(int len) {
       Assert(0);
     }
@@ -1232,7 +1248,7 @@ namespace imajuscule::audio::audioelement {
 
     void step() {
       ++index;
-      if(index == sb.size()) {
+      if(index >= sb.size()) {
         index = 0;
       }
     }
@@ -1900,7 +1916,10 @@ namespace imajuscule::audio::audioelement {
 
     auto & getUnderlyingIter() { Assert(0); return *this; }
 
-    void set(T from_increments,
+    // I changed the method name (set -> setup)
+    // because initially 'from_increments' and 'to_increments' were frequencies,
+    // whereas now they are angles
+    void setup(T from_increments,
              T to_increments,
              T duration_in_samples_,
              T start_sample,
@@ -1979,6 +1998,109 @@ namespace imajuscule::audio::audioelement {
       Assert(from > 0);
       Assert(to > 0);
       // else computation cannot be done
+
+      return (to==from) ? 1.f : -std::log(from/to) / (to-from);
+    }
+  };
+
+
+  /**
+   Ramp
+   */
+  template<typename T>
+  struct LogSingleRamp {
+    static_assert(std::is_floating_point_v<T>, "non-floating point interpolation is not supported");
+
+    using Tr = NumTraits<T>;
+    using FPT = T;
+
+    // offsets because we use the value at the beginning of the timestep
+    static constexpr auto increasing_integration_offset = 0;
+    static constexpr auto decreasing_integration_offset = 1;
+
+    LogSingleRamp()
+    : cur_sample(Tr::zero())
+    , from{}
+    , to{}
+    , duration_in_samples{}
+    {}
+
+    void forgetPastSignals() {}
+
+    void setFreqRange(range<float> const &) const { Assert(0); } // use setup / setAngleIncrements instead
+    void set_interpolation(itp::interpolation) const {Assert(0);} // use setup instead
+    void set_n_slow_steps(unsigned int) const { Assert(0); }
+
+    auto & getUnderlyingIter() { Assert(0); return *this; }
+
+    // Once this has been called, 'setAngleIncrements' _must_ be called
+    //   (to specify the start frequency) before calling 'step'.
+    // Else, the behaviour is undefined.
+    void setup(T to_increments,
+               T duration_in_samples_,
+               itp::interpolation i) {
+      Assert(duration_in_samples_ > 0);
+
+      to = to_increments;
+      duration_in_samples = duration_in_samples_;
+      interp.setInterpolation(i);
+    }
+
+    void setAngleIncrements(T from_increments) {
+      // verify that setup has been called
+      Assert(duration_in_samples > 0);
+
+      cur_sample = 0;
+      from = from_increments;
+      C = get_linear_proportionality_constant();
+    }
+
+    T step() {
+      if(cur_sample + .5f > duration_in_samples) {
+        cur_sample = duration_in_samples;
+      }
+
+      // we call get_unfiltered_value instead of get_value because we ensure:
+      Assert(cur_sample <= duration_in_samples);
+      auto f_result = interp.get_unfiltered_value(cur_sample, duration_in_samples, from, to);
+      // Taking the value at cur_sample means taking the value at the beginning of the step.
+      // The width of the step depends on that value so if we had taken the value in the middle or at the end of the step,
+      // not only would the value be different, but also the step width!
+
+      // we could take the value in the middle and adjust "value + step width" accordingly
+
+      if (cur_sample < duration_in_samples) {
+        // linear interpolation for parameter
+        auto f = from + (to-from) * (cur_sample + .5f) / duration_in_samples;
+        cur_sample += C * f;
+      }
+
+      return f_result;
+    }
+
+    T getFrom() const { return from; }
+    T getTo() const { return to; }
+
+    T get_duration_in_samples() const { return duration_in_samples; }
+
+  private:
+    // This interpolation is "composed" with an implicit PROPORTIONAL_VALUE_DERIVATIVE interpolation
+    NormalizedInterpolation<T> interp;
+
+    T from, to, cur_sample;
+    T duration_in_samples;
+    T C;
+
+    T get_linear_proportionality_constant() const {
+      // We want to achieve the same effect as PROPORTIONAL_VALUE_DERIVATIVE
+      // without paying the cost of one 'expf' call per audio frame :
+      // to achieve the same effect, at each frame we add to cur_sample a value proportionnal to
+      // the current frequency. The factor of proportionnality is adjusted to match
+      // the wanted duration_in_samples
+
+      // Assert that computation can be done
+      Assert(from > 0);
+      Assert(to > 0);
 
       return (to==from) ? 1.f : -std::log(from/to) / (to-from);
     }
@@ -2201,7 +2323,7 @@ namespace imajuscule::audio::audioelement {
       constexpr auto sz = std::tuple_size<CTRLS>::value;
       std::array<typename ALGO::FPT, sz> increments;
       for_each_i(ctrls, [&increments] (int i, auto & c) {
-        increments[i] = freq_to_angle_increment(c.step());
+        increments[i] = c.step();
       });
       osc.setAngleIncrements(std::move(increments));
     }
@@ -2210,8 +2332,7 @@ namespace imajuscule::audio::audioelement {
   template<typename ALGO, typename CTRLS>
   struct SetFreqs<ALGO, CTRLS, 1> {
     void operator()(CTRLS & ctrls, ALGO & osc) {
-      auto f = std::get<0>(ctrls).step();
-      osc.setAngleIncrements(freq_to_angle_increment(f));
+      osc.setAngleIncrements(std::get<0>(ctrls).step());
     }
   };
 
@@ -2230,7 +2351,10 @@ namespace imajuscule::audio::audioelement {
 
     using Tr = NumTraits<T>;
 
-    T angle() const { return {}; }
+    T angle() const { return osc.angle(); }
+    void setAngle(T a) {
+      osc.setAngle(a);
+    }
 
     void setLoudnessParams(int low_index, float log_ratio, float loudness_level) {
       osc.setLoudnessParams(low_index, log_ratio, loudness_level);
@@ -2294,8 +2418,14 @@ namespace imajuscule::audio::audioelement {
   template<typename T, VolumeAdjust V>
   using FreqRampOscillatorAlgo_ = FreqCtrl_<AdjustableVolumeOscillatorAlgo<V,T>, LogRamp<T>>;
 
+  template<typename T, VolumeAdjust V>
+  using FreqSingleRampOscillatorAlgo_ = FreqCtrl_<AdjustableVolumeOscillatorAlgo<V,T>, LogSingleRamp<T>>;
+
   template<typename T>
   using FreqRampAlgo = FreqRampOscillatorAlgo_<T, VolumeAdjust::Yes>;
+
+  template<typename T>
+  using FreqSingleRampAlgo = FreqSingleRampOscillatorAlgo_<T, VolumeAdjust::Yes>;
 
   template<typename Envel>
   using FreqRamp = FinalAudioElement<Enveloped<FreqRampAlgo<typename Envel::FPT>, Envel>>;

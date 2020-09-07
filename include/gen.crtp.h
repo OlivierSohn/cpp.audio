@@ -6,6 +6,19 @@
 #endif
 
 namespace imajuscule::audio {
+
+  // Whether to synchronize the start phase with the currently playing oscillators of same frequency,
+  // to avoid phase cancellation (used mainly for constant frequency oscillators)
+  enum class SynchronizePhase {
+    Yes,
+    No
+  };
+  // If the phase has not been synchronized with another oscillator, defines the phase initialization
+  enum class DefaultStartPhase {
+    Zero,
+    Random
+  };
+
   using interleaved_buf_t = a64::vector<float>;
 
   template<typename T>
@@ -136,6 +149,8 @@ namespace imajuscule::audio {
   int nOuts,
   XfadePolicy xfade_policy_,
   typename AE,
+  SynchronizePhase Sync,
+  DefaultStartPhase Phase,
   bool handle_note_off,
   typename EventIterator,
   typename NoteOnEvent,
@@ -350,7 +365,7 @@ namespace imajuscule::audio {
                 return;
               }
             }
-            if(auto orchestrator = this -> template onStartNote<Chans>(c,channels)) {
+            if(auto orchestrator = this -> template onStartNote<Sync, Phase, Chans>(c,channels)) {
               chans.add_orchestrator(orchestrator);
             }
           });
@@ -544,28 +559,36 @@ namespace imajuscule::audio {
     T plugin;
   };
 
-  template<typename MonoNoteChannel, typename CS>
+  template<SynchronizePhase Sync, DefaultStartPhase Phase, typename MonoNoteChannel, typename CS>
   void setPhase(MonoNoteChannel & c, CS & cs)
   {
-    auto & tp = cs.corresponding(c);
     auto & thisAlgo = c.elem.algo;
-    for(auto &p : firsts(cs)) {
-      if((&p == &tp) || (p != tp)) {
-        // same channel, or different frequency.
-        continue;
+    if constexpr (Sync == SynchronizePhase::Yes) {
+      auto & tp = cs.corresponding(c);
+      for(auto &p : firsts(cs)) {
+        if((&p == &tp) || (p != tp)) {
+          // same channel, or different frequency.
+          continue;
+        }
+        // We found a matching TunedPitch
+        auto & otherChannel = cs.corresponding(p);
+        Assert(&otherChannel != &c);
+        // To prevent phase cancellation, the phase of the new note will be
+        // coherent with the phase of any active channel that plays a note at the same frequency.
+        if(otherChannel.elem.getEnvelope().isEnvelopeFinished()) {
+          continue;
+        }
+        thisAlgo.getOsc().synchronizeAngles(otherChannel.elem.algo.getOsc());
+        return;
       }
-      // We found a matching TunedPitch
-      auto & otherChannel = cs.corresponding(p);
-      Assert(&otherChannel != &c);
-      // To prevent phase cancellation, the phase of the new note will be
-      // coherent with the phase of any active channel that plays a note at the same frequency.
-      if(otherChannel.elem.getEnvelope().isEnvelopeFinished()) {
-        continue;
-      }
-      thisAlgo.getOsc().synchronizeAngles(otherChannel.elem.algo.getOsc());
-      return;
     }
-    thisAlgo.getOsc().setAngle(std::uniform_real_distribution<float>{-1.f, 1.f}(mersenne<SEEDED::Yes>()));
+    if constexpr (Phase == DefaultStartPhase::Zero) {
+      thisAlgo.getOsc().setAngle(0);
+    } else if constexpr (Phase == DefaultStartPhase::Random) {
+      thisAlgo.getOsc().setAngle(std::uniform_real_distribution<float>{-1.f, 1.f}(mersenne<SEEDED::Yes>()));
+    } else {
+      Assert(0);
+    }
   }
 
 } // NS imajuscule::audio

@@ -237,10 +237,15 @@ namespace imajuscule::audio::cutramp {
       return true;
     }
 
-    template<typename Chans, typename MonoNoteChannel, typename CS>
+    template<
+      SynchronizePhase Sync,
+      DefaultStartPhase Phase,
+      typename Chans,
+      typename MonoNoteChannel,
+      typename CS>
     std::function<bool(Chans&,int)> onStartNote(MonoNoteChannel & c, CS & cs)
     {
-      setPhase(c,cs);
+      setPhase<Sync, Phase>(c,cs);
       return {};
     }
 
@@ -283,10 +288,18 @@ namespace imajuscule::audio::cutramp {
 
   typename Base = ImplBase<Parameters, ProcessData>,
 
-  typename Parent = ImplCRTP< outPolicy, nAudioOut, XfadePolicy::SkipXfade,
-  audioelement::FreqRamp<audioelement::SimpleLinearEnvelope<getAtomicity<outPolicy>(),float>>, true,
-  EventIterator, NoteOnEvent, NoteOffEvent, Base>
-
+  typename Parent = ImplCRTP<
+    outPolicy,
+    nAudioOut,
+    XfadePolicy::SkipXfade,
+    audioelement::FreqRamp<audioelement::SimpleLinearEnvelope<getAtomicity<outPolicy>(),float>>,
+    SynchronizePhase::Yes,
+    DefaultStartPhase::Zero,
+    true,
+    EventIterator,
+    NoteOnEvent,
+    NoteOffEvent,
+    Base>
   >
   struct Impl_ : public Parent {
     static constexpr auto min_cut_period = Base::min_cut_period;
