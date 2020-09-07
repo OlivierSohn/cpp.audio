@@ -283,7 +283,7 @@ namespace imajuscule::audio {
           freq1 *= state_factor;
           freq2 *= state_factor;
 
-          ramp_spec->get().set(freq1, freq2, n_frames, 0, interpolation);
+          ramp_spec->get().setup(freq_to_angle_increment(freq1), freq_to_angle_increment(freq2), n_frames, 0, interpolation);
           ramp_spec->silenceFollows(true);
           ramp_spec->setVolume(1.f);
           if(xfade_freq==FreqXfade::No) {
@@ -304,7 +304,7 @@ namespace imajuscule::audio {
                 if(from_inc == to_inc) {
                   from_inc *= 1.00001f; // make sure ramp is non trivial else we cannot detect when it's done
                 }
-                ramp_spec->get().set(from_inc, to_inc, freq_xfade, 0, freq_interpolation);
+                ramp_spec->get().setup(from_inc, to_inc, freq_xfade, 0, freq_interpolation);
                 ramp_spec->silenceFollows(true);
                 ramp_spec->setVolume(1.f);
               }
