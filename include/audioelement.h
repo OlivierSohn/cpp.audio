@@ -1875,6 +1875,9 @@ namespace imajuscule::audio::audioelement {
   template<typename Envel, eNormalizePolicy NormPolicy = eNormalizePolicy::FAST>
   using MultiOscillator = FinalAudioElement<MultiEnveloped<OscillatorAlgo<typename Envel::FPT, NormPolicy>, Envel>>;
 
+  /**
+   Periodic ramp
+   */
   template<typename T>
   struct LogRamp {
     static_assert(std::is_floating_point_v<T>, "non-floating point interpolation is not supported");
@@ -1906,7 +1909,7 @@ namespace imajuscule::audio::audioelement {
         cur_sample = start_sample;
       }
       else {
-        // if start_sample < 0 we adapt it to be at the same ratio in the new range
+        // we adapt cur_sample to be at the same ratio in the new range
         // and we adapt bounds order to the existing bounds
         Assert(duration_in_samples);
         cur_sample *= duration_in_samples_ / duration_in_samples;
