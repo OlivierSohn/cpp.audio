@@ -1877,7 +1877,7 @@ namespace imajuscule::audio::audioelement {
 
   template<typename T>
   struct LogRamp {
-    static_assert(std::is_same<T,float>::value, "non-float interpolation is not supported");
+    static_assert(std::is_floating_point_v<T>, "non-floating point interpolation is not supported");
 
     using Tr = NumTraits<T>;
     using FPT = T;
