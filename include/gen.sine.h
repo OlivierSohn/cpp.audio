@@ -1,13 +1,18 @@
+// The name is historical : initially we were using only sine oscillators with
+// this synth, but it is suited to all kinds of oscillators
 namespace imajuscule::audio::sine {
 
   struct SynthImpl {
-
     static constexpr int32_t get_xfade_length() { return 401; }
     static constexpr float get_gain() { return 1.f; };
 
     template<typename Element>
     bool setupAudioElement(float freq, Element & e)
     {
+      e.algo.setLoudnessParams(5, // corresponds to 63 Hz
+        // using 0.8f here to try to even the volume difference with non compensated oscillators.
+                               0.8f, // 1.f = full compensation, 0.f = no compensation
+                               30.f);
       e.algo.setAngleIncrements(freq_to_angle_increment(freq));
       return true;
     }
@@ -23,8 +28,6 @@ namespace imajuscule::audio::sine {
       setPhase<Sync, Phase>(c,cs);
       return {};
     }
-  private:
-    float half_tone = compute_half_tone(1.f);
   };
 
   template<
@@ -51,7 +54,7 @@ namespace imajuscule::audio::sine {
     NoteOnEvent,
     NoteOffEvent,
     SynthImpl,
-    32
+    32 // using 32 voices to support long releases
   >;
 
 } // NS imajuscule::audio::sine

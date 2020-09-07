@@ -55,6 +55,5 @@
 #include "gen.crtp.h"
 #include "gen.cutramp.h"
 #include "gen.sine.h"
-#include "gen.vasine.h"
 #include "gen.voice.h"
 #include "events.impl.h"
