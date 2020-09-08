@@ -269,12 +269,21 @@ namespace imajuscule::audio::audioelement {
         return h;
     }
   };
-
   inline bool operator < (AHDSR const& l, AHDSR const& r)
   {
     return
     std::make_tuple(l.attack,l.attackItp,l.hold,l.decay,l.decayItp,l.release,l.releaseItp,l.sustain) <
     std::make_tuple(r.attack,r.attackItp,r.hold,r.decay,r.decayItp,r.release,r.releaseItp,r.sustain);
+  }
+  inline bool operator == (AHDSR const& l, AHDSR const& r)
+  {
+    return
+    std::make_tuple(l.attack,l.attackItp,l.hold,l.decay,l.decayItp,l.release,l.releaseItp,l.sustain) ==
+    std::make_tuple(r.attack,r.attackItp,r.hold,r.decay,r.decayItp,r.release,r.releaseItp,r.sustain);
+  }
+  inline bool operator != (AHDSR const& l, AHDSR const& r)
+  {
+    return !(l == r);
   }
 
   template <Atomicity A>
