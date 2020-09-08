@@ -2424,6 +2424,9 @@ namespace imajuscule::audio::audioelement {
   template<typename T>
   using FreqRampAlgo = FreqRampOscillatorAlgo_<T, VolumeAdjust::Yes>;
 
+  // TODO when using varying frequencies, like in a sweep, it might be more
+  // efficient / smooth / accurate to filter the signal instead of adjusting
+  // the level at each frame.
   template<typename T>
   using FreqSingleRampAlgo = FreqSingleRampOscillatorAlgo_<T, VolumeAdjust::Yes>;
 

@@ -1,3 +1,4 @@
+//#define IMJ_DEBUG_AUDIO_OUT 1
 
 namespace imajuscule::audio {
 
@@ -92,18 +93,83 @@ namespace imajuscule::audio {
 
   template <Features F, typename Chans>
   struct Context<AudioPlatform::PortAudio, F, Chans> {
+    using MeT =
+         Context<AudioPlatform::PortAudio, F, Chans>;
+
     static constexpr auto nAudioOut = Chans::nOuts;
 
     template<typename Lock, typename ...Args>
     Context(Lock & l, Args... args) : chans(l, args ...)
     , bInitialized(false)
+#if IMJ_DEBUG_AUDIO_OUT
+    , wav_write_queue(44000 * nAudioOut) // one second of output can fit in the queue
+    , wav_write_active(true)
+    , thread_write_wav{[this](){
+        auto rootDir = "/Users/Olivier/dev/hs.hamazed/";
+        // verify interpolation curves
+#if 0
+        {
+          std::vector<double> v;
+          v.reserve(10000);
+          for(auto i : itp::interpolation_traversal().realValues())
+          {
+            auto const itp_type = static_cast<itp::interpolation>(i);
+            v.clear();
+            for (int i = 0; i<=10000; ++i) {
+              double const x = static_cast<double>(i) / 10000;
+              v.push_back(itp::interpolate(itp_type, 0., x, 1., -0.5, 0.5));
+            }
+            write_wav(rootDir,
+                      std::string(itp::interpolationInfo(itp_type)) + ".wav",
+                      std::vector<std::vector<double>>{v},
+                      100);
+          }
+        }
+#endif
+        auto header = pcm(WaveFormat::IEEE_FLOAT,
+                          SAMPLE_RATE,
+                          numberToNChannels(nAudioOut),
+                          AudioSample<SAMPLE>::format);
+        const char * filename = "debugaudio.wav";
+        WAVWriter writer(rootDir, filename, header);
+        auto res = writer.Initialize();
+
+        if(ILE_SUCCESS != res) {
+          LG(ERR, "audio debug : failed to open '%s' in '%s' to write audio output", filename, rootDir);
+          return;
+        } else {
+          LG(INFO, "audio debug : opened '%s' in '%s' to write audio output", filename, rootDir);
+        }
+
+        while (wav_write_active) {
+          SAMPLE val;
+          while (wav_write_queue.try_pop(val)) {
+            writer.writeSample(val);
+          }
+        }
+    }}
+#endif  // IMJ_DEBUG_AUDIO_OUT
     {}
 
   protected:
     Chans chans;
     bool bInitialized : 1;
+
   private:
     PaStream *stream = nullptr;
+
+#if IMJ_DEBUG_AUDIO_OUT
+    using Queue = atomic_queue::AtomicQueueB2<
+    /* T = */ SAMPLE,
+    /* A = */ std::allocator<SAMPLE>,
+    /* MAXIMIZE_THROUGHPUT */ true,
+    /* TOTAL_ORDER = */ true,
+    /* SPSC = */ true
+    >;
+    Queue wav_write_queue;
+    std::atomic_bool wav_write_active;
+    std::thread thread_write_wav;
+#endif
 
     static int playCallback( const void *inputBuffer, void *outputBuffer,
                             unsigned long numFrames,
@@ -152,7 +218,16 @@ namespace imajuscule::audio {
       analyzeTime(tNanos, numFrames);
 #endif
 
-      reinterpret_cast<Chans*>(userData)->step(reinterpret_cast<SAMPLE*>(outputBuffer), static_cast<int>(numFrames), tNanos);
+      reinterpret_cast<MeT*>(userData)->chans.step(reinterpret_cast<SAMPLE*>(outputBuffer), static_cast<int>(numFrames), tNanos);
+#if IMJ_DEBUG_AUDIO_OUT
+      for (int i=0; i<numFrames; ++i) {
+        for (int j=0; j<nAudioOut; ++j) {
+          if (!reinterpret_cast<MeT*>(userData)->wav_write_queue.try_push(reinterpret_cast<SAMPLE*>(outputBuffer)[nAudioOut*i + j])) {
+            LG(ERR, "audio debug : dropped sample");
+          }
+        }
+      }
+#endif
 
       return paContinue;
     }
@@ -223,7 +298,7 @@ namespace imajuscule::audio {
                                     paFramesPerBufferUnspecified, /* to decrease latency */
                                     paClipOff | paPrimeOutputBuffersUsingStreamCallback, /* we won't output out of range samples so don't bother clipping them */
                                     playCallback,
-                                    &chans);
+                                    this);
         if( unlikely(err != paNoError) )
         {
           stream = nullptr;
@@ -283,6 +358,10 @@ namespace imajuscule::audio {
                   return;
               }
           }
+#if IMJ_DEBUG_AUDIO_OUT
+          wav_write_active = false;
+          thread_write_wav.join();
+#endif
           LG(INFO, "AudioOut::doTearDown : success");
       }
   };
