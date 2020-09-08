@@ -256,6 +256,18 @@ namespace imajuscule::audio::audioelement {
     int32_t release;
     itp::interpolation releaseItp;
     float sustain;
+
+    std::size_t combine_hash(std::size_t h) const {
+        hash_combine(h, attack);
+        hash_combine(h, attackItp);
+        hash_combine(h, hold);
+        hash_combine(h, decay);
+        hash_combine(h, decayItp);
+        hash_combine(h, release);
+        hash_combine(h, releaseItp);
+        hash_combine(h, sustain);
+        return h;
+    }
   };
 
   inline bool operator < (AHDSR const& l, AHDSR const& r)
