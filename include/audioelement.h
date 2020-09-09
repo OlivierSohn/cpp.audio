@@ -2025,6 +2025,11 @@ namespace imajuscule::audio::audioelement {
   };
 
 
+  enum class Extremity {
+      Start,
+      End
+  };
+
   /**
    Ramp
    */
@@ -2057,22 +2062,38 @@ namespace imajuscule::audio::audioelement {
     // Once this has been called, 'setAngleIncrements' _must_ be called
     //   (to specify the start frequency) before calling 'step'.
     // Else, the behaviour is undefined.
-    void setup(T to_increments,
+    void setup(Extremity e,
+               T increments,
                T duration_in_samples_,
                itp::interpolation i) {
       Assert(duration_in_samples_ > 0);
 
-      to = to_increments;
+      setup_extremity = e;
+      switch(e) {
+        case Extremity::Start:
+          from = increments;
+          break;
+        case Extremity::End:
+          to = increments;
+          break;
+      }
       duration_in_samples = duration_in_samples_;
       interp.setInterpolation(i);
     }
 
-    void setAngleIncrements(T from_increments) {
+    void setAngleIncrements(T increments) {
       // verify that setup has been called
       Assert(duration_in_samples > 0);
 
       cur_sample = 0;
-      from = from_increments;
+      switch(setup_extremity) {
+        case Extremity::Start:
+          to = increments;
+          break;
+        case Extremity::End:
+          from = increments;
+          break;
+      }
       C = get_linear_proportionality_constant();
     }
 
@@ -2108,6 +2129,7 @@ namespace imajuscule::audio::audioelement {
     // This interpolation is "composed" with an implicit PROPORTIONAL_VALUE_DERIVATIVE interpolation
     NormalizedInterpolation<T> interp;
 
+    Extremity setup_extremity = Extremity::Start;
     T from, to, cur_sample;
     T duration_in_samples;
     T C;
