@@ -443,7 +443,8 @@ namespace imajuscule::audio::audioelement {
     }
 
     void forgetPastSignals() {
-      stateAcquisition.forget();
+      // do not touch stateAcquisition
+
       forEachHarmonic([](auto & algo) { algo.forgetPastSignals(); } );
     }
     void setEnvelopeCharacTime(int len) {
@@ -603,7 +604,8 @@ namespace imajuscule::audio::audioelement {
     }
 
     void forgetPastSignals() {
-      stateAcquisition.forget();
+      // do not touch stateAcquisition
+
       counter = 0;
       updateMinChangeDuration();
       // we don't set '_value', step() sets it.
@@ -1032,7 +1034,12 @@ namespace imajuscule::audio::audioelement {
   // for medium frequencies.
   constexpr float reduceUnadjustedVolumes = 0.1f;
 
-  /* Adjusts the volume of a mono-frequency algorithm. */
+  /** Adjusts the volume of a mono-frequency algorithm.
+   *
+   * To avoid audible cracks when the volume has a non differentiable shape,
+   * the volume adjustment is low-pass filtered with a time constant proportional to
+   * the current oscillator frequency.
+   */
   template<typename ALGO>
   struct VolumeAdjusted {
     using MeT = VolumeAdjusted<ALGO>;
@@ -1047,8 +1054,8 @@ namespace imajuscule::audio::audioelement {
     using FPT = T;
     static_assert(std::is_floating_point<FPT>::value);
 
-    T real() const { return volume * osc.real(); }
-    T imag() const { return volume * osc.imag(); }
+    T real() const { Assert(volume); return *volume * osc.real(); }
+    T imag() const { Assert(volume); return *volume * osc.imag(); }
 
     T angleIncrements() const { return osc.angleIncrements(); }
     T angle() const { return osc.angle(); }
@@ -1056,10 +1063,15 @@ namespace imajuscule::audio::audioelement {
     auto       & getOsc()       { return osc; }
     auto const & getOsc() const { return osc; }
 
-    VolumeAdjusted() : log_ratio_(1.f), low_index_(0) {}
+    VolumeAdjusted()
+    : log_ratio_(1.f)
+    , low_index_(0)
+    {}
 
     void forgetPastSignals() {
       osc.forgetPastSignals();
+      volume.reset();
+      volume_target = {};
     }
     void setEnvelopeCharacTime(int len) {
       osc.setEnvelopeCharacTime(len);
@@ -1076,10 +1088,10 @@ namespace imajuscule::audio::audioelement {
     }
 
     void setAngleIncrements(T ai) {
-      volume = loudness::equal_loudness_volume(angle_increment_to_freq<FPT>(ai),
-                                               low_index_,
-                                               log_ratio_,
-                                               loudness_level);
+      volume_target = loudness::equal_loudness_volume(angle_increment_to_freq<FPT>(ai),
+                                                      low_index_,
+                                                      log_ratio_,
+                                                      loudness_level);
       osc.setAngleIncrements(ai);
     }
 
@@ -1101,7 +1113,24 @@ namespace imajuscule::audio::audioelement {
       this->loudness_level = loudness_level;
     }
 
-    void step() { osc.step(); }
+    void step() {
+      osc.step();
+
+      // low-pass the volume using a time characteristic equal to the period implied by angle increments
+      if (unlikely(!volume)) {
+        filter_init_with_inc = osc.angleIncrements();
+        volume_filter.initWithAngleIncrement(filter_init_with_inc);
+        volume_filter.setInitialValue(volume_target);
+      } else if (*volume != volume_target) {
+        auto const inc = osc.angleIncrements();
+        if (filter_init_with_inc != inc) {
+          filter_init_with_inc = inc;
+          volume_filter.initWithAngleIncrement(filter_init_with_inc);
+        }
+      }
+      volume_filter.feed(&volume_target);
+      volume = *volume_filter.filtered();
+    }
 
     bool isEnvelopeFinished() const {
       return osc.isEnvelopeFinished();
@@ -1111,8 +1140,11 @@ namespace imajuscule::audio::audioelement {
     uint32_t low_index_ : 4;
     float loudness_level;
     float log_ratio_;
-    float volume;
+    std::optional<T> volume;
+    T volume_target;
+    T filter_init_with_inc;
     ALGO osc;
+    Filter<T, 1, FilterType::LOW_PASS, 1> volume_filter;
   };
 
   // the unit of angle and angle increments is "radian / pi"
@@ -2467,9 +2499,9 @@ namespace imajuscule::audio::audioelement {
   template<typename T>
   using FreqRampAlgo = FreqRampOscillatorAlgo_<T, VolumeAdjust::Yes>;
 
-  // TODO when using varying frequencies, like in a sweep, it might be more
-  // efficient / smooth / accurate to filter the signal instead of adjusting
-  // the level at each frame.
+  // This uses a low-pass filter on the volume so that when using varying frequencies,
+  // like in a sweep, there is no audible audio crack.
+  // (TODO) Instead of using low-passed volume adjustment, we could also directly filter the signal
   template<typename T>
   using FreqSingleRampAlgo = FreqSingleRampOscillatorAlgo_<T, VolumeAdjust::Yes>;
 

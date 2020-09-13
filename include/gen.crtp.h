@@ -309,6 +309,7 @@ namespace imajuscule::audio {
         TunedPitch tp{e.noteOn.pitch, e.noteOn.tuning};
         channels.corresponding(*channel) = tp;
 
+        c.elem.forgetPastSignals(); // this does _not_ touch the envelope
         c.elem.editEnvelope().setEnvelopeCharacTime(get_xfade_length());
 
         auto freq = to_freq(tp.getValue()-Do_midi, half_tone);

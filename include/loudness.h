@@ -1,10 +1,11 @@
 namespace imajuscule::audio {
     namespace loudness {
-        
+        // TODO use doubles?
+
         // based on http://mariobon.com/Glossario/Loudness_ISO_226_2003b.pdf
-        
+
         constexpr auto n_freq = 29;
-        
+
         constexpr std::array<float,n_freq> freqs {{
             20.f,
             25.f,
@@ -36,7 +37,7 @@ namespace imajuscule::audio {
             10000.f,
             12500.f,
         }};
-        
+
         constexpr std::array<float,n_freq> alpha_f_ {{
             .532f,
             .506f,
@@ -68,7 +69,7 @@ namespace imajuscule::audio {
             .271f,
             .301f,
         }};
-        
+
         constexpr std::array<float,n_freq> Lu_ {{
             -31.6f,
             -27.2f,
@@ -100,7 +101,7 @@ namespace imajuscule::audio {
             -10.7f,
             -3.1f
         }};
-        
+
         constexpr std::array<float,n_freq> Tf_ {{
             78.5f,
             68.7f,
@@ -132,7 +133,7 @@ namespace imajuscule::audio {
             13.9f,
             12.3f
         }};
-        
+
         // using binary search,
         // ratio is the proportion of "returned index",
         // 1-ratio is the proportion of "returned index-1"
@@ -174,13 +175,13 @@ namespace imajuscule::audio {
             auto alpha_f = alpha_f_[i];
             auto Lu = Lu_[i];
             auto Tf = Tf_[i];
-            
+
             auto Af = 4.47e-3f * (powf(10.f, .025f * LN) - 1.14f) + powf(.4f * powf(10.f, ((Tf + Lu) * .1f) - 9.f), alpha_f);
-            
+
             auto Lp = 94.f - Lu + (10.f/alpha_f)* std::log(Af) / std::log(10.f);
             return Lp;
         }
-        
+
         static inline auto compute_elv(float level) {
             std::array<float, n_freq> v;
             int i=0;
@@ -200,12 +201,12 @@ namespace imajuscule::audio {
             }
             return elvs;
         }
-        
+
         static auto elvs = compute_elvs();
-        
+
         static inline float equal_loudness_volume_db(float freq, int level) {
             float ratio;
-            
+
             auto & elv = elvs[level];
             auto i = closest_freq(freq, ratio);
             if(ratio == 1.f) {
@@ -225,14 +226,14 @@ namespace imajuscule::audio {
             i = std::min(static_cast<int>(elvs.size()) - 1, i);
 
             auto max_db = elvs[i][index_freq_ref];
-            
+
             auto db = equal_loudness_volume_db(freq, i);
             if(db > max_db) {
                 return 1.f;
                 // equivalent to:
                 // db = max_db;
             }
-            
+
             return powf(10.f, log_ratio * (db-max_db)/20.f);
         }
 }
