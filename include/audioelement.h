@@ -494,8 +494,8 @@ namespace imajuscule::audio::audioelement {
     auto &       editEnvelope()      { return *this; }
     auto const & getEnvelope() const { return *this; }
 
-    void setAHDSR(AHDSR const & s) {
-      forEachHarmonic([&s](auto & algo) { algo.editEnvelope().setAHDSR(s); } );
+    void setAHDSR(AHDSR const & s, int const sample_rate) {
+      forEachHarmonic([&s, sample_rate](auto & algo) { algo.editEnvelope().setAHDSR(s, sample_rate); } );
     }
 
     bool tryAcquire() {
@@ -862,7 +862,6 @@ namespace imajuscule::audio::audioelement {
     }
   }
 
-#ifndef CUSTOM_SAMPLE_RATE
   template <typename T, EnvelopeRelease Rel>
   struct AHDSREnvelopeBase : public WithMinChangeDuration {
     using FPT = T;
@@ -878,22 +877,25 @@ namespace imajuscule::audio::audioelement {
     // fast moog attacks are 1ms according to
     // cf. https://www.muffwiggler.com/forum/viewtopic.php?t=65964&sid=0f628fc3793b76de64c7bceabfbd80ff
     // so we set the max normalized enveloppe velocity to 1ms (i.e the time to go from 0 to 1)
-    static constexpr auto normalizedMinDt = SAMPLE_RATE/1000;
-    static_assert(normalizedMinDt > 0);
+    static constexpr auto normalizedMinDt(int const sample_rate) { return sample_rate/1000; };
 
-    void setAHDSR(AHDSR const & s) {
+    void setAHDSR(AHDSR const & s, int const sample_rate) {
+      int32_t min_dt = normalizedMinDt(sample_rate);
+
+      Assert(min_dt > 0);
+      
       bool hasDecay = s.sustain < 0.999999;
       SMinusOne =
       hasDecay ?
       clamp_ret (s.sustain, 0.f, 1.f) - 1.f:
       0.f;
-      A = std::max( s.attack, normalizedMinDt );
+      A = std::max( s.attack, min_dt );
       H = std::max( s.hold, 0 );
       D =
       hasDecay ?
-      std::max( s.decay, normalizedMinDt) :
+      std::max( s.decay, min_dt) :
       0;
-      R = std::max( s.release, normalizedMinDt);
+      R = std::max( s.release, min_dt);
       attackItp = s.attackItp;
       decayItp = s.decayItp;
       releaseItp = s.releaseItp;
@@ -964,10 +966,10 @@ namespace imajuscule::audio::audioelement {
     // [0 bytes]
 
     int32_t ahdCounter = 0;
-    int32_t A = normalizedMinDt;
+    int32_t A = 100000;
     int32_t H = 0;
-    int32_t D = normalizedMinDt;
-    int32_t R = normalizedMinDt;
+    int32_t D = 100000;
+    int32_t R = 100000;
     float SMinusOne = -0.5f;
 
     // [28 bytes]
@@ -1046,7 +1048,6 @@ namespace imajuscule::audio::audioelement {
 
   template <Atomicity A, typename T, EnvelopeRelease Rel>
   using AHDSREnvelope = EnvelopeCRT < A, AHDSREnvelopeBase <T, Rel> >;
-#endif
 
   template <Atomicity A, typename ALGO>
   using SimplyEnveloped = Enveloped<ALGO,SimpleLinearEnvelope<A, typename ALGO::FPT>>;
@@ -1056,15 +1057,15 @@ namespace imajuscule::audio::audioelement {
   // for medium frequencies.
   constexpr float reduceUnadjustedVolumes = 0.1f;
 
-  /** Adjusts the volume of a mono-frequency algorithm.
+  /** Adjusts the volume of a mono-frequency algorithm, to reach equal-loudness across all frequencies.
    *
    * To avoid audible cracks when the volume has a non differentiable shape,
    * the volume adjustment is low-pass filtered with a time constant proportional to
    * the current oscillator frequency.
    */
   template<typename ALGO>
-  struct VolumeAdjusted {
-    using MeT = VolumeAdjusted<ALGO>;
+  struct LoudnessVolumeAdjusted {
+    using MeT = LoudnessVolumeAdjusted<ALGO>;
     // if the underlying algo has more than one frequency
     // then we can't use this volume adjustment algorithm
     // because it would make sense only for the fundamental frequency.
@@ -1085,7 +1086,7 @@ namespace imajuscule::audio::audioelement {
     auto       & getOsc()       { return osc; }
     auto const & getOsc() const { return osc; }
 
-    VolumeAdjusted()
+    LoudnessVolumeAdjusted()
     : log_ratio_(1.f)
     , low_index_(0)
     {}
@@ -2380,26 +2381,26 @@ namespace imajuscule::audio::audioelement {
     WindFreqIter<ITER> it = { itp::LINEAR };
   };
 
-  enum class VolumeAdjust : unsigned char{
+  enum class LoudnessVolumeAdjust : unsigned char{
     Yes,
     No
   };
 
-  template<VolumeAdjust V, typename T>
+  template<LoudnessVolumeAdjust V, typename T>
   struct OscillatorAlgo_;
 
   template<typename T>
-  struct OscillatorAlgo_<VolumeAdjust::No, T> {
+  struct OscillatorAlgo_<LoudnessVolumeAdjust::No, T> {
     using type = OscillatorAlgo<T>;
   };
 
   template<typename T>
-  struct OscillatorAlgo_<VolumeAdjust::Yes, T> {
-    using type = VolumeAdjusted<OscillatorAlgo<T>>;
+  struct OscillatorAlgo_<LoudnessVolumeAdjust::Yes, T> {
+    using type = LoudnessVolumeAdjusted<OscillatorAlgo<T>>;
   };
 
-  template<VolumeAdjust V, typename T>
-  using AdjustableVolumeOscillatorAlgo = typename OscillatorAlgo_<V,T>::type;
+  template<LoudnessVolumeAdjust V, typename T>
+  using LoudnessAdjustableVolumeOscillatorAlgo = typename OscillatorAlgo_<V,T>::type;
 
   template<typename T>
   static int steps_to_swap(LogRamp<T> & spec) {
@@ -2512,20 +2513,20 @@ namespace imajuscule::audio::audioelement {
     ALGO osc;
   };
 
-  template<typename T, VolumeAdjust V>
-  using FreqRampOscillatorAlgo_ = FreqCtrl_<AdjustableVolumeOscillatorAlgo<V,T>, LogRamp<T>>;
+  template<typename T, LoudnessVolumeAdjust V>
+  using FreqRampOscillatorAlgo_ = FreqCtrl_<LoudnessAdjustableVolumeOscillatorAlgo<V,T>, LogRamp<T>>;
 
-  template<typename T, VolumeAdjust V>
-  using FreqSingleRampOscillatorAlgo_ = FreqCtrl_<AdjustableVolumeOscillatorAlgo<V,T>, LogSingleRamp<T>>;
+  template<typename T, LoudnessVolumeAdjust V>
+  using FreqSingleRampOscillatorAlgo_ = FreqCtrl_<LoudnessAdjustableVolumeOscillatorAlgo<V,T>, LogSingleRamp<T>>;
 
   template<typename T>
-  using FreqRampAlgo = FreqRampOscillatorAlgo_<T, VolumeAdjust::Yes>;
+  using FreqRampAlgo = FreqRampOscillatorAlgo_<T, LoudnessVolumeAdjust::Yes>;
 
   // This uses a low-pass filter on the volume so that when using varying frequencies,
   // like in a sweep, there is no audible audio crack.
   // (TODO) Instead of using low-passed volume adjustment, we could also directly filter the signal
   template<typename T>
-  using FreqSingleRampAlgo = FreqSingleRampOscillatorAlgo_<T, VolumeAdjust::Yes>;
+  using FreqSingleRampAlgo = FreqSingleRampOscillatorAlgo_<T, LoudnessVolumeAdjust::Yes>;
 
   template<typename Envel>
   using FreqRamp = FinalAudioElement<Enveloped<FreqRampAlgo<typename Envel::FPT>, Envel>>;

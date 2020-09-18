@@ -69,11 +69,16 @@ namespace imajuscule::audio {
     }
 
     // angle increment unit is "rad / pi"
-    template<typename T>
-    constexpr T freq_to_angle_increment(T freq) {
-        static_assert(std::is_floating_point_v<T>);
-        return 2 * freq / SAMPLE_RATE;
-    }
+template<typename T>
+constexpr T freq_to_angle_increment(T freq, int sample_rate) {
+  static_assert(std::is_floating_point_v<T>);
+  return 2 * freq / sample_rate;
+}
+
+template<typename T>
+constexpr T freq_to_angle_increment(T freq) {
+  return freq_to_angle_increment(freq, SAMPLE_RATE);
+}
 
     template<typename T>
     constexpr T angle_increment_to_freq(T i) {

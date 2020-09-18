@@ -206,7 +206,7 @@ namespace imajuscule::audio {
       using type =
       audioelement::Mix
       <
-      audioelement::AdjustableVolumeOscillatorAlgo<audioelement::VolumeAdjust::Yes, float>
+      audioelement::LoudnessAdjustableVolumeOscillatorAlgo<audioelement::LoudnessVolumeAdjust::Yes, float>
       >;
     };
 
@@ -216,7 +216,7 @@ namespace imajuscule::audio {
       audioelement::LowPassAlgo<PinkNoiseAlgo, Order>,
       AsymBandPassAlgo<PinkNoiseAlgo, Order, audioelement::SlowIter<audioelement::AbsIter<PinkNoiseIter>>>,
       AsymBandRejectAlgo<PinkNoiseAlgo, Order, audioelement::SlowIter<audioelement::AbsIter<PinkNoiseIter>>>,
-      audioelement::AdjustableVolumeOscillatorAlgo<audioelement::VolumeAdjust::Yes, float>
+      audioelement::LoudnessAdjustableVolumeOscillatorAlgo<audioelement::LoudnessVolumeAdjust::Yes, float>
       >;
     };
 
