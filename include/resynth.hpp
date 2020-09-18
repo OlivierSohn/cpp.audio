@@ -11,7 +11,7 @@ void resynth(std::vector<DeducedNote<T>> const & notes,
 
   using namespace audioelement;
   
-  using AE = OscillatorAlgo<double>; // no loudness volume adjustment
+  using AE = VolumeAdjusted<OscillatorAlgo<double>>; // no loudness volume adjustment
   using Envelope = AHDSREnvelope<Atomicity::No, double, EnvelopeRelease::WaitForKeyRelease>;
   using EnvelopedAE = Enveloped<AE, Envelope>;
   
@@ -84,6 +84,7 @@ void resynth(std::vector<DeducedNote<T>> const & notes,
     EnvelopedAE * ae = getAvailableOscillator();
     ae->forgetPastSignals();
     ae->setAngleIncrements(freq_to_angle_increment(note.frequency, sampling_rate));
+    ae->getAlgo().setVolumeTarget(DbToSqMag<double>()(note.amplitude));
     ae->editEnvelope().setAHDSR(AHDSR{
       1000, itp::LINEAR,
       0,

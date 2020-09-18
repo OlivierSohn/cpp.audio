@@ -201,7 +201,7 @@ namespace imajuscule::audio::audioelement {
       }
       algo.setAngleIncrements(a);
     }
-
+    
     FPT real() const { return algo.real() * env.value(); }
     FPT imag() const { return algo.imag() * env.value(); }
 
@@ -1057,118 +1057,160 @@ namespace imajuscule::audio::audioelement {
   // for medium frequencies.
   constexpr float reduceUnadjustedVolumes = 0.1f;
 
-  /** Adjusts the volume of a mono-frequency algorithm, to reach equal-loudness across all frequencies.
-   *
-   * To avoid audible cracks when the volume has a non differentiable shape,
-   * the volume adjustment is low-pass filtered with a time constant proportional to
-   * the current oscillator frequency.
-   */
-  template<typename ALGO>
-  struct LoudnessVolumeAdjusted {
-    using MeT = LoudnessVolumeAdjusted<ALGO>;
-    // if the underlying algo has more than one frequency
-    // then we can't use this volume adjustment algorithm
-    // because it would make sense only for the fundamental frequency.
-    static_assert(ALGO::isMonoHarmonic);
-
-    static constexpr auto hasEnvelope = ALGO::hasEnvelope;
-    static constexpr auto baseVolume = ALGO::baseVolume / reduceUnadjustedVolumes;
-    using T = typename ALGO::FPT;
-    using FPT = T;
-    static_assert(std::is_floating_point<FPT>::value);
-
-    T real() const { Assert(volume); return *volume * osc.real(); }
-    T imag() const { Assert(volume); return *volume * osc.imag(); }
-
-    T angleIncrements() const { return osc.angleIncrements(); }
-    T angle() const { return osc.angle(); }
-
-    auto       & getOsc()       { return osc; }
-    auto const & getOsc() const { return osc; }
-
-    LoudnessVolumeAdjusted()
-    : log_ratio_(1.f)
-    , low_index_(0)
-    {}
-
-    void forgetPastSignals() {
-      osc.forgetPastSignals();
-      volume.reset();
-      volume_target = {};
-    }
-    void setEnvelopeCharacTime(int len) {
-      osc.setEnvelopeCharacTime(len);
-    }
-    void onKeyPressed(int32_t delay) {
-      osc.onKeyPressed(delay);
-    }
-    void onKeyReleased(int32_t delay) {
-      osc.onKeyReleased(delay);
-    }
-
-    void setFiltersOrder(int order) {
-      osc.setFiltersOrder(order);
-    }
-
-    void setAngleIncrements(T ai) {
-      volume_target = loudness::equal_loudness_volume(angle_increment_to_freq<FPT>(ai),
-                                                      low_index_,
-                                                      log_ratio_,
-                                                      loudness_level);
-      osc.setAngleIncrements(ai);
-    }
-
-    void setAngle(T ai) {
-      osc.setAngle(ai);
-    }
-
-    void synchronizeAngles(MeT const & other) {
-      osc.synchronizeAngles(other.osc);
-    }
-
-    void setLoudnessParams(int low_index, float log_ratio, float loudness_level) {
-      Assert(low_index >= 0);
-      Assert(low_index < 16);
-      low_index_ = low_index;
-      Assert(log_ratio >= 0.f);
-      Assert(log_ratio <= 1.f);
-      log_ratio_ = log_ratio;
-      this->loudness_level = loudness_level;
-    }
-
-    void step() {
-      osc.step();
-
-      // low-pass the volume using a time characteristic equal to the period implied by angle increments
-      if (unlikely(!volume)) {
-        filter_init_with_inc = osc.angleIncrements();
+/** Adjusts the volume of a mono-frequency algo.
+ *
+ * To avoid audible cracks when the volume has a non differentiable shape,
+ * the volume adjustment is low-pass filtered with a time constant proportional to
+ * the current oscillator frequency.
+ */
+template<typename ALGO>
+struct BaseVolumeAdjusted {
+  using MeT = BaseVolumeAdjusted<ALGO>;
+  // if the underlying algo has more than one frequency
+  // then we can't use this volume adjustment algorithm
+  // because it would make sense only for the fundamental frequency.
+  static_assert(ALGO::isMonoHarmonic);
+  
+  static constexpr auto hasEnvelope = ALGO::hasEnvelope;
+  static constexpr auto baseVolume = ALGO::baseVolume / reduceUnadjustedVolumes;
+  using T = typename ALGO::FPT;
+  using FPT = T;
+  static_assert(std::is_floating_point<FPT>::value);
+  
+  T real() const { Assert(volume); return *volume * osc.real(); }
+  T imag() const { Assert(volume); return *volume * osc.imag(); }
+  
+  T angleIncrements() const { return osc.angleIncrements(); }
+  T angle() const { return osc.angle(); }
+  
+  auto       & getOsc()       { return osc; }
+  auto const & getOsc() const { return osc; }
+  
+  BaseVolumeAdjusted() = default;
+  
+  void forgetPastSignals() {
+    osc.forgetPastSignals();
+    volume.reset();
+    volume_target = {};
+  }
+  void setEnvelopeCharacTime(int len) {
+    osc.setEnvelopeCharacTime(len);
+  }
+  void onKeyPressed(int32_t delay) {
+    osc.onKeyPressed(delay);
+  }
+  void onKeyReleased(int32_t delay) {
+    osc.onKeyReleased(delay);
+  }
+  
+  void setFiltersOrder(int order) {
+    osc.setFiltersOrder(order);
+  }
+    
+  void setAngle(T ai) {
+    osc.setAngle(ai);
+  }
+  
+  void synchronizeAngles(MeT const & other) {
+    osc.synchronizeAngles(other.osc);
+  }
+  
+  void setLoudnessParams(int low_index, float log_ratio, float loudness_level) {
+    osc.setLoudnessParams(low_index, log_ratio, loudness_level);
+  }
+  
+  void step() {
+    osc.step();
+    
+    // low-pass the volume using a time characteristic equal to the period implied by angle increments
+    if (unlikely(!volume)) {
+      filter_init_with_inc = osc.angleIncrements();
+      volume_filter.initWithAngleIncrement(filter_init_with_inc);
+      volume_filter.setInitialValue(volume_target);
+    } else if (*volume != volume_target) {
+      auto const inc = osc.angleIncrements();
+      if (filter_init_with_inc != inc) {
+        filter_init_with_inc = inc;
         volume_filter.initWithAngleIncrement(filter_init_with_inc);
-        volume_filter.setInitialValue(volume_target);
-      } else if (*volume != volume_target) {
-        auto const inc = osc.angleIncrements();
-        if (filter_init_with_inc != inc) {
-          filter_init_with_inc = inc;
-          volume_filter.initWithAngleIncrement(filter_init_with_inc);
-        }
       }
-      volume_filter.feed(&volume_target);
-      volume = *volume_filter.filtered();
     }
+    volume_filter.feed(&volume_target);
+    volume = *volume_filter.filtered();
+  }
+  
+  bool isEnvelopeFinished() const {
+    return osc.isEnvelopeFinished();
+  }
+  
+private:
+  std::optional<T> volume;
+  T volume_target;
+  T filter_init_with_inc;
+  ALGO osc;
+  Filter<T, 1, FilterType::LOW_PASS, 1> volume_filter;
 
-    bool isEnvelopeFinished() const {
-      return osc.isEnvelopeFinished();
-    }
+protected:
+  void setVolumeTargetInternal(T vol) {
+    volume_target = vol;
+  }
+  void setAngleIncrementsInternal(T ai) {
+    osc.setAngleIncrements(ai);
+  }
+};
 
-  private:
-    uint32_t low_index_ : 4;
-    float loudness_level;
-    float log_ratio_;
-    std::optional<T> volume;
-    T volume_target;
-    T filter_init_with_inc;
-    ALGO osc;
-    Filter<T, 1, FilterType::LOW_PASS, 1> volume_filter;
-  };
+
+/**
+ The user of the class can adjust the volume
+ */
+template<typename ALGO>
+struct VolumeAdjusted : BaseVolumeAdjusted<ALGO> {
+  using T = typename ALGO::FPT;
+
+  void setVolumeTarget(T vol) {
+    this->setVolumeTargetInternal(vol);
+  }
+
+  void setAngleIncrements(T ai) {
+    this->setAngleIncrementsInternal(ai);
+  }
+};
+
+/** Adjusts the volume of a mono-frequency algorithm to reach equal-loudness across all frequencies.
+ */
+template<typename ALGO>
+struct LoudnessVolumeAdjusted : BaseVolumeAdjusted<ALGO> {
+  using T = typename ALGO::FPT;
+
+  LoudnessVolumeAdjusted()
+  : log_ratio_(1.f)
+  , low_index_(0)
+  , BaseVolumeAdjusted<ALGO>()
+  {}
+  
+  void setAngleIncrements(T ai) {
+    setVolumeTargetInternal(loudness::equal_loudness_volume(angle_increment_to_freq<T>(ai),
+                                                            low_index_,
+                                                            log_ratio_,
+                                                            loudness_level));
+    setAngleIncrementsInternal(ai);
+  }
+  
+  void setLoudnessParams(int low_index, float log_ratio, float loudness_level) {
+    Assert(low_index >= 0);
+    Assert(low_index < 16);
+    low_index_ = low_index;
+    Assert(log_ratio >= 0.f);
+    Assert(log_ratio <= 1.f);
+    log_ratio_ = log_ratio;
+    this->loudness_level = loudness_level;
+  }
+  
+private:
+  uint32_t low_index_ : 4;
+  float loudness_level;
+  float log_ratio_;
+};
+
 
   // the unit of angle and angle increments is "radian / pi"
 
