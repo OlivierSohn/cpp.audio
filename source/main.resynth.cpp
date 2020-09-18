@@ -5,7 +5,8 @@ namespace imajuscule::audio {
 void testDeduceNotes() {
   int const window_center_stride = 400;
   int const windowed_signal_stride = 1;
-  std::string prefix("chromatic");
+  std::string const dir("/Users/Olivier/Documents/Quand je t'aime/Bounced Files/");
+  std::string prefix("Quand je t'aime_1");
   
   // The frequency detection is too imprecise with hann window:
   
@@ -27,7 +28,7 @@ void testDeduceNotes() {
   //std::vector<double> half_window = half_gaussian_window<double>(8, 4000);
   int const zero_padding_factor = 1;
   //int const zero_padding_factor = 10;
-  auto reader = WAVReader("/Users/Olivier/", prefix + ".wav");
+  auto reader = WAVReader(dir, prefix + ".wav");
   
   std::vector<std::vector<double>> deinterlaced;
   read_wav_as_floats(reader, deinterlaced);

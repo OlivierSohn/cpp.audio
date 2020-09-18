@@ -98,9 +98,6 @@ void resynth(std::vector<DeducedNote<T>> const & notes,
   }
   
   while (!recordFrame()) {}
-  
-  // Later we can use imajuscule::audio::sine::Synth with a custom synchronous "Chans" class,
-  // and add methods to play notes that are not on the scale.
 }
 
 } // NS
