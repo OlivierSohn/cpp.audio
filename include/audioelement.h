@@ -211,6 +211,28 @@ namespace imajuscule::audio::audioelement {
     auto const & getEnvelope() const { return env; }
     auto & editEnvelope() { return env; }
 
+    
+    bool tryAcquire() {
+      return env.tryAcquire();
+    }
+    
+    bool acquireStates() const {
+      return env.acquireStates();
+    }
+    
+    void onKeyPressed(int32_t delay) {
+      env.onKeyPressed(delay);
+    }
+    void onKeyReleased(int32_t delay) {
+      env.onKeyReleased(delay);
+    }
+    bool canHandleExplicitKeyReleaseNow(int32_t delay) const {
+      return env.canHandleExplicitKeyReleaseNow(delay);
+    }
+    bool isEnvelopeFinished() const {
+      return env.isEnvelopeFinished();
+    }
+    
     void setLoudnessParams(int low_index, float log_ratio, float loudness_level) {
       algo.setLoudnessParams(low_index, log_ratio, loudness_level);
     }

@@ -57,3 +57,4 @@
 #include "gen.sine.h"
 #include "gen.voice.h"
 #include "events.impl.h"
+#include "resynth.hpp"
