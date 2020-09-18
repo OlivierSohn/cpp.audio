@@ -201,7 +201,7 @@ namespace imajuscule::audio::audioelement {
       }
       algo.setAngleIncrements(a);
     }
-    
+
     FPT real() const { return algo.real() * env.value(); }
     FPT imag() const { return algo.imag() * env.value(); }
 
@@ -211,15 +211,15 @@ namespace imajuscule::audio::audioelement {
     auto const & getEnvelope() const { return env; }
     auto & editEnvelope() { return env; }
 
-    
+
     bool tryAcquire() {
       return env.tryAcquire();
     }
-    
+
     bool acquireStates() const {
       return env.acquireStates();
     }
-    
+
     void onKeyPressed(int32_t delay) {
       env.onKeyPressed(delay);
     }
@@ -232,7 +232,7 @@ namespace imajuscule::audio::audioelement {
     bool isEnvelopeFinished() const {
       return env.isEnvelopeFinished();
     }
-    
+
     void setLoudnessParams(int low_index, float log_ratio, float loudness_level) {
       algo.setLoudnessParams(low_index, log_ratio, loudness_level);
     }
@@ -883,7 +883,7 @@ namespace imajuscule::audio::audioelement {
       int32_t min_dt = normalizedMinDt(sample_rate);
 
       Assert(min_dt > 0);
-      
+
       bool hasDecay = s.sustain < 0.999999;
       SMinusOne =
       hasDecay ?
@@ -1070,24 +1070,24 @@ struct BaseVolumeAdjusted {
   // then we can't use this volume adjustment algorithm
   // because it would make sense only for the fundamental frequency.
   static_assert(ALGO::isMonoHarmonic);
-  
+
   static constexpr auto hasEnvelope = ALGO::hasEnvelope;
   static constexpr auto baseVolume = ALGO::baseVolume / reduceUnadjustedVolumes;
   using T = typename ALGO::FPT;
   using FPT = T;
   static_assert(std::is_floating_point<FPT>::value);
-  
+
   T real() const { Assert(volume); return *volume * osc.real(); }
   T imag() const { Assert(volume); return *volume * osc.imag(); }
-  
+
   T angleIncrements() const { return osc.angleIncrements(); }
   T angle() const { return osc.angle(); }
-  
+
   auto       & getOsc()       { return osc; }
   auto const & getOsc() const { return osc; }
-  
+
   BaseVolumeAdjusted() = default;
-  
+
   void forgetPastSignals() {
     osc.forgetPastSignals();
     volume.reset();
@@ -1102,26 +1102,26 @@ struct BaseVolumeAdjusted {
   void onKeyReleased(int32_t delay) {
     osc.onKeyReleased(delay);
   }
-  
+
   void setFiltersOrder(int order) {
     osc.setFiltersOrder(order);
   }
-    
+
   void setAngle(T ai) {
     osc.setAngle(ai);
   }
-  
+
   void synchronizeAngles(MeT const & other) {
     osc.synchronizeAngles(other.osc);
   }
-  
+
   void setLoudnessParams(int low_index, float log_ratio, float loudness_level) {
     osc.setLoudnessParams(low_index, log_ratio, loudness_level);
   }
-  
+
   void step() {
     osc.step();
-    
+
     // low-pass the volume using a time characteristic equal to the period implied by angle increments
     if (unlikely(!volume)) {
       filter_init_with_inc = osc.angleIncrements();
@@ -1137,11 +1137,11 @@ struct BaseVolumeAdjusted {
     volume_filter.feed(&volume_target);
     volume = *volume_filter.filtered();
   }
-  
+
   bool isEnvelopeFinished() const {
     return osc.isEnvelopeFinished();
   }
-  
+
 private:
   std::optional<T> volume;
   T volume_target;
@@ -1186,15 +1186,15 @@ struct LoudnessVolumeAdjusted : BaseVolumeAdjusted<ALGO> {
   , low_index_(0)
   , BaseVolumeAdjusted<ALGO>()
   {}
-  
+
   void setAngleIncrements(T ai) {
-    setVolumeTargetInternal(loudness::equal_loudness_volume(angle_increment_to_freq<T>(ai),
-                                                            low_index_,
-                                                            log_ratio_,
-                                                            loudness_level));
-    setAngleIncrementsInternal(ai);
+    this->setVolumeTargetInternal(loudness::equal_loudness_volume(angle_increment_to_freq<T>(ai),
+                                                                  low_index_,
+                                                                  log_ratio_,
+                                                                  loudness_level));
+    this->setAngleIncrementsInternal(ai);
   }
-  
+
   void setLoudnessParams(int low_index, float log_ratio, float loudness_level) {
     Assert(low_index >= 0);
     Assert(low_index < 16);
@@ -1204,7 +1204,7 @@ struct LoudnessVolumeAdjusted : BaseVolumeAdjusted<ALGO> {
     log_ratio_ = log_ratio;
     this->loudness_level = loudness_level;
   }
-  
+
 private:
   uint32_t low_index_ : 4;
   float loudness_level;
