@@ -1,12 +1,11 @@
 
 
-namespace imajuscule {
-    namespace audio {
+namespace imajuscule::audio {
 
         int initAudioSession();
         extern OSStatus startAudioUnit(AudioUnit audioUnit);
         extern OSStatus stopProcessingAudio(AudioUnit audioUnit);
-        int initAudioStreams(Features f, AudioUnit & audioUnit, void * chans,
+        int initAudioStreams(Features f, AudioUnit & audioUnit, void * cb_data,
                              AURenderCallback cb, int nOuts,
                              AudioStreamBasicDescription & streamDescription);
 
@@ -145,5 +144,103 @@ namespace imajuscule {
             }
         };
 
+
+template<>
+struct AudioInput<AudioPlatform::AudioUnits> {
+
+  bool Init(RecordF f) {
+    if(0==audio::initAudioSession())
+    {
+      AudioStreamBasicDescription desc;
+
+      recordF = f;
+      convertedSampleBuffer.resize(1024);
+      if(0==initAudioStreams(audio::Features::InAndOut, audioUnit_in, this, renderCallback_in, 1, desc))
+      {
+        OSStatus res;
+        res = audio::startAudioUnit(audioUnit_in);
+        if( noErr != res )
+        {
+          LG(ERR, "AudioIn::do_wakeup : startAudioUnit failed : %d", res);
+          Assert(0);
+          return false;
+        }
+      }
+      else
+      {
+        LG(ERR, "AudioIn::do_wakeup : initAudioStreams failed");
+        Assert(0);
+        return false;
+      }
     }
-}
+    else
+    {
+      LG(ERR, "AudioIn::do_wakeup : initAudioSession failed");
+      // fails on simulator
+      //Assert(0);
+      return false;
+    }
+    return true;
+  }
+
+  bool Teardown() {
+    OSStatus err = audio::stopProcessingAudio(audioUnit_in);
+    if( noErr != err ) {
+      LG(ERR, "AudioIn::do_sleep : stopProcessingAudio failed : %d", err);
+      Assert(0);
+      return false;
+    }
+    return true;
+  }
+
+private:
+  AudioUnit audioUnit_in = nullptr;
+  RecordF recordF;
+  std::vector<float> convertedSampleBuffer;
+
+  static OSStatus renderCallback_in(void                        *userData,
+                             AudioUnitRenderActionFlags  *actionFlags,
+                             const AudioTimeStamp        *audioTimeStamp,
+                             UInt32                      busNumber,
+                             UInt32                      numFrames,
+                             AudioBufferList             *buffers) {
+    AudioInput<AudioPlatform::AudioUnits> *This = static_cast<AudioInput<AudioPlatform::AudioUnits>*>(userData);
+    
+    OSStatus status = AudioUnitRender(This->audioUnit_in,
+                                      actionFlags,
+                                      audioTimeStamp,
+                                      1,
+                                      numFrames,
+                                      buffers);
+    if(status != noErr) {
+      if(status == kAudioUnitErr_CannotDoInCurrentContext) {
+        LG(ERR, "the app probably went in the background, need to return something else?");
+      }
+      LG(ERR,"renderCallback (audio) : error %d", status);
+      return status;
+    }
+
+    float * buf = This->convertedSampleBuffer.data();
+    
+    int startFrame = 0;
+    do {
+      SInt16 *inputFrames = startFrame + (SInt16*)(buffers->mBuffers->mData);
+      int const end = std::min(numFrames, static_cast<UInt32>(This->convertedSampleBuffer.size()));
+      for(auto i = 0; i < end; i++) {
+        buf[i] = (float)inputFrames[i] / 32768.f;
+      }
+      This->recordF((const SAMPLE*)buf, end);
+      numFrames -= end;
+      startFrame += end;
+    } while(numFrames);
+    
+    // mute audio
+    for (UInt32 i=0; i<buffers->mNumberBuffers; ++i) {
+      memset(buffers->mBuffers[i].mData, 0, buffers->mBuffers[i].mDataByteSize);
+    }
+    
+    return noErr;
+  }
+};
+
+} // NS

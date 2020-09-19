@@ -12,9 +12,8 @@
 
 #include "../../cpp.algorithms/include/public.h"
 
-#include "audio_platforms.h"
-
 #include "sound.defines.h"
+#include "audio_platforms.h"
 
 #include "loudness_filter_coefficients.h"
 #include "loudness.h"

@@ -38,7 +38,7 @@ namespace imajuscule {
             return 0;
         }
 
-        int initAudioStreams(Features feat, AudioUnit & audioUnit, void * chans,
+        int initAudioStreams(Features feat, AudioUnit & audioUnit, void * cb_data,
                              AURenderCallback cb, int nOuts,
                              AudioStreamBasicDescription & streamDescription) {
             UInt32 audioCategory = (feat == Features::InAndOut)?
@@ -90,7 +90,7 @@ namespace imajuscule {
             
             AURenderCallbackStruct callbackStruct;
             callbackStruct.inputProc = cb;
-            callbackStruct.inputProcRefCon = chans;
+            callbackStruct.inputProcRefCon = cb_data;
             if(auto err = AudioUnitSetProperty(audioUnit, kAudioUnitProperty_SetRenderCallback,
                                                kAudioUnitScope_Input, outputBus, &callbackStruct,
                                                sizeof(AURenderCallbackStruct))) {
