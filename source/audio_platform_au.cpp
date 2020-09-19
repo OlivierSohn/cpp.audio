@@ -39,7 +39,7 @@ namespace imajuscule {
         }
 
         int initAudioStreams(Features feat, AudioUnit & audioUnit, void * cb_data,
-                             AURenderCallback cb, int nOuts,
+                             AURenderCallback cb, int nOuts, int sample_rate,
                              AudioStreamBasicDescription & streamDescription) {
             UInt32 audioCategory = (feat == Features::InAndOut)?
                 kAudioSessionCategory_PlayAndRecord:
@@ -100,7 +100,7 @@ namespace imajuscule {
             
             // You might want to replace this with a different value, but keep in mind that the
             // iPhone does not support all sample rates. 8kHz, 22kHz, and 44.1kHz should all work.
-            streamDescription.mSampleRate = SAMPLE_RATE;
+            streamDescription.mSampleRate = sample_rate;
             // Yes, I know you probably want floating point samples, but the iPhone isn't going
             // to give you floating point data. You'll need to make the conversion by hand from
             // linear PCM <-> float.

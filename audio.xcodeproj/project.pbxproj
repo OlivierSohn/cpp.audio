@@ -60,6 +60,7 @@
 		09B01D5625152F0A0068FCFD /* libaudio.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 09FF3F231E36EBBB00C81351 /* libaudio.a */; };
 		09B01D5C25152F240068FCFD /* unity.build.rt.resynth.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 09B01D4025152EE10068FCFD /* unity.build.rt.resynth.cpp */; };
 		09B01D60251536DF0068FCFD /* libportaudio.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 09B01D5F251536DF0068FCFD /* libportaudio.a */; };
+		09B01D9E25168D330068FCFD /* Info.plist in CopyFiles */ = {isa = PBXBuildFile; fileRef = 09B01D9C25168CB40068FCFD /* Info.plist */; };
 		09BA14991E38791C00A05F83 /* unity.build.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 099E06E01E36EC6D0012348E /* unity.build.cpp */; };
 /* End PBXBuildFile section */
 
@@ -251,12 +252,13 @@
 		};
 		09B01D5725152F0A0068FCFD /* CopyFiles */ = {
 			isa = PBXCopyFilesBuildPhase;
-			buildActionMask = 2147483647;
-			dstPath = /usr/share/man/man1/;
-			dstSubfolderSpec = 0;
+			buildActionMask = 12;
+			dstPath = "";
+			dstSubfolderSpec = 16;
 			files = (
+				09B01D9E25168D330068FCFD /* Info.plist in CopyFiles */,
 			);
-			runOnlyForDeploymentPostprocessing = 1;
+			runOnlyForDeploymentPostprocessing = 0;
 		};
 		09BA14841E3877BD00A05F83 /* CopyFiles */ = {
 			isa = PBXCopyFilesBuildPhase;
@@ -362,6 +364,8 @@
 		09B01D5B25152F0A0068FCFD /* rt.resynth */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = rt.resynth; sourceTree = BUILT_PRODUCTS_DIR; };
 		09B01D5D251534210068FCFD /* libportaudio_static.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libportaudio_static.a; path = "../portaudio-products/libportaudio_static.a"; sourceTree = "<group>"; };
 		09B01D5F251536DF0068FCFD /* libportaudio.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libportaudio.a; path = ../../../../usr/local/Cellar/portaudio/HEAD/lib/libportaudio.a; sourceTree = "<group>"; };
+		09B01D61251679BA0068FCFD /* events.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = events.cpp; path = source/events.cpp; sourceTree = "<group>"; };
+		09B01D9C25168CB40068FCFD /* Info.plist */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		09B839AD2092468B00D776E1 /* gen.vasine.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = gen.vasine.h; path = include/gen.vasine.h; sourceTree = "<group>"; };
 		09BA14861E3877BD00A05F83 /* libaudio.ios.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = libaudio.ios.a; sourceTree = BUILT_PRODUCTS_DIR; };
 		09D4BAC11E883BA400C9472E /* events.impl.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = events.impl.h; path = include/events.impl.h; sourceTree = "<group>"; };
@@ -537,8 +541,6 @@
 		099E06E21E36EC7F0012348E /* source */ = {
 			isa = PBXGroup;
 			children = (
-				09B01D4A25152EE10068FCFD /* main.rt.resynth.cpp */,
-				09B01D4025152EE10068FCFD /* unity.build.rt.resynth.cpp */,
 				09F16A8520B7168200555324 /* audio_context.cpp */,
 				094BFE4120B81A49001F1D81 /* audio_platform_au.cpp */,
 				094BFE4220B825A0001F1D81 /* audio_platform_pa.cpp */,
@@ -551,6 +553,7 @@
 				093A24E51E9B8E21009874DF /* main.join_non_zeros.cpp */,
 				09121CC51EABAE0E00BBC64B /* main.mod_wav.cpp */,
 				093671C02514B7E400620289 /* main.resynth.cpp */,
+				09B01D4A25152EE10068FCFD /* main.rt.resynth.cpp */,
 				093A24E21E9B8D10009874DF /* main.test_fft.cpp */,
 				096C6D631E9F860300389746 /* main.wir_2_wav.cpp */,
 				091E76EA1E46C02F009CFBA5 /* normalization.cpp */,
@@ -563,8 +566,10 @@
 				098474071E8058EE0014465E /* unity.build.genheaders.cpp */,
 				093A24C81E9B8C47009874DF /* unity.build.joinnonzeros.cpp */,
 				093671B22514B7B600620289 /* unity.build.resynth.cpp */,
+				09B01D4025152EE10068FCFD /* unity.build.rt.resynth.cpp */,
 				093A24E31E9B8D73009874DF /* unity.build.testfft.cpp */,
 				096C6D641E9F860300389746 /* unity.build.wir_2_wav.cpp */,
+				09B01D61251679BA0068FCFD /* events.cpp */,
 			);
 			name = source;
 			sourceTree = "<group>";
@@ -640,6 +645,7 @@
 		09FF3F1A1E36EBBB00C81351 = {
 			isa = PBXGroup;
 			children = (
+				09B01D9C25168CB40068FCFD /* Info.plist */,
 				098474181E8059600014465E /* dependencies */,
 				099E06F81E36ECFC0012348E /* xcode.config */,
 				099E06E31E36EC850012348E /* include */,
@@ -1225,6 +1231,7 @@
 			isa = XCBuildConfiguration;
 			baseConfigurationReference = 099E06F21E36ECE50012348E /* osx.debug.xcconfig */;
 			buildSettings = {
+				INFOPLIST_FILE = "$(SRCROOT)/Info.plist";
 				LIBRARY_SEARCH_PATHS = (
 					"$(inherited)",
 					/usr/local/Cellar/portaudio/HEAD/lib,
@@ -1237,6 +1244,7 @@
 			isa = XCBuildConfiguration;
 			baseConfigurationReference = 099E06F31E36ECE50012348E /* osx.release.xcconfig */;
 			buildSettings = {
+				INFOPLIST_FILE = "$(SRCROOT)/Info.plist";
 				LIBRARY_SEARCH_PATHS = (
 					"$(inherited)",
 					/usr/local/Cellar/portaudio/HEAD/lib,

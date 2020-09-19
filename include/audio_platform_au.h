@@ -6,7 +6,7 @@ namespace imajuscule::audio {
         extern OSStatus startAudioUnit(AudioUnit audioUnit);
         extern OSStatus stopProcessingAudio(AudioUnit audioUnit);
         int initAudioStreams(Features f, AudioUnit & audioUnit, void * cb_data,
-                             AURenderCallback cb, int nOuts,
+                             AURenderCallback cb, int nOuts, int sample_rate,
                              AudioStreamBasicDescription & streamDescription);
 
         template <typename T>
@@ -40,6 +40,9 @@ namespace imajuscule::audio {
 
             AudioStreamBasicDescription const & getStreamDescription() const {
                 return desc;
+            }
+            int getSampleRate() const {
+              return getStreamDescription().mSampleRate;
             }
         protected:
             Chans chans;
@@ -91,7 +94,7 @@ namespace imajuscule::audio {
 
         protected:
           // TODO how can we set latency on ios?
-            bool doInit(float minLatency) {
+            bool doInit(float minLatency, int const sample_rate) {
                 LG(INFO, "AudioOut::doInit");
                 bInitialized = true;
                 if(0==initAudioSession())
@@ -100,7 +103,7 @@ namespace imajuscule::audio {
                     Assert(!ios_odata.chans || (ios_odata.chans==&chans));
                     ios_odata.chans = &chans;
 
-                    if(0==initAudioStreams(Feat, audioUnit_out, &ios_odata, renderCallback_out, nAudioOut, desc))
+                    if(0==initAudioStreams(Feat, audioUnit_out, &ios_odata, renderCallback_out, nAudioOut, sample_rate, desc))
                     {
                         OSStatus res = startAudioUnit(audioUnit_out);
                         if( noErr != res )
@@ -148,14 +151,12 @@ namespace imajuscule::audio {
 template<>
 struct AudioInput<AudioPlatform::AudioUnits> {
 
-  bool Init(RecordF f) {
+  bool Init(RecordF f, int const sample_rate) {
     if(0==audio::initAudioSession())
     {
-      AudioStreamBasicDescription desc;
-
       recordF = f;
       convertedSampleBuffer.resize(1024);
-      if(0==initAudioStreams(audio::Features::InAndOut, audioUnit_in, this, renderCallback_in, 1, desc))
+      if(0==initAudioStreams(audio::Features::InAndOut, audioUnit_in, this, renderCallback_in, 1,sample_rate, desc))
       {
         OSStatus res;
         res = audio::startAudioUnit(audioUnit_in);
@@ -192,9 +193,16 @@ struct AudioInput<AudioPlatform::AudioUnits> {
     }
     return true;
   }
+  AudioStreamBasicDescription const & getStreamDescription() const {
+    return desc;
+  }
+  int getSampleRate() const {
+    return getStreamDescription().mSampleRate;
+  }
 
 private:
   AudioUnit audioUnit_in = nullptr;
+  AudioStreamBasicDescription desc;
   RecordF recordF;
   std::vector<float> convertedSampleBuffer;
 

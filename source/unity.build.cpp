@@ -1,5 +1,6 @@
 #include "private.h"
 
+#include "events.cpp"
 #include "samples.cpp"
 #include "sound.cpp"
 #include "parse.music.cpp"

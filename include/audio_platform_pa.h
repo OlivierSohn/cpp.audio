@@ -1,5 +1,3 @@
-//#define IMJ_DEBUG_AUDIO_OUT 1
-
 namespace imajuscule::audio {
 
 template<typename T>
@@ -101,54 +99,6 @@ struct Context<AudioPlatform::PortAudio, F, Chans> {
   template<typename Lock, typename ...Args>
   Context(Lock & l, Args... args) : chans(l, args ...)
   , bInitialized(false)
-#if IMJ_DEBUG_AUDIO_OUT
-  , wav_write_queue(44000 * nAudioOut) // one second of output can fit in the queue
-  , wav_write_active(true)
-  , thread_write_wav{[this](){
-    auto rootDir = "/Users/Olivier/dev/hs.hamazed/";
-    // verify interpolation curves
-#if 0
-    {
-      std::vector<double> v;
-      v.reserve(10000);
-      for(auto i : itp::interpolation_traversal().realValues())
-      {
-        auto const itp_type = static_cast<itp::interpolation>(i);
-        v.clear();
-        for (int i = 0; i<=10000; ++i) {
-          double const x = static_cast<double>(i) / 10000;
-          v.push_back(itp::interpolate(itp_type, 0., x, 1., -0.5, 0.5));
-        }
-        write_wav(rootDir,
-                  std::string(itp::interpolationInfo(itp_type)) + ".wav",
-                  std::vector<std::vector<double>>{v},
-                  100);
-      }
-    }
-#endif
-    auto header = pcm(WaveFormat::IEEE_FLOAT,
-                      SAMPLE_RATE,
-                      numberToNChannels(nAudioOut),
-                      AudioSample<SAMPLE>::format);
-    const char * filename = "debugaudio.wav";
-    WAVWriter writer(rootDir, filename, header);
-    auto res = writer.Initialize();
-    
-    if(ILE_SUCCESS != res) {
-      LG(ERR, "audio debug : failed to open '%s' in '%s' to write audio output", filename, rootDir);
-      return;
-    } else {
-      LG(INFO, "audio debug : opened '%s' in '%s' to write audio output", filename, rootDir);
-    }
-    
-    while (wav_write_active) {
-      SAMPLE val;
-      while (wav_write_queue.try_pop(val)) {
-        writer.writeSample(val);
-      }
-    }
-  }}
-#endif  // IMJ_DEBUG_AUDIO_OUT
   {}
   
 protected:
@@ -159,16 +109,8 @@ private:
   PaStream *stream = nullptr;
   
 #if IMJ_DEBUG_AUDIO_OUT
-  using Queue = atomic_queue::AtomicQueueB2<
-  /* T = */ SAMPLE,
-  /* A = */ std::allocator<SAMPLE>,
-  /* MAXIMIZE_THROUGHPUT */ true,
-  /* TOTAL_ORDER = */ true,
-  /* SPSC = */ true
-  >;
-  Queue wav_write_queue;
-  std::atomic_bool wav_write_active;
-  std::thread thread_write_wav;
+  std::unique_ptr<AsyncWavWriter> async_wav_writer;
+  int writer_idx = 0;
 #endif
   
   static int playCallback( const void *inputBuffer, void *outputBuffer,
@@ -218,15 +160,10 @@ private:
     analyzeTime(tNanos, numFrames);
 #endif
     
-    reinterpret_cast<MeT*>(userData)->chans.step(reinterpret_cast<SAMPLE*>(outputBuffer), static_cast<int>(numFrames), tNanos);
+    reinterpret_cast<MeT*>(userData)->chans.step(static_cast<SAMPLE*>(outputBuffer), static_cast<int>(numFrames), tNanos);
 #if IMJ_DEBUG_AUDIO_OUT
-    for (int i=0; i<numFrames; ++i) {
-      for (int j=0; j<nAudioOut; ++j) {
-        if (!reinterpret_cast<MeT*>(userData)->wav_write_queue.try_push(reinterpret_cast<SAMPLE*>(outputBuffer)[nAudioOut*i + j])) {
-          LG(ERR, "audio debug : dropped sample");
-        }
-      }
-    }
+    reinterpret_cast<MeT*>(userData)->async_wav_writer->sync_feed(static_cast<SAMPLE*>(outputBuffer),
+                                                                  static_cast<int>(numFrames));
 #endif
     
     return paContinue;
@@ -234,7 +171,7 @@ private:
   
 protected:
   // minLatency : latency in seconds
-  bool doInit(float minLatency) {
+  bool doInit(float minLatency, int sample_rate) {
     LG(INFO, "AudioOut::doInit");
     LG(INFO, "AudioOut::doInit : initializing %s", Pa_GetVersionText());
     PaError err = Pa_Initialize();
@@ -291,10 +228,18 @@ protected:
       
       p.hostApiSpecificStreamInfo = nullptr;
       
+#if IMJ_DEBUG_AUDIO_OUT
+      if (!async_wav_writer) {
+        async_wav_writer = std::make_unique<AsyncWavWriter>(nAudioOut,
+                                                            "debug_audioout" + std::to_string(writer_idx));
+        ++writer_idx;
+      }
+#endif  // IMJ_DEBUG_AUDIO_OUT
+
       PaError err = Pa_OpenStream(&stream,
                                   nullptr,
                                   &p,
-                                  SAMPLE_RATE,
+                                  sample_rate,
                                   paFramesPerBufferUnspecified, /* to decrease latency */
                                   paClipOff | paPrimeOutputBuffersUsingStreamCallback, /* we won't output out of range samples so don't bother clipping them */
                                   playCallback,
@@ -359,8 +304,9 @@ public:
       }
     }
 #if IMJ_DEBUG_AUDIO_OUT
-    wav_write_active = false;
-    thread_write_wav.join();
+    if (async_wav_writer) {
+      async_wav_writer.reset();
+    }
 #endif
     LG(INFO, "AudioOut::doTearDown : success");
   }
@@ -368,7 +314,10 @@ public:
 
 template<>
 struct AudioInput<AudioPlatform::PortAudio> {
-  bool Init(RecordF f) {
+  AudioInput()
+  {}
+  
+  bool Init(RecordF f, int const sample_rate) {
     LG(INFO, "AudioIn::do_wakeup : initializing %s", Pa_GetVersionText());
     auto err = Pa_Initialize();
     if(likely(err == paNoError))
@@ -410,7 +359,7 @@ struct AudioInput<AudioPlatform::PortAudio> {
       PaError err = Pa_OpenStream(&stream,
                                   &inputParameters,
                                   nullptr,                  /* &outputParameters, */
-                                  SAMPLE_RATE,
+                                  sample_rate,
                                   paFramesPerBufferUnspecified /* to decrease latency*/,
                                   paClipOff,      /* we won't output out of range samples so don't bother clipping them */
                                   recordCallback,
@@ -422,6 +371,7 @@ struct AudioInput<AudioPlatform::PortAudio> {
         Assert(0);
         return false;
       }
+      sample_rate_ = sample_rate;
       
       const PaStreamInfo * si = Pa_GetStreamInfo(stream);
       
@@ -443,6 +393,13 @@ struct AudioInput<AudioPlatform::PortAudio> {
       Assert(0);
       return false;
     }
+#if IMJ_DEBUG_AUDIO_IN
+    if (!async_wav_writer) {
+      async_wav_writer = std::make_unique<AsyncWavWriter>(1,
+                                                          "debug_audioin" + std::to_string(writer_idx));
+      ++writer_idx;
+    }
+#endif  // IMJ_DEBUG_AUDIO_OUT
     return true;
   }
 
@@ -464,14 +421,27 @@ struct AudioInput<AudioPlatform::PortAudio> {
       LG(ERR, "AudioIn::do_sleep : PA_Terminate failed : %s", Pa_GetErrorText(err));
       return false;
     }
+#if IMJ_DEBUG_AUDIO_IN
+    if (async_wav_writer) {
+      async_wav_writer.reset();
+    }
+#endif
     return true;
   }
 
+  int getSampleRate() const {
+    return sample_rate_;
+  }
+  
 private:
   PaStream *stream = nullptr;
-
+  int sample_rate_ = 0;
   RecordF recordF;
-  
+#if IMJ_DEBUG_AUDIO_IN
+  std::unique_ptr<AsyncWavWriter> async_wav_writer;
+  int writer_idx = 0;
+#endif
+
   static int recordCallback( const void *inputBuffer, void *outputBuffer,
                             unsigned long nFrames,
                             const PaStreamCallbackTimeInfo* timeInfo,
@@ -485,8 +455,11 @@ private:
     (void) statusFlags;
     (void) userData;
     
-    This->recordF((const SAMPLE*)inputBuffer, (int)nFrames);
-    
+    This->recordF(static_cast<const SAMPLE*>(inputBuffer), (int)nFrames);
+#if IMJ_DEBUG_AUDIO_IN
+    This->async_wav_writer->sync_feed(static_cast<const SAMPLE*>(inputBuffer), (int)nFrames);
+#endif
+
     return paContinue;
   }
 
