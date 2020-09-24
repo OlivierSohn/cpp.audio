@@ -273,7 +273,8 @@ namespace imajuscule::audio {
     {
       using Request = typename Chans::Request;
       static_assert(Out::policy == outPolicy);
-      if(e.type == Event::kNoteOnEvent)
+      switch(e.type) {
+        case Event::kNoteOnEvent:
       {
         Assert(e.noteOn.velocity > 0.f ); // this case is handled by the wrapper... else we need to do a noteOff
         MIDI_LG(INFO, "on  %d", e.noteOn.pitch);
@@ -429,7 +430,8 @@ namespace imajuscule::audio {
           }
         }
       }
-      else if(e.type == Event::kNoteOffEvent)
+          break;
+        case Event::kNoteOffEvent:
       {
         if(!handle_note_off) { // TODO remove handle_note_off, redundant with autorelease notion?
           MIDI_LG(INFO, "off (ignored) %d", e.noteOff.pitch);
@@ -485,6 +487,7 @@ namespace imajuscule::audio {
 #endif
         {
           typename Out::LockFromNRT L(out.get_lock());
+          static_assert(sizeof(decltype(tp))<=8); // ensure that the std::function won't dynamically allocate / deallocate
           chans.enqueueOneShot([this, tp](auto &, uint64_t curTimeNanos){
             // We can have multiple notes with the same pitch, and different durations.
             // Hence, here we just close the first opened channel with matching pitch.
@@ -508,6 +511,37 @@ namespace imajuscule::audio {
             // because too many notes were being played at the same time
           });
         }
+      }
+          break;
+        case Event::kNoteVolumeChangeEvent:
+        {
+          MIDI_LG(INFO, "vol change %d", e.noteOff.pitch);
+          TunedPitch tp{e.noteVolumeChange.pitch, e.noteVolumeChange.tuning};
+          {
+            typename Out::LockFromNRT L(out.get_lock());
+            chans.enqueueOneShot([this,
+                                  tp,
+                                  volume = e.noteVolumeChange.velocity](auto &,
+                                                                        uint64_t){
+              // ensure that the std::function won't dynamically allocate / deallocate
+              static_assert((sizeof(decltype(tp)) + sizeof(decltype(volume))) <= 8);
+              
+              // We can have multiple notes with the same pitch, and different durations.
+              // We adjust the volume of all opened channels with matching pitch.
+              for(auto &tunedPitch : firsts(channels)) {
+                if (tunedPitch != tp) {
+                  continue;
+                }
+                auto & c = channels.corresponding(tunedPitch);
+                c.elem.algo.setVolumeTarget(volume);
+                return;
+              }
+              // The corresponding noteOn was skipped,
+              // because too many notes were being played at the same time
+            });
+          }
+        }
+          break;
       }
       return onEventResult::OK;
     }

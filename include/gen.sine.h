@@ -40,7 +40,8 @@ namespace imajuscule::audio::sine {
     bool close_channel_on_note_off,
     typename EventIterator,
     typename NoteOnEvent,
-    typename NoteOffEvent
+    typename NoteOffEvent,
+    int nVoices = 32 // using 32 voices to support long releases
   >
   using Synth = ImplCRTP <
     outPolicy,
@@ -54,7 +55,7 @@ namespace imajuscule::audio::sine {
     NoteOnEvent,
     NoteOffEvent,
     SynthImpl,
-    32 // using 32 voices to support long releases
+    nVoices
   >;
 
 } // NS imajuscule::audio::sine

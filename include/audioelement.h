@@ -168,8 +168,11 @@ namespace imajuscule::audio::audioelement {
 
   template <typename ALGO, typename Envelope>
   struct Enveloped {
+    using MeT = Enveloped<ALGO, Envelope>;
     static constexpr auto hasEnvelope = true;
     static constexpr auto baseVolume = ALGO::baseVolume;
+    static constexpr auto isMonoHarmonic = ALGO::isMonoHarmonic;
+    
     using FPT = typename ALGO::FPT;
     static_assert(std::is_same<typename ALGO::FPT, typename Envelope::FPT>::value);
 
@@ -187,6 +190,12 @@ namespace imajuscule::audio::audioelement {
       algo.setAngle(a);
     }
     FPT angle() const { return algo.angle(); }
+
+    FPT angleIncrements() const { return algo.angleIncrements(); }
+
+    void synchronizeAngles(MeT const & other) {
+      algo.synchronizeAngles(other.algo);
+    }
 
     // [Based on observations]
     // The attack and release lengths need to be longer for lower frequency notes,
@@ -1073,6 +1082,8 @@ struct BaseVolumeAdjusted {
 
   static constexpr auto hasEnvelope = ALGO::hasEnvelope;
   static constexpr auto baseVolume = ALGO::baseVolume / reduceUnadjustedVolumes;
+  static constexpr auto isMonoHarmonic = ALGO::isMonoHarmonic;
+
   using T = typename ALGO::FPT;
   using FPT = T;
   static_assert(std::is_floating_point<FPT>::value);
@@ -1085,6 +1096,15 @@ struct BaseVolumeAdjusted {
 
   auto       & getOsc()       { return osc; }
   auto const & getOsc() const { return osc; }
+
+  template <class U=ALGO,typename=std::enable_if_t<U::hasEnvelope>>
+  auto & getEnvelope() const {
+    return osc.getEnvelope();
+  }
+  template <class U=ALGO,typename=std::enable_if_t<U::hasEnvelope>>
+  auto & editEnvelope() {
+    return osc.editEnvelope();
+  }
 
   BaseVolumeAdjusted() = default;
 
@@ -1119,19 +1139,22 @@ struct BaseVolumeAdjusted {
     osc.setLoudnessParams(low_index, log_ratio, loudness_level);
   }
 
+  // < 1 to make variations slower, to avoid audio cracks
+  static constexpr T timeFactor = 0.2;
+  
   void step() {
     osc.step();
 
     // low-pass the volume using a time characteristic equal to the period implied by angle increments
     if (unlikely(!volume)) {
       filter_init_with_inc = osc.angleIncrements();
-      volume_filter.initWithAngleIncrement(filter_init_with_inc);
+      volume_filter.initWithAngleIncrement(timeFactor * filter_init_with_inc);
       volume_filter.setInitialValue(volume_target);
     } else if (*volume != volume_target) {
       auto const inc = osc.angleIncrements();
       if (filter_init_with_inc != inc) {
         filter_init_with_inc = inc;
-        volume_filter.initWithAngleIncrement(filter_init_with_inc);
+        volume_filter.initWithAngleIncrement(timeFactor * filter_init_with_inc);
       }
     }
     volume_filter.feed(&volume_target);

@@ -29,13 +29,15 @@ struct Event
   {
     kNoteOnEvent = 0,			///< is \ref NoteOnEvent
     kNoteOffEvent,				///< is \ref NoteOffEvent
+    kNoteVolumeChangeEvent
   };
   
   uint16_t type;				///< a value from \ref EventTypes
   
   union
   {
-    NoteOnEvent noteOn;								///< type == kNoteOnEvent
+    NoteOnEvent noteOn;                ///< type == kNoteOnEvent
+    NoteOnEvent noteVolumeChange;     ///< type == kNoteOnEvent
     NoteOffEvent noteOff;							///< type == kNoteOffEvent
   };
 };
@@ -49,6 +51,18 @@ inline Event mkNoteOn(int pitch, float velocity) {
   e.noteOn.tuning = 0;
   e.noteOn.noteId = -1;
   e.noteOn.length = std::numeric_limits<decltype(e.noteOn.length)>::max();
+  return e;
+}
+
+inline Event mkNoteVolumeChange(int pitch, float velocity) {
+  Event e;
+  e.type = Event::kNoteVolumeChangeEvent;
+  e.noteVolumeChange.pitch = pitch;
+  e.noteVolumeChange.velocity = velocity;
+  e.noteVolumeChange.channel= 0; // unused
+  e.noteVolumeChange.tuning = 0;
+  e.noteVolumeChange.noteId = -1;
+  e.noteVolumeChange.length = std::numeric_limits<decltype(e.noteVolumeChange.length)>::max();
   return e;
 }
 

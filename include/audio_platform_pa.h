@@ -231,6 +231,7 @@ protected:
 #if IMJ_DEBUG_AUDIO_OUT
       if (!async_wav_writer) {
         async_wav_writer = std::make_unique<AsyncWavWriter>(nAudioOut,
+                                                            sample_rate,
                                                             "debug_audioout" + std::to_string(writer_idx));
         ++writer_idx;
       }
@@ -395,7 +396,8 @@ struct AudioInput<AudioPlatform::PortAudio> {
     }
 #if IMJ_DEBUG_AUDIO_IN
     if (!async_wav_writer) {
-      async_wav_writer = std::make_unique<AsyncWavWriter>(1,
+      async_wav_writer = std::make_unique<AsyncWavWriter>(1, // n. audio channels
+                                                          sample_rate,
                                                           "debug_audioin" + std::to_string(writer_idx));
       ++writer_idx;
     }

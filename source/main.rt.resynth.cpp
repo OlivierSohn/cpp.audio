@@ -10,9 +10,11 @@ Ctxt::policy
 , Ctxt::nAudioOut
 , XfadePolicy::SkipXfade
 , FinalAudioElement<
-    Enveloped<
-      OscillatorAlgo< double, eNormalizePolicy::FAST >,
-      AHDSREnvelope<Atomicity::Yes, double, EnvelopeRelease::WaitForKeyRelease>
+    VolumeAdjusted<
+      Enveloped<
+        OscillatorAlgo< double, eNormalizePolicy::FAST >,
+        AHDSREnvelope<Atomicity::Yes, double, EnvelopeRelease::WaitForKeyRelease>
+      >
     >
   >
 , SynchronizePhase::Yes
@@ -20,7 +22,9 @@ Ctxt::policy
 , true
 , EventIterator<IEventList>
 , NoteOnEvent
-, NoteOffEvent>;
+, NoteOffEvent
+, 128  // lots of voices
+>;
 
 } // NS audioelement
 
@@ -31,7 +35,7 @@ std::optional<double> frequency_to_midi_pitch(double freq) {
   return 69. + 12. * std::log2(freq/440.);
 }
 
-void rtResynth() {
+void rtResynth(int const sample_rate) {
   static constexpr auto audioEnginePolicy = AudioOutPolicy::MasterLockFree;
   
   using AllChans = ChannelsVecAggregate< 2, audioEnginePolicy >;
@@ -47,7 +51,7 @@ void rtResynth() {
   AudioPlatform::PortAudio
   >;
 
-  Ctxt ctxt(SAMPLE_RATE);
+  Ctxt ctxt(sample_rate);
   if (!ctxt.Init(0.006)) {
     throw std::runtime_error("ctxt init failed");
   }
@@ -90,7 +94,7 @@ void rtResynth() {
   /* TOTAL_ORDER = */ true,
   /* SPSC = */ true
   >;
-  Queue input_queue(44100); // one second of input can fit in the queue
+  Queue input_queue(sample_rate); // one second of input can fit in the queue
 
   auto onInput = [&input_queue](const SAMPLE * buf, int nFrames){
     for (int i=0; i<nFrames; ++i) {
@@ -99,12 +103,10 @@ void rtResynth() {
   };
   
   AudioInput<AudioPlatform::PortAudio> input;
-  if (!input.Init(onInput, SAMPLE_RATE)) {
+  if (!input.Init(onInput, sample_rate)) {
     throw std::runtime_error("input init failed");
   }
-  
-  int const sample_rate = input.getSampleRate();
-  
+    
   std::atomic_bool thread_resynth_active(true);
   std::thread thread_resynth([&input_queue,
                               &thread_resynth_active,
@@ -146,10 +148,16 @@ void rtResynth() {
  
     FrequenciesSqMag<double> frequencies_sqmag;
     std::vector<FreqMag<double>> freqmags;
-    std::vector<std::optional<double>> freqmags_midipitches;
+    struct Data {
+      std::optional<double> midipitch;
+      double volume;
+    };
+    std::vector<Data> freqmags_data;
     
     std::vector<bool> midi_pitches;
     midi_pitches.resize(200, false);
+    std::vector<float> initial_velocity;
+    initial_velocity.resize(200);
 
     int n = 0;
     auto step = [&n,
@@ -157,56 +165,74 @@ void rtResynth() {
                  &channel_handler,
                  &channels,
                  &midi_pitches,
-                 &freqmags_midipitches](std::vector<FreqMag<double>> const & fs) {
+                 &initial_velocity,
+                 &freqmags_data](std::vector<FreqMag<double>> const & fs) {
       ++n;
       
+      // TODO track the evolution of volume, and when volume is too small, end note.
       constexpr double min_volume = 0.01;
       
-      freqmags_midipitches.clear();
+      freqmags_data.clear();
       for (auto const & f : fs) {
-        freqmags_midipitches.push_back(frequency_to_midi_pitch(f.freq));
+        freqmags_data.push_back({
+          frequency_to_midi_pitch(f.freq),
+          0.1 * DbToSqMag<double>()(f.mag)
+        });
       }
+      
+      bool changed = false;
       
       // If a frequency that is playing is not present, stop it
       for (int i=0, sz = midi_pitches.size(); i<sz; ++i) {
         if (!midi_pitches[i]) {
           continue;
         }
-        bool found = false;
+        float vol = 0.;
         int idx = -1;
-        for (auto const & pitch : freqmags_midipitches) {
+        for (auto const & [pitch, volume] : freqmags_data) {
           ++idx;
           if (!pitch) {
+            continue;
+          }
+          if (volume < min_volume) {
             continue;
           }
           int ipitch = static_cast<int>(*pitch + 0.5);
           Assert(ipitch >= 0);
           Assert(ipitch < midi_pitches.size());
           if (ipitch == i) {
-            double const volume = 0.1 * DbToSqMag<double>()(fs[idx].mag);
-            if (volume < min_volume) {
-              continue;
-            }
-            found = true;
-            break;
+            vol += volume;
           }
         }
-        if (found) {
+        if (vol) {
+          auto res = synth.onEvent2(mkNoteVolumeChange(i,
+                                                       vol / initial_velocity[i]),
+                                    channel_handler,
+                                    channels,
+                                    {});
+          //std::cout << n << ": pitch " << i << " Vol " << vol / initial_velocity[i] << " " << res << std::endl;
           continue;
         }
         auto res = synth.onEvent2(mkNoteOff(i),
                                   channel_handler,
                                   channels,
                                   {});
-        std::cout << n << ": XXX pitch " << i << " " << res << std::endl;
+        //std::cout << n << ": XXX pitch " << i << " " << res << std::endl;
         midi_pitches[i] = false;
+        changed = true;
+        if (res != onEventResult::OK) {
+          throw std::logic_error("dropped note off");
+        }
       }
 
       // If the frequency is not played yet, start a new note
       int idx=-1;
-      for (auto const & pitch : freqmags_midipitches) {
+      for (auto const & [pitch, volume] : freqmags_data) {
         ++idx;
         if (!pitch) {
+          continue;
+        }
+        if (volume < min_volume) {
           continue;
         }
         int i = static_cast<int>(*pitch + 0.5);
@@ -215,19 +241,40 @@ void rtResynth() {
         if (midi_pitches[i]) {
           continue;
         }
-        double const volume = 0.1 * DbToSqMag<double>()(fs[idx].mag);
-        if (volume < min_volume) {
-          continue;
-        }
         auto const res  = synth.onEvent2(mkNoteOn(i,
                                                   volume),
                                          channel_handler,
                                          channels,
                                          {});
-        std::cout << n << ": pitch " << i << " vol " << volume << " " << res << std::endl;
-        midi_pitches[i] = true;
+        //std::cout << n << ": pitch " << i << " vol " << volume << " " << res << std::endl;
+        if (res == onEventResult::OK) {
+          midi_pitches[i] = true;
+          initial_velocity[i] = volume;
+          changed = true;
+        } else {
+          // dropped note:
+          //
+        }
       }
-            
+      
+      if (changed) {
+        for (int i=0, sz = midi_pitches.size(); i<sz; ++i) {
+          if (!midi_pitches[i]) {
+            continue;
+          }
+          std::cout << " " << i;
+        }
+        std::cout << std::endl;
+        for (int i=0, sz = midi_pitches.size(); i<sz; ++i) {
+          if (!midi_pitches[i]) {
+            std::cout << " ";
+          } else {
+            std::cout << "|";
+          }
+        }
+        std::cout << std::endl;
+      }
+
       // later:
 
       // If the frequency is already played, adjust the volume
@@ -239,19 +286,16 @@ void rtResynth() {
       while (input_queue.try_pop(samples[end])) {
         ++ end;
         if (end == window_size) {
-          break;
-        }
-      }
-      if (end == window_size) {
-        process(sample_rate,
-                samples.begin(),
-                samples.begin() + end,
-                frequencies_sqmag,
-                freqmags);
-        step(freqmags);
-        int const offset = window_size-windowoverlapp;
-        for (end=0; end<windowoverlapp; ++end) {
-          samples[end] = samples[end + offset];
+          process(sample_rate,
+                  samples.begin(),
+                  samples.begin() + end,
+                  frequencies_sqmag,
+                  freqmags);
+          step(freqmags);
+          int const offset = window_size-windowoverlapp;
+          for (end=0; end<windowoverlapp; ++end) {
+            samples[end] = samples[end + offset];
+          }
         }
       }
     }
@@ -275,6 +319,6 @@ void rtResynth() {
 } // NS
 
 int main() {
-  imajuscule::audio::rtResynth();
+  imajuscule::audio::rtResynth(44100);
   return 0;
 }

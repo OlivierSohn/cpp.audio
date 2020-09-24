@@ -32,9 +32,12 @@ extern int wait_for_first_n_audio_cb_frames();
 
 /* Debug utility to write a wav file asynchronously */
 struct AsyncWavWriter {
-  AsyncWavWriter(int nAudioChans, std::string const & prefix)
+  static constexpr float queueCapacityInSecondsOfAudioSignal = 1.;
+  
+  AsyncWavWriter(int nAudioChans, int sampleRate, std::string const & prefix)
   : n_audio_chans(nAudioChans)
-  , wav_write_queue(44100 * nAudioChans) // one second of output can fit in the queue
+  , sample_rate(sampleRate)
+  , wav_write_queue(queueCapacityInSecondsOfAudioSignal * (sampleRate * nAudioChans))
   , wav_write_active(true)
   , thread_write_wav{[this, prefix]() {
     auto rootDir = "/Users/Olivier/dev/hs.hamazed/";
@@ -59,7 +62,7 @@ struct AsyncWavWriter {
     }
 #endif
     auto header = pcm(WaveFormat::IEEE_FLOAT,
-                      SAMPLE_RATE,
+                      sample_rate,
                       numberToNChannels(n_audio_chans),
                       AudioSample<SAMPLE>::format);
     
@@ -77,11 +80,18 @@ struct AsyncWavWriter {
       LG(INFO, "audio debug : opened '%s' in '%s' to write audio", filename.c_str(), rootDir);
     }
     
-    while (wav_write_active) {
+    while (true) {
       SAMPLE val;
       while (wav_write_queue.try_pop(val)) {
         writer.writeSample(val);
       }
+      if (!wav_write_active) {
+        break;
+      }
+      // sleep instead of yield to avoid 100% cpu usage.
+      // The queue can hold one second of audio, so sleeping 10 milliseconds
+      // will not be too much.
+      std::this_thread::sleep_for(std::chrono::milliseconds(static_cast<int>(queueCapacityInSecondsOfAudioSignal * 1000 / 100.)));
     }
   }}
   {}
@@ -115,6 +125,7 @@ private:
   std::atomic_bool wav_write_active;
   std::thread thread_write_wav;
   int const n_audio_chans;
+  int const sample_rate;
 };
 
 } // NS
