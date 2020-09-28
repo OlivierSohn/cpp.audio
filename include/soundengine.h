@@ -147,13 +147,6 @@ namespace imajuscule::audio {
                itp::interpolation i) {
         Assert(0);
       }
-      void set_by_increments(T from_,
-                             T to_,
-                             T duration_in_samples_,
-                             T start_sample,
-                             itp::interpolation i) {
-        Assert(0);
-      }
       float getFrom() const {
         Assert(0);
         return 0.f;
@@ -476,7 +469,9 @@ namespace imajuscule::audio {
                            std::uniform_real_distribution<float>{min_exp, max_exp}(mersenne<SEEDED::Yes>()));
             auto n_frames = static_cast<float>(ms_to_frames(length));
             if(auto * ramp_spec = ramp_specs.get_next_ramp_for_build()) {
-              ramp_spec->get().set(freq1_robot, freq2_robot, n_frames, phase_ratio1 * n_frames, interpolation);
+              ramp_spec->get().setup(freq_to_angle_increment(freq1_robot, sample_rate),
+                                     freq_to_angle_increment(freq2_robot, sample_rate),
+                                     n_frames, phase_ratio1 * n_frames, interpolation);
             }
           }
         });

@@ -96,6 +96,10 @@ public:
     closing.store(false, std::memory_order_relaxed);
   }
   
+  int getSampleRate() const {
+    return sample_rate_;
+  }
+  
   ~AudioOutContext() {
     finalize();
   }

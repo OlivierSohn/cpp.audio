@@ -349,6 +349,7 @@ namespace imajuscule {
         try {
             std::map<int, audio::ConvReverbOptimizationReport> results;
             reverbs.setConvolutionReverbIR(nAudioIn, db, n_audiocb_frames, n_audiocb_frames, audio::sample_rate<double>(), results);
+            has_spatializer = db.countChannels() > nAudioIn;
             res = true;
         }
         catch(std::exception const & e) {
@@ -374,7 +375,7 @@ namespace imajuscule {
       return readyTraits::read(ready, std::memory_order_relaxed);
     }
 
-    bool hasSpatializer() const { return reverbs.hasSpatializer(); }
+    bool hasSpatializer() const { return has_spatializer; }
 
   private:
 
@@ -420,6 +421,7 @@ namespace imajuscule {
     Conversion<double, nAudioIn, nAudioOut, audio::audioelement::n_frames_per_buffer> conversion;
     audio::ConvReverbsByBlockSize<audio::Reverbs<nAudioOut, ReverbT, audio::PolicyOnWorkerTooSlow::PermanentlySwitchToDry>> reverbs;
     audio::Compressor<double> compressor;
+    bool has_spatializer = false;
 
     void muteAudio() {
       LockFromNRT l(_lock.lock());
