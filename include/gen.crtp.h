@@ -7,40 +7,6 @@
 
 namespace imajuscule::audio {
 
-struct ReferenceFrequencyHerz {
-  explicit ReferenceFrequencyHerz()
-  : freq(0)
-  {}
-  
-  explicit ReferenceFrequencyHerz(float v)
-  : freq(v) {}
-  
-  float getFrequency() const {
-    return freq;
-  }
-  
-  bool operator < (ReferenceFrequencyHerz const & o) const {
-    return freq < o.freq;
-  }
-  bool operator == (ReferenceFrequencyHerz const & o) const {
-    return freq == o.freq;
-  }
-  bool operator != (ReferenceFrequencyHerz const & o) const {
-    return !this->operator == (o);
-  }
-  
-private:
-  float freq;
-};
-
-enum class EventType : uint8_t
-{
-  NoteOn,
-  NoteOff,
-  NoteChange
-};
-
-
   // Whether to synchronize the start phase with the currently playing oscillators of same frequency,
   // to avoid phase cancellation (used mainly for constant frequency oscillators)
   enum class SynchronizePhase {
@@ -184,8 +150,6 @@ enum class EventType : uint8_t
   DefaultStartPhase Phase,
   bool handle_note_off,
   typename EventIterator,
-  typename NoteOnEvent,
-  typename NoteOffEvent,
   typename Base,
   int n_max_voices = 8
 
@@ -204,8 +168,6 @@ enum class EventType : uint8_t
     using Base::onStartNote;
     using Base::setupAudioElement;
 
-    using Event = typename EventIterator::object;
-
     static constexpr auto n_channels_per_note = 1;
 
     // notes played in rapid succession can have a common audio interval during xfades
@@ -219,7 +181,7 @@ enum class EventType : uint8_t
   protected:
 
     LocalPairArray<ReferenceFrequencyHerz, MonoNoteChannel, n_channels> channels;
-    int sample_rate;
+    int const sample_rate;
 
   public:
 
@@ -345,7 +307,7 @@ enum class EventType : uint8_t
 
         // setupAudioElement is allowed to be slow, allocate / deallocate memory, etc...
         // because it's not running in the audio realtime thread.
-        if(!setupAudioElement(e.ref_frequency, c.elem)) {
+        if(!setupAudioElement(e.ref_frequency, c.elem, sample_rate)) {
           MIDI_LG(ERR,"setupAudioElement failed");
           // we let the noteoff reset the envelope state.
           return onDroppedNote(e);

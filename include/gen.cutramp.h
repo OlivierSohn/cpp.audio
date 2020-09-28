@@ -62,7 +62,6 @@ namespace imajuscule::audio::cutramp {
     static constexpr auto ramp_start_freq_denormalize(float v) { return min_ramp_start_freq + v*max_ramp_start_freq; }
 
     using Parent::params;
-    using Parent::half_tone;
 
   protected:
     using interleaved_buf_t = InterleavedBuffer;
@@ -214,8 +213,9 @@ namespace imajuscule::audio::cutramp {
     float get_gain() const { return denorm<GAIN>(); }
 
     template<typename Element>
-    bool setupAudioElement(ReferenceFrequencyHerz const & freq, Element & e)
+    bool setupAudioElement(ReferenceFrequencyHerz const & ref_freq, Element & e, int const sample_rate)
     {
+      float freq = ref_freq.getFrequency();
       if(adjustFreq) {
         auto r = (p - static_cast<float>(gap())) / p;
         freq *= r;
@@ -229,8 +229,8 @@ namespace imajuscule::audio::cutramp {
                                           value<LOUDNESS_COMPENSATION_AMOUNT>(),
                                           denorm<LOUDNESS_LEVEL>());
 
-      e.algo.getAlgo().getCtrl().set(freq - ramp_amount() * (freq-start_freq),
-                                       freq,
+      e.algo.getAlgo().getCtrl().setup(freq_to_angle_increment(freq - ramp_amount() * (freq-start_freq), sample_rate),
+                                       freq_to_angle_increment(freq, sample_rate),
                                        ramp_size,
                                        0.f,
                                        static_cast<itp::interpolation>(itp::interpolation_traversal().realValues()[static_cast<int>(.5f + params[Params::RAMP_INTERPOLATION])]));
@@ -282,8 +282,6 @@ namespace imajuscule::audio::cutramp {
   int nAudioOut,
   typename Parameters,
   typename EventIterator,
-  typename NoteOnEvent,
-  typename NoteOffEvent,
   typename ProcessData,
 
   typename Base = ImplBase<Parameters, ProcessData>,
@@ -297,8 +295,6 @@ namespace imajuscule::audio::cutramp {
     DefaultStartPhase::Zero,
     true,
     EventIterator,
-    NoteOnEvent,
-    NoteOffEvent,
     Base>
   >
   struct Impl_ : public Parent {
@@ -313,7 +309,6 @@ namespace imajuscule::audio::cutramp {
     using Base::adjustRamp;
     using Base::c;
     using Base::gap;
-    using Base::half_tone;
     using Base::interleaved;
     using Base::most_recent_buf_idx;
     using Base::p;
@@ -329,8 +324,8 @@ namespace imajuscule::audio::cutramp {
 
     using Parent::channels;
     using Parent::onEvent2;
+    using Parent::sample_rate;
 
-    using Event = typename Parent::Event;
     using MonoNoteChannel = typename Parent::MonoNoteChannel;
     static constexpr auto n_channels = Parent::n_channels;
     static constexpr auto xfade_policy = Parent::xfade_policy;
@@ -410,7 +405,7 @@ namespace imajuscule::audio::cutramp {
       auto * events = data.inputEvents;
       Assert( events );
 
-      EventIterator it(begin(events)), end(end_(events));
+      EventIterator it(events, Iterator::Begin), end(events, Iterator::End);
 
       int nextEventPosition = getNextEventPosition(it, end);
       Assert(nextEventPosition >= currentFrame);
@@ -435,8 +430,7 @@ namespace imajuscule::audio::cutramp {
         // keep this loop after onEndBufferStepParamChanges()/compute_state(),
         // so that new notes have the correct adjusted frequency
         while(nextEventPosition == currentFrame) {
-          Event e;
-          it.dereference(e);
+          Event e = it.dereference();
           this->onEvent(e, out, chans);
           ++it;
           nextEventPosition = getNextEventPosition(it, end);
@@ -623,11 +617,11 @@ namespace imajuscule::audio::cutramp {
           ramp_size = adjusted(ramp_size);
         }
         auto start_freq = ramp_start_freq_denormalize(ramp_start_freq());
-        ctrl.set(freq - ramp_amount() * (freq-start_freq),
-                 freq,
-                 ramp_size,
-                 -1.f,
-                 interp);
+        ctrl.setup(freq_to_angle_increment(freq - ramp_amount() * (freq-start_freq), sample_rate),
+                   freq_to_angle_increment(freq, sample_rate),
+                   ramp_size,
+                   -1.f,
+                   interp);
       }
     }
   };

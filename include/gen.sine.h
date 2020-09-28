@@ -8,13 +8,14 @@ namespace imajuscule::audio::sine {
 
     template<typename Element>
     bool setupAudioElement(ReferenceFrequencyHerz const & freq,
-                           Element & e)
+                           Element & e,
+                           int const sample_rate)
     {
       e.algo.setLoudnessParams(5, // corresponds to 63 Hz
         // using 0.8f here to try to even the volume difference with non compensated oscillators.
                                0.8f, // 1.f = full compensation, 0.f = no compensation
                                30.f);
-      e.algo.setAngleIncrements(freq_to_angle_increment(freq.getFrequency()));
+      e.algo.setAngleIncrements(freq_to_angle_increment(freq.getFrequency(), sample_rate));
       return true;
     }
 
@@ -40,8 +41,6 @@ namespace imajuscule::audio::sine {
     DefaultStartPhase Phase,
     bool close_channel_on_note_off,
     typename EventIterator,
-    typename NoteOnEvent,
-    typename NoteOffEvent,
     int nVoices = 32 // using 32 voices to support long releases
   >
   using Synth = ImplCRTP <
@@ -53,8 +52,6 @@ namespace imajuscule::audio::sine {
     Phase,
     close_channel_on_note_off,
     EventIterator,
-    NoteOnEvent,
-    NoteOffEvent,
     SynthImpl,
     nVoices
   >;

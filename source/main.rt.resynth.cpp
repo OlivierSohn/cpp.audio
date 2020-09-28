@@ -23,9 +23,7 @@ Ctxt::policy
 , SynchronizePhase::Yes
 , DefaultStartPhase::Random
 , true
-, EventIterator<IEventList>
-, NoteOnEvent
-, NoteOffEvent
+, EventIterator
 , 128  // lots of voices
 >;
 

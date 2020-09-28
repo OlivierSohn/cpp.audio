@@ -1353,6 +1353,8 @@ private:
 
     static constexpr auto hasEnvelope = false;
     static constexpr auto baseVolume = reduceUnadjustedVolumes * soundBaseVolume(SOUND);
+    static constexpr auto isMonoHarmonic = false;
+
     using F_GET_BUFFER = FGetBuffer<SOUND>;
     using T = double;
     using FPT = T;
@@ -1422,6 +1424,8 @@ private:
   struct ConstOne {
     static constexpr auto hasEnvelope = false;
     static constexpr auto baseVolume = 1.f;
+    static constexpr auto isMonoHarmonic = true;
+
     using FPT = T;
 
     T imag() const { return static_cast<T>(1); }
@@ -1519,7 +1523,8 @@ private:
   struct PulseTrainAlgo : public Phased<T> {
     static constexpr auto hasEnvelope = false;
     static constexpr auto baseVolume = reduceUnadjustedVolumes * soundBaseVolume(Sound::SQUARE);
-
+    static constexpr auto isMonoHarmonic = true;
+    
     using Tr = NumTraits<T>;
     using Phased<T>::angle_;
     using Phased<T>::aliasingMult;
@@ -1564,8 +1569,8 @@ bool constexpr AllMonoHarmonic() {
   if (!AE::isMonoHarmonic) {
     return false;
   }
-  if constexpr (sizeof...(AEs)) {
-    return ALLMonoHarmonic<AEs...>();
+  if constexpr (sizeof...(AEs) > 0) {
+    return AllMonoHarmonic<AEs...>();
   }
   return true;
 }
@@ -1575,7 +1580,7 @@ bool constexpr AllHaveEnvelope() {
   if (!AE::hasEnvelope) {
     return false;
   }
-  if constexpr (sizeof...(AEs)) {
+  if constexpr (sizeof...(AEs) > 0) {
     return AllHaveEnvelope<AEs...>();
   }
   return true;
@@ -1685,6 +1690,7 @@ template<class...AEs>
   struct FilterAlgo {
     static constexpr auto hasEnvelope = AEAlgo::hasEnvelope;
     static constexpr auto baseVolume = AEAlgo::baseVolume;
+    static constexpr auto isMonoHarmonic = AEAlgo::isMonoHarmonic;
 
     using T = typename AEAlgo::FPT;
     using FPT = T;
@@ -1872,6 +1878,7 @@ template<class...AEs>
     using Base::doStep;
 
     static constexpr auto baseVolume = Algo::baseVolume;
+    static constexpr auto isMonoHarmonic = Algo::isMonoHarmonic;
 
     void forgetPastSignals() {
       getHP().forgetPastSignals();

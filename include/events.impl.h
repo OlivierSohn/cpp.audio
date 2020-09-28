@@ -1,110 +1,6 @@
 
 namespace imajuscule::audio {
 
-struct NoteOnEvent
-{
-  float velocity;      ///< range [0.0, 1.0]
-  int32_t length;           ///< in sample frames (optional, Note Off has to follow in any case!)
-};
-
-struct NoteChangeEvent
-{
-  float changed_frequency;      ///< in Herz
-  float changed_velocity;      ///< range [0.0, 1.0]
-};
-
-//------------------------------------------------------------------------
-/** Note-off event specific data. Used in \ref Event (union)*/
-struct NoteOffEvent
-{
-  float velocity;			///< range [0.0, 1.0]
-};
-
-struct Event
-{
-  Event(EventType t, ReferenceFrequencyHerz const & f)
-  : type(t)
-  , ref_frequency(f) {}
-
-  EventType type;
-
-  // identifies the note, doesn't change during the lifetime of the note
-  ReferenceFrequencyHerz ref_frequency;
-  
-  union
-  {
-    NoteOnEvent noteOn;                ///< type == kNoteOnEvent
-    NoteChangeEvent noteChange;     ///< type == kNoteChangeEvent
-    NoteOffEvent noteOff;							///< type == kNoteOffEvent
-  };
-};
-
-inline Event mkNoteOn(ReferenceFrequencyHerz const & ref,
-                      float velocity) {
-  Event e(EventType::NoteOn,
-          ref);
-  e.noteOn.velocity = velocity;
-  e.noteOn.length = std::numeric_limits<decltype(e.noteOn.length)>::max();
-  return e;
-}
-
-inline Event mkNoteOn(Midi const & m,
-                      int pitch,
-                      float velocity) {
-  return mkNoteOn(ReferenceFrequencyHerz(m.midi_pitch_to_freq(pitch)),
-                  velocity);
-}
-
-inline Event mkNoteChange(ReferenceFrequencyHerz const & ref,
-                          float changed_velocity,
-                          float new_frequency) {
-  Event e(EventType::NoteChange,
-          ref);
-  e.noteChange.changed_frequency = new_frequency;
-  e.noteChange.changed_velocity = changed_velocity;
-  return e;
-}
-
-inline Event mkNoteChange(Midi const & m,
-                          int pitch,
-                          float relative_velocity,
-                          float new_frequency) {
-  return mkNoteChange(ReferenceFrequencyHerz(m.midi_pitch_to_freq(pitch)),
-                      relative_velocity,
-                      new_frequency);
-}
-
-inline Event mkNoteOff(ReferenceFrequencyHerz const & ref) {
-  Event e(EventType::NoteOff,
-          ref);
-  e.noteOff.velocity = 0.f;
-  return e;
-}
-
-inline Event mkNoteOff(Midi const & m,
-                       int pitch) {
-  return mkNoteOff(ReferenceFrequencyHerz(m.midi_pitch_to_freq(pitch)));
-}
-
-
-struct IEventList
-{
-  int getEventCount () const { return events.size(); }
-  
-  void getEvent (int32_t index, Event& e /*out*/) {
-    Assert(index < events.size());
-    e = events[index];
-  }
-  
-  std::vector<Event> events;
-};
-
-template<>
-struct EventOf<IEventList> {
-  using type = Event;
-};
-
-using EventIteratorImpl = EventIterator<IEventList>;
 
 enum SymbolicSampleSizes
 {
@@ -130,7 +26,7 @@ struct ProcessData
 };
 
 template<AudioOutPolicy outPolicy, int nAudioOut, audio::SoundEngineMode MODE, bool withNoteOff>
-using Voice = imajuscule::audio::voice::Impl_<outPolicy, nAudioOut, MODE, withNoteOff, std::vector<float>, EventIteratorImpl, NoteOnEvent, NoteOffEvent, ProcessData>;
+using Voice = imajuscule::audio::voice::Impl_<outPolicy, nAudioOut, MODE, withNoteOff, std::vector<float>, EventIterator, ProcessData>;
 
 
 ////////////////////

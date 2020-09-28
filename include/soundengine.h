@@ -260,6 +260,10 @@ namespace imajuscule::audio {
         getSilence(); // make sure potential dynamic allocation occurs not under audio lock
         oddOnTraits::write(oddOn, 0, std::memory_order_relaxed);
       }
+      
+      void set_sample_rate(int s) {
+        sample_rate = s;
+      }
 
     private:
       void play(float length, float freq1, float freq2,
@@ -287,7 +291,12 @@ namespace imajuscule::audio {
           freq1 *= state_factor;
           freq2 *= state_factor;
 
-          ramp_spec->get().setup(freq_to_angle_increment(freq1), freq_to_angle_increment(freq2), n_frames, 0, interpolation);
+          Assert(sample_rate);
+          ramp_spec->get().setup(freq_to_angle_increment(freq1, sample_rate),
+                                 freq_to_angle_increment(freq2, sample_rate),
+                                 n_frames,
+                                 0,
+                                 interpolation);
           ramp_spec->silenceFollows(true);
           ramp_spec->setVolume(1.f);
           if(xfade_freq==FreqXfade::No) {
@@ -367,12 +376,16 @@ namespace imajuscule::audio {
                            std::uniform_real_distribution<float>{min_exp, max_exp}(mersenne<SEEDED::Yes>()));
             auto n_frames = static_cast<float>(ms_to_frames(length));
             if(auto * ramp_spec = ramp_specs.get_next_ramp_for_build()) {
-              ramp_spec->get().set(freq1_robot, freq1_robot, n_frames, phase_ratio1 * n_frames, interpolation);
+              ramp_spec->get().setup(freq_to_angle_increment(freq1_robot, sample_rate),
+                                     freq_to_angle_increment(freq1_robot, sample_rate),
+                                     n_frames, phase_ratio1 * n_frames, interpolation);
               ramp_spec->setVolume(vol1);
               ramp_spec->silenceFollows(false);
             }
             if(auto * ramp_spec = ramp_specs.get_next_ramp_for_build()) {
-              ramp_spec->get().set(freq2_robot, freq2_robot, n_frames, phase_ratio1 * n_frames, interpolation);
+              ramp_spec->get().setup(freq_to_angle_increment(freq2_robot, sample_rate),
+                                     freq_to_angle_increment(freq2_robot, sample_rate),
+                                     n_frames, phase_ratio1 * n_frames, interpolation);
               ramp_spec->setVolume(vol2);
               ramp_spec->silenceFollows(true);
             }
@@ -387,20 +400,22 @@ namespace imajuscule::audio {
                            std::uniform_real_distribution<float>{min_exp, max_exp}(mersenne<SEEDED::Yes>()));
             auto n_frames = static_cast<float>(ms_to_frames(length));
             if(auto * ramp_spec = ramp_specs.get_next_ramp_for_build()) {
-              ramp_spec->get().set(freq2_robot, freq2_robot, n_frames, phase_ratio1 * n_frames, interpolation);
+              ramp_spec->get().setup(freq_to_angle_increment(freq2_robot, sample_rate),
+                                     freq_to_angle_increment(freq2_robot, sample_rate),
+                                     n_frames, phase_ratio1 * n_frames, interpolation);
               ramp_spec->setVolume(vol2);
               ramp_spec->silenceFollows(true);
             }
 
             if(auto * ramp_spec = ramp_specs.get_next_ramp_for_build()) {
-              auto f = midi.transpose_frequency(freq2_robot, 2);
-              ramp_spec->get().set(f, f, n_frames, phase_ratio1 * n_frames, interpolation);
+              auto inc = freq_to_angle_increment(midi.transpose_frequency(freq2_robot, 2), sample_rate);
+              ramp_spec->get().setup(inc, inc, n_frames, phase_ratio1 * n_frames, interpolation);
               ramp_spec->setVolume(vol2);
               ramp_spec->silenceFollows(true);
             }
             if(auto * ramp_spec = ramp_specs.get_next_ramp_for_build()) {
-              auto f = midi.transpose_frequency(freq2_robot, 4);
-              ramp_spec->get().set(f, f, n_frames, phase_ratio1 * n_frames, interpolation);
+              auto inc = freq_to_angle_increment(midi.transpose_frequency(freq2_robot, 4), sample_rate);
+              ramp_spec->get().setup(inc, inc, n_frames, phase_ratio1 * n_frames, interpolation);
               ramp_spec->setVolume(vol2);
               ramp_spec->silenceFollows(true);
             }
@@ -414,7 +429,9 @@ namespace imajuscule::audio {
                            std::uniform_real_distribution<float>{min_exp, max_exp}(mersenne<SEEDED::Yes>()));
             auto n_frames = static_cast<float>(ms_to_frames(length));
             if(auto * ramp_spec = ramp_specs.get_next_ramp_for_build()) {
-              ramp_spec->get().set(freq2_robot, freq1_robot, n_frames, phase_ratio1 * n_frames, interpolation);
+              ramp_spec->get().setup(freq_to_angle_increment(freq2_robot, sample_rate),
+                                     freq_to_angle_increment(freq1_robot, sample_rate),
+                                     n_frames, phase_ratio1 * n_frames, interpolation);
               ramp_spec->setVolume(std::min(vol2, vol1));
               ramp_spec->silenceFollows(true);
             }
@@ -826,6 +843,8 @@ namespace imajuscule::audio {
       int xfade_len;
       int freq_xfade;
       int articulative_pause_length;
+
+      int sample_rate=0;
 
       std::unique_ptr<MarkovChain> markov;
       FreqXfade xfade_freq:2;

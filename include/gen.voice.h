@@ -857,8 +857,10 @@ namespace imajuscule::audio::voice {
 
     template<typename Element>
     bool setupAudioElement(ReferenceFrequencyHerz const & freq,
-                           Element & e)
+                           Element & e,
+                           int const sample_rate)
     {
+      e.engine.set_sample_rate(sample_rate);
       {
         auto interp = static_cast<itp::interpolation>(itp::interpolation_traversal().realValues()[static_cast<int>(.5f + value<INTERPOLATION>())]);
 
@@ -1221,28 +1223,27 @@ namespace imajuscule::audio::voice {
   };
 
   template<
+    AudioOutPolicy outPolicy,
+    int nAudioOut,
+    Mode MODE,
+    bool withNoteOff,
 
-  AudioOutPolicy outPolicy,
-  int nAudioOut,
-  Mode MODE,
-  bool withNoteOff,
+    typename Parameters,
+    typename EventIterator,
+    typename ProcessData,
 
-  typename Parameters,
-  typename EventIterator,
-  typename NoteOnEvent,
-  typename NoteOffEvent,
-  typename ProcessData,
+    typename Base = ImplBase<MODE, Parameters, ProcessData>,
 
-  typename Base = ImplBase<MODE, Parameters, ProcessData>,
-
-  typename Parent = ImplCRTP <
-  outPolicy,
-  nAudioOut, XfadePolicy::UseXfade, // TODO reassess the use of xfades, now that we have enveloppes
-  EngineAndRamps<SoundEngine<MODE, nAudioOut, getAtomicity<outPolicy>(), Logger>>,
-  SynchronizePhase::No, // TODO Yes when MODE uses no sweep?
-  DefaultStartPhase::Zero, // TODO Randomize when MODe uses no sweep?
-  withNoteOff,
-  EventIterator, NoteOnEvent, NoteOffEvent, Base >
+    typename Parent = ImplCRTP <
+      outPolicy,
+      nAudioOut, XfadePolicy::UseXfade, // TODO reassess the use of xfades, now that we have enveloppes
+      EngineAndRamps<SoundEngine<MODE, nAudioOut, getAtomicity<outPolicy>(), Logger>>,
+      SynchronizePhase::No, // TODO Yes when MODE uses no sweep?
+      DefaultStartPhase::Zero, // TODO Randomize when MODe uses no sweep?
+      withNoteOff,
+      EventIterator,
+      Base
+    >
   >
 
   struct Impl_ : public Parent
@@ -1259,7 +1260,6 @@ namespace imajuscule::audio::voice {
     using Parent::onEvent2;
     using Parent::channels;
 
-    using Event = typename Parent::Event;
     using MonoNoteChannel = typename Parent::MonoNoteChannel;
     static constexpr auto n_channels = Parent::n_channels;
     static constexpr auto xfade_policy = Parent::xfade_policy;
@@ -1297,7 +1297,7 @@ namespace imajuscule::audio::voice {
       auto * events = data.inputEvents;
       Assert( events );
 
-      EventIterator it(begin(events)), end(end_(events));
+      EventIterator it(events, Iterator::Begin), end(events, Iterator::End);
 
       int nextEventPosition = getNextEventPosition(it, end);
       Assert(nextEventPosition >= currentFrame);
@@ -1306,8 +1306,7 @@ namespace imajuscule::audio::voice {
         Assert(nRemainingFrames > 0);
 
         while(nextEventPosition == currentFrame) {
-          Event e;
-          it.dereference(e);
+          Event e = it.dereference();
           onEvent(e, out, chans);
           ++it;
           nextEventPosition = getNextEventPosition(it, end);

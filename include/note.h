@@ -6,7 +6,7 @@ struct Midi {
   
   // Midi A(69) according to http://subsynth.sourceforge.net/midinote2freq.html
   static constexpr float freq_A = 440.f;
-  static constexpr uint8_t A_pitch = 69;
+  static constexpr double A_pitch = 69.;
   
   // TODO constexpr that, using  https://github.com/elbeno/constexpr/blob/master/src/include/cx_math.h
   Midi(double const tuning_stretch = unity_tuning_stretch)
@@ -29,7 +29,7 @@ struct Midi {
     return freq_A * std::pow(half_tone_ratio_, interval_from_A);
   }
 
-  double midi_pitch_to_freq(int pitch) const {
+  double midi_pitch_to_freq(double pitch) const {
     return Ainterval_to_freq(pitch - A_pitch);
   }
   
