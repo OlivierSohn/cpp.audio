@@ -26,6 +26,8 @@ void testDeduceNotes() {
   std::vector<double> half_window = half_gaussian_window<double>(4, 400);
   //std::vector<double> half_window = half_gaussian_window<double>(8, 400);
   //std::vector<double> half_window = half_gaussian_window<double>(8, 4000);
+  normalize_window(half_window);
+  
   int const zero_padding_factor = 1;
   //int const zero_padding_factor = 10;
   auto reader = WAVReader(dir, prefix + ".wav");

@@ -3,78 +3,87 @@ namespace imajuscule::audio {
 
 struct NoteOnEvent
 {
-  int16_t channel;			///< channel index in event bus
-  int16_t pitch;			///< range [0, 127] = [C-2, G8] with A3=440Hz
-  float tuning;			///< 1.f = +1 cent, -1.f = -1 cent
-  float velocity;			///< range [0.0, 1.0]
+  float velocity;      ///< range [0.0, 1.0]
   int32_t length;           ///< in sample frames (optional, Note Off has to follow in any case!)
-  int32_t noteId;			///< note identifier (if not available then -1)
+};
+
+struct NoteChangeEvent
+{
+  float changed_frequency;      ///< in Herz
+  float changed_velocity;      ///< range [0.0, 1.0]
 };
 
 //------------------------------------------------------------------------
 /** Note-off event specific data. Used in \ref Event (union)*/
 struct NoteOffEvent
 {
-  int16_t channel;			///< channel index in event bus
-  int16_t pitch;			///< range [0, 127] = [C-2, G8] with A3=440Hz
   float velocity;			///< range [0.0, 1.0]
-  int32_t noteId;			///< associated noteOn identifier (if not available then -1)
-  float tuning;			///< 1.f = +1 cent, -1.f = -1 cent
 };
 
 struct Event
 {
-  /**  Event Types - used for Event::type */
-  enum EventTypes
-  {
-    kNoteOnEvent = 0,			///< is \ref NoteOnEvent
-    kNoteOffEvent,				///< is \ref NoteOffEvent
-    kNoteVolumeChangeEvent
-  };
-  
-  uint16_t type;				///< a value from \ref EventTypes
+  Event(EventType t, ReferenceFrequencyHerz const & f)
+  : type(t)
+  , ref_frequency(f) {}
+
+  EventType type;
+
+  // identifies the note, doesn't change during the lifetime of the note
+  ReferenceFrequencyHerz ref_frequency;
   
   union
   {
     NoteOnEvent noteOn;                ///< type == kNoteOnEvent
-    NoteOnEvent noteVolumeChange;     ///< type == kNoteOnEvent
+    NoteChangeEvent noteChange;     ///< type == kNoteChangeEvent
     NoteOffEvent noteOff;							///< type == kNoteOffEvent
   };
 };
 
-inline Event mkNoteOn(int pitch, float velocity) {
-  Event e;
-  e.type = Event::kNoteOnEvent;
-  e.noteOn.pitch = pitch;
+inline Event mkNoteOn(ReferenceFrequencyHerz const & ref,
+                      float velocity) {
+  Event e(EventType::NoteOn,
+          ref);
   e.noteOn.velocity = velocity;
-  e.noteOn.channel= 0; // unused
-  e.noteOn.tuning = 0;
-  e.noteOn.noteId = -1;
   e.noteOn.length = std::numeric_limits<decltype(e.noteOn.length)>::max();
   return e;
 }
 
-inline Event mkNoteVolumeChange(int pitch, float velocity) {
-  Event e;
-  e.type = Event::kNoteVolumeChangeEvent;
-  e.noteVolumeChange.pitch = pitch;
-  e.noteVolumeChange.velocity = velocity;
-  e.noteVolumeChange.channel= 0; // unused
-  e.noteVolumeChange.tuning = 0;
-  e.noteVolumeChange.noteId = -1;
-  e.noteVolumeChange.length = std::numeric_limits<decltype(e.noteVolumeChange.length)>::max();
+inline Event mkNoteOn(Midi const & m,
+                      int pitch,
+                      float velocity) {
+  return mkNoteOn(ReferenceFrequencyHerz(m.midi_pitch_to_freq(pitch)),
+                  velocity);
+}
+
+inline Event mkNoteChange(ReferenceFrequencyHerz const & ref,
+                          float changed_velocity,
+                          float new_frequency) {
+  Event e(EventType::NoteChange,
+          ref);
+  e.noteChange.changed_frequency = new_frequency;
+  e.noteChange.changed_velocity = changed_velocity;
   return e;
 }
 
-inline Event mkNoteOff(int pitch) {
-  Event e;
-  e.type = Event::kNoteOffEvent;
-  e.noteOff.pitch = pitch;
+inline Event mkNoteChange(Midi const & m,
+                          int pitch,
+                          float relative_velocity,
+                          float new_frequency) {
+  return mkNoteChange(ReferenceFrequencyHerz(m.midi_pitch_to_freq(pitch)),
+                      relative_velocity,
+                      new_frequency);
+}
+
+inline Event mkNoteOff(ReferenceFrequencyHerz const & ref) {
+  Event e(EventType::NoteOff,
+          ref);
   e.noteOff.velocity = 0.f;
-  e.noteOff.channel= 0;
-  e.noteOff.tuning = 0;
-  e.noteOff.noteId = -1;
   return e;
+}
+
+inline Event mkNoteOff(Midi const & m,
+                       int pitch) {
+  return mkNoteOff(ReferenceFrequencyHerz(m.midi_pitch_to_freq(pitch)));
 }
 
 
@@ -137,7 +146,11 @@ struct Voicing {
 };
 
 template<typename Voice, typename OutputData, typename Chans>
-onEventResult playOneThing(Voice & v, OutputData & out, Chans & chans, Voicing const & b) {
+onEventResult playOneThing(Midi const & midi,
+                           Voice & v,
+                           OutputData & out,
+                           Chans & chans,
+                           Voicing const & b) {
   
   v.initializeSlow(); // does something only the 1st time
   v.useProgram(b.program); // keep it first as it reinitializes params
@@ -150,15 +163,21 @@ onEventResult playOneThing(Voice & v, OutputData & out, Chans & chans, Voicing c
   v.set_pan(b.pan);
   v.set_loudness_compensation(.2f); // birds do not naturally emit loudness compensated frequencies!
   
-  return v.onEvent(mkNoteOn(b.midiPitch,
+  return v.onEvent(mkNoteOn(midi,
+                            b.midiPitch,
                             1.0),
                    out,
                    chans);
 }
 
 template<typename Voice, typename OutputData, typename Chans>
-onEventResult stopPlaying(Voice & v, OutputData & out, Chans & chans, int16_t midiPitch) {
-  return v.onEvent(mkNoteOff(midiPitch),
+onEventResult stopPlaying(Midi const & midi,
+                          Voice & v,
+                          OutputData & out,
+                          Chans & chans,
+                          int16_t midiPitch) {
+  return v.onEvent(mkNoteOff(midi,
+                             midiPitch),
                    out,
                    chans);
 }

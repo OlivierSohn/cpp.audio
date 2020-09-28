@@ -1075,10 +1075,6 @@ namespace imajuscule::audio::audioelement {
 template<typename ALGO>
 struct BaseVolumeAdjusted {
   using MeT = BaseVolumeAdjusted<ALGO>;
-  // if the underlying algo has more than one frequency
-  // then we can't use this volume adjustment algorithm
-  // because it would make sense only for the fundamental frequency.
-  static_assert(ALGO::isMonoHarmonic);
 
   static constexpr auto hasEnvelope = ALGO::hasEnvelope;
   static constexpr auto baseVolume = ALGO::baseVolume / reduceUnadjustedVolumes;
@@ -1108,10 +1104,19 @@ struct BaseVolumeAdjusted {
 
   BaseVolumeAdjusted() = default;
 
+  // Used to limit the speed of variations.
+  //
+  // Was first introduced in a use case where
+  // the volume is re-evaluated every X samples
+  // and we want to avoid a "stair" effect.
+  void setMaxFilterIncrement(T ai) {
+    max_filter_increment = ai;
+  }
+
   void forgetPastSignals() {
     osc.forgetPastSignals();
     volume.reset();
-    volume_target = {};
+    volume_target.reset();
   }
   void setEnvelopeCharacTime(int len) {
     osc.setEnvelopeCharacTime(len);
@@ -1139,25 +1144,27 @@ struct BaseVolumeAdjusted {
     osc.setLoudnessParams(low_index, log_ratio, loudness_level);
   }
 
-  // < 1 to make variations slower, to avoid audio cracks
-  static constexpr T timeFactor = 0.2;
-  
   void step() {
+    Assert(volume_target);  // The user needs to set the volume
+    Assert(osc.angleIncrements() >= 0);  // The user needs to set the increments
+    
     osc.step();
 
     // low-pass the volume using a time characteristic equal to the period implied by angle increments
     if (unlikely(!volume)) {
-      filter_init_with_inc = osc.angleIncrements();
-      volume_filter.initWithAngleIncrement(timeFactor * filter_init_with_inc);
-      volume_filter.setInitialValue(volume_target);
-    } else if (*volume != volume_target) {
-      auto const inc = osc.angleIncrements();
+      filter_init_with_inc = std::min(max_filter_increment,
+                                      osc.angleIncrements());
+      volume_filter.initWithAngleIncrement(filter_init_with_inc);
+      volume_filter.setInitialValue(*volume_target);
+    } else if (*volume != *volume_target) {
+      auto const inc = std::min(max_filter_increment,
+                                osc.angleIncrements());
       if (filter_init_with_inc != inc) {
         filter_init_with_inc = inc;
-        volume_filter.initWithAngleIncrement(timeFactor * filter_init_with_inc);
+        volume_filter.initWithAngleIncrement(filter_init_with_inc);
       }
     }
-    volume_filter.feed(&volume_target);
+    volume_filter.feed(&*volume_target);
     volume = *volume_filter.filtered();
   }
 
@@ -1166,9 +1173,9 @@ struct BaseVolumeAdjusted {
   }
 
 private:
-  std::optional<T> volume;
-  T volume_target;
+  std::optional<T> volume, volume_target;
   T filter_init_with_inc;
+  T max_filter_increment = std::numeric_limits<T>::max();
   ALGO osc;
   Filter<T, 1, FilterType::LOW_PASS, 1> volume_filter;
 
@@ -1203,6 +1210,11 @@ struct VolumeAdjusted : BaseVolumeAdjusted<ALGO> {
 template<typename ALGO>
 struct LoudnessVolumeAdjusted : BaseVolumeAdjusted<ALGO> {
   using T = typename ALGO::FPT;
+
+  // if the underlying algo has more than one frequency
+  // then we can't use this volume adjustment algorithm
+  // because it would make sense only for the fundamental frequency.
+  static_assert(ALGO::isMonoHarmonic);
 
   LoudnessVolumeAdjusted()
   : log_ratio_(1.f)
@@ -1547,10 +1559,34 @@ private:
     return minValue<BaseVolume, AEs...>();
   }
 
-  template<class...AEs>
+template<typename AE, class...AEs>
+bool constexpr AllMonoHarmonic() {
+  if (!AE::isMonoHarmonic) {
+    return false;
+  }
+  if constexpr (sizeof...(AEs)) {
+    return ALLMonoHarmonic<AEs...>();
+  }
+  return true;
+}
+
+template<typename AE, class...AEs>
+bool constexpr AllHaveEnvelope() {
+  if (!AE::hasEnvelope) {
+    return false;
+  }
+  if constexpr (sizeof...(AEs)) {
+    return AllHaveEnvelope<AEs...>();
+  }
+  return true;
+}
+
+template<class...AEs>
   struct Mix {
-    static constexpr auto hasEnvelope = false; // TODO all hasEnvelope AEs ?
+    static constexpr auto hasEnvelope = AllHaveEnvelope<AEs...>();
     static constexpr auto baseVolume = minBaseVolume<AEs...>(); // be conservative.
+    static constexpr bool isMonoHarmonic = AllMonoHarmonic<AEs...>();
+
     bool isEnvelopeFinished() const {
       Assert(0);
       return false;
@@ -2269,6 +2305,111 @@ private:
     }
   };
 
+
+/**
+ When the frequency is interpolated, and the target updated at regular time intervals.
+ */
+template<typename T>
+struct InterpolatedFreq {
+  
+  using Tr = NumTraits<T>;
+  using FPT = T;
+  
+  // offsets because we use the value at the beginning of the timestep
+  static constexpr auto increasing_integration_offset = 0;
+  static constexpr auto decreasing_integration_offset = 1;
+  
+  InterpolatedFreq()
+  : cur_sample(Tr::zero())
+  , from{}
+  , to{}
+  , duration_in_samples{}
+  {}
+  
+  void forgetPastSignals() {
+    f_result.reset();
+  }
+  
+  void setFreqRange(range<float> const &) const { Assert(0); } // use setup / setAngleIncrements instead
+  void set_interpolation(itp::interpolation) const {Assert(0);} // use setup instead
+  void set_n_slow_steps(unsigned int) const { Assert(0); }
+  
+  auto & getUnderlyingIter() { Assert(0); return *this; }
+  
+  // Once this has been called, 'setAngleIncrements' _must_ be called
+  //   (to specify the start frequency) before calling 'step'.
+  // Else, the behaviour is undefined.
+  void setup(T duration_in_samples_,
+             itp::interpolation i) {
+    Assert(duration_in_samples_ > 0);
+    duration_in_samples = duration_in_samples_;
+    interp.setInterpolation(i);
+  }
+  
+  void setAngleIncrements(T increments) {
+    // verify that setup has been called
+    Assert(duration_in_samples > 0);
+    
+    cur_sample = 0;
+    to = increments;
+    
+    from = f_result ? (*f_result) : increments;
+    
+    C = get_linear_proportionality_constant();
+  }
+  
+  T step() {
+    if(cur_sample + .5f > duration_in_samples) {
+      cur_sample = duration_in_samples;
+    }
+    
+    // we call get_unfiltered_value instead of get_value because we ensure:
+    Assert(cur_sample <= duration_in_samples);
+    f_result = interp.get_unfiltered_value(cur_sample, duration_in_samples, from, to);
+    // Taking the value at cur_sample means taking the value at the beginning of the step.
+    // The width of the step depends on that value so if we had taken the value in the middle or at the end of the step,
+    // not only would the value be different, but also the step width!
+    
+    // we could take the value in the middle and adjust "value + step width" accordingly
+    
+    if (cur_sample < duration_in_samples) {
+      // linear interpolation for parameter
+      auto f = from + (to-from) * (cur_sample + .5f) / duration_in_samples;
+      cur_sample += C * f;
+    }
+    
+    return *f_result;
+  }
+  
+  T getFrom() const { return from; }
+  T getTo() const { return to; }
+  
+  T get_duration_in_samples() const { return duration_in_samples; }
+  
+private:
+  // This interpolation is "composed" with an implicit PROPORTIONAL_VALUE_DERIVATIVE interpolation
+  NormalizedInterpolation<T> interp;
+  
+  T from, to, cur_sample;
+  std::optional<T> f_result;
+  T duration_in_samples;
+  T C;
+  
+  T get_linear_proportionality_constant() const {
+    // We want to achieve the same effect as PROPORTIONAL_VALUE_DERIVATIVE
+    // without paying the cost of one 'expf' call per audio frame :
+    // to achieve the same effect, at each frame we add to cur_sample a value proportionnal to
+    // the current frequency. The factor of proportionnality is adjusted to match
+    // the wanted duration_in_samples
+    
+    // Assert that computation can be done
+    Assert(from > 0);
+    Assert(to > 0);
+    
+    return (to==from) ? 1.f : -std::log(from/to) / (to-from);
+  }
+};
+
   /*
    * std::abs(<value>)
    */
@@ -2467,18 +2608,6 @@ private:
   template<LoudnessVolumeAdjust V, typename T>
   using LoudnessAdjustableVolumeOscillatorAlgo = typename OscillatorAlgo_<V,T>::type;
 
-  template<typename T>
-  static int steps_to_swap(LogRamp<T> & spec) {
-    bool order = spec.getTo() < spec.getFrom();
-
-    int count = 0;
-    while(order == spec.getTo() < spec.getFrom()) {
-      spec.step();
-      ++count;
-    }
-    --count; // because swap occurs at the beginning of step method, before current step is modified
-    return count;
-  }
 
   template<typename ALGO, typename CTRLS, int N>
   struct SetFreqs {
@@ -2506,8 +2635,11 @@ private:
 
   template<typename ALGO, typename ...CTRLS>
   struct FreqCtrl_ {
+    using MeT = FreqCtrl_<ALGO, CTRLS...>;
+
     static constexpr auto hasEnvelope = ALGO::hasEnvelope;
     static constexpr auto baseVolume = ALGO::baseVolume;
+    static constexpr auto isMonoHarmonic = ALGO::isMonoHarmonic;
     using Ctrl = std::tuple<CTRLS...>;
     using T = typename ALGO::FPT;
     using FPT = T;
@@ -2517,6 +2649,9 @@ private:
     T angle() const { return osc.angle(); }
     void setAngle(T a) {
       osc.setAngle(a);
+    }
+    void synchronizeAngles(MeT const & other) {
+      osc.synchronizeAngles(other.osc);
     }
 
     void setLoudnessParams(int low_index, float log_ratio, float loudness_level) {
@@ -2543,6 +2678,15 @@ private:
       });
       // not for osc : it will be done in step()
     }
+    
+    // It is debatable, whether this should return the oscillator's increment, or the control's.
+    //
+    // The reason why it returns the oscillator frequency is because
+    // 'BaseVolumeAdjusted' uses this to adjust the time constant of the filter that controls the amplitude,
+    // so it is safer imho to return the current oscillator frequency, instead of a future frequency.
+    // (Note that in that use case, it would be even safer to return the minimum frequency between the current
+    // and the future frequencies).
+    FPT angleIncrements() const { return osc.angleIncrements(); }
 
     void step() {
       setFreqs(ctrls, osc);
@@ -2607,6 +2751,7 @@ private:
   struct RingModulationAlgo {
     static constexpr auto hasEnvelope = A1::hasEnvelope || A2::hasEnvelope;
     static constexpr auto baseVolume = minBaseVolume<A1, A2>(); // TODO adjust with real use case
+    static constexpr auto isMonoHarmonic = false;
     using T = typename A1::FPT;
     using FPT = T;
 
@@ -2651,43 +2796,43 @@ private:
       if(A2::hasEnvelope && osc2.isEnvelopeFinished()) {
         return true;
       }
-      if(!A1::hasEnvelope && !A2::hasEnvelope) {
+      if constexpr (!A1::hasEnvelope && !A2::hasEnvelope) {
         Assert(0);
       }
       return false;
     }
     void onKeyPressed(int32_t delay) {
-      if(A1::hasEnvelope) {
+      if constexpr (A1::hasEnvelope) {
         osc1.onKeyPressed(delay);
       }
-      if(A2::hasEnvelope) {
+      if constexpr (A2::hasEnvelope) {
         osc2.onKeyPressed(delay);
       }
-      if(!A1::hasEnvelope && !A2::hasEnvelope) {
+      if constexpr (!A1::hasEnvelope && !A2::hasEnvelope) {
         Assert(0);
       }
     }
     void onKeyReleased(int32_t delay) {
-      if(A1::hasEnvelope) {
+      if constexpr (A1::hasEnvelope) {
         osc1.onKeyReleased(delay);
       }
-      if(A2::hasEnvelope) {
+      if constexpr (A2::hasEnvelope) {
         osc2.onKeyReleased(delay);
       }
-      if(!A1::hasEnvelope && !A2::hasEnvelope) {
+      if constexpr (!A1::hasEnvelope && !A2::hasEnvelope) {
         Assert(0);
       }
     }
 
     bool canHandleExplicitKeyReleaseNow(int32_t delay) const {
       bool res = false;
-      if(A1::hasEnvelope) {
+      if constexpr (A1::hasEnvelope) {
         res = osc1.canHandleExplicitKeyReleaseNow(delay);
       }
-      if(A2::hasEnvelope) {
+      if constexpr (A2::hasEnvelope) {
         res = res || osc2.canHandleExplicitKeyReleaseNow(delay);
       }
-      if(!A1::hasEnvelope && !A2::hasEnvelope) {
+      if constexpr (!A1::hasEnvelope && !A2::hasEnvelope) {
         Assert(0);
       }
       return res;

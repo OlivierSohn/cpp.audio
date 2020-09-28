@@ -83,7 +83,7 @@ private:
       /*
        * The function is executed once, and then removed from the queue.
        */
-      using OneShotFunc = std::function<void(Channels &
+      using OneShotFunc = folly::Function<void(Channels &
                                             , const uint64_t // the time of the start of the buffer that will be computed.
                                             )>;
 
@@ -92,8 +92,9 @@ private:
        * The function is executed once, and then removed from the queue.
        */
        // I added this because I needed to capture 'MIDITimestampAndSource' and
-       // didn't have any space left in the std::function (and didn't want to dynamically allocate)
-      using OneShotMidiFunc = std::function<void(Channels &
+       // didn't have any space left in the std::function (and didn't want to dynamically allocate).
+      // TODO now that we use folly::Function, this might not be needed anymore (we can capture more without allocating)
+      using OneShotMidiFunc = folly::Function<void(Channels &
                                                 , MIDITimestampAndSource
                                                 , const uint64_t // the time of the start of the buffer that will be computed.
                                                 )>;
@@ -102,13 +103,13 @@ private:
       /*
        * returns false when the lambda can be removed
        */
-      using OrchestratorFunc = std::function<bool(Channels &
+      using OrchestratorFunc = folly::Function<bool(Channels &
                                                   , int // the max number of frames computed in one chunk
                                                   )>;
       /*
        * returns false when the lambda can be removed
        */
-      using ComputeFunc = std::function<bool(const int  // the number of frames to compute
+      using ComputeFunc = folly::Function<bool(const int  // the number of frames to compute
                                              , const uint64_t // the time of the first frame
                                              )>;
 
@@ -413,20 +414,20 @@ private:
           int nRemoved(0);
 
 #ifndef CUSTOM_SAMPLE_RATE
-          nRemoved += oneShotsMIDI.dequeueAll([this, tNanos](auto const & p) {
+          nRemoved += oneShotsMIDI.dequeueAll([this, tNanos](auto & p) {
             p.second(*this, p.first, tNanos);
           });
 #endif
           
-          nRemoved += oneShots.dequeueAll([this, tNanos](auto const & f) {
+          nRemoved += oneShots.dequeueAll([this, tNanos](auto & f) {
             f(*this, tNanos);
           });
 
-          nRemoved += orchestrators.forEach([this](auto const & orchestrate) {
+          nRemoved += orchestrators.forEach([this](auto & orchestrate) {
             return orchestrate(*this, audioelement::n_frames_per_buffer);
           });
 
-          nRemoved += computes.forEach([tNanos, nFrames](auto const & compute) {
+          nRemoved += computes.forEach([tNanos, nFrames](auto & compute) {
             return compute(nFrames, tNanos);
           });
 

@@ -7,6 +7,40 @@
 
 namespace imajuscule::audio {
 
+struct ReferenceFrequencyHerz {
+  explicit ReferenceFrequencyHerz()
+  : freq(0)
+  {}
+  
+  explicit ReferenceFrequencyHerz(float v)
+  : freq(v) {}
+  
+  float getFrequency() const {
+    return freq;
+  }
+  
+  bool operator < (ReferenceFrequencyHerz const & o) const {
+    return freq < o.freq;
+  }
+  bool operator == (ReferenceFrequencyHerz const & o) const {
+    return freq == o.freq;
+  }
+  bool operator != (ReferenceFrequencyHerz const & o) const {
+    return !this->operator == (o);
+  }
+  
+private:
+  float freq;
+};
+
+enum class EventType : uint8_t
+{
+  NoteOn,
+  NoteOff,
+  NoteChange
+};
+
+
   // Whether to synchronize the start phase with the currently playing oscillators of same frequency,
   // to avoid phase cancellation (used mainly for constant frequency oscillators)
   enum class SynchronizePhase {
@@ -59,8 +93,6 @@ namespace imajuscule::audio {
   struct Impl {
     using ProcessData = ProcessData_;
 
-    static constexpr auto tune_stretch = 1.f;
-
     virtual Program const & getProgram(int i) const = 0;
     virtual int countPrograms() const = 0;
 
@@ -103,7 +135,6 @@ namespace imajuscule::audio {
   protected:
     Parameters params;
     InterleavedBuffer interleaved;
-    float half_tone = compute_half_tone(tune_stretch);
   };
 
   // When another oscillator with the same frequency exists,
@@ -186,17 +217,16 @@ namespace imajuscule::audio {
     static constexpr auto n_channels = n_channels_per_note * n_max_voices * n_max_simultaneous_notes_per_voice;
 
   protected:
-    // members
-    float half_tone = compute_half_tone(tune_stretch); // TODO remove duplicates, use constexpr version : https://github.com/elbeno/constexpr/blob/master/src/include/cx_math.h
-    LocalPairArray<TunedPitch,MonoNoteChannel, n_channels> channels;
 
-    static constexpr auto tune_stretch = 1.f;
+    LocalPairArray<ReferenceFrequencyHerz, MonoNoteChannel, n_channels> channels;
+    int sample_rate;
 
   public:
 
     template <typename A>
-    ImplCRTP(std::array<A, n_channels> & as) :
-    channels(TunedPitch{}, as)
+    ImplCRTP(int sampleRate, std::array<A, n_channels> & as)
+    : channels(ReferenceFrequencyHerz(0), as)
+    , sample_rate(sampleRate)
     {}
 
     template<typename ChannelsT>
@@ -274,7 +304,7 @@ namespace imajuscule::audio {
       using Request = typename Chans::Request;
       static_assert(Out::policy == outPolicy);
       switch(e.type) {
-        case Event::kNoteOnEvent:
+        case EventType::NoteOn:
       {
         Assert(e.noteOn.velocity > 0.f ); // this case is handled by the wrapper... else we need to do a noteOff
         MIDI_LG(INFO, "on  %d", e.noteOn.pitch);
@@ -298,7 +328,7 @@ namespace imajuscule::audio {
 
         if(!channel) {
           // note that we could sleep and retry or yield and retry.
-          return onDroppedNote(e.noteOn.pitch);
+          return onDroppedNote(e);
         }
         auto & c = *channel;
         int32_t channel_index = channels.index(c);
@@ -307,23 +337,22 @@ namespace imajuscule::audio {
         //      set the tunedpitch
         //      setup the channel (dynamic allocations allowed for soundengine)
 
-        TunedPitch tp{e.noteOn.pitch, e.noteOn.tuning};
-        channels.corresponding(*channel) = tp;
+        channels.corresponding(*channel) = e.ref_frequency;
 
         c.elem.forgetPastSignals(); // this does _not_ touch the envelope
+        c.elem.algo.setVolumeTarget(e.noteOn.velocity);
         c.elem.editEnvelope().setEnvelopeCharacTime(get_xfade_length());
 
-        auto freq = to_freq(tp.getValue()-Do_midi, half_tone);
         // setupAudioElement is allowed to be slow, allocate / deallocate memory, etc...
         // because it's not running in the audio realtime thread.
-        if(!setupAudioElement(freq, c.elem)) {
+        if(!setupAudioElement(e.ref_frequency, c.elem)) {
           MIDI_LG(ERR,"setupAudioElement failed");
           // we let the noteoff reset the envelope state.
-          return onDroppedNote(e.noteOn.pitch);
+          return onDroppedNote(e);
         }
 
         Assert(!c.elem.getEnvelope().isEnvelopeFinished());
-
+        
         // 3. [with maybe-lock]
         //      register the maybe-oneshot that does
         //        - maybe phase cancellation avoidance (in onStartNote)
@@ -334,12 +363,12 @@ namespace imajuscule::audio {
         {
           typename Out::LockFromNRT L(out.get_lock());
 
-          chans.enqueueOneShot([this, velocity = e.noteOn.velocity, channel_index](Chans & chans, uint64_t){
+          chans.enqueueOneShot([this, channel_index](Chans & chans, uint64_t){
             // unqueue the (potential) previous request, else an assert fails
             // when we enqueue the next request, because it's already queued.
             auto & c = channels.seconds()[channel_index];
             c.reset();
-            c.channel->setVolume(get_gain() * velocity);
+            c.channel->setVolume(get_gain());
             if constexpr (xfade_policy == XfadePolicy::UseXfade) {
               c.channel->set_xfade(get_xfade_length());
             }
@@ -431,31 +460,29 @@ namespace imajuscule::audio {
         }
       }
           break;
-        case Event::kNoteOffEvent:
+        case EventType::NoteOff:
       {
         if(!handle_note_off) { // TODO remove handle_note_off, redundant with autorelease notion?
-          MIDI_LG(INFO, "off (ignored) %d", e.noteOff.pitch);
+          MIDI_LG(INFO, "off (ignored) %f", e.ref_frequency.getFrequency());
           // the initial implementation was using CloseMode::WHEN_DONE_PLAYING for that case
           // but close method sets the channel to -1 so it's impossible to fade it to zero
           // afterwards using close(), so instead we don't do anything here
           return onEventResult::OK;
         }
-        MIDI_LG(INFO, "off %d", e.noteOff.pitch);
-        TunedPitch tp{e.noteOff.pitch, e.noteOff.tuning};
+        MIDI_LG(INFO, "off %f", e.ref_frequency.getFrequency());
 #ifndef CUSTOM_SAMPLE_RATE
         if(maybeMidiTimeAndSource) {
           typename Out::LockFromNRT L(out.get_lock());
-          static_assert(sizeof(decltype(tp))<=8); // ensure that the std::function won't dynamically allocate / deallocate
           chans.enqueueMIDIOneShot(get_value(maybeMidiTimeAndSource)
-                                 , [this, tp](auto &, auto midiTimingAndSrc, uint64_t curTimeNanos){
+                                 , [this, ref_freq = e.ref_frequency](auto &, auto midiTimingAndSrc, uint64_t curTimeNanos){
             // We can have multiple notes with the same pitch, and different durations.
             // Hence, here we just close the first opened channel with matching pitch
             // and matching midi source.
-            for(auto &tunedPitch : firsts(channels)) {
-              if (tunedPitch != tp) {
+            for(auto &f : firsts(channels)) {
+              if (f != ref_freq) {
                 continue;
               }
-              auto & c = channels.corresponding(tunedPitch);
+              auto & c = channels.corresponding(f);
 
               if(!c.midiDelay) {
                 // the note-on had no MIDI timestamp, but this note-off has one
@@ -487,15 +514,14 @@ namespace imajuscule::audio {
 #endif
         {
           typename Out::LockFromNRT L(out.get_lock());
-          static_assert(sizeof(decltype(tp))<=8); // ensure that the std::function won't dynamically allocate / deallocate
-          chans.enqueueOneShot([this, tp](auto &, uint64_t curTimeNanos){
+          chans.enqueueOneShot([this, ref_freq = e.ref_frequency](auto &, uint64_t curTimeNanos){
             // We can have multiple notes with the same pitch, and different durations.
             // Hence, here we just close the first opened channel with matching pitch.
-            for(auto &tunedPitch : firsts(channels)) {
-              if (tunedPitch != tp) {
+            for(auto &f : firsts(channels)) {
+              if (f != ref_freq) {
                 continue;
               }
-              auto & c = channels.corresponding(tunedPitch);
+              auto & c = channels.corresponding(f);
               if(c.midiDelay) {
                 // the note-one had a corresponding MIDI timestamp, but this note-off has no MIDI timestamp
                 // so it's not what we are ooking for.
@@ -513,31 +539,26 @@ namespace imajuscule::audio {
         }
       }
           break;
-        case Event::kNoteVolumeChangeEvent:
+        case EventType::NoteChange:
         {
-          MIDI_LG(INFO, "vol change %d", e.noteOff.pitch);
-          TunedPitch tp{e.noteVolumeChange.pitch, e.noteVolumeChange.tuning};
+          MIDI_LG(INFO, "change %d", e.noteChange.ref_pitch);
           {
             typename Out::LockFromNRT L(out.get_lock());
             chans.enqueueOneShot([this,
-                                  tp,
-                                  volume = e.noteVolumeChange.velocity](auto &,
+                                  volume = e.noteChange.changed_velocity,
+                                  ref_freq = e.ref_frequency,
+                                  increments = freq_to_angle_increment(e.noteChange.changed_frequency, sample_rate)](auto &,
                                                                         uint64_t){
-              // ensure that the std::function won't dynamically allocate / deallocate
-              static_assert((sizeof(decltype(tp)) + sizeof(decltype(volume))) <= 8);
-              
               // We can have multiple notes with the same pitch, and different durations.
               // We adjust the volume of all opened channels with matching pitch.
-              for(auto &tunedPitch : firsts(channels)) {
-                if (tunedPitch != tp) {
+              for(auto &f : firsts(channels)) {
+                if (f != ref_freq) {
                   continue;
                 }
-                auto & c = channels.corresponding(tunedPitch);
+                auto & c = channels.corresponding(f);
                 c.elem.algo.setVolumeTarget(volume);
-                return;
+                c.elem.algo.setAngleIncrements(increments);
               }
-              // The corresponding noteOn was skipped,
-              // because too many notes were being played at the same time
             });
           }
         }
@@ -547,8 +568,8 @@ namespace imajuscule::audio {
     }
 
   protected:
-    onEventResult onDroppedNote(uint8_t pitch) {
-      MIDI_LG(WARN, "dropped note '%d'", pitch);
+    onEventResult onDroppedNote(Event const & e) const {
+      MIDI_LG(WARN, "dropped note '%f' Hz", e.ref_frequency.getFrequency);
       return onEventResult::DROPPED_NOTE;
     }
   };

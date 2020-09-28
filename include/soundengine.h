@@ -226,6 +226,9 @@ namespace imajuscule::audio {
       T * envelopeDone = nullptr;
     };
 
+    /*
+     Uses a markov graph to create randomized succession of ramps specs.
+     **/
     template<
     SoundEngineMode M,
     int nOuts,
@@ -258,6 +261,7 @@ namespace imajuscule::audio {
         oddOnTraits::write(oddOn, 0, std::memory_order_relaxed);
       }
 
+    private:
       void play(float length, float freq1, float freq2,
                 float phase_ratio1, float phase_ratio2,
                 float freq_scatter) {
@@ -320,6 +324,7 @@ namespace imajuscule::audio {
         }
       }
 
+    public:
       auto create_birds() {
         auto mc = std::make_unique<MarkovChain>();
 
@@ -386,15 +391,15 @@ namespace imajuscule::audio {
               ramp_spec->setVolume(vol2);
               ramp_spec->silenceFollows(true);
             }
-            auto ht = compute_half_tone(1.f);
+
             if(auto * ramp_spec = ramp_specs.get_next_ramp_for_build()) {
-              auto f = transpose_frequency(freq2_robot, ht, 2);
+              auto f = midi.transpose_frequency(freq2_robot, 2);
               ramp_spec->get().set(f, f, n_frames, phase_ratio1 * n_frames, interpolation);
               ramp_spec->setVolume(vol2);
               ramp_spec->silenceFollows(true);
             }
             if(auto * ramp_spec = ramp_specs.get_next_ramp_for_build()) {
-              auto f = transpose_frequency(freq2_robot, ht, 4);
+              auto f = midi.transpose_frequency(freq2_robot, 4);
               ramp_spec->get().set(f, f, n_frames, phase_ratio1 * n_frames, interpolation);
               ramp_spec->setVolume(vol2);
               ramp_spec->silenceFollows(true);
@@ -543,7 +548,7 @@ namespace imajuscule::audio {
           }
           new_ramp->algo.editEnvelope().onKeyPressed(0);
 
-          auto v = MakeVolume::run<nOuts>(1.f, pan) * (new_spec->volume()/chan_base_amplitude);
+          auto v = MakeVolume::run<nOuts>(1.f, pan) * new_spec->volume();
           // note that by design (see code of caller), the channel request queue is empty at this point
           // no lock : the caller is responsible for taking the out lock
           if(chans.playComputableNoLock(channel, new_ramp->fCompute(),
@@ -572,7 +577,7 @@ namespace imajuscule::audio {
         bool res = channel.addRequest({
           &getSilence(),
           // to propagate the volume of previous spec to the next spec
-          channel.get_current().volumes * (1.f/chan_base_amplitude),
+          channel.get_current().volumes,
           articulative_pause_length
         });
 
@@ -711,16 +716,14 @@ namespace imajuscule::audio {
 
         vol1 = vol2 = 1.f;
 
-        auto ht = compute_half_tone(1.f);
-
         if(!std::uniform_int_distribution<>{0,1}(mersenne<SEEDED::Yes>())) {
           // f1 is shifted up by d1
-          freq1_robot = transpose_frequency(freq1_robot, ht, d1);
+          freq1_robot = midi.transpose_frequency(freq1_robot, d1);
           vol1 = pow(har_att, d1);
         }
         else {
           // f2 is shifted up by d2
-          freq2_robot = transpose_frequency(freq2_robot, ht, d2);
+          freq2_robot = midi.transpose_frequency(freq2_robot, d2);
           vol2 = pow(har_att, d2);
         }
 
@@ -803,6 +806,7 @@ namespace imajuscule::audio {
       }
 
     private:
+      Midi midi;
       oddOnType oddOn; // even values mean off, odd values mean on.
 
       itp::interpolation interpolation : 5;

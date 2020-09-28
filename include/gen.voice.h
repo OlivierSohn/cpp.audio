@@ -421,7 +421,6 @@ namespace imajuscule::audio::voice {
     static constexpr auto n_max_orchestrator_per_channel = 1;
 
     using Parent::params;
-    using Parent::half_tone;
 
   public:
     static std::vector<ParamSpec> const & getParamSpecs() {
@@ -857,7 +856,8 @@ namespace imajuscule::audio::voice {
   protected:
 
     template<typename Element>
-    bool setupAudioElement(float freq, Element & e)
+    bool setupAudioElement(ReferenceFrequencyHerz const & freq,
+                           Element & e)
     {
       {
         auto interp = static_cast<itp::interpolation>(itp::interpolation_traversal().realValues()[static_cast<int>(.5f + value<INTERPOLATION>())]);
@@ -901,7 +901,7 @@ namespace imajuscule::audio::voice {
         e.engine.set_length_exp(ex, ex);
       }
 
-      e.engine.set_base_freq(freq);
+      e.engine.set_base_freq(freq.getFrequency());
 
       e.engine.set_length(denorm<LENGTH>());
 

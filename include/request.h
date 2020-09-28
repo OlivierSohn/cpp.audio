@@ -266,14 +266,12 @@ namespace imajuscule::audio {
         }
     };
 
-    constexpr double chan_base_amplitude = 0.3; // ok to have 3 channels at max amplitude at the same time
-
     template<Atomicity A, int nAudioOut>
     struct Request {
         using Volumes = Volumes<nAudioOut>;
 
         Request( Sounds<A> & sounds, Sound const sound, float freq_hz, Volumes vol, float duration_ms ) :
-        volumes(vol*chan_base_amplitude),
+        volumes(vol),
         buffer(nullptr)
         {
             Assert(duration_ms >= 0.f);
@@ -331,13 +329,13 @@ namespace imajuscule::audio {
         }
 
         Request( soundBuffer<double> * buffer, Volumes volume, int duration_in_frames) :
-        buffer(buffer), volumes(volume*chan_base_amplitude), duration_in_frames(duration_in_frames) { }
+        buffer(buffer), volumes(volume), duration_in_frames(duration_in_frames) { }
 
         Request( AE32Buffer buffer, Volumes volume, int duration_in_frames) :
-        buffer(buffer), volumes(volume*chan_base_amplitude), duration_in_frames(duration_in_frames) { }
+        buffer(buffer), volumes(volume), duration_in_frames(duration_in_frames) { }
 
         Request( AE64Buffer buffer, Volumes volume, int duration_in_frames) :
-        buffer(buffer), volumes(volume*chan_base_amplitude), duration_in_frames(duration_in_frames) { }
+        buffer(buffer), volumes(volume), duration_in_frames(duration_in_frames) { }
 
         Request( AE32Buffer buffer, Volumes volume, float duration_in_ms) :
         Request(buffer, std::move(volume), ms_to_frames(duration_in_ms)) { }

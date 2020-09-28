@@ -214,7 +214,7 @@ namespace imajuscule::audio::cutramp {
     float get_gain() const { return denorm<GAIN>(); }
 
     template<typename Element>
-    bool setupAudioElement(float freq, Element & e)
+    bool setupAudioElement(ReferenceFrequencyHerz const & freq, Element & e)
     {
       if(adjustFreq) {
         auto r = (p - static_cast<float>(gap())) / p;
@@ -601,8 +601,8 @@ namespace imajuscule::audio::cutramp {
         if(osc.isInactive()) {
           continue;
         }
-        auto const & tunedNote = channels.corresponding(c);
-        auto freq = to_freq(tunedNote.getValue()-Do_midi, half_tone);
+        auto const & ref_freq = channels.corresponding(c);
+        float freq = ref_freq.getFrequency();
 
         if(adjustFreq) {
           auto r = (p - static_cast<float>(gap())) / p;

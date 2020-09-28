@@ -74,10 +74,10 @@ struct AsyncWavWriter {
     auto res = writer.Initialize();
     
     if(ILE_SUCCESS != res) {
-      LG(ERR, "audio debug : failed to open '%s' in '%s' to write audio", filename.c_str(), rootDir);
+      LG(ERR, "Audio debug : failed to open '%s' in '%s' to write audio", filename.c_str(), rootDir);
       return;
     } else {
-      LG(INFO, "audio debug : opened '%s' in '%s' to write audio", filename.c_str(), rootDir);
+      LG(INFO, "Audio debug : opened '%s' in '%s' to write audio", filename.c_str(), rootDir);
     }
     
     while (true) {
@@ -102,7 +102,7 @@ struct AsyncWavWriter {
     for (int i=0; i<numFrames; ++i) {
       for (int j=0; j<n_audio_chans; ++j) {
         if (!wav_write_queue.try_push(buf[n_audio_chans*i + j])) {
-          LG(ERR, "audio debug : dropped sample");
+          LG(ERR, "Audio debug : dropped sample");
         }
       }
     }
