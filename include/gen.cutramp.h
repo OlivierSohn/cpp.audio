@@ -212,9 +212,13 @@ namespace imajuscule::audio::cutramp {
 
     float get_gain() const { return denorm<GAIN>(); }
 
-    template<typename Element>
-    bool setupAudioElement(ReferenceFrequencyHerz const & ref_freq, Element & e, int const sample_rate)
+    template<typename Element, int nAudioOut>
+    bool setupAudioElement(ReferenceFrequencyHerz const & ref_freq,
+                           Element & e,
+                           int const sample_rate,
+                           Volumes<nAudioOut> & vol)
     {
+      vol = Volumes<nAudioOut>(Element::baseVolume);
       float freq = ref_freq.getFrequency();
       if(adjustFreq) {
         auto r = (p - static_cast<float>(gap())) / p;
@@ -229,7 +233,7 @@ namespace imajuscule::audio::cutramp {
                                           value<LOUDNESS_COMPENSATION_AMOUNT>(),
                                           denorm<LOUDNESS_LEVEL>());
 
-      e.algo.getAlgo().getCtrl().setup(freq_to_angle_increment(freq - ramp_amount() * (freq-start_freq), sample_rate),
+      e.algo.getOsc().getAlgo().getCtrl().setup(freq_to_angle_increment(freq - ramp_amount() * (freq-start_freq), sample_rate),
                                        freq_to_angle_increment(freq, sample_rate),
                                        ramp_size,
                                        0.f,
@@ -278,7 +282,14 @@ namespace imajuscule::audio::cutramp {
     outPolicy,
     nAudioOut,
     XfadePolicy::SkipXfade,
-    audioelement::FreqRamp<audioelement::SimpleLinearEnvelope<getAtomicity<outPolicy>(),float>>,
+    audioelement::FinalAudioElement<
+      audioelement::VolumeAdjusted<
+        audioelement::Enveloped<
+          audioelement::FreqRampAlgo<float>,
+          audioelement::SimpleLinearEnvelope<getAtomicity<outPolicy>(),float>
+        >
+      >
+    >,
     SynchronizePhase::Yes,
     DefaultStartPhase::Zero,
     true,
@@ -590,7 +601,7 @@ namespace imajuscule::audio::cutramp {
           auto r = (p - static_cast<float>(gap())) / p;
           freq *= r;
         }
-        auto & ctrl = osc.algo.getAlgo().getCtrl();
+        auto & ctrl = osc.algo.getOsc().getAlgo().getCtrl();
         if(!force) {
           // maybe from/to is swapped so we need to test with both ends
           if(std::abs(freq - ctrl.getTo()) < 0.0001f) {

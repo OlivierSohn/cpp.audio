@@ -1148,19 +1148,18 @@ struct BaseVolumeAdjusted {
 
   void step() {
     Assert(volume_target);  // The user needs to set the volume
-    Assert(osc.angleIncrements() >= 0);  // The user needs to set the increments
-    
+
     osc.step();
 
     // low-pass the volume using a time characteristic equal to the period implied by angle increments
     if (unlikely(!volume)) {
       filter_init_with_inc = std::min(max_filter_increment,
-                                      osc.angleIncrements());
+                                      std::abs(osc.angleIncrements()));
       volume_filter.initWithAngleIncrement(filter_init_with_inc);
       volume_filter.setInitialValue(*volume_target);
     } else if (*volume != *volume_target) {
       auto const inc = std::min(max_filter_increment,
-                                osc.angleIncrements());
+                                std::abs(osc.angleIncrements()));
       if (filter_init_with_inc != inc) {
         filter_init_with_inc = inc;
         volume_filter.initWithAngleIncrement(filter_init_with_inc);
@@ -2146,14 +2145,13 @@ template<class...AEs>
 
     auto & getUnderlyingIter() { Assert(0); return *this; }
 
-    // I changed the method name (set -> setup)
-    // because initially 'from_increments' and 'to_increments' were frequencies,
-    // whereas now they are angles
+    void setAngleIncrements(T increments) {}
+
     void setup(T from_increments,
-             T to_increments,
-             T duration_in_samples_,
-             T start_sample,
-             itp::interpolation i) {
+               T to_increments,
+               T duration_in_samples_,
+               T start_sample,
+               itp::interpolation i) {
       if(start_sample >= Tr::zero()) {
         cur_sample = start_sample;
       }
