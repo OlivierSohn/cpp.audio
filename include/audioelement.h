@@ -723,6 +723,10 @@ namespace imajuscule::audio::audioelement {
       }
     }
 
+    int countStepsToRelease() const {
+      return currentReleaseDelay;
+    }
+
     bool isEnvelopeFinished() const {
       return stateAcquisition.isEnvelopeFinished();
     }
@@ -780,6 +784,11 @@ namespace imajuscule::audio::audioelement {
       nextMinChangeDuration = nSamples;
     }
 
+    // fast moog attacks are 1ms according to
+    // cf. https://www.muffwiggler.com/forum/viewtopic.php?t=65964&sid=0f628fc3793b76de64c7bceabfbd80ff
+    // so we set the max normalized enveloppe velocity to 1ms (i.e the time to go from 0 to 1)
+    static constexpr auto normalizedMinDt(int const sample_rate) { return sample_rate/1000; };
+
   protected:
     int32_t minChangeDuration = 0; // allowed to change when the counter is 0, to avoid discontinuities
     int32_t nextMinChangeDuration = 0; // copied to 'minChangeDuration' when 'ahdCounter' == 0
@@ -807,14 +816,12 @@ namespace imajuscule::audio::audioelement {
     using Param = int;
     static constexpr auto Release = EnvelopeRelease::WaitForKeyRelease;
 
-    static constexpr auto normalizedMinDt = 100;
-
     // len is in samples
     void setEnvelopeCharacTime(int len) {
-      C = std::max(len,normalizedMinDt);
+      C = std::max(len,normalizedMinDt(SAMPLE_RATE));
     }
   private:
-    int32_t C = normalizedMinDt;
+    int32_t C = normalizedMinDt(SAMPLE_RATE);
 
     int32_t getCharacTime() const {
       return std::max(getMinChangeDuration(), C);
@@ -882,11 +889,6 @@ namespace imajuscule::audio::audioelement {
       //   we should unify 'setEnvelopeCharacTime' with 'setAHDSR'
       //Assert(0 && "ADSR enveloppes cannot be set using setEnvelopeCharacTime");
     }
-
-    // fast moog attacks are 1ms according to
-    // cf. https://www.muffwiggler.com/forum/viewtopic.php?t=65964&sid=0f628fc3793b76de64c7bceabfbd80ff
-    // so we set the max normalized enveloppe velocity to 1ms (i.e the time to go from 0 to 1)
-    static constexpr auto normalizedMinDt(int const sample_rate) { return sample_rate/1000; };
 
     void setAHDSR(AHDSR const & s, int const sample_rate) {
       int32_t min_dt = normalizedMinDt(sample_rate);
@@ -1376,6 +1378,7 @@ private:
     }
     void setLoudnessParams(int low_index, float log_ratio, float loudness_level) {}
     void setAngleIncrements(T ai) {}
+    T angleIncrements() const { return 0; }
     void setAngle(T a) {
         // a is between -1 and 1
         Assert(a <= 1.);
@@ -1651,6 +1654,24 @@ template<class...AEs>
       });
     }
 
+    void setAngle(T v) {
+      for_each(aes, [v](auto & ae) {
+        ae.setAngle(v);
+      });
+    }
+
+    // we return the minimum angle, which is the most constraining wrt time constants for volume variations
+    T angleIncrements() const {
+      T minAngle = 0;
+      for_each_i(aes, [&minAngle, this](int i, auto & ae) {
+        if (gains[i]) {
+          T const ai = ae.angleIncrements();
+          minAngle = std::min(minAngle, ai);
+        }
+      });
+      return minAngle;
+    }
+
     T imag() const {
       T sum = 0.f;
       for_each_i(aes, [&sum, this] (int i, auto const & ae) {
@@ -1739,9 +1760,19 @@ template<class...AEs>
       filter_.feed(&val);
     }
 
+    // Warning: setAngleIncrements and angleIncrements are not related,
+    //one opertaes on the filter, the other on the underlying oscillator
+    
     // sets the filter frequency
     void setAngleIncrements(T v) {
       filter_.initWithAngleIncrement(v);
+    }
+    //returns the oscillator frequency
+    T angleIncrements() const {
+      return audio_element.angleIncrements();
+    }
+    void setAngle(T a) {
+      audio_element.setAngle(a);
     }
 
     T imag() const {
@@ -1791,6 +1822,13 @@ template<class...AEs>
       return compensation * cascade.imag();
     }
 
+    T angleIncrements() const {
+      return cascade.angleIncrements();
+    }
+    void setAngle(T a) {
+      cascade.setAngle(a);
+    }
+
     bool isEnvelopeFinished() const {
       return cascade.isEnvelopeFinished();
     }
@@ -1838,6 +1876,14 @@ template<class...AEs>
     void onKeyReleased(int32_t delay) {
       lp.onKeyReleased(delay);
       hp.onKeyReleased(delay);
+    }
+    T angleIncrements() const {
+      return std::min(lp.angleIncrements(),
+                      hp.angleIncrements());
+    }
+    void setAngle(T a) {
+      lp.setAngle(a);
+      hp.setAngle(a);
     }
 
   private:

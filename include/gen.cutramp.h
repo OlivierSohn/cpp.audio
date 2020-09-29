@@ -237,18 +237,6 @@ namespace imajuscule::audio::cutramp {
       return true;
     }
 
-    template<
-      SynchronizePhase Sync,
-      DefaultStartPhase Phase,
-      typename Chans,
-      typename MonoNoteChannel,
-      typename CS>
-    std::function<bool(Chans&,int)> onStartNote(MonoNoteChannel & c, CS & cs)
-    {
-      setPhase<Sync, Phase>(c,cs);
-      return {};
-    }
-
     template<typename T>
     int adjusted(T val) {
       static_assert(std::is_integral<T>());

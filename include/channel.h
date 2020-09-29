@@ -160,7 +160,10 @@ namespace imajuscule::audio {
         auto const & get_requests() const { return requests; }
         auto const & get_current() const { return current; }
 
-        auto const get_size_half_xfade() const { Assert(XF == XfadePolicy::UseXfade); return size_half_xfade; }
+        auto const get_size_half_xfade() const {
+          Assert(XF == XfadePolicy::UseXfade);
+          return size_half_xfade;
+        }
 
         auto const get_remaining_samples_count() const { return remaining_samples_count; }
 

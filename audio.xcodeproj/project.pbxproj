@@ -41,6 +41,7 @@
 		0951A5201EB62CBB00CE4A4E /* CoreFoundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 097D56CC1E86DCA000018F14 /* CoreFoundation.framework */; };
 		0951A5221EB62CBB00CE4A4E /* libaudio.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 09FF3F231E36EBBB00C81351 /* libaudio.a */; };
 		0951A5301EB62CD700CE4A4E /* main.count_channels.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 0951A52F1EB62CD700CE4A4E /* main.count_channels.cpp */; };
+		095C352B2523B0AA0079CC4D /* unity.build.birds.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 095C352A2523B0AA0079CC4D /* unity.build.birds.cpp */; };
 		096C6D571E9F85B800389746 /* AppKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 097D56D01E86DCC900018F14 /* AppKit.framework */; };
 		096C6D581E9F85B800389746 /* CoreGraphics.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 097D56CE1E86DCB600018F14 /* CoreGraphics.framework */; };
 		096C6D591E9F85B800389746 /* CoreFoundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 097D56CC1E86DCA000018F14 /* CoreFoundation.framework */; };
@@ -49,6 +50,14 @@
 		097D56CD1E86DCA000018F14 /* CoreFoundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 097D56CC1E86DCA000018F14 /* CoreFoundation.framework */; };
 		097D56CF1E86DCB600018F14 /* CoreGraphics.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 097D56CE1E86DCB600018F14 /* CoreGraphics.framework */; };
 		097D56D11E86DCC900018F14 /* AppKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 097D56D01E86DCC900018F14 /* AppKit.framework */; };
+		098432A12523B03300F0DF48 /* libportaudio.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 09B01D5F251536DF0068FCFD /* libportaudio.a */; };
+		098432A22523B03300F0DF48 /* libalgorithms.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 0967E511208E539D004B488E /* libalgorithms.a */; };
+		098432A32523B03300F0DF48 /* Accelerate.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 093268CF1EAB7031001BAA8E /* Accelerate.framework */; };
+		098432A42523B03300F0DF48 /* AppKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 097D56D01E86DCC900018F14 /* AppKit.framework */; };
+		098432A52523B03300F0DF48 /* CoreGraphics.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 097D56CE1E86DCB600018F14 /* CoreGraphics.framework */; };
+		098432A62523B03300F0DF48 /* CoreFoundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 097D56CC1E86DCA000018F14 /* CoreFoundation.framework */; };
+		098432A72523B03300F0DF48 /* libaudio.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 09FF3F231E36EBBB00C81351 /* libaudio.a */; };
+		098432A92523B03300F0DF48 /* Info.plist in CopyFiles */ = {isa = PBXBuildFile; fileRef = 09B01D9C25168CB40068FCFD /* Info.plist */; };
 		098474081E8058EE0014465E /* unity.build.genheaders.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 098474071E8058EE0014465E /* unity.build.genheaders.cpp */; };
 		098474281E8059920014465E /* libaudio.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 09FF3F231E36EBBB00C81351 /* libaudio.a */; };
 		099E06E11E36EC720012348E /* unity.build.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 099E06E01E36EC6D0012348E /* unity.build.cpp */; };
@@ -170,6 +179,13 @@
 			remoteGlobalIDString = 09FF3F221E36EBBB00C81351;
 			remoteInfo = audio;
 		};
+		0984329D2523B03300F0DF48 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 09FF3F1B1E36EBBB00C81351 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 09FF3F221E36EBBB00C81351;
+			remoteInfo = audio;
+		};
 		098474221E8059810014465E /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = 09FF3F1B1E36EBBB00C81351 /* Project object */;
@@ -240,6 +256,16 @@
 			files = (
 			);
 			runOnlyForDeploymentPostprocessing = 1;
+		};
+		098432A82523B03300F0DF48 /* CopyFiles */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 12;
+			dstPath = "";
+			dstSubfolderSpec = 16;
+			files = (
+				098432A92523B03300F0DF48 /* Info.plist in CopyFiles */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
 		};
 		098473FE1E8057E90014465E /* CopyFiles */ = {
 			isa = PBXCopyFilesBuildPhase;
@@ -316,6 +342,8 @@
 		09529DFC1E439EC000705B99 /* program.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = program.h; path = include/program.h; sourceTree = "<group>"; };
 		09529DFD1E439F2700705B99 /* smoothparam.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = smoothparam.h; path = include/smoothparam.h; sourceTree = "<group>"; };
 		09529DFE1E439FD800705B99 /* midi.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = midi.h; path = include/midi.h; sourceTree = "<group>"; };
+		095C35152523B0870079CC4D /* main.birds.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = main.birds.cpp; path = source/main.birds.cpp; sourceTree = "<group>"; };
+		095C352A2523B0AA0079CC4D /* unity.build.birds.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = unity.build.birds.cpp; path = source/unity.build.birds.cpp; sourceTree = "<group>"; };
 		0966EA6E1E45C62B00A86E7C /* gen.voice.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = gen.voice.cpp; path = source/gen.voice.cpp; sourceTree = "<group>"; };
 		096C6D621E9F85B800389746 /* wir_2_wav */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = wir_2_wav; sourceTree = BUILT_PRODUCTS_DIR; };
 		096C6D631E9F860300389746 /* main.wir_2_wav.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = main.wir_2_wav.cpp; path = source/main.wir_2_wav.cpp; sourceTree = "<group>"; };
@@ -326,6 +354,8 @@
 		097D56CC1E86DCA000018F14 /* CoreFoundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreFoundation.framework; path = System/Library/Frameworks/CoreFoundation.framework; sourceTree = SDKROOT; };
 		097D56CE1E86DCB600018F14 /* CoreGraphics.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreGraphics.framework; path = System/Library/Frameworks/CoreGraphics.framework; sourceTree = SDKROOT; };
 		097D56D01E86DCC900018F14 /* AppKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = AppKit.framework; path = System/Library/Frameworks/AppKit.framework; sourceTree = SDKROOT; };
+		098432AD2523B03300F0DF48 /* birds */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = birds; sourceTree = BUILT_PRODUCTS_DIR; };
+		098432B72523B03300F0DF48 /* rt.resynth copy-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; name = "rt.resynth copy-Info.plist"; path = "/Users/Olivier/Dev/cpp.audio/rt.resynth copy-Info.plist"; sourceTree = "<absolute>"; };
 		098473FA1E7F2A8C0014465E /* loudness_filter.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = loudness_filter.cpp; path = source/loudness_filter.cpp; sourceTree = "<group>"; };
 		098474001E8057E90014465E /* generate_filters_headers */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = generate_filters_headers; sourceTree = BUILT_PRODUCTS_DIR; };
 		098474021E8057E90014465E /* main.gen_headers.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = main.gen_headers.cpp; path = source/main.gen_headers.cpp; sourceTree = "<group>"; };
@@ -449,6 +479,20 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		098432A02523B03300F0DF48 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				098432A12523B03300F0DF48 /* libportaudio.a in Frameworks */,
+				098432A22523B03300F0DF48 /* libalgorithms.a in Frameworks */,
+				098432A32523B03300F0DF48 /* Accelerate.framework in Frameworks */,
+				098432A42523B03300F0DF48 /* AppKit.framework in Frameworks */,
+				098432A52523B03300F0DF48 /* CoreGraphics.framework in Frameworks */,
+				098432A62523B03300F0DF48 /* CoreFoundation.framework in Frameworks */,
+				098432A72523B03300F0DF48 /* libaudio.a in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		098473FD1E8057E90014465E /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
@@ -544,9 +588,11 @@
 				094BFE4120B81A49001F1D81 /* audio_platform_au.cpp */,
 				094BFE4220B825A0001F1D81 /* audio_platform_pa.cpp */,
 				094BFE4020B80EE0001F1D81 /* audio_platforms.cpp */,
+				09B01D61251679BA0068FCFD /* events.cpp */,
 				090B14C31E75CCDF005A47C5 /* gen.cutramp.cpp */,
 				0966EA6E1E45C62B00A86E7C /* gen.voice.cpp */,
 				098473FA1E7F2A8C0014465E /* loudness_filter.cpp */,
+				095C35152523B0870079CC4D /* main.birds.cpp */,
 				0951A52F1EB62CD700CE4A4E /* main.count_channels.cpp */,
 				098474021E8057E90014465E /* main.gen_headers.cpp */,
 				093A24E51E9B8E21009874DF /* main.join_non_zeros.cpp */,
@@ -561,6 +607,7 @@
 				092412A01E56F04500A848A8 /* samples.cpp */,
 				099E06DF1E36EC6D0012348E /* sound.cpp */,
 				09A8F2291E442C3A0071C141 /* soundengine.cpp */,
+				095C352A2523B0AA0079CC4D /* unity.build.birds.cpp */,
 				099E06E01E36EC6D0012348E /* unity.build.cpp */,
 				098474071E8058EE0014465E /* unity.build.genheaders.cpp */,
 				093A24C81E9B8C47009874DF /* unity.build.joinnonzeros.cpp */,
@@ -568,7 +615,6 @@
 				09B01D4025152EE10068FCFD /* unity.build.rt.resynth.cpp */,
 				093A24E31E9B8D73009874DF /* unity.build.testfft.cpp */,
 				096C6D641E9F860300389746 /* unity.build.wir_2_wav.cpp */,
-				09B01D61251679BA0068FCFD /* events.cpp */,
 			);
 			name = source;
 			sourceTree = "<group>";
@@ -650,6 +696,7 @@
 				099E06E21E36EC7F0012348E /* source */,
 				09FF3F241E36EBBB00C81351 /* Products */,
 				097D56CB1E86DCA000018F14 /* Frameworks */,
+				098432B72523B03300F0DF48 /* rt.resynth copy-Info.plist */,
 			);
 			sourceTree = "<group>";
 		};
@@ -666,6 +713,7 @@
 				0951A5291EB62CBB00CE4A4E /* count_channels */,
 				093671D02514B84200620289 /* resynth */,
 				09B01D5B25152F0A0068FCFD /* rt.resynth */,
+				098432AD2523B03300F0DF48 /* birds */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -790,6 +838,24 @@
 			name = wir_2_wav;
 			productName = generate_filters_headers;
 			productReference = 096C6D621E9F85B800389746 /* wir_2_wav */;
+			productType = "com.apple.product-type.tool";
+		};
+		0984329B2523B03300F0DF48 /* birds */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 098432AA2523B03300F0DF48 /* Build configuration list for PBXNativeTarget "birds" */;
+			buildPhases = (
+				0984329E2523B03300F0DF48 /* Sources */,
+				098432A02523B03300F0DF48 /* Frameworks */,
+				098432A82523B03300F0DF48 /* CopyFiles */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				0984329C2523B03300F0DF48 /* PBXTargetDependency */,
+			);
+			name = birds;
+			productName = generate_filters_headers;
+			productReference = 098432AD2523B03300F0DF48 /* birds */;
 			productType = "com.apple.product-type.tool";
 		};
 		098473FF1E8057E90014465E /* generate_filters_headers */ = {
@@ -918,6 +984,7 @@
 				0951A5111EB62CBB00CE4A4E /* count_channels */,
 				093671C12514B84200620289 /* resynth */,
 				09B01D4B25152F0A0068FCFD /* rt.resynth */,
+				0984329B2523B03300F0DF48 /* birds */,
 			);
 		};
 /* End PBXProject section */
@@ -1037,6 +1104,14 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		0984329E2523B03300F0DF48 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				095C352B2523B0AA0079CC4D /* unity.build.birds.cpp in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		098473FC1E8057E90014465E /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -1101,6 +1176,11 @@
 			isa = PBXTargetDependency;
 			target = 09FF3F221E36EBBB00C81351 /* audio */;
 			targetProxy = 096C6D4F1E9F85B800389746 /* PBXContainerItemProxy */;
+		};
+		0984329C2523B03300F0DF48 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 09FF3F221E36EBBB00C81351 /* audio */;
+			targetProxy = 0984329D2523B03300F0DF48 /* PBXContainerItemProxy */;
 		};
 		098474231E8059810014465E /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
@@ -1207,6 +1287,32 @@
 			isa = XCBuildConfiguration;
 			baseConfigurationReference = 099E06F31E36ECE50012348E /* osx.release.xcconfig */;
 			buildSettings = {
+				PRODUCT_NAME = "$(TARGET_NAME)";
+			};
+			name = Release;
+		};
+		098432AB2523B03300F0DF48 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 099E06F21E36ECE50012348E /* osx.debug.xcconfig */;
+			buildSettings = {
+				INFOPLIST_FILE = "rt.resynth copy-Info.plist";
+				LIBRARY_SEARCH_PATHS = (
+					"$(inherited)",
+					/usr/local/Cellar/portaudio/HEAD/lib,
+				);
+				PRODUCT_NAME = "$(TARGET_NAME)";
+			};
+			name = Debug;
+		};
+		098432AC2523B03300F0DF48 /* Release */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 099E06F31E36ECE50012348E /* osx.release.xcconfig */;
+			buildSettings = {
+				INFOPLIST_FILE = "rt.resynth copy-Info.plist";
+				LIBRARY_SEARCH_PATHS = (
+					"$(inherited)",
+					/usr/local/Cellar/portaudio/HEAD/lib,
+				);
 				PRODUCT_NAME = "$(TARGET_NAME)";
 			};
 			name = Release;
@@ -1348,6 +1454,15 @@
 			buildConfigurations = (
 				096C6D601E9F85B800389746 /* Debug */,
 				096C6D611E9F85B800389746 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		098432AA2523B03300F0DF48 /* Build configuration list for PBXNativeTarget "birds" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				098432AB2523B03300F0DF48 /* Debug */,
+				098432AC2523B03300F0DF48 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

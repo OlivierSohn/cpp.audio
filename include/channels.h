@@ -122,11 +122,9 @@ private:
                 , int nOrchestratorsMaxPerChannel=0
                  , int nComputesMin = 0):
         _lock(l)
-      , orchestrators(nOrchestratorsMaxPerChannel * nChannelsMax)
       // (almost) worst case scenario : each channel is playing an audiolement crossfading with another audio element
       // "almost" only because the assumption is that requests vector holds at most one audioelement at any time
       // if there are multiple audioelements in request vector, we need to be more precise about when audioelements start to be computed...
-      // or we need to constrain the implementation to add requests in realtime, using orchestrators.
       , computes(std::max(nComputesMin, 2*nChannelsMax))
       , oneShots(2*nChannelsMax)
 #ifndef CUSTOM_SAMPLE_RATE
@@ -174,14 +172,6 @@ private:
         }
       }
 #endif
-      
-        bool add_orchestrator(OrchestratorFunc f) {
-          if(!orchestrators.tryInsert(std::move(f))) {
-            return false;
-          }
-          nRealtimeFuncs.fetch_add(1, std::memory_order_relaxed);
-          return true;
-        }
 
         template<typename F>
         bool registerCompute(F f) {
@@ -423,10 +413,6 @@ private:
             f(*this, tNanos);
           });
 
-          nRemoved += orchestrators.forEach([this](auto & orchestrate) {
-            return orchestrate(*this, audioelement::n_frames_per_buffer);
-          });
-
           nRemoved += computes.forEach([tNanos, nFrames](auto & compute) {
             return compute(nFrames, tNanos);
           });
@@ -456,16 +442,15 @@ private:
 #endif
         lockfree::scmp::fifo<OneShotFunc> oneShots;
 
-        // orchestrators and computes could be owned by the channels but it is maybe cache-wise more efficient
+        // computes could be owned by the channels but it is maybe cache-wise more efficient
         // to group them here (if the lambda owned is small enough to not require dynamic allocation)
         //
         // We use the 'Synchronization::SingleThread' synchronization because
         // these vectors are accessed from a single thread only (the audio real-time thread).
-        static_vector<Synchronization::SingleThread, OrchestratorFunc> orchestrators;
         static_vector<Synchronization::SingleThread, ComputeFunc> computes;
 
         // This counter is used to be able to know, without locking, if there are
-        // any computes / orchestrators / oneshot functions ATM.
+        // any computes / oneshot functions ATM.
         std::atomic_int nRealtimeFuncs; // all operations are 'memory_order_relaxed'
         static_assert(std::atomic_int::is_always_lock_free);
 

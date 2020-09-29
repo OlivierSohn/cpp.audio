@@ -1,19 +1,20 @@
-
 namespace imajuscule::audio {
-  soundBuffer<double> & getSilence();
 
-  enum class FreqXfade : unsigned char {
-    BEGIN,
+enum class FreqXfade : unsigned char {
+  BEGIN,
+  
+  No=BEGIN,
+  NonTrivial,
+  All,
+  
+  END
+};
 
-    No=BEGIN,
-    NonTrivial,
-    All,
+enumTraversal const & xfade_freq_traversal();
 
-    END
-    };
+} // NS
 
-
-    enumTraversal const & xfade_freq_traversal();
+namespace imajuscule::audio::audioelement {
 
     static inline float clamp_phase_ratio(float v) {
       if(v > 1.f) {
@@ -230,30 +231,212 @@ namespace imajuscule::audio {
     typename Mix = typename MixOf<M>::type
     >
     struct SoundEngine {
-
       using Algo = typename SoundEngineAlgo_<Mix, M>::type;
-      using Request = Request<A, nOuts>;
 
-      using audioElt = audioelement::FinalAudioElement< audioelement::SimplyEnveloped < A, Algo > >;
-      using Chan = Channel<A, nOuts, XfadePolicy::UseXfade, MaxQueueSize::One>;
+      using audioElt = audioelement::VolumeAdjusted< audioelement::SimplyEnveloped < A, Algo > >;
+      using FPT = typename audioElt::FPT;
+
+      static constexpr auto hasEnvelope = true;
+      static constexpr auto baseVolume = audioElt::baseVolume;
+      static constexpr auto isMonoHarmonic = audioElt::isMonoHarmonic; // this is an approximation : during a xfade we may have 2 different harmonics
 
       static constexpr auto atomicity = A;
       using oddOnTraits = maybeAtomic<atomicity,unsigned int>;
       using oddOnType = typename oddOnTraits::type;
-
+      
       static enumTraversal ModeTraversal;
 
-    public:
-
-      template<typename F>
-      SoundEngine(F f) :
-      get_ramps(std::move(f)),
-      xfade_freq(FreqXfade::No)
+      SoundEngine()
+      : xfade_freq(FreqXfade::No)
       {
-        getSilence(); // make sure potential dynamic allocation occurs not under audio lock
         oddOnTraits::write(oddOn, 0, std::memory_order_relaxed);
       }
+
+      Ramps<audioElt> get_ramps() {
+        using namespace imajuscule::audio::audioelement;
+        Ramps<audioElt> res;
+        // in SoundEngine.playNextSpec (from the rt audio thread),
+        // we onKeyPressed() the inactive ramp and onKeyReleased() the active ramp.
+        for(auto & r: ramps) {
+          auto state = r.getEnvelope().getRelaxedState();
+          if(state == EnvelopeState::EnvelopeDone2) {
+            if(goOn()) {
+              res.envelopeDone = &r;
+            }
+          }
+          else {
+            if(state == EnvelopeState::KeyPressed) {
+              res.keyPressed = &r;
+            }
+          }
+        }
+        return res;
+      }
+
+      auto &       editEnvelope()       { return *this; }
+      auto const & getEnvelope()  const { return *this; }
       
+      bool tryAcquire() {
+        unsigned int cur = getOddOn();
+        while(1) {
+          if(!isEnvelopeFinished_internal(cur)) {
+            return false;
+          }
+          if(tryIncrementOddOn(cur)) {
+            // we took ownership.
+            return true;
+          }
+          // another thread took ownership ...
+          if(is_odd(cur)) {
+            return false;
+          }
+          // ... but the other thread released ownership already, so we can retry.
+        }
+      }
+      
+      bool acquireStates() const {
+        unsigned int cur = getOddOn();
+        return is_odd(cur);
+      }
+      
+      void forgetPastSignals() {
+        remaining_silence_steps = 0;
+        start_angle = 0;
+      }
+      bool isEnvelopeFinished() const {
+        return isEnvelopeFinished_internal(getOddOn());
+      }
+      void onKeyPressed(int32_t delay) { // TODO use delay
+        // we don't increment 'oddOn' here, or 'engine.set_active(true)' : it has been done in 'tryAcquire'.
+      }
+      bool canHandleExplicitKeyReleaseNow(int32_t delay) const { // TODO use delay
+        return goOn();
+      }
+      void onKeyReleased(int32_t delay) {
+        if(auto i = goOn()) {
+          stop(i); // TODO we should delay the stop
+          for(auto & r: ramps) {
+            r.editEnvelope().onKeyReleased(delay);
+          }
+        }
+      }
+      
+      void setLoudnessParams(int low_index, float log_ratio, float loudness_level) {
+        for(auto & r : ramps) {
+          r.getOsc().setLoudnessParams(low_index, log_ratio, loudness_level);
+        }
+      }
+      
+      template<typename T>
+      void setGains(T&& gains) {
+        for(auto & r : ramps) {
+          r.getOsc().getOsc().setGains(std::forward<T>(gains));
+        }
+      }
+      
+      void setFiltersOrder(int order) {
+        for(auto & r : ramps) {
+          r.getOsc().getOsc().setFiltersOrder(order);
+        }
+      }
+      
+      bool isInactive() const {
+        for(auto const & r: ramps) {
+          if(!r.isInactive()) {
+            return false;
+          }
+        }
+        return true;
+      }
+      
+      void setAngle(FPT a) {
+        start_angle = a;
+      }
+
+      FPT angle() const {
+        for (auto const & r : ramps) {
+          switch (r.getEnvelope().getRelaxedState()) {
+            case EnvelopeState::KeyReleased:
+            case EnvelopeState::KeyPressed:
+              return r.angle();
+            case EnvelopeState::SoonKeyPressed:
+            case EnvelopeState::EnvelopeDone1:
+            case EnvelopeState::EnvelopeDone2:
+              break;
+          }
+        }
+        return {};
+      }
+      
+      void setAngleIncrements(FPT) {}
+      
+      FPT angleIncrements() const {
+        for (auto const & r : ramps) {
+          switch (r.getEnvelope().getRelaxedState()) {
+            case EnvelopeState::KeyReleased:
+            case EnvelopeState::KeyPressed:
+              return r.angleIncrements();
+            case EnvelopeState::SoonKeyPressed:
+            case EnvelopeState::EnvelopeDone1:
+            case EnvelopeState::EnvelopeDone2:
+              break;
+          }
+        }
+        return {};
+      }
+      
+      void step_algos() {
+        for (auto & r : ramps) {
+          switch (r.getEnvelope().getRelaxedState()) {
+            case EnvelopeState::KeyReleased:
+            case EnvelopeState::KeyPressed:
+            case EnvelopeState::SoonKeyPressed:
+            case EnvelopeState::EnvelopeDone1:
+              r.step();
+              break;
+            case EnvelopeState::EnvelopeDone2:
+              break;
+          }
+        }
+      }
+
+      FPT imag() const {
+        FPT v{};
+        for (auto & r : ramps) {
+          switch (r.getEnvelope().getRelaxedState()) {
+            case EnvelopeState::KeyReleased:
+            case EnvelopeState::KeyPressed:
+              v += r.imag();
+              break;
+            case EnvelopeState::SoonKeyPressed:
+            case EnvelopeState::EnvelopeDone1:
+            case EnvelopeState::EnvelopeDone2:
+              break;
+          }
+        }
+        return v;
+      }
+      
+    private:
+      // 3 because there is 'before', 'current' and the inactive one
+      std::array<audioElt, 3> ramps;
+      
+      bool isEnvelopeFinished_internal (unsigned int state) const {
+        if(is_odd(state)) {
+          return false;
+        }
+        for(auto & r: ramps) {
+          if(!r.getEnvelope().isEnvelopeFinished()) {
+            return false;
+          }
+        }
+        return true;
+      }
+      
+    public:
+      auto & getRamps() { return ramps; }
+      auto const & getRamps() const { return ramps; }
+            
       void set_sample_rate(int s) {
         sample_rate = s;
       }
@@ -500,102 +683,73 @@ namespace imajuscule::audio {
         return mc;
       }
 
-      // returns false if channel needs to be closed
-      template<typename Chans>
-      bool orchestrate(Chans & chans, int max_frame_compute, Chan & channel) {
-        if(ramp_specs.done()) {
-          return false;
-        }
+      void step() {
+        orchestrate_algos();
+        step_algos();
+      }
 
-        if(channel.isPlaying() || !channel.get_requests().empty()) {
-          return true;
+    private:
+      void orchestrate_algos() {
+        if (ramp_specs.done()) {
+          return;
         }
+        
+        // there are some more specs to run
+        
+        auto cur = ramp_specs.get_current();
 
-        // is current request soon xfading?
-        // TODO today, we rely on channel xfades for xfades. But we should have channels
-        // with no xfade, and just use enveloppes (when one enveloppe starts releasing,
-        // the other starts raising : hence we need 2 channels instead of one.).
-        if(channel.get_remaining_samples_count() >= max_frame_compute + 1 + channel.get_size_half_xfade()) {
-          return true;
-        }
-        if(state_silence) {
-          state_silence = false;
-        }
-        else {
-          bool const has_silence = articulative_pause_length > 2*channel.get_size_xfade();
-          if(has_silence) {
-            if(auto cur = ramp_specs.get_current()) {
-              if(cur->silenceFollows()) {
-                state_silence = true;
-                playSilence(channel);
-                return true;
-              }
+        if(auto const * pressed = get_ramps().keyPressed) {
+          int const remaining_steps_to_release = pressed->getEnvelope().countStepsToRelease();
+          if (remaining_steps_to_release > 0) {
+            return;
+          }
+          
+          if (remaining_steps_to_release == 0) {
+            if (cur && cur->getSilenceFollows()) {
+              remaining_silence_steps = articulative_pause_length;
             }
           }
         }
-        return playNextSpec(chans, channel);
-      }
 
-      template<typename Chans>
-      bool playNextSpec(Chans & chans, Chan & channel) {
-        while(true) {
-          auto rampsStatus = get_ramps();
-          if(auto * prevRamp = rampsStatus.keyPressed) {
-            prevRamp->algo.editEnvelope().onKeyReleased(0);
-          }
-          auto new_ramp = rampsStatus.envelopeDone;
-          if(!new_ramp) {
-            Assert(rampsStatus.envelopeDone); // might be null if length of ramp is too small ?
-            return true;
-          }
-          auto new_spec = ramp_specs.get_next_ramp_for_run();
-          if(!new_spec) {
-            return false;
-          }
-          new_ramp->algo.getAlgo().getCtrl() = new_spec->get();
-          new_ramp->algo.forgetPastSignals();
-          new_ramp->algo.editEnvelope().setEnvelopeCharacTime(xfade_len);
-          if(!new_ramp->algo.editEnvelope().tryAcquire()) {
-            Assert(0);
-          }
-          new_ramp->algo.editEnvelope().onKeyPressed(0);
-
-          auto v = MakeVolume::run<nOuts>(1.f, pan) * new_spec->volume();
-          // note that by design (see code of caller), the channel request queue is empty at this point
-          // no lock : the caller is responsible for taking the out lock
-          if(chans.playComputableNoLock(channel, new_ramp->fCompute(),
-                                        Request{
-                                          &new_ramp->buffer->buffer[0],
-                                          v,
-                                          // TODO this should probably be reworked, as now, the enveloppe is responsible for fading out.
-                                          static_cast<int>(.5f + new_ramp->algo.getAlgo().getCtrl().get_duration_in_samples())
-                                        }))
-          {
-            return true;
+        if (cur && cur->getSilenceFollows()) {
+          if (remaining_silence_steps > 0) {
+            --remaining_silence_steps;
+            return;
           }
         }
-        Assert(0);
-        return false;
+
+        playNextSpec();
       }
 
-      void playSilence(Chan & channel) {
-        Assert(articulative_pause_length > 2*channel.get_size_xfade());
-
-        if(auto * prevRamp = get_ramps().keyPressed) {
-          prevRamp->algo.editEnvelope().onKeyReleased(0);
+      void playNextSpec() {
+        auto rampsStatus = get_ramps();
+        Assert(rampsStatus.envelopeDone); // might be null if length of ramp is too small ?
+        auto new_ramp = rampsStatus.envelopeDone;
+        if(!new_ramp) {
+          return;
         }
-        // note that by design (see code of caller), the channel request queue is empty at this point
-        // no lock : the caller is responsible for taking the out lock
-        bool res = channel.addRequest({
-          &getSilence(),
-          // to propagate the volume of previous spec to the next spec
-          channel.get_current().volumes,
-          articulative_pause_length
-        });
+        auto new_spec = ramp_specs.get_next_ramp_for_run();
+        if(!new_spec) {
+          return;
+        }
+        new_ramp->getOsc().getAlgo().getCtrl() = new_spec->get();
+        new_ramp->forgetPastSignals();
+        new_ramp->setAngle(start_angle);
+        new_ramp->setVolumeTarget(new_spec->volume());
+        new_ramp->editEnvelope().setEnvelopeCharacTime(xfade_len);
+        if(!new_ramp->editEnvelope().tryAcquire()) {
+          Assert(0);
+        }
 
-        Assert(res); // because length was checked
-      }
+        int const time_to_release =
+          static_cast<int>(.5f + new_ramp->getOsc().getAlgo().getCtrl().get_duration_in_samples()) - xfade_len;
+        Assert(time_to_release >= 0);
 
+        new_ramp->editEnvelope().onKeyPressed(0);
+        new_ramp->editEnvelope().onKeyReleased(std::max(time_to_release, 0));
+     }
+
+    public:
       void setEnvelopeCharacTime(int len) {
         xfade_len = len;
       }
@@ -676,7 +830,7 @@ namespace imajuscule::audio {
                                                   std::memory_order_acq_rel);
       }
 
-      bool initialize_sweep(float low, float high, float pan) {
+      bool initialize_sweep(float low, float high) {
         bool initialize = true;
         if(!markov) {
           markov = create_sweep();
@@ -688,11 +842,11 @@ namespace imajuscule::audio {
         freq1_robot = low;
         freq2_robot = high;
 
-        return do_initialize(initialize, 0, 0, 1, 0, articulative_pause_length, pan);
+        return do_initialize(initialize, 0, 0, 1, 0, articulative_pause_length);
       }
 
       bool initialize_birds(int start_node, int pre_tries, int min_path_length, int additional_tries,
-        SoundEngineInitPolicy init_policy, FreqXfade xfade_freq, int articulative_pause_length, float pan) {
+        SoundEngineInitPolicy init_policy, FreqXfade xfade_freq, int articulative_pause_length) {
         this->xfade_freq = xfade_freq;
 
         bool initialize = (!markov) || (init_policy==SoundEngineInitPolicy::StartAfresh);
@@ -703,11 +857,11 @@ namespace imajuscule::audio {
           }
         }
 
-        return do_initialize(initialize, start_node, pre_tries, min_path_length, additional_tries, articulative_pause_length, pan);
+        return do_initialize(initialize, start_node, pre_tries, min_path_length, additional_tries, articulative_pause_length);
       }
 
       bool initialize_wind(int start_node, int pre_tries, int min_path_length, int additional_tries,
-        SoundEngineInitPolicy init_policy, float pan) {
+        SoundEngineInitPolicy init_policy) {
         bool initialize = (!markov) || (init_policy==SoundEngineInitPolicy::StartAfresh);
         if(!markov) {
           markov = create_wind();
@@ -716,11 +870,11 @@ namespace imajuscule::audio {
           }
         }
 
-        return do_initialize(initialize, start_node, pre_tries, min_path_length, additional_tries, articulative_pause_length, pan);
+        return do_initialize(initialize, start_node, pre_tries, min_path_length, additional_tries, articulative_pause_length);
       }
 
       bool initialize_robot(int start_node, int pre_tries, int min_path_length, int additional_tries,
-        SoundEngineInitPolicy init_policy, int articulative_pause_length, float pan) {
+        SoundEngineInitPolicy init_policy, int articulative_pause_length) {
         auto scatter = 1.f + freq_scatter;
         constexpr auto detune = 0.985f;
         freq1_robot = std::uniform_real_distribution<float>{base_freq / scatter, base_freq * scatter}(mersenne<SEEDED::Yes>());
@@ -753,11 +907,11 @@ namespace imajuscule::audio {
           }
         }
 
-        return do_initialize(initialize, start_node, pre_tries, min_path_length, additional_tries, articulative_pause_length, pan);
+        return do_initialize(initialize, start_node, pre_tries, min_path_length, additional_tries, articulative_pause_length);
       }
 
       bool do_initialize(bool initialize, int start_node, int pre_tries, int min_path_length, int additional_tries,
-                    int articulative_pause_length, float pan)
+                    int articulative_pause_length)
       {
         auto n_frames = static_cast<float>(ms_to_frames(length));
         if(n_frames <= 0) {
@@ -775,7 +929,6 @@ namespace imajuscule::audio {
 
         ramp_specs.reset();
         this->articulative_pause_length = articulative_pause_length;
-        state_silence = true;
 
         // running the markov chain will populate ramp_specs
         if(initialize) {
@@ -795,26 +948,8 @@ namespace imajuscule::audio {
         }
 
         ramp_specs.finalize();
-
-        this->pan = pan;
+        
         return true;
-      }
-
-      template<typename Chans>
-      std::function<bool(Chans&,int)> getOrchestrator(Chan & channel)
-      {
-        return [this, &channel](Chans & chans, int max_frame_compute){
-          auto i = goOn();
-          if(0==i) {
-            return false;
-          }
-
-          auto res = orchestrate(chans, max_frame_compute, channel);
-          if(!res) {
-            tryIncrementOddOn(i);
-          }
-          return res;
-        };
       }
 
     private:
@@ -823,7 +958,7 @@ namespace imajuscule::audio {
 
       itp::interpolation interpolation : 5;
       itp::interpolation freq_interpolation : 5;
-      std::function< Ramps<audioElt>() > get_ramps;
+
       float d1, d2, har_att, length, base_freq, freq_scatter, phase_ratio1=0.f, phase_ratio2=0.f;
       float min_exp;
       float max_exp;
@@ -833,8 +968,8 @@ namespace imajuscule::audio {
 
       float freq1_robot, freq2_robot; // used also for sweep
       float vol1 = 1.f, vol2 = 1.f;
-      float pan;
 
+      FPT start_angle=0;
       int xfade_len;
       int freq_xfade;
       int articulative_pause_length;
@@ -844,7 +979,7 @@ namespace imajuscule::audio {
       std::unique_ptr<MarkovChain> markov;
       FreqXfade xfade_freq:2;
 
-      bool state_silence:1;
+      int remaining_silence_steps = 0;
 
       struct RampSpecs {
         static constexpr auto n_specs = 30;
@@ -861,7 +996,7 @@ namespace imajuscule::audio {
         using CTRLS = typename Algo::Ctrl;
         static_assert(std::tuple_size<CTRLS>::value == 1,"multi freq not supported");
         struct Ctrl {
-          bool silenceFollows() const { return silenceAfter; }
+          bool getSilenceFollows() const { return silenceAfter; }
 
           void silenceFollows(bool b) { silenceAfter = b; }
 
@@ -905,6 +1040,13 @@ namespace imajuscule::audio {
           }
           return &a[it];
         }
+        Ctrl const * get_current() const {
+          if(it >= end) {
+            return nullptr;
+          }
+          return &a[it];
+        }
+
         void finalize() {
           Assert(0 == (it+1-end) % iter_cycle_length);
           it=-1;
@@ -926,9 +1068,9 @@ namespace imajuscule::audio {
         Ctrls a;
       } ramp_specs;
 
-      float rand_0_1() const { return std::uniform_real_distribution<float>{0.f, 1.f}(mersenne<SEEDED::Yes>());}
+      static float rand_0_1() { return std::uniform_real_distribution<float>{0.f, 1.f}(mersenne<SEEDED::Yes>()); }
     public:
-      auto & getRamps() { return ramp_specs; }
+      auto & getRampsSpecs() { return ramp_specs; }
     };
 
   } // NS imajuscule::audio

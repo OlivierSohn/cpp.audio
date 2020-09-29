@@ -219,8 +219,8 @@ public:
     return {};
   }
   
-  typename Chans::ChannelsT::XFadeChans * getFirstXfadeChans() {
-    if(auto m = getChannelHandler().getChannels().getChannelsXFade().maybe_front()) {
+  typename Chans::ChannelsT::NoXFadeChans * getFirstNoXfadeChans() {
+    if(auto m = getChannelHandler().getChannels().getChannelsNoXFade().maybe_front()) {
       return &get_value(m).first;
     }
     return {};

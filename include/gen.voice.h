@@ -319,10 +319,10 @@ namespace imajuscule::audio::voice {
   constexpr auto size_interleaved_one_cache_line = cache_line_n_bytes / sizeof(interleaved_buf_t::value_type);
   constexpr auto size_interleaved = size_interleaved_one_cache_line;
 
-  using Mode = SoundEngineMode;
+  using Mode = audioelement::SoundEngineMode;
 
 
-  template<SoundEngineMode>
+  template<Mode>
   struct SetSlowParams {
     template<typename CTRL>
     static void set(CTRL & ctrl, int n_slow_steps_short, int n_slow_steps, float ratio) {
@@ -331,7 +331,7 @@ namespace imajuscule::audio::voice {
   };
 
   template<>
-  struct SetSlowParams<SoundEngineMode::WIND> {
+  struct SetSlowParams<Mode::WIND> {
     template<typename CTRL>
     static void set(CTRL & ctrl, int n_slow_steps_short, int n_slow_steps_long, float ratio) {
       ctrl.getUnderlyingIter().set_n_slow_steps(n_slow_steps_long);
@@ -340,7 +340,7 @@ namespace imajuscule::audio::voice {
     }
   };
 
-  template<SoundEngineMode>
+  template<Mode>
   struct SetFilterWidths {
     template<typename CTRL>
     static void set(CTRL & ctrl, range<float> const & width_factor_range) {
@@ -349,7 +349,7 @@ namespace imajuscule::audio::voice {
   };
 
   template<>
-  struct SetFilterWidths<SoundEngineMode::WIND> {
+  struct SetFilterWidths<Mode::WIND> {
     template<typename CTRL>
     static void set(CTRL & ctrl, range<float> const & width_factor_range) {
       std::get<1>(ctrl.get()).getOsc().setWidthRange(width_factor_range);
@@ -357,7 +357,7 @@ namespace imajuscule::audio::voice {
     }
   };
 
-  template<SoundEngineMode>
+  template<Mode>
   struct ConfigureFilters {
     template<typename CTRL>
     static void configure(CTRL & ctrl, unsigned int n_slow_steps, range<float> const & ra) {
@@ -366,7 +366,7 @@ namespace imajuscule::audio::voice {
   };
 
   template<>
-  struct ConfigureFilters<SoundEngineMode::WIND> {
+  struct ConfigureFilters<Mode::WIND> {
     template<typename CTRL>
     static void configure(CTRL & ctrl, unsigned int n_slow_steps, range<float> const & ra) {
       // those control the width of the band algorithms
@@ -387,7 +387,7 @@ namespace imajuscule::audio::voice {
     }
   };
 
-  template<SoundEngineMode>
+  template<Mode>
   struct SetGains {
     template<typename CTRL>
     static void set(CTRL & ctrl, std::array<float, 4> arr) {
@@ -398,7 +398,7 @@ namespace imajuscule::audio::voice {
   };
 
   template<>
-  struct SetGains<SoundEngineMode::WIND> {
+  struct SetGains<Mode::WIND> {
     template<typename CTRL>
     static void set(CTRL & ctrl, std::array<float, 4> arr) {
       ctrl.setGains(std::move(arr));
@@ -406,16 +406,12 @@ namespace imajuscule::audio::voice {
   };
 
   template <
-
   Mode MODE,
   typename Parameters,
   typename ProcessData,
   typename Parent = Impl <
-
-  std::get<MODE>(params_all).size(), Parameters, interleaved_buf_t, size_interleaved, ProcessData
-
+    std::get<MODE>(params_all).size(), Parameters, interleaved_buf_t, size_interleaved, ProcessData
   >
-
   >
   struct ImplBase : public Parent {
     static constexpr auto n_max_orchestrator_per_channel = 1;
@@ -855,16 +851,19 @@ namespace imajuscule::audio::voice {
 
   protected:
 
-    template<typename Element>
+    template<typename Element, int nAudioOut>
     bool setupAudioElement(ReferenceFrequencyHerz const & freq,
                            Element & e,
-                           int const sample_rate)
+                           int const sample_rate,
+                           Volumes<nAudioOut> & vol)
     {
-      e.engine.set_sample_rate(sample_rate);
+      auto & engine = e.algo.getOsc();
+      
+      engine.set_sample_rate(sample_rate);
       {
         auto interp = static_cast<itp::interpolation>(itp::interpolation_traversal().realValues()[static_cast<int>(.5f + value<INTERPOLATION>())]);
 
-        e.engine.set_itp(interp);
+        engine.set_itp(interp);
       }
 
       auto ex = denorm<LENGTH_EXPONENT>();
@@ -873,13 +872,13 @@ namespace imajuscule::audio::voice {
         auto variation = denorm<LENGTH_EXPONENT_SCATTER>();
         Assert(variation >= 0.f);
         Assert(variation <= 1.f);
-        e.engine.set_length_exp(ex * (1.f - variation), ex * (1.f + variation));
+        engine.set_length_exp(ex * (1.f - variation), ex * (1.f + variation));
 
-        e.engine.set_freq_scatter(denorm<FREQ_SCATTER>());
+        engine.set_freq_scatter(denorm<FREQ_SCATTER>());
 
         if constexpr (MODE != Mode::WIND) {
-          e.engine.set_phase_ratio1(denorm<PHASE_RATIO1>());
-          e.engine.set_phase_ratio2(denorm<PHASE_RATIO2>());
+          engine.set_phase_ratio1(denorm<PHASE_RATIO1>());
+          engine.set_phase_ratio2(denorm<PHASE_RATIO2>());
         }
 
         thread_local int seed = 0;
@@ -900,17 +899,17 @@ namespace imajuscule::audio::voice {
         mersenne<SEEDED::Yes>().seed(seed);
       }
       else {
-        e.engine.set_length_exp(ex, ex);
+        engine.set_length_exp(ex, ex);
       }
 
-      e.engine.set_base_freq(freq.getFrequency());
+      engine.set_base_freq(freq.getFrequency());
 
-      e.engine.set_length(denorm<LENGTH>());
+      engine.set_length(denorm<LENGTH>());
 
-      e.setLoudnessParams(value<LOUDNESS_REF_FREQ_INDEX>(),
+      engine.setLoudnessParams(value<LOUDNESS_REF_FREQ_INDEX>(),
                                value<LOUDNESS_COMPENSATION_AMOUNT>(),
                                denorm<LOUDNESS_LEVEL>());
-      e.setFiltersOrder(value<ORDER_FILTERS>());
+      engine.setFiltersOrder(value<ORDER_FILTERS>());
 
       if constexpr (MODE == Mode::WIND)
       {
@@ -918,11 +917,11 @@ namespace imajuscule::audio::voice {
         auto M = denorm<PINK_NOISE_BP_OCTAVE_WIDTH_MAX>();
         auto width_factor_range = range<float>(std::min(m,M),
                                                std::max(m,M));
-        for(auto & r : e.getRamps()) {
-          SetFilterWidths<MODE>::set(r.algo.getOsc(), width_factor_range);
+        for(auto & r : engine.getRamps()) {
+          SetFilterWidths<MODE>::set(r.getOsc().getOsc(), width_factor_range);
         }
       }
-      SetGains<MODE>::set(e, std::array<float,4>{{
+      SetGains<MODE>::set(engine, std::array<float,4>{{
         denorm<PINK_NOISE_LP_GAIN>(),
         denorm<PINK_NOISE_BP_GAIN>(),
         denorm<PINK_NOISE_BR_GAIN>(),
@@ -941,13 +940,13 @@ namespace imajuscule::audio::voice {
         // -1 in constructor and makes an assert fail if the method is not called)
         float n_slow_steps = std::pow(max_n_slow_iter, denorm<N_SLOW_ITER_LONG_TERM>());
 
-        for(auto & r : e.getRamps()) {
-          auto & mix = r.algo.getOsc();
+        for(auto & r : engine.getRamps()) {
+          auto & mix = r.getOsc().getOsc();
           ConfigureFilters<MODE>::configure(mix, n_slow_steps, ra);
         }
         auto n_slow_steps_short = std::pow(max_n_slow_iter, denorm<N_SLOW_ITER_SHORT_TERM>());
         auto ratio = denorm<CENTER_SHORT_TERM_RATIO>();
-        for(auto & f_control : e.engine.getRamps().a) {
+        for(auto & f_control : engine.getRampsSpecs().a) {
           // f_control controls the frequency of the Mix (has an effect only for sinus and low pass)
           SetSlowParams<MODE>::set(f_control.get(), n_slow_steps_short, n_slow_steps, ratio);
           // needs to be after the previous call
@@ -966,62 +965,49 @@ namespace imajuscule::audio::voice {
             pan = denorm<PAN>();
           }
         }
+        vol = MakeVolume::run<nAudioOut>(Element::baseVolume, pan);
+      }
+      
+      using audioelement::SoundEngineInitPolicy;
+      
+      if constexpr (MODE == Mode::SWEEP) {
+        return engine.initialize_sweep(denorm<LOW_FREQ>(),
+                                        denorm<HIGH_FREQ>());
+      }
+      else if constexpr (MODE == Mode::BIRDS) {
+        engine.set_freq_xfade(denorm<FREQ_TRANSITION_LENGTH>());
+        auto interp_freq = static_cast<itp::interpolation>(itp::interpolation_traversal().realValues()[static_cast<int>(.5f + value<FREQ_TRANSITION_INTERPOLATION>())]);
+        engine.set_freq_interpolation(interp_freq);
+        auto xfade_freq = static_cast<FreqXfade>(xfade_freq_traversal().realValues()[static_cast<int>(.5f + value<MARKOV_XFADE_FREQ>())]);
 
-        if constexpr (MODE == Mode::SWEEP) {
-          return e.engine.initialize_sweep(denorm<LOW_FREQ>(),
-                                          denorm<HIGH_FREQ>(),
-                                          pan);
-        }
-        else if constexpr (MODE == Mode::BIRDS) {
-          e.engine.set_freq_xfade(denorm<FREQ_TRANSITION_LENGTH>());
-          auto interp_freq = static_cast<itp::interpolation>(itp::interpolation_traversal().realValues()[static_cast<int>(.5f + value<FREQ_TRANSITION_INTERPOLATION>())]);
-          e.engine.set_freq_interpolation(interp_freq);
-          auto xfade_freq = static_cast<FreqXfade>(xfade_freq_traversal().realValues()[static_cast<int>(.5f + value<MARKOV_XFADE_FREQ>())]);
-
-          return e.engine.initialize_birds(value<MARKOV_START_NODE>(),
-                                          value<MARKOV_PRE_TRIES>(),
-                                          value<MARKOV_MIN_PATH_LENGTH>(),
-                                          value<MARKOV_ADDITIONAL_TRIES>(),
-                                          SoundEngineInitPolicy::StartAfresh,
-                                          xfade_freq,
-                                          value<MARKOV_ARTICULATIVE_PAUSE_LENGTH>(),
-                                          pan);
-        }
-        else if constexpr (MODE == Mode::WIND) {
-          return e.engine.initialize_wind(value<MARKOV_START_NODE>(),
-                                         value<MARKOV_PRE_TRIES>(),
-                                         value<MARKOV_MIN_PATH_LENGTH>(),
-                                         value<MARKOV_ADDITIONAL_TRIES>(),
-                                         SoundEngineInitPolicy::StartAfresh,
-                                         pan);
-        }
-        else if constexpr (MODE == Mode::ROBOTS) {
-          e.engine.set_d1(/*denorm<D1>()*/value<D1>());
-          e.engine.set_d2(/*denorm<D2>()*/value<D2>());
-          e.engine.set_har_att(denorm<HARMONIC_ATTENUATION>());
-          return e.engine.initialize_robot(value<MARKOV_START_NODE>(),
-                                          value<MARKOV_PRE_TRIES>(),
-                                          value<MARKOV_MIN_PATH_LENGTH>(),
-                                          value<MARKOV_ADDITIONAL_TRIES>(),
-                                          SoundEngineInitPolicy::StartAfresh,
-                                          value<MARKOV_ARTICULATIVE_PAUSE_LENGTH>(),
-                                          pan);
-        }
+        return engine.initialize_birds(value<MARKOV_START_NODE>(),
+                                        value<MARKOV_PRE_TRIES>(),
+                                        value<MARKOV_MIN_PATH_LENGTH>(),
+                                        value<MARKOV_ADDITIONAL_TRIES>(),
+                                        SoundEngineInitPolicy::StartAfresh,
+                                        xfade_freq,
+                                        value<MARKOV_ARTICULATIVE_PAUSE_LENGTH>());
+      }
+      else if constexpr (MODE == Mode::WIND) {
+        return engine.initialize_wind(value<MARKOV_START_NODE>(),
+                                       value<MARKOV_PRE_TRIES>(),
+                                       value<MARKOV_MIN_PATH_LENGTH>(),
+                                       value<MARKOV_ADDITIONAL_TRIES>(),
+                                       SoundEngineInitPolicy::StartAfresh);
+      }
+      else if constexpr (MODE == Mode::ROBOTS) {
+        engine.set_d1(/*denorm<D1>()*/value<D1>());
+        engine.set_d2(/*denorm<D2>()*/value<D2>());
+        engine.set_har_att(denorm<HARMONIC_ATTENUATION>());
+        return engine.initialize_robot(value<MARKOV_START_NODE>(),
+                                        value<MARKOV_PRE_TRIES>(),
+                                        value<MARKOV_MIN_PATH_LENGTH>(),
+                                        value<MARKOV_ADDITIONAL_TRIES>(),
+                                        SoundEngineInitPolicy::StartAfresh,
+                                        value<MARKOV_ARTICULATIVE_PAUSE_LENGTH>());
       }
       Assert(0);
       return false;
-    }
-
-    template<
-      SynchronizePhase Sync,
-      DefaultStartPhase Phase,
-      typename Chans,
-      typename MonoNoteChannel,
-      typename CS>
-    std::function<bool(Chans&,int)> onStartNote(MonoNoteChannel & c, CS & cs)
-    {
-      // TODO pass Sync and Phase and use them inside getOrchestrator
-      return c.elem.engine.template getOrchestrator<Chans>(*c.channel);
     }
 
     int32_t get_xfade_length() const {
@@ -1073,154 +1059,6 @@ namespace imajuscule::audio::voice {
     }
   };
 
-   // TODO implement as a computable (drop the orchestrator notion for soundengine):
-   //   also, do not use on channel xfade, instead use 3 different monorequest channels and
-   //   use ramps envelopes.
-  template<typename SoundEngine>
-  struct EngineAndRamps {
-    using audioElt = typename SoundEngine::audioElt;
-    using T = typename audioElt::FPT;
-    using Buf = audioelement::AEBuffer<T>;
-    using buffer_t = std::array<Buf,3>;
-
-    static constexpr auto computable = false; // uses the notion of orchestrators instead
-    static constexpr auto hasEnvelope = true;
-    static constexpr auto baseVolume = audioElt::baseVolume;
-
-    EngineAndRamps(buffer_t&b) :
-    ramps{b[0],b[1],b[2]},
-    engine{[this]()-> Ramps<audioElt> {
-      using namespace imajuscule::audio::audioelement;
-      Ramps<audioElt> res;
-      // in SoundEngine.playNextSpec (from the rt audio thread),
-      // we onKeyPressed() the inactive ramp and onKeyReleased() the active ramp.
-      for(auto & r: ramps) {
-        auto state = r.algo.getEnvelope().getRelaxedState();
-        if(state == EnvelopeState::EnvelopeDone2) {
-          if(engine.goOn()) {
-            res.envelopeDone = &r;
-          }
-        }
-        else {
-          if(state == EnvelopeState::KeyPressed) {
-            res.keyPressed = &r;
-          }
-        }
-      }
-      return res;
-    }}
-    {
-    }
-    auto &       editEnvelope()       { return *this; }
-    auto const & getEnvelope()  const { return *this; }
-
-    bool tryAcquire() {
-      unsigned int cur = engine.getOddOn();
-      while(1) {
-        if(!isEnvelopeFinished_internal(cur)) {
-          return false;
-        }
-        if(engine.tryIncrementOddOn(cur)) {
-          // we took ownership.
-          return true;
-        }
-        // another thread took ownership ...
-        if(is_odd(cur)) {
-          return false;
-        }
-        // ... but the other thread released ownership already, so we can retry.
-      }
-    }
-
-    bool acquireStates() const {
-      unsigned int cur = engine.getOddOn();
-      return is_odd(cur);
-    }
-
-    void setEnvelopeCharacTime(int len) {
-      engine.setEnvelopeCharacTime(len);
-    }
-
-    void forgetPastSignals() {
-      // is handled by the sound engine
-    }
-    bool isEnvelopeFinished() const {
-      return isEnvelopeFinished_internal(engine.getOddOn());
-    }
-    void onKeyPressed(int32_t delay) { // TODO use
-      // we don't increment 'oddOn' here, or 'engine.set_active(true)' : it has been done in 'tryAcquire'.
-    }
-    bool canHandleExplicitKeyReleaseNow(int32_t delay) const { // TODO use
-      return engine.goOn();
-    }
-    void onKeyReleased(int32_t delay) { // TODO use (this would be easier to implement if this was a Computable, we could try it.)
-      // TODO we should delay the engine stop.
-      if(auto i = engine.goOn()) {
-        engine.stop(i);
-        for(auto & r: ramps) {
-          r.editEnvelope().onKeyReleased(0); // TODO
-        }
-      }
-    }
-
-    // TODO forward params to the soundengine, let the soudengine do the call at onKeyPressed time.
-    void setLoudnessParams(int low_index, float log_ratio, float loudness_level) {
-      for(auto & r : ramps) {
-        r.algo.getOsc().setLoudnessParams(low_index, log_ratio, loudness_level);
-      }
-    }
-
-    // TODO forward params to the soundengine, let the soudengine do the call at onKeyPressed time.
-    template<typename T>
-    void setGains(T&& gains) {
-      for(auto & r : ramps) {
-        r.algo.getOsc().setGains(std::forward<T>(gains));
-      }
-    }
-
-    // TODO forward params to the soundengine, let the soudengine do the call at onKeyPressed time.
-    void setFiltersOrder(int order) {
-      for(auto & r : ramps) {
-        r.algo.getOsc().setFiltersOrder(order);
-      }
-    }
-
-    auto & getRamps() {
-      return ramps;
-    }
-
-    SoundEngine engine; // in onStartNote, this engine is assigned a given channel.
-
-    bool isInactive() const {
-      for(auto const & r: ramps) {
-        if(!r.isInactive()) {
-          return false;
-        }
-      }
-      return true;
-    }
-
-    T angle() const { return {}; }
-
-  private:
-    // 3 because there is 'before', 'current' and the inactive one
-    std::array<audioElt, 3> ramps;
-
-    bool isEnvelopeFinished_internal (unsigned int state) const {
-      if(is_odd(state)) {
-        return false;
-      }
-      for(auto & r: ramps) {
-        if(!r.getEnvelope().isEnvelopeFinished()) {
-          return false;
-        }
-      }
-      return true;
-    }
-
-  public:
-    auto const & getRamps() const { return ramps; }
-  };
 
   template<
     AudioOutPolicy outPolicy,
@@ -1236,10 +1074,13 @@ namespace imajuscule::audio::voice {
 
     typename Parent = ImplCRTP <
       outPolicy,
-      nAudioOut, XfadePolicy::UseXfade, // TODO reassess the use of xfades, now that we have enveloppes
-      EngineAndRamps<SoundEngine<MODE, nAudioOut, getAtomicity<outPolicy>(), Logger>>,
+      nAudioOut,
+      XfadePolicy::SkipXfade,
+      audioelement::FinalAudioElement< audioelement::VolumeAdjusted<
+        audioelement::SoundEngine<MODE, nAudioOut, getAtomicity<outPolicy>(), Logger>
+      >>,
       SynchronizePhase::No, // TODO Yes when MODE uses no sweep?
-      DefaultStartPhase::Zero, // TODO Randomize when MODe uses no sweep?
+      DefaultStartPhase::Zero, // TODO Randomize when MODE uses no sweep?
       withNoteOff,
       EventIterator,
       Base

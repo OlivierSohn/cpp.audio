@@ -141,6 +141,38 @@ namespace imajuscule::audio {
 
   uint64_t & maxMIDIJitter();
 
+template<SynchronizePhase Sync, DefaultStartPhase Phase, typename MonoNoteChannel, typename CS>
+void setPhase(MonoNoteChannel & c, CS & cs)
+{
+  auto & thisAlgo = c.elem.algo;
+  if constexpr (Sync == SynchronizePhase::Yes) {
+    auto & tp = cs.corresponding(c);
+    for(auto &p : firsts(cs)) {
+      if((&p == &tp) || (p != tp)) {
+        // same channel, or different frequency.
+        continue;
+      }
+      // We found a matching TunedPitch
+      auto & otherChannel = cs.corresponding(p);
+      Assert(&otherChannel != &c);
+      // To prevent phase cancellation, the phase of the new note will be
+      // coherent with the phase of any active channel that plays a note at the same frequency.
+      if(otherChannel.elem.getEnvelope().isEnvelopeFinished()) {
+        continue;
+      }
+      thisAlgo.getOsc().synchronizeAngles(otherChannel.elem.algo.getOsc());
+      return;
+    }
+  }
+  if constexpr (Phase == DefaultStartPhase::Zero) {
+    thisAlgo.getOsc().setAngle(0);
+  } else if constexpr (Phase == DefaultStartPhase::Random) {
+    thisAlgo.getOsc().setAngle(std::uniform_real_distribution<float>{-1.f, 1.f}(mersenne<SEEDED::Yes>()));
+  } else {
+    Assert(0);
+  }
+}
+
   template<
   AudioOutPolicy outPolicy,
   int nOuts,
@@ -165,7 +197,6 @@ namespace imajuscule::audio {
 
     using Base::get_xfade_length;
     using Base::get_gain;
-    using Base::onStartNote;
     using Base::setupAudioElement;
 
     static constexpr auto n_channels_per_note = 1;
@@ -307,7 +338,8 @@ namespace imajuscule::audio {
 
         // setupAudioElement is allowed to be slow, allocate / deallocate memory, etc...
         // because it's not running in the audio realtime thread.
-        if(!setupAudioElement(e.ref_frequency, c.elem, sample_rate)) {
+        Volumes<nAudioOut> pannedVol;
+        if(!setupAudioElement(e.ref_frequency, c.elem, sample_rate, pannedVol)) {
           MIDI_LG(ERR,"setupAudioElement failed");
           // we let the noteoff reset the envelope state.
           return onDroppedNote(e);
@@ -317,15 +349,16 @@ namespace imajuscule::audio {
         
         // 3. [with maybe-lock]
         //      register the maybe-oneshot that does
-        //        - maybe phase cancellation avoidance (in onStartNote)
-        //        - either
-        //          - register the compute and trigger onKeyPress, or
-        //          - register the orchestrator (in onStartNote)
+        //        - maybe phase cancellation avoidance (in setPhase)
+        //        - register the compute and trigger onKeyPress
 
         {
           typename Out::LockFromNRT L(out.get_lock());
 
-          chans.enqueueOneShot([this, channel_index](Chans & chans, uint64_t){
+          chans.enqueueOneShot([this,
+                                channel_index,
+                                pannedVol]
+                               (Chans & chans, uint64_t){
             // unqueue the (potential) previous request, else an assert fails
             // when we enqueue the next request, because it's already queued.
             auto & c = channels.seconds()[channel_index];
@@ -343,24 +376,20 @@ namespace imajuscule::audio {
               return;
             }
 
-            if constexpr (Element::computable) {
-              // The caller is responsible for growing the channel request queue if needed
-              if(!chans.playComputableNoLock(*c.channel,
-                                             c.elem.fCompute(),
-                                             Request{
-                                               &c.elem.buffer->buffer[0],
-                                               Element::baseVolume,
-                                               // e.noteOn.length is always 0, we must rely on noteOff
-                                               std::numeric_limits<decltype(std::declval<Request>().duration_in_frames)>::max()
-                                             }))
-              {
-                // there is currently no error reporting from the realtime thread.
-                return;
-              }
+            // The caller is responsible for growing the channel request queue if needed
+            if(!chans.playComputableNoLock(*c.channel,
+                                           c.elem.fCompute(),
+                                           Request{
+                                             &c.elem.buffer->buffer[0],
+                                             pannedVol,
+                                             // e.noteOn.length is always 0, so we wait for noteOff event to know the duration
+                                             std::numeric_limits<decltype(std::declval<Request>().duration_in_frames)>::max()
+                                           }))
+            {
+              // there is currently no error reporting from the realtime thread.
+              return;
             }
-            if(auto orchestrator = this -> template onStartNote<Sync, Phase, Chans>(c,channels)) {
-              chans.add_orchestrator(orchestrator);
-            }
+            setPhase<Sync, Phase>(c, channels);
           });
 
 #ifndef CUSTOM_SAMPLE_RATE
@@ -576,37 +605,5 @@ namespace imajuscule::audio {
     OutputData out;
     T plugin;
   };
-
-  template<SynchronizePhase Sync, DefaultStartPhase Phase, typename MonoNoteChannel, typename CS>
-  void setPhase(MonoNoteChannel & c, CS & cs)
-  {
-    auto & thisAlgo = c.elem.algo;
-    if constexpr (Sync == SynchronizePhase::Yes) {
-      auto & tp = cs.corresponding(c);
-      for(auto &p : firsts(cs)) {
-        if((&p == &tp) || (p != tp)) {
-          // same channel, or different frequency.
-          continue;
-        }
-        // We found a matching TunedPitch
-        auto & otherChannel = cs.corresponding(p);
-        Assert(&otherChannel != &c);
-        // To prevent phase cancellation, the phase of the new note will be
-        // coherent with the phase of any active channel that plays a note at the same frequency.
-        if(otherChannel.elem.getEnvelope().isEnvelopeFinished()) {
-          continue;
-        }
-        thisAlgo.getOsc().synchronizeAngles(otherChannel.elem.algo.getOsc());
-        return;
-      }
-    }
-    if constexpr (Phase == DefaultStartPhase::Zero) {
-      thisAlgo.getOsc().setAngle(0);
-    } else if constexpr (Phase == DefaultStartPhase::Random) {
-      thisAlgo.getOsc().setAngle(std::uniform_real_distribution<float>{-1.f, 1.f}(mersenne<SEEDED::Yes>()));
-    } else {
-      Assert(0);
-    }
-  }
 
 } // NS imajuscule::audio

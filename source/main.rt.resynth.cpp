@@ -57,11 +57,9 @@ void rtResynth(int const sample_rate) {
   using mnc_buffer = typename Synth::MonoNoteChannel::buffer_t;
   std::array<mnc_buffer,n_mnc> buffers;
   
-  static constexpr auto n_max_orchestrator_per_channel = 0; // we don't use orchestrators
   auto [channels_,remover] = channel_handler.getChannels().getChannelsNoXFade().emplace_front(channel_handler.get_lock_policy(),
                                                                                              std::min(n_mnc,
-                                                                                                      static_cast<int>(std::numeric_limits<uint8_t>::max())),
-                                                                                             n_max_orchestrator_per_channel);
+                                                                                                      static_cast<int>(std::numeric_limits<uint8_t>::max())));
   NoXFadeChans & channels = channels_;
 
   Synth synth(sample_rate, buffers);

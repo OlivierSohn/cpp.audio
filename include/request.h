@@ -68,7 +68,7 @@ namespace imajuscule::audio {
             if(isAudioElement()) {
                 return !null();
             }
-            if(!is32()) {
+            if(is32()) {
                 return false;
             }
             auto ptr = buffer.soundBuffer64();
@@ -86,7 +86,7 @@ namespace imajuscule::audio {
                 // values are not yet computed
                 return false;
             }
-            if(!is32()) {
+            if(is32()) {
                 Assert(0);
                 return false;
             }
