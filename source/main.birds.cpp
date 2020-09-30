@@ -17,6 +17,12 @@ ProcessData
 } // NS audioelement
 
 void birds(int const sample_rate) {
+  auto mk_note_id = [] {
+    static int64_t i = 0;
+    ++i;
+    return NoteId{i};
+  };
+  
   static constexpr auto audioEnginePolicy = AudioOutPolicy::MasterLockFree;
   
   using AllChans = ChannelsVecAggregate< 2, audioEnginePolicy >;
@@ -76,34 +82,38 @@ void birds(int const sample_rate) {
   std::cout << n << ": pitch " << ref.getFrequency() << " newpitch " << fs[*match_idx].freq << " Vol " << vol  << " initial_vol " << initial_velocity[i] << " " << res << std::endl;
   */
   
-  std::optional<ReferenceFrequencyHerz> ref;
+  std::optional<NoteId> noteid;
 
   v.useProgram(8); // keep it first as it reinitializes params
   std::cout << "using program 8" << std::endl;
   
+  
+  /*
   {
-    ref = ReferenceFrequencyHerz(200);
+    noteid = mk_note_id();
     float volume = 0.1f;
-    
-    auto const res  = synth.onEvent2(mkNoteOn(*ref,
+    float frequency = 200.f;
+    auto const res  = synth.onEvent2(mkNoteOn(*noteid,
+                                              frequency,
                                               volume),
                                      channel_handler,
                                      channels,
                                      {});
-    std::cout << "pitch " << ref->getFrequency() << " vol " << volume << " " << res << std::endl;
+    std::cout << *noteid << ": pitch " << frequency << " vol " << volume << " " << res << std::endl;
     while(true) {
       std::this_thread::yield();
     }
   }
+   */
   
   while(true) {
-    if(ref) {
-      auto res = synth.onEvent2(mkNoteOff(*ref),
+    if(noteid) {
+      auto res = synth.onEvent2(mkNoteOff(*noteid),
                                 channel_handler,
                                 channels,
                                 {});
-      std::cout << "XXX pitch " << ref->getFrequency() << " " << res << std::endl;
-      ref.reset();
+      std::cout << "XXX " << *noteid << std::endl;
+      noteid.reset();
       std::this_thread::sleep_for(std::chrono::milliseconds(100));
     }
 
@@ -132,15 +142,17 @@ void birds(int const sample_rate) {
      v.set_loudness_compensation(.2f); // birds do not naturally emit loudness compensated frequencies!
      */
 
-    ref = ReferenceFrequencyHerz(200);
+    noteid = mk_note_id();
     float volume = 0.1f;
-    
-    auto const res  = synth.onEvent2(mkNoteOn(*ref,
+    float frequency = 200.f;
+
+    auto const res  = synth.onEvent2(mkNoteOn(*noteid,
+                                              frequency,
                                               volume),
                                      channel_handler,
                                      channels,
                                      {});
-    std::cout << "pitch " << ref->getFrequency() << " vol " << volume << " " << res << std::endl;
+    std::cout << *noteid << ": pitch " << frequency << " vol " << volume << " " << res << std::endl;
     
     std::this_thread::sleep_for(std::chrono::milliseconds(1000));
   }

@@ -1,6 +1,339 @@
 
+// TODO add a curve 0..1 -> 0..1 to change volumes
 
 namespace imajuscule::audio {
+
+struct PitchVolume {
+  double midipitch;
+  double volume;
+};
+
+void frequencies_to_pitches(Midi const & midi,
+                            std::vector<FreqMag<double>> const & fs,
+                            std::vector<PitchVolume> & res) {
+  res.clear();
+  for (auto const & f : fs) {
+    if (auto pitch = midi.frequency_to_midi_pitch(f.freq)) {
+      res.push_back({
+        *pitch,
+        DbToMag<double>()(f.mag_db)
+      });
+    }
+  }
+}
+
+enum class PitchReductionMethod {
+  IntervalCenter,
+  MaxVolume,
+  PonderateByVolume
+};
+
+enum class VolumeReductionMethod{
+  MaxVolume,
+  SumVolumes
+};
+
+class PitchInterval {
+  double min_pitch, max_pitch;
+  double maxVolumePitch;
+  double maxVolume{};
+  double sumProductsPitchVolume{};
+  double sumVolumes{};
+
+ public:
+  PitchInterval(PitchVolume const & pv)
+  : min_pitch(pv.midipitch)
+  , max_pitch(pv.midipitch)
+  , maxVolumePitch(pv.midipitch)
+  {
+    aggregate(pv);
+  }
+  
+  double minPitch() const {
+    return min_pitch;
+  }
+  double maxPitch() const {
+    return max_pitch;
+  }
+  
+  void extend(PitchVolume const & pv) {
+    min_pitch = std::min(min_pitch,
+                         pv.midipitch);
+    max_pitch = std::max(max_pitch,
+                         pv.midipitch);
+    aggregate(pv);
+  }
+  
+  double getPitch(PitchReductionMethod m) const {
+    switch(m) {
+      case PitchReductionMethod::IntervalCenter:
+        return 0.5 * (min_pitch + max_pitch);
+      case PitchReductionMethod::MaxVolume:
+        return maxVolumePitch;
+      case PitchReductionMethod::PonderateByVolume:
+        Assert(sumVolumes);
+        return sumProductsPitchVolume / sumVolumes;
+    }
+  }
+
+  double getVolume(VolumeReductionMethod m) const {
+    switch(m) {
+      case VolumeReductionMethod::MaxVolume:
+        return maxVolume;
+      case VolumeReductionMethod::SumVolumes:
+        return sumVolumes;
+    }
+  }
+
+private:
+  void aggregate(PitchVolume const & pv) {
+    sumVolumes += pv.volume;
+    sumProductsPitchVolume += pv.midipitch * pv.volume;
+
+    if (maxVolume < pv.volume) {
+      maxVolume = pv.volume;
+      maxVolumePitch = pv.midipitch;
+    }
+  }
+};
+
+
+template<typename T>
+T diameter(T a, T b, T c) {
+  return std::max({a, b, c}) - std::min({a, b, c});
+}
+
+// We aggregate nearby pitches to keep the number of channels needed to a reasonable amount, especially when handling percusive sounds
+// which have a lot of pitch peaks.
+
+// - Aggregation phase:
+// We have a rule to aggregate nearby pitches ('nearby_distance', in number of tones):
+// for example, with nearby_distance = 3 half tones,
+//   .....  could lead to 2 pitches:
+//   A..B.  or a single pitch:
+//   ..A..  depending on where we start analyzing, so we should have a notion of pitch interval, and analyze pitches in a monotonic order
+//          once the last interval would be bigger than nearby_distance, we create a new interval.
+// The output of this phase is a list of pitch intervals where each interval is a list of pitch + amplitude.
+void aggregate_pitches(double const nearby_distance_tones,
+                       // invariant : ordered by pitch
+                       std::vector<PitchVolume> const & pitch_volumes,
+                       // invariant : ordered by pitch
+                       std::vector<PitchInterval> & pitch_intervals) {
+  pitch_intervals.clear();
+  pitch_intervals.reserve(pitch_volumes.size());
+  
+  std::optional<PitchInterval> cur;
+#ifndef NDEBUG
+  double pitch = std::numeric_limits<double>::min();
+#endif
+  for (auto const & pv : pitch_volumes) {
+#ifndef NDEBUG
+    Assert(pitch < pv.midipitch); // verify invariant
+    pitch = pv.midipitch;
+#endif
+    if (cur && (diameter(cur->minPitch(),
+                         cur->maxPitch(),
+                         pv.midipitch) > nearby_distance_tones)) {
+      pitch_intervals.push_back(*cur);
+      cur.reset();
+    }
+    if (!cur) {
+      cur = {pv};
+    } else {
+      cur->extend(pv);
+    }
+  }
+  
+  if (cur) {
+    pitch_intervals.push_back(*cur);
+    cur.reset();
+  }
+}
+
+// - Reduction phase:
+// each interval will be reduced to a single pitch and amplitude. The amplitude will be the sum of amplitudes,
+// the pitch can be either the pitch of max amplitude, or the center of the interval, or a ponderation of the pitches by amplitudes.
+void reduce_pitches(PitchReductionMethod const pitch_method,
+                    VolumeReductionMethod const volume_method,
+                    double const min_volume,
+                    std::vector<PitchInterval> const & pitch_intervals,
+                    std::vector<PitchVolume> & reduced_pitches) {
+  reduced_pitches.clear();
+  reduced_pitches.reserve(pitch_intervals.size());
+  for (auto const & i : pitch_intervals) {
+    double const vol = i.getVolume(volume_method);
+    if (vol < min_volume) {
+      continue;
+    }
+    reduced_pitches.push_back({
+      i.getPitch(pitch_method),
+      vol
+    });
+  }
+}
+
+// - Autotune phase:
+// the reduced frequency will be changed to the closest allowed frequency (in pitch space).
+// the amplitudes of frequencies that fall in the same closest frequency will be added
+template<typename Autotune>
+void autotune_pitches(Autotune pitch_transform,
+                      // invariant : ordered by pitch
+                      std::vector<PitchVolume> const & input,
+                      // invariant : ordered by pitch
+                      std::vector<PitchVolume> & output) {
+  output.clear();
+  output.reserve(input.size());
+#ifndef NDEBUG
+  double pitch = std::numeric_limits<double>::min();
+#endif
+  for (auto const & pv : input) {
+#ifndef NDEBUG
+    Assert(pitch < pv.midipitch); // verify invariant
+    pitch = pv.midipitch;
+#endif
+    double const transformedPitch = pitch_transform(pv.midipitch);
+    if (!output.empty() && (std::abs(output.back().midipitch - transformedPitch) < 0.0001)) {
+      output.back().volume += pv.volume;
+    } else {
+      output.push_back({transformedPitch, pv.volume});
+    }
+  }
+}
+
+
+// A note currently played
+struct PlayedNote {
+  // the identifier of the played note
+  NoteId noteid;
+  
+  // the current midi_pitch
+  double midi_pitch;
+  
+  // the current frequency
+  float cur_freq;
+  
+  // the current volume (not used but could be used during matching : if the volume is currently low and the now volume is much higher, we could trigger a noteon)
+  float cur_velocity;
+};
+
+// - Tracking phase:
+// we will determine whether the frequencies are noteon or notechange, based on currently runing oscillators.
+// we need a "max_track_pitches" upperbound for the distance between pitches that can be associated.
+// the caller must take into account the period of the analysis, and adapt 'max_track_pitches' accordingly
+void track_pitches(double const max_track_pitches,
+                   // invariant : ordered by pitch
+                   std::vector<PitchVolume> const & new_pitches,
+                   // invariant : ordered by pitch (current pitch)
+                   std::vector<PlayedNote> const & played_pitches,
+                   // indexes homogenous to indexes of 'new_pitches',
+                   // values  homogenous to indexes of 'played_pitches'
+                   // invariant : all non-empty elements are distinct
+                   std::vector<std::optional<int>> & pitch_changes,
+                   std::vector<bool> & continue_playing) {
+  pitch_changes.clear();
+  pitch_changes.resize(new_pitches.size());
+
+  continue_playing.clear();
+  continue_playing.resize(played_pitches.size(), false);
+
+  int idx = -1;
+#ifndef NDEBUG
+  double pitch2 = std::numeric_limits<double>::min();
+  for (auto const & p : played_pitches) {
+    Assert(pitch2 <= p.midi_pitch);
+    pitch2 = p.midi_pitch;
+  }
+  double pitch = std::numeric_limits<double>::min();
+#endif
+  auto const begin = played_pitches.begin();
+  auto it = played_pitches.begin();
+  auto const end = played_pitches.end();
+  for (auto const & newPv : new_pitches) {
+    ++idx;
+#ifndef NDEBUG
+    Assert(pitch < newPv.midipitch); // verify invariant
+    pitch = newPv.midipitch;
+#endif
+    for (; it != end; ++it) {
+      if (it->midi_pitch < newPv.midipitch - max_track_pitches) {
+        continue;
+      }
+      if (it->midi_pitch <= newPv.midipitch + max_track_pitches) {
+        std::size_t const idx_played = std::distance(begin, it);
+        pitch_changes[idx] = idx_played;
+        continue_playing[idx_played] = true;
+        ++it;
+        // note that there could be other options, if 'it+1' is also in the right range.
+        // but to not complicate the algorithm too much we take the first one.
+      }
+      break;
+    }
+  }
+}
+
+// This may change the order of elements
+void remove_dead_notes(std::vector<bool> const & continue_playing,
+                       std::vector<PlayedNote> & played_pitches) {
+  auto new_end = std::remove_if(played_pitches.begin(),
+                 played_pitches.end(),
+                 [first = played_pitches.data(),
+                  &continue_playing]
+                 (PlayedNote const & note) {
+    std::ptrdiff_t n = &note-first;
+    Assert(n >= 0);
+    if (n < continue_playing.size()) {
+      return !continue_playing[n];
+    } else {
+      return false;
+    }
+  });
+  played_pitches.erase(new_end,
+                       played_pitches.end());
+}
+
+void sort_by_current_pitch(std::vector<PlayedNote> & played_pitches) {
+  std::sort(played_pitches.begin(),
+            played_pitches.end(),
+            [](PlayedNote const & n, PlayedNote const & m) {
+    return n.midi_pitch < m.midi_pitch;
+  });
+}
+
+
+void print(std::vector<PlayedNote> const & played_pitches) {
+  int i=0;
+  struct PitchCount {
+    int pitch_idx;
+    int count;
+  };
+  std::optional<PitchCount> pc;
+  for (auto const & played : played_pitches) {
+    int const pitch_idx = static_cast<int>(0.5f + played.midi_pitch);
+    if (pc) {
+      if (pc->pitch_idx == pitch_idx) {
+        ++pc->count;
+      } else {
+        for (; i < pc->pitch_idx; ++i) {
+          std::cout << " ";
+        }
+        std::cout << pc->count;
+        ++i;
+        pc->count = 1;
+        pc->pitch_idx = pitch_idx;
+      }
+    } else {
+      pc = {pitch_idx, 1};
+    }
+  }
+  if (pc) {
+    for (; i < pc->pitch_idx; ++i) {
+      std::cout << " ";
+    }
+    std::cout << pc->count;
+  }
+  std::cout << std::endl;
+}
+
 
 namespace audioelement {
 
@@ -66,12 +399,20 @@ void rtResynth(int const sample_rate) {
   
   synth.initialize(channels);
 
+  bool constexpr logs = true;
+
   int constexpr window_size = 800;
   int constexpr window_center_stride = 400;
   int constexpr windowoverlapp = std::max(0, window_size - window_center_stride);
 
+  constexpr double min_volume = 0.0001;
+  double constexpr nearby_distance_tones = 0.4;
+  PitchReductionMethod constexpr pitch_method = PitchReductionMethod::PonderateByVolume;
+  VolumeReductionMethod constexpr volume_method = VolumeReductionMethod::SumVolumes;
+  double constexpr max_track_pitches = 1.;
+  
   /*
-   Below, we will describe what is likely to happen with threads jitter.
+   Here is what is likely to happen with threads jitter, using an example.
    
    To simplify, we will assume that each audio input callback call handles 'widow_center_stride' input samples,
    and that the input signal contains 4 events (0, 1, 2, 3) which are exactly 'window_center_stride' apart, like so:
@@ -144,7 +485,7 @@ void rtResynth(int const sample_rate) {
       1.f
     }, SAMPLE_RATE);
 
-    // volume adjustment
+    // limit the speed of volume adjustment:
     
     e.algo.setMaxFilterIncrement(2. / static_cast<double>(window_center_stride));
     
@@ -210,237 +551,165 @@ void rtResynth(int const sample_rate) {
         
     std::vector<double> samples;
     samples.resize(window_size, {});
+    
+    
     int end = 0;
  
     FrequenciesSqMag<double> frequencies_sqmag;
+    frequencies_sqmag.frequencies_sqmag.reserve(200);
+    
     std::vector<FreqMag<double>> freqmags;
-    struct Data {
-      std::optional<double> midipitch;
-      double volume;
-    };
-    std::vector<Data> freqmags_data;
+    freqmags.reserve(200);
     
-    // This is questionable : we have at most one active oscillator per midi pitch,
-    // eventhough the frequencies can vary.
-    // TODO instead we should use a std::set<ReferenceFrequencyHerz> to remove this limitation
-    std::vector<std::optional<ReferenceFrequencyHerz>> midi_pitches;
-    std::vector<bool> fs_used;
-    midi_pitches.resize(200);
-    fs_used.reserve(200);
-    std::vector<float> initial_velocity, cur_freq;
-    initial_velocity.resize(200);
-    cur_freq.resize(200);
+    std::vector<PitchVolume> freqmags_data;
+    freqmags_data.reserve(200);
     
-    struct FreqMatch {
-      int index; // in midi_pitches
-      float freq_ratio; // >= 1.f
-    };
-    std::vector<std::optional<FreqMatch>> matches;
-    matches.reserve(200);
+    std::vector<PitchInterval> pitch_intervals;
+    pitch_intervals.reserve(200);
+    
+    std::vector<PitchVolume> reduced_pitches, autotuned_pitches;
+    reduced_pitches.reserve(200);
+    autotuned_pitches.reserve(200);
+    
+    std::vector<PlayedNote> played_pitches;
+    played_pitches.reserve(200);
+    
+    std::vector<std::optional<int>> pitch_changes;
+    pitch_changes.reserve(200);
+
+    std::vector<bool> continue_playing;
+    continue_playing.reserve(200);
+    
+    std::vector<PlayedNote> played_notes;
+    played_notes.resize(200);
 
     Midi midi;
     
     int n = 0;
+
     auto step = [&n,
+                 &midi,
                  &synth,
                  &channel_handler,
                  &channels,
-                 &midi_pitches,
-                 &initial_velocity,
-                 &cur_freq,
-                 &matches,
-                 &fs_used,
+                 &played_notes,
                  &freqmags_data,
-                 &midi](std::vector<FreqMag<double>> const & fs) {
+                 &pitch_intervals,
+                 &reduced_pitches,
+                 &autotuned_pitches,
+                 &pitch_changes,
+                 &continue_playing,
+                 &played_pitches
+                 ](std::vector<FreqMag<double>> const & fs) {
       ++n;
-
-      constexpr double min_volume = 0.01;
       
-      freqmags_data.clear();
-      for (auto const & f : fs) {
-        freqmags_data.push_back({
-          midi.frequency_to_midi_pitch(f.freq),
-          DbToMag<double>()(f.mag_db)
-        });
-      }
+      frequencies_to_pitches(midi,
+                             fs,
+                             freqmags_data);
+
+      aggregate_pitches(nearby_distance_tones,
+                        freqmags_data,
+                        pitch_intervals);
       
-      matches.clear();
-      matches.resize(fs.size());
-      fs_used.clear();
-      fs_used.resize(fs.size(), false);
-
-      // we need to find the best match between
-      // - frequencies currently played (represented by index of 'midi_pitches')
-      // - new frequencies (represented by index of 'fs'
-      for (int i=0, sz = midi_pitches.size(); i<sz; ++i) {
-        if (!midi_pitches[i]) {
-          continue;
-        }
-        double const played_frequency = cur_freq[i];
-        std::optional<int> min_freq_dist, best;
-        int idx = -1;
-        for (auto const & f : fs) {
-          ++idx;
-          if (f.freq <= 0) {
-            continue;
-          }
-          if (freqmags_data[idx].volume < min_volume) {
-            continue;
-          }
-          double const diff = std::abs(f.freq - played_frequency);
-          if (!min_freq_dist || *min_freq_dist > diff) {
-            min_freq_dist = diff;
-            best = idx;
-          }
-        }
-        if (best) {
-          float const ratio = std::max(played_frequency, fs[*best].freq) / std::min(played_frequency, fs[*best].freq);
-          Assert(ratio >= 1.f);
-          if (ratio < 1.1f) { // TODO adjust magic number
-            // frequencies are close enough so that we can consider this to be a note change.
-            if (!matches[*best] || matches[*best]->freq_ratio > ratio) {
-              matches[*best] = FreqMatch{i, ratio};
-            }
-          }
-        }
-      }
-
+      reduce_pitches(pitch_method,
+                     volume_method,
+                     min_volume,
+                     pitch_intervals,
+                     reduced_pitches);
+      
+      autotune_pitches([](double pitch){ return pitch; },
+                       reduced_pitches,
+                       autotuned_pitches);
+      
+      track_pitches(max_track_pitches,
+                    autotuned_pitches,
+                    played_pitches,
+                    pitch_changes,
+                    continue_playing);
+      
       bool changed = false;
       
-      for (int i=0, sz = midi_pitches.size(); i<sz; ++i) {
-        if (!midi_pitches[i]) {
-          continue;
-        }
-        
-        // find the match
-        std::optional<int> match_idx;
-        {
-          int idx = -1;
-          for (auto const & match : matches) {
-            ++idx;
-            if (match && (match->index == i)) {
-              match_idx = idx;
-              break;
+      // issue "note off" events
+      {
+        int idx = -1;
+        for (auto play : continue_playing) {
+          ++idx;
+          if (!play) {
+            auto res = synth.onEvent2(mkNoteOff(played_pitches[idx].noteid),
+                                      channel_handler,
+                                      channels,
+                                      {});
+            if (logs) std::cout << n << ": XXX pitch " << played_pitches[idx].midi_pitch << " " << res << std::endl;
+            if (res != onEventResult::OK) {
+              throw std::logic_error("dropped note off");
             }
+            changed = true;
           }
-        }
-        float vol = 0.;
-        if (match_idx) {
-          // having a match is not enough, we also need to see if there are frequencies, in the vicinity of the match,
-          // that have not been associated yet with another note.
-          
-          // sum the volumes of the new freqs that correspond to the matched frequency (with half tone resolution)
-          int idx = -1;
-          for (auto const & [pitch, volume] : freqmags_data) {
-            ++idx;
-            if (!pitch) {
-              continue;
-            }
-            if (fs_used[idx]) {
-              continue;
-            }
-            float const ratio = std::max(fs[idx].freq, fs[*match_idx].freq) / std::min(fs[idx].freq, fs[*match_idx].freq);
-            if (ratio > midi.getHalfToneRatio()) {
-              continue;
-            }
-            fs_used[idx] = true;
-            if (vol) {
-              std::cout << " sum " << volume << std::endl;
-            }
-            vol += volume;
-          }
-        }
-        
-        ReferenceFrequencyHerz const & ref = *midi_pitches[i];
-        
-        if (!vol) {
-          auto res = synth.onEvent2(mkNoteOff(ref),
-                                    channel_handler,
-                                    channels,
-                                    {});
-          std::cout << n << ": XXX pitch " << ref.getFrequency() << " " << res << std::endl;
-          if (res != onEventResult::OK) {
-            throw std::logic_error("dropped note off");
-          }
-          midi_pitches[i].reset();
-          changed = true;
-        } else {
-          // we have a match, and a volume for that match
-          Assert(match_idx);
-          auto res = synth.onEvent2(mkNoteChange(ref,
-                                                 vol,
-                                                 fs[*match_idx].freq),
-                                    channel_handler,
-                                    channels,
-                                    {});
-          if (res != onEventResult::OK) {
-            throw std::logic_error("dropped note change");
-          }
-          cur_freq[i] = fs[*match_idx].freq;
-          std::cout << n << ": pitch " << ref.getFrequency() << " newpitch " << fs[*match_idx].freq << " Vol " << vol  << " initial_vol " << initial_velocity[i] << " " << res << std::endl;
         }
       }
 
-      // If the frequency is not played yet, start a new note
-      int idx = -1;
-      for (auto const & [pitch, volume] : freqmags_data) {
-        ++idx;
-        if (fs_used[idx]) {
-          continue;
-        }
-        if (!pitch) {
-          continue;
-        }
-        if (volume < min_volume) {
-          continue;
-        }
-        int i = static_cast<int>(*pitch + 0.5);
-        Assert(i >= 0);
-        Assert(i < midi_pitches.size());
-        if (midi_pitches[i]) {
-          // drop it, a frequency for this midi pitch is already used (TODO we should sum the volumes instead?)
-          std::cout << "drop" << std::endl;
-          continue;
-        }
-        ReferenceFrequencyHerz ref(fs[idx].freq);
-        auto const res  = synth.onEvent2(mkNoteOn(ref,
-                                                  volume),
-                                         channel_handler,
-                                         channels,
-                                         {});
-        std::cout << n << ": pitch " << ref.getFrequency() << " vol " << volume << " " << res << std::endl;
-        if (res == onEventResult::OK) {
-          midi_pitches[i] = ref;
-          initial_velocity[i] = volume;
-          cur_freq[i] = fs[idx].freq;
+      // issue "note change" and "note on" events
+      {
+        int idx = -1;
+        for (auto pitch_change : pitch_changes) {
+          ++idx;
+          
           changed = true;
-        } else {
-          // dropped note:
-          //
+
+          double const new_pitch = autotuned_pitches[idx].midipitch;
+          float const new_freq = midi.midi_pitch_to_freq(new_pitch);
+          
+          float const volume = autotuned_pitches[idx].volume;
+
+          if (pitch_change) {
+            PlayedNote & played = played_pitches[*pitch_change];
+
+            auto res = synth.onEvent2(mkNoteChange(played.noteid,
+                                                   volume,
+                                                   new_freq),
+                                      channel_handler,
+                                      channels,
+                                      {});
+            if (res != onEventResult::OK) {
+              throw std::logic_error("dropped note change");
+            }
+            if (logs) std::cout << n << ": pitch " << played.midi_pitch << " newpitch " << new_pitch << " Vol " << volume << " " << res << std::endl;
+            
+            played.cur_freq = new_freq;
+            played.midi_pitch = new_pitch;
+          } else {
+            static int noteid = 0;
+            ++noteid;
+            NoteId const note_id{noteid};
+            auto const res = synth.onEvent2(mkNoteOn(note_id,
+                                                     new_freq,
+                                                     volume),
+                                            channel_handler,
+                                            channels,
+                                            {});
+            if (logs) std::cout << n << ": pitch " << new_pitch << " vol " << volume << " " << res << std::endl;
+            if (res == onEventResult::OK) {
+              played_pitches.push_back({
+                note_id,
+                new_pitch,
+                new_freq,
+                volume
+              });
+            } else {
+              // dropped note:
+              //
+            }
+          }
         }
       }
       
+      remove_dead_notes(continue_playing, played_pitches);
+      
+      sort_by_current_pitch(played_pitches);
+      
       if (changed) {
-        for (int i=0, sz = midi_pitches.size(); i<sz; ++i) {
-          if (!midi_pitches[i]) {
-            continue;
-          }
-          std::cout << " " << i;
-        }
-        std::cout << std::endl;
-        for (int i=0, sz = midi_pitches.size(); i<sz; ++i) {
-          if (!midi_pitches[i]) {
-            std::cout << " ";
-          } else {
-            std::cout << "|";
-          }
-        }
-        std::cout << std::endl;
+        print(played_pitches);
       }
-
-      // later:
-
-      // If similar amplitude and frequency, use sweep with low passed frequency, using window_center_stride as time constant.
     };
 
     while (thread_resynth_active) {

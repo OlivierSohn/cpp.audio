@@ -8,33 +8,6 @@ enum class onEventResult {
 
 std::ostream & operator << (std::ostream &, const onEventResult &);
 
-
-struct ReferenceFrequencyHerz {
-  explicit ReferenceFrequencyHerz()
-  : freq(0)
-  {}
-  
-  explicit ReferenceFrequencyHerz(float v)
-  : freq(v) {}
-  
-  float getFrequency() const {
-    return freq;
-  }
-  
-  bool operator < (ReferenceFrequencyHerz const & o) const {
-    return freq < o.freq;
-  }
-  bool operator == (ReferenceFrequencyHerz const & o) const {
-    return freq == o.freq;
-  }
-  bool operator != (ReferenceFrequencyHerz const & o) const {
-    return !this->operator == (o);
-  }
-  
-private:
-  float freq;
-};
-
 enum class EventType : uint8_t
 {
   NoteOn,
@@ -42,10 +15,9 @@ enum class EventType : uint8_t
   NoteChange
 };
 
-
-
 struct NoteOnEvent
 {
+  float frequency;
   float velocity;      ///< range [0.0, 1.0]
   int32_t length;           ///< in sample frames (optional, Note Off has to follow in any case!)
 };
@@ -63,16 +35,32 @@ struct NoteOffEvent
   float velocity;      ///< range [0.0, 1.0]
 };
 
+struct NoteId {
+  int64_t noteid;
+
+  bool operator == (NoteId const & o) const {
+    return noteid == o.noteid;
+  }
+  bool operator != (NoteId const & o) const {
+    return noteid != o.noteid;
+  }
+};
+
+inline std::ostream& operator << (std::ostream& os, const NoteId & n) {
+  os << "Noteid(" << n.noteid << ")";
+  return os;
+}
+
 struct Event
 {
-  Event(EventType t, ReferenceFrequencyHerz const & f)
+  Event(EventType t, NoteId const & n)
   : type(t)
-  , ref_frequency(f) {}
+  , noteid(n) {}
   
   EventType type;
   
   // identifies the note, doesn't change during the lifetime of the note
-  ReferenceFrequencyHerz ref_frequency;
+  NoteId noteid;
   
   union
   {
@@ -82,52 +70,34 @@ struct Event
   };
 };
 
-inline Event mkNoteOn(ReferenceFrequencyHerz const & ref,
+inline Event mkNoteOn(NoteId const & noteid,
+                      float frequency,
                       float velocity) {
   Event e(EventType::NoteOn,
-          ref);
+          noteid);
+  e.noteOn.frequency = frequency;
   e.noteOn.velocity = velocity;
   e.noteOn.length = std::numeric_limits<decltype(e.noteOn.length)>::max();
   return e;
 }
 
-inline Event mkNoteOn(Midi const & m,
-                      double pitch,
-                      float velocity) {
-  return mkNoteOn(ReferenceFrequencyHerz(m.midi_pitch_to_freq(pitch)),
-                  velocity);
-}
-
-inline Event mkNoteChange(ReferenceFrequencyHerz const & ref,
+inline Event mkNoteChange(NoteId const & noteid,
                           float changed_velocity,
                           float new_frequency) {
   Event e(EventType::NoteChange,
-          ref);
+          noteid);
   e.noteChange.changed_frequency = new_frequency;
   e.noteChange.changed_velocity = changed_velocity;
   return e;
 }
 
-inline Event mkNoteChange(Midi const & m,
-                          int pitch,
-                          float relative_velocity,
-                          float new_frequency) {
-  return mkNoteChange(ReferenceFrequencyHerz(m.midi_pitch_to_freq(pitch)),
-                      relative_velocity,
-                      new_frequency);
-}
-
-inline Event mkNoteOff(ReferenceFrequencyHerz const & ref) {
+inline Event mkNoteOff(NoteId const & noteid) {
   Event e(EventType::NoteOff,
-          ref);
+          noteid);
   e.noteOff.velocity = 0.f;
   return e;
 }
 
-inline Event mkNoteOff(Midi const & m,
-                       double pitch) {
-  return mkNoteOff(ReferenceFrequencyHerz(m.midi_pitch_to_freq(pitch)));
-}
 
 constexpr auto event_position_infinite = std::numeric_limits<int>::max();
 

@@ -852,7 +852,7 @@ namespace imajuscule::audio::voice {
   protected:
 
     template<typename Element, int nAudioOut>
-    bool setupAudioElement(ReferenceFrequencyHerz const & freq,
+    bool setupAudioElement(float freq,
                            Element & e,
                            int const sample_rate,
                            Volumes<nAudioOut> & vol)
@@ -902,7 +902,7 @@ namespace imajuscule::audio::voice {
         engine.set_length_exp(ex, ex);
       }
 
-      engine.set_base_freq(freq.getFrequency());
+      engine.set_base_freq(freq);
 
       engine.set_length(denorm<LENGTH>());
 

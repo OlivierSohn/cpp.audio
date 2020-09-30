@@ -52,7 +52,6 @@
 #include "program.h"
 #include "normalization.h"
 #include "gen.crtp.h"
-#include "gen.cutramp.h"
 #include "gen.sine.h"
 #include "gen.voice.h"
 #include "events.impl.h"

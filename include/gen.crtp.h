@@ -199,26 +199,25 @@ void setPhase(MonoNoteChannel & c, CS & cs)
     using Base::get_gain;
     using Base::setupAudioElement;
 
-    static constexpr auto n_channels_per_note = 1;
-
     // notes played in rapid succession can have a common audio interval during xfades
     // even if their noteOn / noteOff intervals are disjoint.
     // n_max_simultaneous_notes_per_voice controls the possibility to support that 'well'.
     // TODO if the release time is long, and notes are consecutive and short, this number
     // should be increased.
     static constexpr auto n_max_simultaneous_notes_per_voice = 2;
-    static constexpr auto n_channels = n_channels_per_note * n_max_voices * n_max_simultaneous_notes_per_voice;
+    // assumes a single channel is used per note
+    static constexpr auto n_channels = n_max_voices * n_max_simultaneous_notes_per_voice;
 
   protected:
 
-    LocalPairArray<ReferenceFrequencyHerz, MonoNoteChannel, n_channels> channels;
+    LocalPairArray<std::optional<NoteId>, MonoNoteChannel, n_channels> channels;
     int const sample_rate;
 
   public:
 
     template <typename A>
     ImplCRTP(int sampleRate, std::array<A, n_channels> & as)
-    : channels(ReferenceFrequencyHerz(0), as)
+    : channels(std::optional<NoteId>{}, as)
     , sample_rate(sampleRate)
     {}
 
@@ -327,10 +326,10 @@ void setPhase(MonoNoteChannel & c, CS & cs)
         int32_t channel_index = channels.index(c);
 
         // 2. [without maybe-lock]
-        //      set the tunedpitch
+        //      set the noteid
         //      setup the channel (dynamic allocations allowed for soundengine)
 
-        channels.corresponding(*channel) = e.ref_frequency;
+        channels.corresponding(*channel) = e.noteid;
 
         c.elem.forgetPastSignals(); // this does _not_ touch the envelope
         c.elem.algo.setVolumeTarget(e.noteOn.velocity);
@@ -339,7 +338,7 @@ void setPhase(MonoNoteChannel & c, CS & cs)
         // setupAudioElement is allowed to be slow, allocate / deallocate memory, etc...
         // because it's not running in the audio realtime thread.
         Volumes<nAudioOut> pannedVol;
-        if(!setupAudioElement(e.ref_frequency, c.elem, sample_rate, pannedVol)) {
+        if(!setupAudioElement(e.noteOn.frequency, c.elem, sample_rate, pannedVol)) {
           MIDI_LG(ERR,"setupAudioElement failed");
           // we let the noteoff reset the envelope state.
           return onDroppedNote(e);
@@ -465,15 +464,15 @@ void setPhase(MonoNoteChannel & c, CS & cs)
         if(maybeMidiTimeAndSource) {
           typename Out::LockFromNRT L(out.get_lock());
           chans.enqueueMIDIOneShot(get_value(maybeMidiTimeAndSource)
-                                 , [this, ref_freq = e.ref_frequency](auto &, auto midiTimingAndSrc, uint64_t curTimeNanos){
+                                 , [this, noteid = e.noteid](auto &, auto midiTimingAndSrc, uint64_t curTimeNanos){
             // We can have multiple notes with the same pitch, and different durations.
             // Hence, here we just close the first opened channel with matching pitch
             // and matching midi source.
-            for(auto &f : firsts(channels)) {
-              if (f != ref_freq) {
+            for(auto &i : firsts(channels)) {
+              if (!i || *i != noteid) {
                 continue;
               }
-              auto & c = channels.corresponding(f);
+              auto & c = channels.corresponding(i);
 
               if(!c.midiDelay) {
                 // the note-on had no MIDI timestamp, but this note-off has one
@@ -505,14 +504,14 @@ void setPhase(MonoNoteChannel & c, CS & cs)
 #endif
         {
           typename Out::LockFromNRT L(out.get_lock());
-          chans.enqueueOneShot([this, ref_freq = e.ref_frequency](auto &, uint64_t curTimeNanos){
+          chans.enqueueOneShot([this, noteid = e.noteid](auto &, uint64_t curTimeNanos){
             // We can have multiple notes with the same pitch, and different durations.
             // Hence, here we just close the first opened channel with matching pitch.
-            for(auto &f : firsts(channels)) {
-              if (f != ref_freq) {
+            for(auto &i : firsts(channels)) {
+              if (!i || *i != noteid) {
                 continue;
               }
-              auto & c = channels.corresponding(f);
+              auto & c = channels.corresponding(i);
               if(c.midiDelay) {
                 // the note-one had a corresponding MIDI timestamp, but this note-off has no MIDI timestamp
                 // so it's not what we are ooking for.
@@ -537,16 +536,16 @@ void setPhase(MonoNoteChannel & c, CS & cs)
             typename Out::LockFromNRT L(out.get_lock());
             chans.enqueueOneShot([this,
                                   volume = e.noteChange.changed_velocity,
-                                  ref_freq = e.ref_frequency,
+                                  noteid = e.noteid,
                                   increments = freq_to_angle_increment(e.noteChange.changed_frequency, sample_rate)](auto &,
                                                                         uint64_t){
               // We can have multiple notes with the same pitch, and different durations.
               // We adjust the volume of all opened channels with matching pitch.
-              for(auto &f : firsts(channels)) {
-                if (f != ref_freq) {
+              for(auto &i : firsts(channels)) {
+                if (!i || *i != noteid) {
                   continue;
                 }
-                auto & c = channels.corresponding(f);
+                auto & c = channels.corresponding(i);
                 c.elem.algo.setVolumeTarget(volume);
                 c.elem.algo.setAngleIncrements(increments);
               }

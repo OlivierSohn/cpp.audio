@@ -58,8 +58,8 @@ onEventResult playOneThing(Midi const & midi,
   v.set_pan(b.pan);
   v.set_loudness_compensation(.2f); // birds do not naturally emit loudness compensated frequencies!
   
-  return v.onEvent(mkNoteOn(midi,
-                            b.midiPitch,
+  return v.onEvent(mkNoteOn(NoteId{b.midiPitch},
+                            midi.midi_pitch_to_freq(b.midiPitch),
                             1.0),
                    out,
                    chans);
@@ -71,8 +71,7 @@ onEventResult stopPlaying(Midi const & midi,
                           OutputData & out,
                           Chans & chans,
                           int16_t midiPitch) {
-  return v.onEvent(mkNoteOff(midi,
-                             midiPitch),
+  return v.onEvent(mkNoteOff(NoteId{midiPitch}),
                    out,
                    chans);
 }

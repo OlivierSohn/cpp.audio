@@ -7,7 +7,7 @@ namespace imajuscule::audio::sine {
     static constexpr float get_gain() { return 1.f; };
 
     template<typename Element, int nAudioOut>
-    bool setupAudioElement(ReferenceFrequencyHerz const & freq,
+    bool setupAudioElement(float freq,
                            Element & e,
                            int const sample_rate,
                            Volumes<nAudioOut> & vol)
@@ -16,7 +16,7 @@ namespace imajuscule::audio::sine {
         // using 0.8f here to try to even the volume difference with non compensated oscillators.
                                0.8f, // 1.f = full compensation, 0.f = no compensation
                                30.f);
-      e.algo.setAngleIncrements(freq_to_angle_increment(freq.getFrequency(), sample_rate));
+      e.algo.setAngleIncrements(freq_to_angle_increment(freq, sample_rate));
       vol = Volumes<nAudioOut>(Element::baseVolume);
       return true;
     }
