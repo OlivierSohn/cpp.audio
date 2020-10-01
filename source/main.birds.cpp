@@ -142,8 +142,8 @@ void birds(int const sample_rate) {
      }
      v.set_gain(b.gain);
      v.set_pan(b.pan);
-     v.set_loudness_compensation(.2f); // birds do not naturally emit loudness compensated frequencies!
      */
+    v.set_loudness_compensation(.2f); // birds do not naturally emit loudness compensated frequencies!
 
     noteid = mk_note_id();
     float volume = 0.1f;
