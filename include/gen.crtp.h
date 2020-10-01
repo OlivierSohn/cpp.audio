@@ -211,7 +211,6 @@ void setPhase(MonoNoteChannel & c, CS & cs)
   protected:
 
     LocalPairArray<std::optional<NoteId>, MonoNoteChannel, n_channels> channels;
-    int const sample_rate;
 
   private:
     std::atomic_int count_acquire_race_errors{0};
@@ -226,9 +225,8 @@ void setPhase(MonoNoteChannel & c, CS & cs)
     }
 
     template <typename A>
-    ImplCRTP(int sampleRate, std::array<A, n_channels> & as)
+    ImplCRTP(std::array<A, n_channels> & as)
     : channels(std::optional<NoteId>{}, as)
-    , sample_rate(sampleRate)
     {}
 
     template<typename ChannelsT>
@@ -297,7 +295,7 @@ void setPhase(MonoNoteChannel & c, CS & cs)
     }
 
     template<typename Out, typename Chans>
-    onEventResult onEvent2(Event const & e, Out & out, Chans & chans
+    onEventResult onEvent2(int const sample_rate, Event const & e, Out & out, Chans & chans
 #ifndef CUSTOM_SAMPLE_RATE
                            ,Optional<MIDITimestampAndSource> maybeMidiTimeAndSource
 #endif

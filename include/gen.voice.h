@@ -858,7 +858,7 @@ namespace imajuscule::audio::voice {
                            Volumes<nAudioOut> & vol)
     {
       auto & engine = e.algo.getOsc();
-      
+
       engine.set_sample_rate(sample_rate);
       {
         auto interp = static_cast<itp::interpolation>(itp::interpolation_traversal().realValues()[static_cast<int>(.5f + value<INTERPOLATION>())]);
@@ -967,9 +967,9 @@ namespace imajuscule::audio::voice {
         }
         vol = MakeVolume::run<nAudioOut>(Element::baseVolume, pan);
       }
-      
+
       using audioelement::SoundEngineInitPolicy;
-      
+
       if constexpr (MODE == Mode::SWEEP) {
         return engine.initialize_sweep(denorm<LOW_FREQ>(),
                                         denorm<HIGH_FREQ>());
@@ -1111,9 +1111,9 @@ namespace imajuscule::audio::voice {
     Impl_(Args&&... args) : Parent (std::forward<Args>(args)...) {}
 
     template<typename Out, typename Chans>
-    onEventResult onEvent(Event const & e, Out & out, Chans & chans)
+    onEventResult onEvent(int const sample_rate, Event const & e, Out & out, Chans & chans)
     {
-      return onEvent2(e, out, chans, {});
+      return onEvent2(sample_rate, e, out, chans, {});
     }
 
     template<typename Out, typename Chans>
@@ -1143,12 +1143,14 @@ namespace imajuscule::audio::voice {
       int nextEventPosition = getNextEventPosition(it, end);
       Assert(nextEventPosition >= currentFrame);
 
+      int const sample_Rate = out.getSampleRate();
+      
       while(nRemainingFrames) {
         Assert(nRemainingFrames > 0);
 
         while(nextEventPosition == currentFrame) {
           Event e = it.dereference();
-          onEvent(e, out, chans);
+          onEvent(sample_rate, out, chans);
           ++it;
           nextEventPosition = getNextEventPosition(it, end);
         }

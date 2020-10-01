@@ -10,7 +10,7 @@ struct PortAudioSample<float> {
 
 #ifdef IMJ_LOG_AUDIO_TIME
 struct TimeStats {
-  
+
   void tic() {
     using namespace std::chrono;
     start = high_resolution_clock::now();
@@ -93,26 +93,26 @@ template <Features F, typename Chans>
 struct Context<AudioPlatform::PortAudio, F, Chans> {
   using MeT =
   Context<AudioPlatform::PortAudio, F, Chans>;
-  
+
   static constexpr auto nAudioOut = Chans::nOuts;
-  
+
   template<typename Lock, typename ...Args>
   Context(Lock & l, Args... args) : chans(l, args ...)
   , bInitialized(false)
   {}
-  
+
 protected:
   Chans chans;
   bool bInitialized : 1;
-  
+
 private:
   PaStream *stream = nullptr;
-  
+
 #if IMJ_DEBUG_AUDIO_OUT
   std::unique_ptr<AsyncWavWriter> async_wav_writer;
   int writer_idx = 0;
 #endif
-  
+
   static int playCallback( const void *inputBuffer, void *outputBuffer,
                           unsigned long numFrames,
                           const PaStreamCallbackTimeInfo* timeInfo,
@@ -122,30 +122,30 @@ private:
 #ifndef NDEBUG
     PartialCallbackCheck partial_cb_check;
 #endif
-    
+
 #ifdef IMJ_LOG_AUDIO_TIME
     LogAudioTime log_time;
 #endif
-    
+
 #ifdef IMJ_LOG_MEMORY
     ScopedThreadNature stn{
       ThreadNature::RealTime_Program, // inside this function
       ThreadNature::RealTime_OS       // outside this function
     };
 #endif
-    
+
 #ifdef IMJ_LOG_AUDIO_OVERFLOW
     if(f) {
       ScopedNoMemoryLogs s; // because we log an error
       LG(ERR, "audio overflow: %d", f);
     }
 #endif
-    
+
     // This global variable is used to dynamically optimize
     // the reverb algorithms according to the
     // number of frames we need to compute per callback.
     n_audio_cb_frames.store(numFrames, std::memory_order_relaxed);
-    
+
     Assert(timeInfo);
     uint64_t tNanos = [timeInfo]() -> uint64_t {
       if(likely(timeInfo)) {
@@ -155,20 +155,20 @@ private:
       }
       return noTime; // then, MIDI synchronizatin will not work.
     }();
-    
+
 #ifndef NDEBUG
     analyzeTime(tNanos, numFrames);
 #endif
-    
+
     reinterpret_cast<MeT*>(userData)->chans.step(static_cast<SAMPLE*>(outputBuffer), static_cast<int>(numFrames), tNanos);
 #if IMJ_DEBUG_AUDIO_OUT
     reinterpret_cast<MeT*>(userData)->async_wav_writer->sync_feed(static_cast<SAMPLE*>(outputBuffer),
                                                                   static_cast<int>(numFrames));
 #endif
-    
+
     return paContinue;
   }
-  
+
 protected:
   // minLatency : latency in seconds
   bool doInit(float minLatency, int sample_rate) {
@@ -177,11 +177,11 @@ protected:
     PaError err = Pa_Initialize();
     if(likely(err == paNoError)) {
       bInitialized = true;
-      
+
       LG(INFO, "AudioOut::doInit : done initializing %s", Pa_GetVersionText());
-      
+
       LG(INFO,"AudioOut::doInit : %d host apis", Pa_GetHostApiCount());
-      
+
       PaStreamParameters p;
       p.device = Pa_GetDefaultOutputDevice();
       if (unlikely(p.device == paNoDevice)) {
@@ -190,10 +190,10 @@ protected:
         return false;
       }
       LG(INFO, "AudioOut::doInit : audio device : id %d", p.device);
-      
+
       p.channelCount = nAudioOut;
       p.sampleFormat = PortAudioSample<SAMPLE>::format;
-      
+
       auto pi = Pa_GetDeviceInfo( p.device );
       LG(INFO, "AudioOut::doInit : audio device : hostApi    %d", pi->hostApi);
       LG(INFO, "AudioOut::doInit : audio device : name       %s", pi->name);
@@ -202,20 +202,28 @@ protected:
       LG(INFO, "AudioOut::doInit : audio device : def. sr    %f", pi->defaultSampleRate);
       LG(INFO, "AudioOut::doInit : audio device : def. lolat %f", pi->defaultLowOutputLatency);
       LG(INFO, "AudioOut::doInit : audio device : def. holat %f", pi->defaultHighOutputLatency);
-      
+      LG(INFO, "AudioOut::doInit : audio device : min user lat %f", minLatency);
+
       // To optimize cache use, the callback should be asked to compute
       // a multiple of n_frames_per_buffer frames at each call.
-      
+      // So we round the latency such that this requirement is met.
+
       auto suggestedLatency =
       // on windows it's important to not set suggestedLatency too low, else samples are lost (for example only 16 are available per timestep)
-      std::max(
-               static_cast<double>(minLatency),
+      std::max(static_cast<double>(minLatency),
                pi->defaultLowOutputLatency);
-      int suggestedLatencyInSamples = static_cast<int>(0.5f + suggestedLatency * static_cast<float>(SAMPLE_RATE));
+      int suggestedLatencyInSamples = static_cast<int>(0.5f + suggestedLatency * static_cast<float>(sample_rate));
       LG(INFO, "suggested latency in samples       : %d", suggestedLatencyInSamples);
       using namespace audioelement;
-      int ceiledSLIS = n_frames_per_buffer * (1 + (suggestedLatencyInSamples-1) / n_frames_per_buffer);
+
+      // we to the next multiple of 'n_frames_per_buffer'
+      int ceiledSLIS = n_frames_per_buffer * (1 + (ceiledSLIS-1) / n_frames_per_buffer);
       LG(INFO, " ceiled to the next multiple of %d : %d", n_frames_per_buffer, ceiledSLIS);
+
+      // we have cracks on osx, rounding to the next power of 2 fixed this.
+      ceiledSLIS = ceil_power_of_two(suggestedLatencyInSamples);
+      LG(INFO, " ceiled to the next power of 2 : %d", ceiledSLIS);
+
       // The current portaudio doc says, about suggestedLatency:
       //   "implementations should round the suggestedLatency up to the next practical value
       //     - ie to provide an equal or higher latency than suggestedLatency wherever possible"
@@ -223,11 +231,11 @@ protected:
       //
       // But what I found is that the resulting latency is 'equal or lower' to the suggested one.
       // Hence, I add epsilon here instead of substracting it, to be sure I will get the right buffer sizes.
-      p.suggestedLatency = static_cast<float>(ceiledSLIS) / static_cast<float>(SAMPLE_RATE) + 1e-6;
+      p.suggestedLatency = static_cast<float>(ceiledSLIS) / static_cast<float>(sample_rate) + 1e-6;
       LG(INFO, "p.suggestedLatency          : %f", p.suggestedLatency);
-      
+
       p.hostApiSpecificStreamInfo = nullptr;
-      
+
 #if IMJ_DEBUG_AUDIO_OUT
       if (!async_wav_writer) {
         async_wav_writer = std::make_unique<AsyncWavWriter>(nAudioOut,
@@ -252,16 +260,16 @@ protected:
         Assert(0);
         return false;
       }
-      
+
       const PaStreamInfo * si = Pa_GetStreamInfo(stream);
-      
+
       LG(INFO, "AudioOut::doInit : stream : sample rate %f",
          si->sampleRate);
       LG(INFO, "AudioOut::doInit : stream : output lat  %f (%f frames)",
          si->outputLatency, si->outputLatency * si->sampleRate);
       LG(INFO, "AudioOut::doInit : stream : input lat   %f (%f frames)",
          si->inputLatency,  si->inputLatency  * si->sampleRate);
-      
+
       err = Pa_StartStream( stream );
       if( unlikely(err != paNoError) )
       {
@@ -279,7 +287,7 @@ protected:
     LG(INFO, "AudioOut::doInit : success");
     return true;
   }
-  
+
 public:
   void doTearDown() {
     LG(INFO, "AudioOut::doTearDown");
@@ -293,10 +301,10 @@ public:
         return;
       }
     }
-    
+
     if( bInitialized ) { // don't call Pa_Terminate if Pa_Initialize failed
       bInitialized = false;
-      
+
       PaError err = Pa_Terminate();
       if(err != paNoError)
       {
@@ -317,16 +325,16 @@ template<>
 struct AudioInput<AudioPlatform::PortAudio> {
   AudioInput()
   {}
-  
+
   bool Init(RecordF f, int const sample_rate) {
     LG(INFO, "AudioIn::do_wakeup : initializing %s", Pa_GetVersionText());
     auto err = Pa_Initialize();
     if(likely(err == paNoError))
     {
       LG(INFO, "AudioIn::do_wakeup : done initializing %s", Pa_GetVersionText());
-      
+
       LG(INFO,"AudioIn::do_wakeup : %d host apis", Pa_GetHostApiCount());
-      
+
       PaStreamParameters inputParameters;
       inputParameters.device = Pa_GetDefaultInputDevice();
       if (unlikely(inputParameters.device == paNoDevice)) {
@@ -335,10 +343,10 @@ struct AudioInput<AudioPlatform::PortAudio> {
         return false;
       }
       LG(INFO, "AudioIn::do_wakeup : audio device : id %d", inputParameters.device);
-      
+
       inputParameters.channelCount = 1;
       inputParameters.sampleFormat = audio::PortAudioSample<SAMPLE>::format;
-      
+
       auto pi = Pa_GetDeviceInfo( inputParameters.device );
       LG(INFO, "AudioIn::do_wakeup : audio device : hostApi    %d", pi->hostApi);
       LG(INFO, "AudioIn::do_wakeup : audio device : name       %s", pi->name);
@@ -347,11 +355,11 @@ struct AudioInput<AudioPlatform::PortAudio> {
       LG(INFO, "AudioIn::do_wakeup : audio device : def. sr    %f", pi->defaultSampleRate);
       LG(INFO, "AudioIn::do_wakeup : audio device : def. lilat %f", pi->defaultLowInputLatency);
       LG(INFO, "AudioIn::do_wakeup : audio device : def. hilat %f", pi->defaultHighInputLatency);
-      
+
       inputParameters.suggestedLatency =
       // on windows it's important to not set suggestedLatency too low, else samples are lost (for example only 16 are available per timestep)
       pi->defaultLowInputLatency;
-      
+
       inputParameters.hostApiSpecificStreamInfo = nullptr;
 
       recordF = f;
@@ -373,13 +381,13 @@ struct AudioInput<AudioPlatform::PortAudio> {
         return false;
       }
       sample_rate_ = sample_rate;
-      
+
       const PaStreamInfo * si = Pa_GetStreamInfo(stream);
-      
+
       LG(INFO, "AudioIn::do_wakeup : stream : output lat  %f", si->outputLatency);
       LG(INFO, "AudioIn::do_wakeup : stream : input lat   %f", si->inputLatency);
       LG(INFO, "AudioIn::do_wakeup : stream : sample rate %f", si->sampleRate);
-      
+
       err = Pa_StartStream( stream );
       if( unlikely(err != paNoError) )
       {
@@ -416,7 +424,7 @@ struct AudioInput<AudioPlatform::PortAudio> {
         return false;
       }
     }
-    
+
     PaError err = Pa_Terminate();
     if(unlikely(err != paNoError))
     {
@@ -434,7 +442,7 @@ struct AudioInput<AudioPlatform::PortAudio> {
   int getSampleRate() const {
     return sample_rate_;
   }
-  
+
 private:
   PaStream *stream = nullptr;
   int sample_rate_ = 0;
@@ -451,12 +459,12 @@ private:
                             void *userData )
   {
     AudioInput<AudioPlatform::PortAudio> *This = static_cast<AudioInput<AudioPlatform::PortAudio>*>(userData);
-    
+
     (void) outputBuffer;
     (void) timeInfo;
     (void) statusFlags;
     (void) userData;
-    
+
     This->recordF(static_cast<const SAMPLE*>(inputBuffer), (int)nFrames);
 #if IMJ_DEBUG_AUDIO_IN
     This->async_wav_writer->sync_feed(static_cast<const SAMPLE*>(inputBuffer), (int)nFrames);

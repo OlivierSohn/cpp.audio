@@ -36,15 +36,16 @@ constexpr auto impulse_responses_root_dir = "audio.ir";
 int wait_for_first_n_audio_cb_frames();
 
 template<typename Post>
-bool useConvolutionReverb(Post & post,
+bool useConvolutionReverb(int const sample_rate,
+                          Post & post,
                           std::string const & dirname, std::string const & filename) {
-  
+
   try{
     WAVReader reader(dirname, filename);
     reader.Initialize();
     ResampleSincStats stats;
     using T = double;
-    InterlacedBuffer ib(reader, SAMPLE_RATE, stats);
+    InterlacedBuffer ib(reader, sample_rate, stats);
     if (ib.countChannels() <= 0) {
       throw std::runtime_error("negative count channels");
     }
@@ -78,36 +79,36 @@ struct AudioOutContext : public Context<AUP, Feat, T> {
   using Base::bInitialized;
   using Base::doInit;
   using Base::doTearDown;
-  
+
   // the min latency used in case the initialization is done lazily
   static constexpr float minLazyLatency = 0.005f;
-  
+  static constexpr int lazySamplingRate = 44100;
+
 private:
-  
+
   std::atomic_bool closing;
-  int sample_rate_;
-  
+  std::optional<int> sample_rate_;
+
 public:
   template<typename ...Args>
-  AudioOutContext(int sample_rate, Args... args)
-  : sample_rate_(sample_rate)
-  , Base(GlobalAudioLock<policy>::get(), args ...)
+  AudioOutContext(Args... args)
+  : Base(GlobalAudioLock<policy>::get(), args ...)
   {
     closing.store(false, std::memory_order_relaxed);
   }
-  
-  int getSampleRate() const {
+
+  std::optional<int> getSampleRate() const {
     return sample_rate_;
   }
-  
+
   ~AudioOutContext() {
     finalize();
   }
-  
+
   bool Initialized() const { return bInitialized; }
-  
+
   auto & getChannelHandler() { return chans; }
-  
+
   void onApplicationShouldClose() {
     auto cur = false;
     if(!closing.compare_exchange_strong(cur, true, std::memory_order_acq_rel)) {
@@ -117,13 +118,13 @@ public:
     chans.getChannels().closeAllChannels(xfade_on_close);
     LG(INFO, "Fading out Audio before shutdown...");
   }
-  
+
   void finalize() {
     if(bInitialized) {
       chans.getChannels().closeAllChannels(0);
     }
   }
-  
+
   /*
    During this method call, no concurrent call to any other method is allowed.
    */
@@ -132,39 +133,41 @@ public:
     closing.store(false, std::memory_order_release);
     finalize();
     doTearDown();
+    sample_rate_.reset();
   }
-  
-  [[nodiscard]] bool Init(float minLatency) {
+
+  [[nodiscard]] bool Init(int sample_rate, float minLatency) {
     if(bInitialized) {
       return true;
     }
-    if(!doInit(minLatency, sample_rate_)) {
+    if(!doInit(minLatency, sample_rate)) {
       return false;
     }
+    sample_rate_ = sample_rate;
     initializeConvolutionReverb();
     return true;
   }
-  
+
   void initializeConvolutionReverb()
   {
     dontUseConvolutionReverbs(chans);
-    
+
     // this one needs to be high pass filtered (5hz loud stuff)
     /*    std::string dirname = std::string(impulse_responses_root_dir) + "/nyc.showroom";
      constexpr auto filename = "BigRoomStereo (16).wav";
      //std::string dirname = std::string(impulse_responses_root_dir) + "/im.reverbs";
      //constexpr auto filename = "Conic Long Echo Hall.wav";
-     audio::useConvolutionReverb(chans, dirname, filename);
+     audio::useConvolutionReverb(sample_rate_, chans, dirname, filename);
      */
   }
-  
-  
+
+
   uint8_t openChannel(float volume, ChannelClosingPolicy p, int xfade_length)
   {
     if(closing.load(std::memory_order_acquire)) {
       return AUDIO_CHANNEL_NONE;
     }
-    if(!Init(minLazyLatency)) {
+    if(!Init(lazySamplingRate, minLazyLatency)) {
       return AUDIO_CHANNEL_NONE;
     }
     if(auto c = getFirstXfadeInfiniteChans()) {
@@ -172,7 +175,7 @@ public:
     }
     return AUDIO_CHANNEL_NONE;
   }
-  
+
   [[nodiscard]] bool play( uint8_t channel_id, StackVector<Request> && v ) {
     if(closing.load(std::memory_order_acquire)) {
       return false;
@@ -182,7 +185,7 @@ public:
     }
     return false;
   }
-  
+
   template<typename Algo>
   [[nodiscard]] bool playComputable( PackedRequestParams<nAudioOut> params, audioelement::FinalAudioElement<Algo> & e) {
     if(closing.load(std::memory_order_acquire)) {
@@ -193,7 +196,7 @@ public:
     }
     return false;
   }
-  
+
   void toVolume( uint8_t channel_id, float volume, int nSteps ) {
     if(closing.load(std::memory_order_acquire)) {
       return;
@@ -202,7 +205,7 @@ public:
       c->toVolume( channel_id, volume, nSteps);
     }
   }
-  
+
   void closeChannel(uint8_t channel_id, CloseMode mode) {
     if(closing.load(std::memory_order_acquire)) {
       return;
@@ -211,14 +214,14 @@ public:
       c->closeChannel( channel_id, mode );
     }
   }
-  
+
   typename Chans::ChannelsT::XFadeInfiniteChans * getFirstXfadeInfiniteChans() {
     if(auto m = getChannelHandler().getChannels().getChannelsXFadeInfinite().maybe_front()) {
       return &get_value(m).first;
     }
     return {};
   }
-  
+
   typename Chans::ChannelsT::NoXFadeChans * getFirstNoXfadeChans() {
     if(auto m = getChannelHandler().getChannels().getChannelsNoXFade().maybe_front()) {
       return &get_value(m).first;

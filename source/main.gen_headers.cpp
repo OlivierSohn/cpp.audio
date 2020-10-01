@@ -54,7 +54,7 @@ void generateScript() {
         add( freqs[i+1], normalized_frequencies, volumes );
     }
     add(freqs[n_freq-1], normalized_frequencies, volumes);
-    add(get_nyquist_frequency<float>(), normalized_frequencies, volumes);
+    add(get_nyquist_frequency<float>(SAMPLE_RATE), normalized_frequencies, volumes);
 
     file.write_vec(volumes, "volumes");
 

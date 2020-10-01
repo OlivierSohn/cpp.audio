@@ -1999,12 +1999,12 @@ template<class...AEs>
 
   template<typename T>
   struct LoudnessCompensationFilterWithLatency {
-    LoudnessCompensationFilterWithLatency(unsigned int const fft_length, unsigned int const NumTaps) :
+    LoudnessCompensationFilterWithLatency(int sample_rate, unsigned int const fft_length, unsigned int const NumTaps) :
     sz(NumTaps)
     {
       filter.setupAndSetCoefficients(FFTConvolutionCRTPSetupParam{static_cast<int>(fft_length)},
                   1, // we sample by sample so max vector size is 1
-                  loudness::getLoudnessCompensationFIRCoefficients<T>(fft_length, NumTaps));
+                  loudness::getLoudnessCompensationFIRCoefficients<T>(sample_rate, fft_length, NumTaps));
     }
 
     Latency getLatency() const { return filter.getLatency(); }

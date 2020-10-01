@@ -43,8 +43,8 @@ namespace imajuscule::audio {
     }
 
     template<typename T>
-    constexpr T period_in_samples_to_freq(int period) {
-        return sample_rate<T>() / static_cast<T>(period);
+    constexpr T period_in_samples_to_freq(T sample_rate, int period) {
+        return sample_rate / static_cast<T>(period);
     }
 
     constexpr int freq_to_period_in_samples( float freq_hz ) {
@@ -64,8 +64,8 @@ namespace imajuscule::audio {
 
 
     template<typename T>
-    constexpr T get_nyquist_frequency() {
-        return period_in_samples_to_freq<T>(static_cast<T>(2));
+    constexpr T get_nyquist_frequency(T sample_rate) {
+        return period_in_samples_to_freq(sample_rate, static_cast<T>(2));
     }
 
     // angle increment unit is "rad / pi"

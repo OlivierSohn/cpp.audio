@@ -22,55 +22,56 @@ void birds(int const sample_rate) {
     ++i;
     return NoteId{i};
   };
-  
+
   static constexpr auto audioEnginePolicy = AudioOutPolicy::MasterLockFree;
-  
+
   using AllChans = ChannelsVecAggregate< 2, audioEnginePolicy >;
-  
+
   using NoXFadeChans = typename AllChans::NoXFadeChans;
   using XFadeChans = typename AllChans::XFadeChans;
-  
+
   using ChannelHandler = outputDataBase< AllChans, ReverbType::Realtime_Synchronous >;
-  
+
   using Ctxt = AudioOutContext<
   ChannelHandler,
   Features::JustOut,
   AudioPlatform::PortAudio
   >;
-  
-  Ctxt ctxt(sample_rate);
-  if (!ctxt.Init(0.006)) {
+
+  Ctxt ctxt();
+  if (!ctxt.Init(sample_rate, 0.006)) {
     throw std::runtime_error("ctxt init failed");
   }
   auto & channel_handler = ctxt.getChannelHandler();
-  
+
   using Synth = audioelement::Voice<Ctxt, audioelement::SoundEngineMode::BIRDS>;
-  
+
   static constexpr auto n_mnc = Synth::n_channels;
   using mnc_buffer = typename Synth::MonoNoteChannel::buffer_t;
   std::array<mnc_buffer,n_mnc> buffers;
-  
+
   auto [channels_,remover] = channel_handler.getChannels().getChannelsNoXFade().emplace_front(channel_handler.get_lock_policy(),
                                                                                               std::min(n_mnc,
                                                                                                        static_cast<int>(std::numeric_limits<uint8_t>::max())));
   NoXFadeChans & channels = channels_;
-  
+
   Synth synth(sample_rate, buffers);
-  
+
   synth.initialize(channels);
-  
+
   auto & v = synth;
   v.initializeSlow(); // does something only the 1st time
-  
+
   synth.forEachElems([](auto & e) {
     // no need to setup anything
   });
-  
-  
+
+
   std::this_thread::sleep_for(std::chrono::milliseconds(1000));
 
   /*
-  auto res = synth.onEvent2(mkNoteChange(ref,
+  auto res = synth.onEvent2(sample_rate,
+                            mkNoteChange(ref,
                                          vol,
                                          fs[*match_idx].freq),
                             channel_handler,
@@ -81,19 +82,20 @@ void birds(int const sample_rate) {
   }
   std::cout << n << ": pitch " << ref.getFrequency() << " newpitch " << fs[*match_idx].freq << " Vol " << vol  << " initial_vol " << initial_velocity[i] << " " << res << std::endl;
   */
-  
+
   std::optional<NoteId> noteid;
 
   v.useProgram(8); // keep it first as it reinitializes params
   std::cout << "using program 8" << std::endl;
-  
-  
+
+
   /*
   {
     noteid = mk_note_id();
     float volume = 0.1f;
     float frequency = 200.f;
-    auto const res  = synth.onEvent2(mkNoteOn(*noteid,
+    auto const res  = synth.onEvent2(sample_rate,
+                                     mkNoteOn(*noteid,
                                               frequency,
                                               volume),
                                      channel_handler,
@@ -105,10 +107,11 @@ void birds(int const sample_rate) {
     }
   }
    */
-  
+
   while(true) {
     if(noteid) {
-      auto res = synth.onEvent2(mkNoteOff(*noteid),
+      auto res = synth.onEvent2(sample_rate,
+                                mkNoteOff(*noteid),
                                 channel_handler,
                                 channels,
                                 {});
@@ -120,7 +123,7 @@ void birds(int const sample_rate) {
     std::cout << "enter char or 'q':" << std::endl;
     char ch;
     std::cin >> ch;
-    
+
     std::cout << "pressed:" << ch << std::endl;
     if (ch == 'q') {
       std::cout << "quitting" << ch << std::endl;
@@ -146,19 +149,20 @@ void birds(int const sample_rate) {
     float volume = 0.1f;
     float frequency = 200.f;
 
-    auto const res  = synth.onEvent2(mkNoteOn(*noteid,
+    auto const res  = synth.onEvent2(sample_rate,
+                                     mkNoteOn(*noteid,
                                               frequency,
                                               volume),
                                      channel_handler,
                                      channels,
                                      {});
     std::cout << *noteid << ": pitch " << frequency << " vol " << volume << " " << res << std::endl;
-    
+
     std::this_thread::sleep_for(std::chrono::milliseconds(1000));
   }
-  
+
   ctxt.onApplicationShouldClose();
-  
+
   std::this_thread::sleep_for(std::chrono::milliseconds(1000));
   ctxt.TearDown();
 }

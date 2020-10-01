@@ -158,7 +158,7 @@ soundBuffer<T>::soundBuffer( soundId const & id ) {
                 ScopedLog l("Generating", "Pink Noise");
                 // using generate_with_smooth_transition because pink noise has some correlation between samples
                 generate_with_smooth_transition( id.period_length, [](float){
-                    static GaussianPinkNoiseAlgo a;
+                    static GaussianPinkNoiseAlgo a(SAMPLE_RATE);
                     a.step();
                     return a.get();
                 } );
@@ -177,7 +177,7 @@ soundBuffer<T>::soundBuffer( soundId const & id ) {
 #else
                     256;
 #endif
-                  static auto a = make_loudness_adapted_noise(getPinkNoise, length_ftt, length_ftt);
+                  static auto a = make_loudness_adapted_noise(SAMPLE_RATE, getPinkNoise, length_ftt, length_ftt);
                   return a.step();
                 } );
                 normalize();

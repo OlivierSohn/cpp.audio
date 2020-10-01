@@ -61,7 +61,6 @@ namespace imajuscule::audio {
         constexpr auto n_changes_min_per_sec = lowest_pink_frequency * 2.f;
 
         /*
-
          level0 : n_changes_per_sec[0] = sampling rate
          level1 : n_changes_per_sec[1] = sampling rate/2
          [...]
@@ -74,13 +73,16 @@ namespace imajuscule::audio {
          => log2(sampling rate/n_changes_min_per_sec) <= n
          */
 
-        constexpr auto n_levels = relevantBits(static_cast<unsigned int>(SAMPLE_RATE / n_changes_min_per_sec));
+        constexpr auto n_levels(int const sample_rate) {
+          return relevantBits(static_cast<unsigned int>(sample_rate / n_changes_min_per_sec));
+        }
     }
 
     // http://www.firstpr.com.au/dsp/pink-noise/
 
     struct GaussianPinkNoiseAlgo {
-        GaussianPinkNoiseAlgo() {
+        GaussianPinkNoiseAlgo(int const sample_rate)
+        : levels(pinkNoise::n_levels(sample_rate)) {
             // we initialize the levels, and counter
 
             struct L {
@@ -120,7 +122,7 @@ namespace imajuscule::audio {
     private:
         unsigned int counter;
 
-        std::array<InterpolatedSignal, pinkNoise::n_levels> levels;
+        std::vector<InterpolatedSignal> levels;
 
         void do_step() {
             unsigned int index;
@@ -160,9 +162,9 @@ namespace imajuscule::audio {
         using FPT = typename std::remove_reference<decltype(SOURCE_NOISE()())>::type::FPT;
         using T = FPT;
 
-        GaussianGreyNoiseAlgo(SOURCE_NOISE source, unsigned int fft_length, unsigned int NumTaps) :
+        GaussianGreyNoiseAlgo(int sample_rate, SOURCE_NOISE source, unsigned int fft_length, unsigned int NumTaps) :
         source(source),
-        loudness_compensation_filter(fft_length, NumTaps) {
+        loudness_compensation_filter(sample_rate, fft_length, NumTaps) {
             ScopedLog l("Pre-fill", "loudness compensation filter");
             int n = loudness_compensation_filter.size() +
                     loudness_compensation_filter.getLatency().toInteger();
@@ -193,8 +195,8 @@ namespace imajuscule::audio {
 
     template<typename T>
     GaussianGreyNoiseAlgo<typename std::decay<T>::type>
-    make_loudness_adapted_noise(T&& t, unsigned int fft_length, unsigned int NumTaps)
+    make_loudness_adapted_noise(int sample_rate, T&& t, unsigned int fft_length, unsigned int NumTaps)
     {
-        return { std::forward<T>(t), fft_length, NumTaps };
+        return { sample_rate, std::forward<T>(t), fft_length, NumTaps };
     }
 }

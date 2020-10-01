@@ -41,7 +41,8 @@ struct Voicing {
 };
 
 template<typename Voice, typename OutputData, typename Chans>
-onEventResult playOneThing(Midi const & midi,
+onEventResult playOneThing(int const sample_rate,
+                           Midi const & midi,
                            Voice & v,
                            OutputData & out,
                            Chans & chans,
@@ -58,7 +59,8 @@ onEventResult playOneThing(Midi const & midi,
   v.set_pan(b.pan);
   v.set_loudness_compensation(.2f); // birds do not naturally emit loudness compensated frequencies!
 
-  return v.onEvent(mkNoteOn(NoteId{b.midiPitch},
+  return v.onEvent(sample_rate,
+                   mkNoteOn(NoteId{b.midiPitch},
                             midi.midi_pitch_to_freq(b.midiPitch),
                             1.0),
                    out,
@@ -66,11 +68,13 @@ onEventResult playOneThing(Midi const & midi,
 }
 
 template<typename Voice, typename OutputData, typename Chans>
-onEventResult stopPlaying(Voice & v,
+onEventResult stopPlaying(int const sample_rate,
+                          Voice & v,
                           OutputData & out,
                           Chans & chans,
                           int16_t midiPitch) {
-  return v.onEvent(mkNoteOff(NoteId{midiPitch}),
+  return v.onEvent(sample_rate,
+                   mkNoteOff(NoteId{midiPitch}),
                    out,
                    chans);
 }

@@ -48,14 +48,14 @@ class PitchInterval {
   {
     aggregate(pv);
   }
-  
+
   double minPitch() const {
     return min_pitch;
   }
   double maxPitch() const {
     return max_pitch;
   }
-  
+
   void extend(PitchVolume const & pv) {
     min_pitch = std::min(min_pitch,
                          pv.midipitch);
@@ -63,7 +63,7 @@ class PitchInterval {
                          pv.midipitch);
     aggregate(pv);
   }
-  
+
   double getPitch(PitchReductionMethod m) const {
     switch(m) {
       case PitchReductionMethod::IntervalCenter:
@@ -121,7 +121,7 @@ void aggregate_pitches(double const nearby_distance_tones,
                        std::vector<PitchInterval> & pitch_intervals) {
   pitch_intervals.clear();
   pitch_intervals.reserve(pitch_volumes.size());
-  
+
   std::optional<PitchInterval> cur;
 #ifndef NDEBUG
   double pitch = std::numeric_limits<double>::min();
@@ -143,7 +143,7 @@ void aggregate_pitches(double const nearby_distance_tones,
       cur->extend(pv);
     }
   }
-  
+
   if (cur) {
     pitch_intervals.push_back(*cur);
     cur.reset();
@@ -205,13 +205,13 @@ void autotune_pitches(Autotune pitch_transform,
 struct PlayedNote {
   // the identifier of the played note
   NoteId noteid;
-  
+
   // the current midi_pitch
   double midi_pitch;
-  
+
   // the current frequency
   float cur_freq;
-  
+
   // the current volume (not used but could be used during matching : if the volume is currently low and the now volume is much higher, we could trigger a noteon)
   float cur_velocity;
 };
@@ -364,14 +364,14 @@ Ctxt::policy
 
 void rtResynth(int const sample_rate) {
   static constexpr auto audioEnginePolicy = AudioOutPolicy::MasterLockFree;
-  
+
   using AllChans = ChannelsVecAggregate< 2, audioEnginePolicy >;
-  
+
   using NoXFadeChans = typename AllChans::NoXFadeChans;
   using XFadeChans = typename AllChans::XFadeChans;
-  
+
   using ChannelHandler = outputDataBase< AllChans, ReverbType::Realtime_Synchronous >;
-  
+
   using Ctxt = AudioOutContext<
   ChannelHandler,
   Features::JustOut,
@@ -383,20 +383,20 @@ void rtResynth(int const sample_rate) {
     throw std::runtime_error("ctxt init failed");
   }
   auto & channel_handler = ctxt.getChannelHandler();
-  
+
   using Synth = audioelement::synthOf<Ctxt, double>;
-  
+
   static constexpr auto n_mnc = Synth::n_channels;
   using mnc_buffer = typename Synth::MonoNoteChannel::buffer_t;
   std::array<mnc_buffer,n_mnc> buffers;
-  
+
   auto [channels_,remover] = channel_handler.getChannels().getChannelsNoXFade().emplace_front(channel_handler.get_lock_policy(),
                                                                                              std::min(n_mnc,
                                                                                                       static_cast<int>(std::numeric_limits<uint8_t>::max())));
   NoXFadeChans & channels = channels_;
 
-  Synth synth(sample_rate, buffers);
-  
+  Synth synth(buffers);
+
   synth.initialize(channels);
 
   bool constexpr logs = true;
@@ -410,13 +410,13 @@ void rtResynth(int const sample_rate) {
   PitchReductionMethod constexpr pitch_method = PitchReductionMethod::PonderateByVolume;
   VolumeReductionMethod constexpr volume_method = VolumeReductionMethod::SumVolumes;
   double constexpr max_track_pitches = 1.;
-  
+
   /*
    Here is what is likely to happen with threads jitter, using an example.
-   
+
    To simplify, we will assume that each audio input callback call handles 'widow_center_stride' input samples,
    and that the input signal contains 4 events (0, 1, 2, 3) which are exactly 'window_center_stride' apart, like so:
-  
+
    input signal: 0--1--2--3--
 
    We have 3 threads running: the audio input thread, the processing thread and the audio output thread.
@@ -428,45 +428,45 @@ void rtResynth(int const sample_rate) {
    audio in thread :    0--      1--      2--      3--       // we represent both the input signal and the time it takes for the input thread to run
    process thread  :       ---      ---      ---      ---    // we represent the time it takes for the thread to run
    audio out thread:          0--      1--      2--      3-- // we represent both the output signal and the time it takes for the output thread to run
-   
+
    -> output signal : 0--1--2--3--
-   
+
    In this ideal case, the events maintain their timings. But let's see how we can diverge from the ideal case:
-   
+
    A. We can imagine that the 'process' thread has jitter:
-   
+
    audio in thread :    0--      1--      2--      3--
    process thread  :       ---                ---     ---
    audio out thread:          0--      ---      1-2      3--
-   
+
    -> output signal : 0-----1-23--
-   
+
    B. We can imagine that the 'process' thread runs less often that the audio threads:
-   
+
    audio in thread :    0--      1--      2--      3--
    process thread  :       ---               ---
    audio out thread:          0--      ---      12-      3--
-   
+
    -> output signal : 0-----12-3--
-   
+
    C. we can imagine that the audio in thread has jitter:
-   
+
    audio in thread :    0--      1--            2--3--
    process thread  :       ---      ---      ---      ---
    audio out thread:          0--      1--      ---      23-
-   
+
    -> output signal : 0--1-----23-
-   
+
    D. we can imagine that the audio out thread has jitter:
-   
+
    audio in thread :    0--      1--      2--      3--
    process thread  :       ---      ---      ---      ---
    audio out thread:          0--      1--            2-3---
-   
+
    -> output signal : 0--1--2-3---
 
    In the real world, it is likely that A., B. C. and D. happen simulataneously.
-   
+
    So to cope with this, we would need to introduce some delay and use midi timestamps to accurately
    trigger the relevant actions at the right time in the audio out thread.
    */
@@ -483,19 +483,19 @@ void rtResynth(int const sample_rate) {
       0, itp::LINEAR,
       0, itp::LINEAR,
       1.f
-    }, SAMPLE_RATE);
+    }, sample_rate);
 
     // limit the speed of volume adjustment:
-    
+
     e.algo.setMaxFilterIncrement(2. / static_cast<double>(window_center_stride));
-    
+
     // frequency control
 
     e.algo.getOsc().getAlgo().getCtrl().setup(window_center_stride,
                                               itp::LINEAR);
   });
 
-  
+
   std::this_thread::sleep_for(std::chrono::milliseconds(1000));
 
   using Queue = atomic_queue::AtomicQueueB2<
@@ -512,12 +512,12 @@ void rtResynth(int const sample_rate) {
       input_queue.push(buf[i]);
     }
   };
-  
+
   AudioInput<AudioPlatform::PortAudio> input;
   if (!input.Init(onInput, sample_rate)) {
     throw std::runtime_error("input init failed");
   }
-    
+
   std::atomic_bool thread_resynth_active(true);
   std::thread thread_resynth([&input_queue,
                               &thread_resynth_active,
@@ -535,7 +535,7 @@ void rtResynth(int const sample_rate) {
                                   std::vector<FreqMag<double>> & freqmags) {
       int constexpr zero_padding_factor = 1;
       int constexpr windowed_signal_stride = 1;
-      
+
       findFrequenciesSqMag(from,
                            to,
                            windowed_signal_stride,
@@ -548,46 +548,47 @@ void rtResynth(int const sample_rate) {
                                SqMagToDb<double>(),
                                freqmags);
     };
-        
+
     std::vector<double> samples;
     samples.resize(window_size, {});
-    
-    
+
+
     int end = 0;
- 
+
     FrequenciesSqMag<double> frequencies_sqmag;
     frequencies_sqmag.frequencies_sqmag.reserve(200);
-    
+
     std::vector<FreqMag<double>> freqmags;
     freqmags.reserve(200);
-    
+
     std::vector<PitchVolume> freqmags_data;
     freqmags_data.reserve(200);
-    
+
     std::vector<PitchInterval> pitch_intervals;
     pitch_intervals.reserve(200);
-    
+
     std::vector<PitchVolume> reduced_pitches, autotuned_pitches;
     reduced_pitches.reserve(200);
     autotuned_pitches.reserve(200);
-    
+
     std::vector<PlayedNote> played_pitches;
     played_pitches.reserve(200);
-    
+
     std::vector<std::optional<int>> pitch_changes;
     pitch_changes.reserve(200);
 
     std::vector<bool> continue_playing;
     continue_playing.reserve(200);
-    
+
     std::vector<PlayedNote> played_notes;
     played_notes.resize(200);
 
     Midi midi;
-    
+
     int n = 0;
 
-    auto step = [&n,
+    auto step = [sample_rate,
+                 &n,
                  &midi,
                  &synth,
                  &channel_handler,
@@ -602,7 +603,7 @@ void rtResynth(int const sample_rate) {
                  &played_pitches
                  ](std::vector<FreqMag<double>> const & fs) {
       ++n;
-      
+
       frequencies_to_pitches(midi,
                              fs,
                              freqmags_data);
@@ -610,32 +611,33 @@ void rtResynth(int const sample_rate) {
       aggregate_pitches(nearby_distance_tones,
                         freqmags_data,
                         pitch_intervals);
-      
+
       reduce_pitches(pitch_method,
                      volume_method,
                      min_volume,
                      pitch_intervals,
                      reduced_pitches);
-      
+
       autotune_pitches([](double pitch){ return pitch; },
                        reduced_pitches,
                        autotuned_pitches);
-      
+
       track_pitches(max_track_pitches,
                     autotuned_pitches,
                     played_pitches,
                     pitch_changes,
                     continue_playing);
-      
+
       bool changed = false;
-      
+
       // issue "note off" events
       {
         int idx = -1;
         for (auto play : continue_playing) {
           ++idx;
           if (!play) {
-            auto res = synth.onEvent2(mkNoteOff(played_pitches[idx].noteid),
+            auto res = synth.onEvent2(sample_rate,
+                                      mkNoteOff(played_pitches[idx].noteid),
                                       channel_handler,
                                       channels,
                                       {});
@@ -653,18 +655,19 @@ void rtResynth(int const sample_rate) {
         int idx = -1;
         for (auto pitch_change : pitch_changes) {
           ++idx;
-          
+
           changed = true;
 
           double const new_pitch = autotuned_pitches[idx].midipitch;
           float const new_freq = midi.midi_pitch_to_freq(new_pitch);
-          
+
           float const volume = autotuned_pitches[idx].volume;
 
           if (pitch_change) {
             PlayedNote & played = played_pitches[*pitch_change];
 
-            auto res = synth.onEvent2(mkNoteChange(played.noteid,
+            auto res = synth.onEvent2(sample_rate,
+                                      mkNoteChange(played.noteid,
                                                    volume,
                                                    new_freq),
                                       channel_handler,
@@ -674,14 +677,15 @@ void rtResynth(int const sample_rate) {
               throw std::logic_error("dropped note change");
             }
             if (logs) std::cout << n << ": pitch " << played.midi_pitch << " newpitch " << new_pitch << " Vol " << volume << " " << res << std::endl;
-            
+
             played.cur_freq = new_freq;
             played.midi_pitch = new_pitch;
           } else {
             static int noteid = 0;
             ++noteid;
             NoteId const note_id{noteid};
-            auto const res = synth.onEvent2(mkNoteOn(note_id,
+            auto const res = synth.onEvent2(sample_rate,
+                                            mkNoteOn(note_id,
                                                      new_freq,
                                                      volume),
                                             channel_handler,
@@ -702,11 +706,11 @@ void rtResynth(int const sample_rate) {
           }
         }
       }
-      
+
       remove_dead_notes(continue_playing, played_pitches);
-      
+
       sort_by_current_pitch(played_pitches);
-      
+
       if (changed) {
         print(played_pitches);
       }
@@ -733,7 +737,7 @@ void rtResynth(int const sample_rate) {
 
   std::string end;
   std::cin >> end;
-  
+
   thread_resynth_active = false;
   thread_resynth.join();
 
