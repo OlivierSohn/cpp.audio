@@ -57,7 +57,7 @@ private:
     }
   };
 #endif
-  
+
     template<
     int nOuts,
     XfadePolicy XF,
@@ -100,12 +100,6 @@ private:
                                                 )>;
 #endif
 
-      /*
-       * returns false when the lambda can be removed
-       */
-      using OrchestratorFunc = folly::Function<bool(Channels &
-                                                  , int // the max number of frames computed in one chunk
-                                                  )>;
       /*
        * returns false when the lambda can be removed
        */
@@ -405,15 +399,24 @@ private:
 
 #ifndef CUSTOM_SAMPLE_RATE
           nRemoved += oneShotsMIDI.dequeueAll([this, tNanos](auto & p) {
+            if (p.second.heapAllocatedMemory()) {
+              throw std::runtime_error("no allocation is allowed in functors");
+            }
             p.second(*this, p.first, tNanos);
           });
 #endif
-          
+
           nRemoved += oneShots.dequeueAll([this, tNanos](auto & f) {
+            if (f.heapAllocatedMemory()) {
+              throw std::runtime_error("no allocation is allowed in functors");
+            }
             f(*this, tNanos);
           });
 
           nRemoved += computes.forEach([tNanos, nFrames](auto & compute) {
+            if (compute.heapAllocatedMemory()) {
+              throw std::runtime_error("no allocation is allowed in functors");
+            }
             return compute(nFrames, tNanos);
           });
 
