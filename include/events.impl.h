@@ -13,7 +13,7 @@ struct ProcessData
   : processMode (0), symbolicSampleSize (kSample32), numSamples (0), numInputs (0)
   , numOutputs (0)
   , inputEvents (0), outputEvents (0) {}
-  
+
   //------------------------------------------------------------------------
   int32_t processMode;			///< processing mode - value of \ref ProcessModes
   int32_t symbolicSampleSize;   ///< sample size - value of \ref SymbolicSampleSizes
@@ -46,7 +46,7 @@ onEventResult playOneThing(Midi const & midi,
                            OutputData & out,
                            Chans & chans,
                            Voicing const & b) {
-  
+
   v.initializeSlow(); // does something only the 1st time
   v.useProgram(b.program); // keep it first as it reinitializes params
   v.set_random_pan(false);
@@ -57,7 +57,7 @@ onEventResult playOneThing(Midi const & midi,
   v.set_gain(b.gain);
   v.set_pan(b.pan);
   v.set_loudness_compensation(.2f); // birds do not naturally emit loudness compensated frequencies!
-  
+
   return v.onEvent(mkNoteOn(NoteId{b.midiPitch},
                             midi.midi_pitch_to_freq(b.midiPitch),
                             1.0),
@@ -66,8 +66,7 @@ onEventResult playOneThing(Midi const & midi,
 }
 
 template<typename Voice, typename OutputData, typename Chans>
-onEventResult stopPlaying(Midi const & midi,
-                          Voice & v,
+onEventResult stopPlaying(Voice & v,
                           OutputData & out,
                           Chans & chans,
                           int16_t midiPitch) {

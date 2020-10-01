@@ -213,7 +213,17 @@ void setPhase(MonoNoteChannel & c, CS & cs)
     LocalPairArray<std::optional<NoteId>, MonoNoteChannel, n_channels> channels;
     int const sample_rate;
 
+  private:
+    std::atomic_int count_acquire_race_errors{0};
+    static_assert(decltype(count_acquire_race_errors)::is_always_lock_free);
+
   public:
+
+    int getAndResetAcquireRaceErrors() {
+      int res = count_acquire_race_errors;
+      count_acquire_race_errors -= res;
+      return res;
+    }
 
     template <typename A>
     ImplCRTP(int sampleRate, std::array<A, n_channels> & as)
@@ -345,7 +355,7 @@ void setPhase(MonoNoteChannel & c, CS & cs)
         }
 
         Assert(!c.elem.getEnvelope().isEnvelopeFinished());
-        
+
         // 3. [with maybe-lock]
         //      register the maybe-oneshot that does
         //        - maybe phase cancellation avoidance (in setPhase)
@@ -370,8 +380,7 @@ void setPhase(MonoNoteChannel & c, CS & cs)
             // we issue this call to make sure that the 'tryAcquire' effect will be visible in this thread.
             if(unlikely(!c.elem.editEnvelope().acquireStates())) {
               // error : we did 'tryAcquire' but now, it's not acquired anymore!
-              LG(ERR,"state was not acquired");
-              Assert(0);
+              ++count_acquire_race_errors;
               return;
             }
 

@@ -172,7 +172,7 @@ namespace imajuscule::audio::audioelement {
     static constexpr auto hasEnvelope = true;
     static constexpr auto baseVolume = ALGO::baseVolume;
     static constexpr auto isMonoHarmonic = ALGO::isMonoHarmonic;
-    
+
     using FPT = typename ALGO::FPT;
     static_assert(std::is_same<typename ALGO::FPT, typename Envelope::FPT>::value);
 
@@ -448,6 +448,7 @@ namespace imajuscule::audio::audioelement {
 
     static constexpr bool hasEnvelope = true;
     static constexpr auto baseVolume = ALGO::baseVolume;
+    static constexpr auto isMonoHarmonic = ALGO::isMonoHarmonic;
 
     static constexpr auto atomicity = Envelope::atomicity;
 
@@ -564,6 +565,10 @@ namespace imajuscule::audio::audioelement {
       forEachIndexedHarmonic([a](int i, auto & algo, auto const & property [[maybe_unused]]) {
         algo.setAngleIncrements(harmonic_angle(i,a));
       });
+    }
+
+    FPT angleIncrements() const {
+      return harmonics[0].first.angleIncrements();
     }
 
     FPT imag() const { return imagValue; }
@@ -1526,7 +1531,7 @@ private:
     static constexpr auto hasEnvelope = false;
     static constexpr auto baseVolume = reduceUnadjustedVolumes * soundBaseVolume(Sound::SQUARE);
     static constexpr auto isMonoHarmonic = true;
-    
+
     using Tr = NumTraits<T>;
     using Phased<T>::angle_;
     using Phased<T>::aliasingMult;
@@ -1761,7 +1766,7 @@ template<class...AEs>
 
     // Warning: setAngleIncrements and angleIncrements are not related,
     //one opertaes on the filter, the other on the underlying oscillator
-    
+
     // sets the filter frequency
     void setAngleIncrements(T v) {
       filter_.initWithAngleIncrement(v);
@@ -2362,31 +2367,31 @@ template<class...AEs>
  */
 template<typename T>
 struct InterpolatedFreq {
-  
+
   using Tr = NumTraits<T>;
   using FPT = T;
-  
+
   // offsets because we use the value at the beginning of the timestep
   static constexpr auto increasing_integration_offset = 0;
   static constexpr auto decreasing_integration_offset = 1;
-  
+
   InterpolatedFreq()
   : cur_sample(Tr::zero())
   , from{}
   , to{}
   , duration_in_samples{}
   {}
-  
+
   void forgetPastSignals() {
     f_result.reset();
   }
-  
+
   void setFreqRange(range<float> const &) const { Assert(0); } // use setup / setAngleIncrements instead
   void set_interpolation(itp::interpolation) const {Assert(0);} // use setup instead
   void set_n_slow_steps(unsigned int) const { Assert(0); }
-  
+
   auto & getUnderlyingIter() { Assert(0); return *this; }
-  
+
   // Once this has been called, 'setAngleIncrements' _must_ be called
   //   (to specify the start frequency) before calling 'step'.
   // Else, the behaviour is undefined.
@@ -2396,67 +2401,67 @@ struct InterpolatedFreq {
     duration_in_samples = duration_in_samples_;
     interp.setInterpolation(i);
   }
-  
+
   void setAngleIncrements(T increments) {
     // verify that setup has been called
     Assert(duration_in_samples > 0);
-    
+
     cur_sample = 0;
     to = increments;
-    
+
     from = f_result ? (*f_result) : increments;
-    
+
     C = get_linear_proportionality_constant();
   }
-  
+
   T step() {
     if(cur_sample + .5f > duration_in_samples) {
       cur_sample = duration_in_samples;
     }
-    
+
     // we call get_unfiltered_value instead of get_value because we ensure:
     Assert(cur_sample <= duration_in_samples);
     f_result = interp.get_unfiltered_value(cur_sample, duration_in_samples, from, to);
     // Taking the value at cur_sample means taking the value at the beginning of the step.
     // The width of the step depends on that value so if we had taken the value in the middle or at the end of the step,
     // not only would the value be different, but also the step width!
-    
+
     // we could take the value in the middle and adjust "value + step width" accordingly
-    
+
     if (cur_sample < duration_in_samples) {
       // linear interpolation for parameter
       auto f = from + (to-from) * (cur_sample + .5f) / duration_in_samples;
       cur_sample += C * f;
     }
-    
+
     return *f_result;
   }
-  
+
   T getFrom() const { return from; }
   T getTo() const { return to; }
-  
+
   T get_duration_in_samples() const { return duration_in_samples; }
-  
+
 private:
   // This interpolation is "composed" with an implicit PROPORTIONAL_VALUE_DERIVATIVE interpolation
   NormalizedInterpolation<T> interp;
-  
+
   T from, to, cur_sample;
   std::optional<T> f_result;
   T duration_in_samples;
   T C;
-  
+
   T get_linear_proportionality_constant() const {
     // We want to achieve the same effect as PROPORTIONAL_VALUE_DERIVATIVE
     // without paying the cost of one 'expf' call per audio frame :
     // to achieve the same effect, at each frame we add to cur_sample a value proportionnal to
     // the current frequency. The factor of proportionnality is adjusted to match
     // the wanted duration_in_samples
-    
+
     // Assert that computation can be done
     Assert(from > 0);
     Assert(to > 0);
-    
+
     return (to==from) ? 1.f : -std::log(from/to) / (to-from);
   }
 };
@@ -2729,7 +2734,7 @@ private:
       });
       // not for osc : it will be done in step()
     }
-    
+
     // It is debatable, whether this should return the oscillator's increment, or the control's.
     //
     // The reason why it returns the oscillator frequency is because
