@@ -3,7 +3,7 @@
 namespace imajuscule::audio::sine {
 
   struct SynthImpl {
-    static constexpr int32_t get_xfade_length() { return 401; }
+    static constexpr float get_xfade_length() { return 0.009f; }
     static constexpr float get_gain() { return 1.f; };
 
     template<typename Element, int nAudioOut>

@@ -229,16 +229,16 @@ namespace imajuscule::audio::voice {
     static constexpr auto M = 257; };
 
   template<> struct Limits<XFADE_LENGTH> {
-    static constexpr auto m = 101;
-    static constexpr auto M = 2001; };
+    static constexpr float m = 0.0023f;
+    static constexpr float M = 0.0454f; };
 
   template<> struct Limits<FREQ_TRANSITION_LENGTH> {
-    static constexpr auto m = 1;
-    static constexpr auto M = 20001; };
+    static constexpr auto m = 0.0f;
+    static constexpr auto M = 0.5f; };
 
   template<> struct Limits<MARKOV_ARTICULATIVE_PAUSE_LENGTH> {
-    static constexpr auto m = 0;
-    static constexpr auto M = 20001; };
+    static constexpr float m = 0.0f;
+    static constexpr float M = 0.5f; };
 
   template<> struct Limits<LENGTH_EXPONENT_SCATTER> : public NormalizedParamLimits {};
   template<> struct Limits<PINK_NOISE_LP_GAIN> : public NormalizedParamLimits {};
@@ -334,8 +334,8 @@ namespace imajuscule::audio::voice {
   struct SetSlowParams<Mode::WIND> {
     template<typename CTRL>
     static void set(CTRL & ctrl, int n_slow_steps_short, int n_slow_steps_long, float ratio) {
-      ctrl.getUnderlyingIter().set_n_slow_steps(n_slow_steps_long); // TODO sample rate dependant?
-      ctrl.set_short_term_noise_rate(n_slow_steps_short);           // TODO sample rate dependant?
+      ctrl.getUnderlyingIter().set_n_slow_steps(n_slow_steps_long); // TODO sample rate dependant
+      ctrl.set_short_term_noise_rate(n_slow_steps_short);           // TODO sample rate dependant
       ctrl.set_short_term_noise_amplitude(ratio);
     }
   };
@@ -448,14 +448,14 @@ namespace imajuscule::audio::voice {
         {"Length", Limits<LENGTH>::m, Limits<LENGTH>::M},
         {"Length Exponent", Limits<LENGTH_EXPONENT>::m, Limits<LENGTH_EXPONENT>::M},
         {"Length Exponent Scatter", Limits<LENGTH_EXPONENT_SCATTER>::m, Limits<LENGTH_EXPONENT_SCATTER>::M},
-        {"Crossfade length", static_cast<float>(Limits<XFADE_LENGTH>::m), static_cast<float>(Limits<XFADE_LENGTH>::M) }, // couldn't make it work with nsteps = max-min / 2
+        {"Crossfade length", Limits<XFADE_LENGTH>::m, Limits<XFADE_LENGTH>::M }, // couldn't make it work with nsteps = max-min / 2
         {"Phase ratio 1", Limits<PHASE_RATIO1>::m, Limits<PHASE_RATIO1>::M},
         {"Phase ratio 2", Limits<PHASE_RATIO2>::m, Limits<PHASE_RATIO2>::M},
         {"D1", Limits<D1>::m, Limits<D1>::M },
         {"D2", Limits<D2>::m, Limits<D2>::M},
         {"Harmonic attenuation", Limits<HARMONIC_ATTENUATION>::m, Limits<HARMONIC_ATTENUATION>::M},
         {"Xfade freq", xfade_freq_traversal()},
-        {"Frequency transition length", static_cast<float>(Limits<FREQ_TRANSITION_LENGTH>::m), static_cast<float>(Limits<FREQ_TRANSITION_LENGTH>::M) },
+        {"Frequency transition length", Limits<FREQ_TRANSITION_LENGTH>::m, Limits<FREQ_TRANSITION_LENGTH>::M },
         {"Frequency Interpolation", itp::interpolation_traversal()},
         {"[Sweep] Low freq.", Limits<LOW_FREQ>::m, Limits<LOW_FREQ>::M },
         {"[Sweep] High freq.", Limits<HIGH_FREQ>::m, Limits<HIGH_FREQ>::M },
@@ -475,13 +475,13 @@ namespace imajuscule::audio::voice {
                                             int pre_tries,
                                             int min_path_length,
                                             int additionnal_tries,
-                                            int articulative_pause_length, // TODO
+                                            float articulative_pause_length,
                                             itp::interpolation i,
                                             float freq_scat,
                                             float length,
                                             float length_med_exp,
                                             float length_scale_exp,
-                                            int xfade, // TODO
+                                            float xfade,
                                             float phase_ratio1, float phase_ratio2,
                                             float d1, float d2, // TODO
                                             float harmonic_attenuation,
@@ -515,7 +515,7 @@ namespace imajuscule::audio::voice {
         static_cast<float>(pre_tries),
         static_cast<float>(min_path_length),
         static_cast<float>(additionnal_tries),
-        static_cast<float>(articulative_pause_length),
+        normalize<MARKOV_ARTICULATIVE_PAUSE_LENGTH>(articulative_pause_length),
         static_cast<float>(itp_index),
         /*normalize<FREQ_SCATTER>*/(freq_scat),
         normalize<LENGTH>(length),
@@ -534,13 +534,13 @@ namespace imajuscule::audio::voice {
                                      int pre_tries,
                                      int min_path_length,
                                      int additionnal_tries,
-                                     int articulative_pause_length,
+                                     float articulative_pause_length,
                                      itp::interpolation i,
                                      float freq_scat,
                                      float length,
                                      float length_med_exp,
                                      float length_scale_exp,
-                                     int xfade,
+                                     float xfade,
                                      float d1, float d2,
                                      float harmonic_attenuation,
                                      float phase_ratio1 = 0.f, float phase_ratio2 = 0.f) {
@@ -560,7 +560,7 @@ namespace imajuscule::audio::voice {
     static Program::ARRAY make_sweep(itp::interpolation i,
                                      float length,
                                      float length_med_exp,
-                                     int xfade,
+                                     float xfade,
                                      float low, float high) {
       auto a = make_common(0, 0, 0, 0, 0.f, i, 0.f, length, length_med_exp, 0.f, xfade, 0.f, 0.f, 0, 0, 0.f, 20.f, 0.f, 0.f);
       Program::ARRAY result;
@@ -588,10 +588,10 @@ namespace imajuscule::audio::voice {
                                     float length,
                                     float length_med_exp,
                                     float length_scale_exp,
-                                    int articulative_pause_length,
-                                    int xfade,
+                                    float articulative_pause_length,
+                                    float xfade,
                                     FreqXfade xfade_freq,
-                                    int freq_xfade,
+                                    float freq_xfade,
                                     itp::interpolation freq_i,
                                     float phase_ratio1 = 0.f, float phase_ratio2 = 0.f) {
       auto a = make_common(start_node, pre_tries, min_path_length, additionnal_tries, articulative_pause_length, i, freq_scat, length, length_med_exp, length_scale_exp, xfade, phase_ratio1, phase_ratio2, 0,0,0, 1, 0.f, 0.f);
@@ -616,7 +616,7 @@ namespace imajuscule::audio::voice {
         Assert(b);
         result[index(MARKOV_XFADE_FREQ)] = static_cast<float>(idx);
       }
-      result[index(FREQ_TRANSITION_LENGTH)] = normalize<FREQ_TRANSITION_LENGTH>(freq_xfade); // TODO sample rate dependant?
+      result[index(FREQ_TRANSITION_LENGTH)] = normalize<FREQ_TRANSITION_LENGTH>(freq_xfade);
       return result;
     }
 
@@ -641,7 +641,8 @@ namespace imajuscule::audio::voice {
       result[index(SINE_GAIN)] = 0.f;
       result[index(CENTER_OCTAVE_MIN_LONG_TERM)] = normalize<CENTER_OCTAVE_MIN_LONG_TERM>(bp_center.getMin()),
       result[index(CENTER_OCTAVE_MAX_LONG_TERM)] = normalize<CENTER_OCTAVE_MAX_LONG_TERM>(bp_center.getMax()),
-      result[index(N_SLOW_ITER_LONG_TERM)] = std::log(n_slow_iter) / std::log(max_n_slow_iter);  // TODO sample rate dependant?
+      result[index(N_SLOW_ITER_LONG_TERM)] = std::log(n_slow_iter) / std::log(max_n_slow_iter);  // TODO sample rate dependant
+      // TODO is N_SLOW_ITER_SHORT_TERM mising here?
 
       return result;
     }
@@ -692,6 +693,7 @@ namespace imajuscule::audio::voice {
       result[index(CENTER_OCTAVE_MIN_LONG_TERM)] = normalize<CENTER_OCTAVE_MIN_LONG_TERM>(bp_center.getMin()),
       result[index(CENTER_OCTAVE_MAX_LONG_TERM)] = normalize<CENTER_OCTAVE_MAX_LONG_TERM>(bp_center.getMax()),
       result[index(N_SLOW_ITER_LONG_TERM)] = std::log(n_slow_iter) / std::log(max_n_slow_iter); // TODO sample rate dependant?
+      // TODO is N_SLOW_ITER_SHORT_TERM missing here?
 
       return result;
     }
@@ -699,35 +701,35 @@ namespace imajuscule::audio::voice {
       if constexpr (MODE==Mode::BIRDS) {
         static ProgramsI ps {{
           {"Standard & Cute bird",
-            make_bird(0, 0, 1, 0, itp::EASE_INOUT_CIRC, 0.f, 93.f, 2.f, .5f, 1000, 1301, FreqXfade::No, 6200, itp::EASE_OUT_EXPO),
+            make_bird(0, 0, 1, 0, itp::EASE_INOUT_CIRC, 0.f, 93.f, 2.f, .5f, 0.02267f, 0.0295f, FreqXfade::No, 0.14f, itp::EASE_OUT_EXPO),
             {32, 48, 69, 180, 218, 240}
           },{"Scat bird",
-            make_bird(0, 0, 3, 17, itp::EASE_INOUT_CIRC, 0.015f, 10.f, 2.f, .5f, 1961, 782, FreqXfade::NonTrivial, 1601, itp::EASE_INOUT_EXPO),
+            make_bird(0, 0, 3, 17, itp::EASE_INOUT_CIRC, 0.015f, 10.f, 2.f, .5f, 0.0445f, 0.0177f, FreqXfade::NonTrivial, 0.363f, itp::EASE_INOUT_EXPO),
             {4, 5, 23, 26, 34, 48, 58, 68, 73, 74, 75, 80, 85, 88, 109, 116, 124, 125, 131, 141, 146, 165, 181, 205, 213, 214, 227, 232, 249}
           },{"Rhythmic bird",
-            make_bird(1, 0, 3, 11, itp::EASE_INOUT_CIRC, 0.f, 19.8f, 2.f, 0.f, 1406, 502, FreqXfade::All, 801, itp::EASE_INOUT_EXPO),
+            make_bird(1, 0, 3, 11, itp::EASE_INOUT_CIRC, 0.f, 19.8f, 2.f, 0.f, 0.03188f, 0.01138f, FreqXfade::All, 0.0182f, itp::EASE_INOUT_EXPO),
             { 19, 29, 32, 36, 38, 48, 79, 106, 112, 116, 123, 147, 162, 195, 213, 247, 248, 250 }
           },{"Slow bird",
-            make_bird(0, 2, 1, 0, itp::EASE_IN_EXPO, 0.f, 73.7f, 2.f, .5f, 1000, 1301, FreqXfade::No, 6200, itp::EASE_OUT_EXPO),
+            make_bird(0, 2, 1, 0, itp::EASE_IN_EXPO, 0.f, 73.7f, 2.f, .5f, 0.02267f, 0.0295f, FreqXfade::No, 0.14f, itp::EASE_OUT_EXPO),
             {63, 70, 83, 91, 110, 160, 197}
           },{"BiTone bird",
-            make_bird(1, 0, 2, 0, itp::EASE_IN_EXPO, .414f, 78.6f, 2.f, .5f, 4302, 1301, FreqXfade::No, 6200, itp::EASE_OUT_EXPO),
+            make_bird(1, 0, 2, 0, itp::EASE_IN_EXPO, .414f, 78.6f, 2.f, .5f, 0.09755f, 0.0295f, FreqXfade::No, 0.14f, itp::EASE_OUT_EXPO),
             { 5, 15, 27, 31, 49, 58, 72, 74, 96, 108, 147, 149, 171, 174, 180, 194, 199, 205, 252},
           },{"Happy bird 1",
-            make_bird(1, 0, 4, 0, itp::EASE_IN_EXPO, .414f, 78.6f, 2.f, .5f, 5848, 2001, FreqXfade::No, 6200, itp::EASE_OUT_EXPO),
+            make_bird(1, 0, 4, 0, itp::EASE_IN_EXPO, .414f, 78.6f, 2.f, .5f, 0.1326f, 0.0454f, FreqXfade::No, 0.14f, itp::EASE_OUT_EXPO),
             {
               119, 141, 149, 159, // appel
               88,                 // mélancolie
               32, 45, 168, 206// bien-être
             }
           },{"Happy bird 2",
-            make_bird(1, 0, 4, 0, itp::EASE_IN_EXPO, .414f, 63.9f, 1.19f, 1.f, 5848, 2001, FreqXfade::No, 6200, itp::EASE_OUT_EXPO),
+            make_bird(1, 0, 4, 0, itp::EASE_IN_EXPO, .414f, 63.9f, 1.19f, 1.f,  0.1326f, 0.0454f, FreqXfade::No, 0.14f, itp::EASE_OUT_EXPO),
             {8, 20, 23, 60, 76, 113, 143, 168, 169, 178, 180, 208, 217, 231}
           },{"Laughing bird",
-            make_bird(1, 0, 2, 0, itp::EASE_IN_EXPO, .414f, 78.6f, 2.f, .5f, 9672, 1301, FreqXfade::All, 3201, itp::EASE_OUT_EXPO),
+            make_bird(1, 0, 2, 0, itp::EASE_IN_EXPO, .414f, 78.6f, 2.f, .5f, 0.2193f, 0.0295f, FreqXfade::All, 0.0725f, itp::EASE_OUT_EXPO),
             {20, 31, 39, 36, 37, 47, 68, 89, 94, 105, 108, 136, 144, 145, 148, 161, 172, 174, 212, 246, 249}
           },{"Talkative bird",
-            make_bird(0, 0, 6, 0, itp::EASE_INOUT_CIRC, 0.12f, 93.3f, 2.f, .5f, 6713, 2201, FreqXfade::NonTrivial, 4401, itp::EASE_OUT_EXPO),
+            make_bird(0, 0, 6, 0, itp::EASE_INOUT_CIRC, 0.12f, 93.3f, 2.f, .5f, 0.152f, 0.05f, FreqXfade::NonTrivial, 0.0998f, itp::EASE_OUT_EXPO),
             {9, 28, 33, 38, 53, 54, 83, 114, 117, 122, 131, 162, 168, 171, 187, 196, 216, 220}
           }
         }};
@@ -736,9 +738,11 @@ namespace imajuscule::audio::voice {
       else if constexpr (MODE==Mode::ROBOTS) {
         static ProgramsI ps {{
           {"R2D2",
-            make_robot(0, 0, 1, 1, 3683, itp::LINEAR, 0.f, 19.8, 2.1f, 0.39f, 234, 6, 12, .98f, 0.f, 0.f)
+            make_robot(0, 0, 1, 1, 0.0835f, itp::LINEAR, 0.f, 19.8, 2.1f, 0.39f, 0.0053f, 6, 12, .98f, 0.f, 0.f),
+            {}
           },{"Communication",
-            make_robot(0, 0, 16, 14, 217, itp::EASE_INOUT_CIRC, 0.f, 10.f, 1.89f, 1.f, 234, 6, 10, .98f, 0.f, 0.f)
+            make_robot(0, 0, 16, 14, 0.03188f, itp::EASE_INOUT_CIRC, 0.f, 10.f, 1.89f, 1.f, 0.0053f, 6, 10, .98f, 0.f, 0.f),
+            {}
           },
         }};
         return ps.v;
@@ -746,9 +750,11 @@ namespace imajuscule::audio::voice {
       else if constexpr (MODE==Mode::SWEEP) {
         static ProgramsI ps {{
           {"Sweep 1",
-            make_sweep(itp::LINEAR, 73.f, 5.f, 481, 40.f, 20000.f)
+            make_sweep(itp::LINEAR, 73.f, 5.f, 0.0109f, 0.0009f, 20000.f),
+            {}
           },{"Fullrange",
-            make_sweep(itp::LINEAR, 500.f, 5.f, 481, 10.f, 20000.f)
+            make_sweep(itp::LINEAR, 500.f, 5.f, 0.0109f, 0.000226f, 20000.f),
+            {}
           },
         }};
         return ps.v;
@@ -756,33 +762,47 @@ namespace imajuscule::audio::voice {
       else if constexpr (MODE==Mode::WIND) {
         static ProgramsI ps {{
           {"Medium wind in trees",
-            make_noise_wind(1, {0.f, 0.f}, {1.f, 8.f}, 100000.f)
+            make_noise_wind(1, {0.f, 0.f}, {1.f, 8.f}, 100000.f),
+            {}
           }, {"Steady wind",
-            make_noise_wind(4, {1.3f, 1.3f}, {5.2f, 5.5f}, 3981.f)
+            make_noise_wind(4, {1.3f, 1.3f}, {5.2f, 5.5f}, 3981.f),
+            {}
           }, {"Strong wind",
-            make_noise_wind(4, {3.8f, 3.8f}, {1.f, 8.f}, 100000.f)
+            make_noise_wind(4, {3.8f, 3.8f}, {1.f, 8.f}, 100000.f),
+            {}
           }, {"Vinyl cracks",
-            make_noise_wind(89, {3.45f, 5.f}, {8.1f, 8.1f}, 33.f)
+            make_noise_wind(89, {3.45f, 5.f}, {8.1f, 8.1f}, 33.f),
+            {}
           }, {"Small animal eating",
-            make_noise_wind(61, {0.f, 5.f}, {8.1f, 8.1f}, 10.f)
+            make_noise_wind(61, {0.f, 5.f}, {8.1f, 8.1f}, 10.f),
+            {}
           }, {"Heavy rain in a car",
-            make_noise_wind(33, {3.45f, 5.f}, {8.1f, 8.1f}, 10.f)
+            make_noise_wind(33, {3.45f, 5.f}, {8.1f, 8.1f}, 10.f),
+            {}
           }, {"Light rain in a car",
-            make_noise_wind(89, {3.45f, 5.f}, {8.1f, 8.1f}, 10.f)
+            make_noise_wind(89, {3.45f, 5.f}, {8.1f, 8.1f}, 10.f),
+            {}
           }, {"Heavy rain",
-            make_noise_wind(13, {5.f, 5.f}, {7.8f, 8.f}, 12.5f)
+            make_noise_wind(13, {5.f, 5.f}, {7.8f, 8.f}, 12.5f),
+            {}
           }, {"Light rain",
-            make_noise_wind(13, {3.45f, 3.45f}, {8.0f, 8.3f}, 10.f)
+            make_noise_wind(13, {3.45f, 3.45f}, {8.0f, 8.3f}, 10.f),
+            {}
           }, {"Bubbles",
-            make_noise_wind(129, {2.45f, 3.25f}, {4.8f, 8.3f}, 1009.9f)
+            make_noise_wind(129, {2.45f, 3.25f}, {4.8f, 8.3f}, 1009.9f),
+            {}
           }, {"Earth rumbling",
-            make_noise_wind(30, {1.95f, 5.f}, {2.5f, 3.2f}, 7009.3f)
+            make_noise_wind(30, {1.95f, 5.f}, {2.5f, 3.2f}, 7009.3f),
+            {}
           }, {"Sine wind",
-            make_sine_wind({4.6f, 6.8f}, 0.2f, 100000.f, 22.3f )
+            make_sine_wind({4.6f, 6.8f}, 0.2f, 100000.f, 22.3f ),
+            {}
           }, {"Kettle whistle pure",
-            make_sine_wind({7.5f, 7.7f}, 0.f, 22.3f, 22.3f)
+            make_sine_wind({7.5f, 7.7f}, 0.f, 22.3f, 22.3f),
+            {}
           }, {"Kettle whistle mixed",
-            make_mixed_wind(7, {.9f, .9f}, {7.5f, 7.7f}, 316.f)
+            make_mixed_wind(7, {.9f, .9f}, {7.5f, 7.7f}, 316.f),
+            {}
           },
         }};
         return ps.v;
@@ -863,6 +883,7 @@ namespace imajuscule::audio::voice {
 
         engine.set_itp(interp);
       }
+      engine.setEnvelopeCharacTime(static_cast<int>(0.5f + (denorm<XFADE_LENGTH>() * sample_rate)));
 
       auto ex = denorm<LENGTH_EXPONENT>();
       Assert(ex >= 0.f);
@@ -933,17 +954,13 @@ namespace imajuscule::audio::voice {
         CENTER_OCTAVE_MAX_LONG_TERM
         >();
 
-        // we could omit calling set_n_slow_steps when not in mode WIND,
-        // but we call it with value 1 to be sure that all objects
-        // that we need to call for WIND are called (the value is initialized to
-        // -1 in constructor and makes an assert fail if the method is not called)
         float n_slow_steps = std::pow(max_n_slow_iter, denorm<N_SLOW_ITER_LONG_TERM>());
+        float n_slow_steps_short = std::pow(max_n_slow_iter, denorm<N_SLOW_ITER_SHORT_TERM>());
 
         for(auto & r : engine.getRamps()) {
           auto & mix = r.getOsc().getOsc();
           ConfigureFilters<MODE>::configure(mix, n_slow_steps, ra);
         }
-        auto n_slow_steps_short = std::pow(max_n_slow_iter, denorm<N_SLOW_ITER_SHORT_TERM>());
         auto ratio = denorm<CENTER_SHORT_TERM_RATIO>();
         for(auto & f_control : engine.getRampsSpecs().a) {
           // f_control controls the frequency of the Mix (has an effect only for sinus and low pass)
@@ -974,7 +991,7 @@ namespace imajuscule::audio::voice {
                                         denorm<HIGH_FREQ>());
       }
       else if constexpr (MODE == Mode::BIRDS) {
-        engine.set_freq_xfade(denorm<FREQ_TRANSITION_LENGTH>());
+        engine.set_freq_xfade(denorm<FREQ_TRANSITION_LENGTH>() * sample_rate);
         auto interp_freq = static_cast<itp::interpolation>(itp::interpolation_traversal().realValues()[static_cast<int>(.5f + value<FREQ_TRANSITION_INTERPOLATION>())]);
         engine.set_freq_interpolation(interp_freq);
         auto xfade_freq = static_cast<FreqXfade>(xfade_freq_traversal().realValues()[static_cast<int>(.5f + value<MARKOV_XFADE_FREQ>())]);
@@ -985,7 +1002,7 @@ namespace imajuscule::audio::voice {
                                         value<MARKOV_ADDITIONAL_TRIES>(),
                                         SoundEngineInitPolicy::StartAfresh,
                                         xfade_freq,
-                                        value<MARKOV_ARTICULATIVE_PAUSE_LENGTH>());
+                                        denorm<MARKOV_ARTICULATIVE_PAUSE_LENGTH>() * sample_rate);
       }
       else if constexpr (MODE == Mode::WIND) {
         return engine.initialize_wind(value<MARKOV_START_NODE>(),
@@ -1003,16 +1020,14 @@ namespace imajuscule::audio::voice {
                                         value<MARKOV_MIN_PATH_LENGTH>(),
                                         value<MARKOV_ADDITIONAL_TRIES>(),
                                         SoundEngineInitPolicy::StartAfresh,
-                                        value<MARKOV_ARTICULATIVE_PAUSE_LENGTH>());
+                                       denorm<MARKOV_ARTICULATIVE_PAUSE_LENGTH>() * sample_rate);
       }
       Assert(0);
       return false;
     }
 
-    int32_t get_xfade_length() const {
-      auto d = denorm<XFADE_LENGTH>();
-      // make it odd
-      return 1 + ( static_cast<int>( .5f + d ) / 2 ) * 2;
+    float get_xfade_length() const {
+      return denorm<XFADE_LENGTH>();
     }
 
     float get_gain() const { return denorm<GAIN>(); }

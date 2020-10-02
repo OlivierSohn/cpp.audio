@@ -342,6 +342,7 @@ void setPhase(MonoNoteChannel & c, CS & cs)
         c.elem.forgetPastSignals(); // this does _not_ touch the envelope
         c.elem.algo.set_sample_rate(sample_rate);
         c.elem.algo.setVolumeTarget(e.noteOn.velocity);
+        int const xfade_frames_length = static_cast<int>(0.5f + (get_xfade_length() * sample_rate));
 
         // setupAudioElement is allowed to be slow, allocate / deallocate memory, etc...
         // because it's not running in the audio realtime thread.
@@ -364,7 +365,8 @@ void setPhase(MonoNoteChannel & c, CS & cs)
 
           chans.enqueueOneShot([this,
                                 channel_index,
-                                pannedVol]
+                                pannedVol,
+                                xfade_frames_length]
                                (Chans & chans, uint64_t){
             // unqueue the (potential) previous request, else an assert fails
             // when we enqueue the next request, because it's already queued.
@@ -372,7 +374,7 @@ void setPhase(MonoNoteChannel & c, CS & cs)
             c.reset();
             c.channel->setVolume(get_gain());
             if constexpr (xfade_policy == XfadePolicy::UseXfade) {
-              c.channel->set_xfade(get_xfade_length());
+              c.channel->set_xfade((xfade_frames_length%2) + 1); // make it odd
             }
 
             // we issue this call to make sure that the 'tryAcquire' effect will be visible in this thread.
