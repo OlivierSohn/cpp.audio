@@ -40,7 +40,7 @@ namespace imajuscule {
             signal.reserve(n_samples);
 
             {
-              auto noise = make_loudness_adapted_noise(sample_rate, getWhiteNoise, num_taps, num_taps);
+              auto noise = make_loudness_adapted_noise<double>(sample_rate, NoiseType::White, num_taps, num_taps);
                 for(auto s=0; s<n_samples; ++s) {
                     real_signal.push_back(noise.step());
                 }
@@ -86,7 +86,7 @@ namespace imajuscule {
                 ++ n_superpositions;
             }
 
-            auto bin_freq_width = SAMPLE_RATE / static_cast<double>(length_fft);
+            auto bin_freq_width = sample_rate / static_cast<double>(length_fft);
 
             {
                 real_freq.resize(real_freq.size()/2); // remove second half, which is symmetric to the first half.

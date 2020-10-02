@@ -270,12 +270,12 @@ namespace imajuscule::audio {
     struct Request {
         using Volumes = Volumes<nAudioOut>;
 
-        Request( Sounds<A> & sounds, Sound const sound, float freq_hz, Volumes vol, float duration_ms ) :
+        Request( Sounds<A> & sounds, Sound const sound, float freq_hz, Volumes vol, float duration_ms, int sample_rate) :
         volumes(vol),
         buffer(nullptr)
         {
             Assert(duration_ms >= 0.f);
-            duration_in_frames = ms_to_frames(duration_ms);
+            duration_in_frames = ms_to_frames(duration_ms, sample_rate);
 
             // we silence some sounds instead of just not playing them, in order to keep
             // the rythm
@@ -293,14 +293,14 @@ namespace imajuscule::audio {
                 silence = true;
             }
             else {
-                Id = soundId{ sound, freq_hz };
+                Id = soundId{ sample_rate, sound, freq_hz };
                 if(Id.period_length < sound.minimalPeriod()) {
                     silence = true;
                     LG(WARN, "silenced sound of inaudible (high) frequency '%.1f Hz'", freq_hz);
                 }
             }
             if(silence) {
-                buffer.reset(&sounds.get( {Sound::SILENCE} ));
+                buffer.reset(&sounds.get( {sample_rate, Sound::SILENCE} ));
                 volumes = 0.f;
             }
             else {
@@ -328,20 +328,20 @@ namespace imajuscule::audio {
             }
         }
 
-        Request( soundBuffer<double> * buffer, Volumes volume, int duration_in_frames) :
+        explicit Request( soundBuffer<double> * buffer, Volumes volume, int duration_in_frames) :
         buffer(buffer), volumes(volume), duration_in_frames(duration_in_frames) { }
 
-        Request( AE32Buffer buffer, Volumes volume, int duration_in_frames) :
+        explicit Request( AE32Buffer buffer, Volumes volume, int duration_in_frames) :
         buffer(buffer), volumes(volume), duration_in_frames(duration_in_frames) { }
 
-        Request( AE64Buffer buffer, Volumes volume, int duration_in_frames) :
+        explicit Request( AE64Buffer buffer, Volumes volume, int duration_in_frames) :
         buffer(buffer), volumes(volume), duration_in_frames(duration_in_frames) { }
 
-        Request( AE32Buffer buffer, Volumes volume, float duration_in_ms) :
-        Request(buffer, std::move(volume), ms_to_frames(duration_in_ms)) { }
+        Request( AE32Buffer buffer, Volumes volume, float duration_in_ms, int sample_rate) :
+        Request(buffer, std::move(volume), ms_to_frames(duration_in_ms, sample_rate)) { }
 
-        Request( AE64Buffer buffer, Volumes volume, float duration_in_ms) :
-        Request(buffer, std::move(volume), ms_to_frames(duration_in_ms)) { }
+        Request( AE64Buffer buffer, Volumes volume, float duration_in_ms, int sample_rate) :
+        Request(buffer, std::move(volume), ms_to_frames(duration_in_ms, sample_rate)) { }
 
         Request() : buffer(nullptr) {}
 
@@ -412,9 +412,9 @@ namespace imajuscule::audio {
 
   template<int nAudioOuts>
   struct PackedRequestParams {
-    float length; // duration in milliseconds
     std::array<uint8_t, nAudioOuts> volumes; // 0 = muted, 255 = full
     uint8_t channel_id;
+    int32_t count_frames;
   };
 
 }

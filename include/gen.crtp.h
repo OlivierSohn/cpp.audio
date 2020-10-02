@@ -340,8 +340,8 @@ void setPhase(MonoNoteChannel & c, CS & cs)
         channels.corresponding(*channel) = e.noteid;
 
         c.elem.forgetPastSignals(); // this does _not_ touch the envelope
+        c.elem.algo.set_sample_rate(sample_rate);
         c.elem.algo.setVolumeTarget(e.noteOn.velocity);
-        c.elem.editEnvelope().setEnvelopeCharacTime(get_xfade_length());
 
         // setupAudioElement is allowed to be slow, allocate / deallocate memory, etc...
         // because it's not running in the audio realtime thread.
@@ -401,7 +401,7 @@ void setPhase(MonoNoteChannel & c, CS & cs)
 #ifndef CUSTOM_SAMPLE_RATE
           if(maybeMidiTimeAndSource) {
             chans.enqueueMIDIOneShot(get_value(maybeMidiTimeAndSource)
-                                   , [&c](Chans & chans, auto midiTimingAndSrc, uint64_t curTimeNanos){
+                                   , [&c, sample_rate](Chans & chans, auto midiTimingAndSrc, uint64_t curTimeNanos){
 
               auto srcKey = midiTimingAndSrc.getSourceKey();
               uint64_t midiTimeNanos = midiTimingAndSrc.getNanosTime();
@@ -441,7 +441,8 @@ void setPhase(MonoNoteChannel & c, CS & cs)
               }
               else {
                 // we're on time.
-                c.elem.editEnvelope().onKeyPressed(nanoseconds_to_frames(targetNanos-curTimeNanos));
+                c.elem.editEnvelope().onKeyPressed(nanoseconds_to_frames(targetNanos-curTimeNanos,
+                                                                         sample_rate));
                 c.midiDelay = {{delayNanos, srcKey}};
               }
             });
@@ -471,7 +472,9 @@ void setPhase(MonoNoteChannel & c, CS & cs)
         if(maybeMidiTimeAndSource) {
           typename Out::LockFromNRT L(out.get_lock());
           chans.enqueueMIDIOneShot(get_value(maybeMidiTimeAndSource)
-                                 , [this, noteid = e.noteid](auto &, auto midiTimingAndSrc, uint64_t curTimeNanos){
+                                 , [this,
+                                    noteid = e.noteid,
+                                    sample_rate](auto &, auto midiTimingAndSrc, uint64_t curTimeNanos){
             // We can have multiple notes with the same pitch, and different durations.
             // Hence, here we just close the first opened channel with matching pitch
             // and matching midi source.
@@ -495,7 +498,8 @@ void setPhase(MonoNoteChannel & c, CS & cs)
 
               uint64_t targetNanos = midiTimingAndSrc.getNanosTime() + d.getNanosTime();
 
-              auto delay = (targetNanos < curTimeNanos) ? 0 : nanoseconds_to_frames(targetNanos-curTimeNanos);
+              auto delay = (targetNanos < curTimeNanos) ? 0 : nanoseconds_to_frames(targetNanos-curTimeNanos,
+                                                                                    sample_rate);
 
               if(!c.elem.getEnvelope().canHandleExplicitKeyReleaseNow(delay)) {
                 continue;
@@ -584,20 +588,21 @@ void setPhase(MonoNoteChannel & c, CS & cs)
     >;
 
     template <class... Args>
-    Wrapper(int nOrchestratorsMax, Args&&... args) :
-    plugin(std::forward<Args>(args)...),
-    out{
+    Wrapper(int sampleRate, int nOrchestratorsMax, Args&&... args)
+    : plugin(std::forward<Args>(args)...)
+    , out{
       GlobalAudioLock<AudioOutPolicy::Slave>::get(),
       n_channels,
       nOrchestratorsMax
     }
+    , sample_rate(sampleRate)
     {
-      dontUseConvolutionReverbs(out);
+      dontUseConvolutionReverbs(out, sample_rate);
       plugin.template initialize(out.getChannels());
     }
 
     void doProcessing (ProcessData& data) {
-      return plugin.doProcessing(data, out, out.getChannels());
+      return plugin.doProcessing(sample_rate, data, out, out.getChannels());
     }
 
     void allNotesOff() {
@@ -610,6 +615,7 @@ void setPhase(MonoNoteChannel & c, CS & cs)
 
     OutputData out;
     T plugin;
+    int sample_rate;
   };
 
 } // NS imajuscule::audio

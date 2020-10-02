@@ -334,8 +334,8 @@ namespace imajuscule::audio::voice {
   struct SetSlowParams<Mode::WIND> {
     template<typename CTRL>
     static void set(CTRL & ctrl, int n_slow_steps_short, int n_slow_steps_long, float ratio) {
-      ctrl.getUnderlyingIter().set_n_slow_steps(n_slow_steps_long);
-      ctrl.set_short_term_noise_rate(n_slow_steps_short);
+      ctrl.getUnderlyingIter().set_n_slow_steps(n_slow_steps_long); // TODO sample rate dependant?
+      ctrl.set_short_term_noise_rate(n_slow_steps_short);           // TODO sample rate dependant?
       ctrl.set_short_term_noise_amplitude(ratio);
     }
   };
@@ -475,15 +475,15 @@ namespace imajuscule::audio::voice {
                                             int pre_tries,
                                             int min_path_length,
                                             int additionnal_tries,
-                                            int articulative_pause_length,
+                                            int articulative_pause_length, // TODO
                                             itp::interpolation i,
                                             float freq_scat,
                                             float length,
                                             float length_med_exp,
                                             float length_scale_exp,
-                                            int xfade,
+                                            int xfade, // TODO
                                             float phase_ratio1, float phase_ratio2,
-                                            float d1, float d2,
+                                            float d1, float d2, // TODO
                                             float harmonic_attenuation,
                                             int filter_order,
                                             float bandpass_width_min,
@@ -616,7 +616,7 @@ namespace imajuscule::audio::voice {
         Assert(b);
         result[index(MARKOV_XFADE_FREQ)] = static_cast<float>(idx);
       }
-      result[index(FREQ_TRANSITION_LENGTH)] = normalize<FREQ_TRANSITION_LENGTH>(freq_xfade);
+      result[index(FREQ_TRANSITION_LENGTH)] = normalize<FREQ_TRANSITION_LENGTH>(freq_xfade); // TODO sample rate dependant?
       return result;
     }
 
@@ -641,7 +641,7 @@ namespace imajuscule::audio::voice {
       result[index(SINE_GAIN)] = 0.f;
       result[index(CENTER_OCTAVE_MIN_LONG_TERM)] = normalize<CENTER_OCTAVE_MIN_LONG_TERM>(bp_center.getMin()),
       result[index(CENTER_OCTAVE_MAX_LONG_TERM)] = normalize<CENTER_OCTAVE_MAX_LONG_TERM>(bp_center.getMax()),
-      result[index(N_SLOW_ITER_LONG_TERM)] = std::log(n_slow_iter) / std::log(max_n_slow_iter);
+      result[index(N_SLOW_ITER_LONG_TERM)] = std::log(n_slow_iter) / std::log(max_n_slow_iter);  // TODO sample rate dependant?
 
       return result;
     }
@@ -664,8 +664,8 @@ namespace imajuscule::audio::voice {
       result[index(SINE_GAIN)] = 0.01f; // to have the same volume as noise winds
       result[index(CENTER_OCTAVE_MIN_LONG_TERM)] = normalize<CENTER_OCTAVE_MIN_LONG_TERM>(bp_center.getMin()),
       result[index(CENTER_OCTAVE_MAX_LONG_TERM)] = normalize<CENTER_OCTAVE_MAX_LONG_TERM>(bp_center.getMax()),
-      result[index(N_SLOW_ITER_LONG_TERM)] = std::log(n_slow_iter_long_term) / std::log(max_n_slow_iter);
-      result[index(N_SLOW_ITER_SHORT_TERM)] = std::log(n_slow_iter_short_term) / std::log(max_n_slow_iter);
+      result[index(N_SLOW_ITER_LONG_TERM)] = std::log(n_slow_iter_long_term) / std::log(max_n_slow_iter); // TODO sample rate dependant?
+      result[index(N_SLOW_ITER_SHORT_TERM)] = std::log(n_slow_iter_short_term) / std::log(max_n_slow_iter); // TODO sample rate dependant?
       result[index(CENTER_SHORT_TERM_RATIO)] = short_center_ratio;
 
       return result;
@@ -691,7 +691,7 @@ namespace imajuscule::audio::voice {
       result[index(SINE_GAIN)] = 0.01f;
       result[index(CENTER_OCTAVE_MIN_LONG_TERM)] = normalize<CENTER_OCTAVE_MIN_LONG_TERM>(bp_center.getMin()),
       result[index(CENTER_OCTAVE_MAX_LONG_TERM)] = normalize<CENTER_OCTAVE_MAX_LONG_TERM>(bp_center.getMax()),
-      result[index(N_SLOW_ITER_LONG_TERM)] = std::log(n_slow_iter) / std::log(max_n_slow_iter);
+      result[index(N_SLOW_ITER_LONG_TERM)] = std::log(n_slow_iter) / std::log(max_n_slow_iter); // TODO sample rate dependant?
 
       return result;
     }
@@ -858,8 +858,6 @@ namespace imajuscule::audio::voice {
                            Volumes<nAudioOut> & vol)
     {
       auto & engine = e.algo.getOsc();
-
-      engine.set_sample_rate(sample_rate);
       {
         auto interp = static_cast<itp::interpolation>(itp::interpolation_traversal().realValues()[static_cast<int>(.5f + value<INTERPOLATION>())]);
 
@@ -906,7 +904,8 @@ namespace imajuscule::audio::voice {
 
       engine.set_length(denorm<LENGTH>());
 
-      engine.setLoudnessParams(value<LOUDNESS_REF_FREQ_INDEX>(),
+      engine.setLoudnessParams(sample_rate,
+                               value<LOUDNESS_REF_FREQ_INDEX>(),
                                value<LOUDNESS_COMPENSATION_AMOUNT>(),
                                denorm<LOUDNESS_LEVEL>());
       engine.setFiltersOrder(value<ORDER_FILTERS>());
@@ -1117,7 +1116,7 @@ namespace imajuscule::audio::voice {
     }
 
     template<typename Out, typename Chans>
-    void doProcessing (ProcessData& data, Out & out, Chans & chans)
+    void doProcessing (int sample_rate, ProcessData& data, Out & out, Chans & chans)
     {
       static_assert(Out::policy == outPolicy);
       Assert(data.numSamples);
@@ -1143,14 +1142,12 @@ namespace imajuscule::audio::voice {
       int nextEventPosition = getNextEventPosition(it, end);
       Assert(nextEventPosition >= currentFrame);
 
-      int const sample_Rate = out.getSampleRate();
-      
       while(nRemainingFrames) {
         Assert(nRemainingFrames > 0);
 
         while(nextEventPosition == currentFrame) {
           Event e = it.dereference();
-          onEvent(sample_rate, out, chans);
+          onEvent(sample_rate, e, out, chans);
           ++it;
           nextEventPosition = getNextEventPosition(it, end);
         }
@@ -1163,7 +1160,7 @@ namespace imajuscule::audio::voice {
         // ... not more than the buffer
         nFramesToProcess = std::min<int>(nFramesToProcess, n_frames_interleaved);
 
-        out.step(&interleaved[0], nFramesToProcess, 0);
+        out.step(&interleaved[0], nFramesToProcess, 0, 0);
 
         for(auto c = 0; c < nFramesToProcess; ++c) {
           for(unsigned int i=0; i<nAudioOut; ++i) {

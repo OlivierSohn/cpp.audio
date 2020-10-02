@@ -378,8 +378,8 @@ void rtResynth(int const sample_rate) {
   AudioPlatform::PortAudio
   >;
 
-  Ctxt ctxt(sample_rate);
-  if (!ctxt.Init(0.006)) {
+  Ctxt ctxt;
+  if (!ctxt.Init(sample_rate, 0.006)) {
     throw std::runtime_error("ctxt init failed");
   }
   auto & channel_handler = ctxt.getChannelHandler();
@@ -471,7 +471,7 @@ void rtResynth(int const sample_rate) {
    trigger the relevant actions at the right time in the audio out thread.
    */
 
-  synth.forEachElems([](auto & e) {
+  synth.forEachElems([sample_rate](auto & e) {
     // envelope (now that we track the volume, we only need a minimal envelope)
 
     // TODO try the following effect via volume tracking only (not evelope):

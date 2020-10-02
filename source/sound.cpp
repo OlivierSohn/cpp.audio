@@ -5,18 +5,18 @@ namespace imajuscule::audio {
     // take into account the fact that to compute gray noise, a filter needs to be initialized using some pink noise samples
     constexpr auto grey_noise_duration = 2.f * noise_duration;
 
-    soundBuffer<double> const & getPinkNoise() {
-        static soundBuffer<double> n(soundId{Sound::PINK_NOISE, noise_duration});
+    soundBuffer<double> const & getPinkNoise(int sample_rate) {
+        static soundBuffer<double> n(soundId{sample_rate, Sound::PINK_NOISE, noise_duration});
         return n;
     }
 
-    soundBuffer<double> const & getGreyNoise() {
-        static soundBuffer<double> n(soundId{Sound::GREY_NOISE, grey_noise_duration});
+    soundBuffer<double> const & getGreyNoise(int sample_rate) {
+        static soundBuffer<double> n(soundId{sample_rate, Sound::GREY_NOISE, grey_noise_duration});
         return n;
     }
 
-    soundBuffer<double> const & getWhiteNoise() {
-        static soundBuffer<double> n(soundId{Sound::NOISE, noise_duration});
+    soundBuffer<double> const & getWhiteNoise(int sample_rate) {
+        static soundBuffer<double> n(soundId{sample_rate, Sound::NOISE, noise_duration});
         return n;
     }
 
@@ -32,18 +32,18 @@ namespace imajuscule::audio {
         return sum;
     }
 
-    float getWhiteNoiseAbsMean() {
-        static auto val = getAbsMean(getWhiteNoise());
+    float getWhiteNoiseAbsMean(int sample_rate) {
+        static auto val = getAbsMean(getWhiteNoise(sample_rate));
         return val;
     }
 
-    float getPinkNoiseAbsMean() {
-        static auto val = getAbsMean(getPinkNoise());
+    float getPinkNoiseAbsMean(int sample_rate) {
+        static auto val = getAbsMean(getPinkNoise(sample_rate));
         return val;
     }
 
-    float getGreyNoiseAbsMean() {
-        static auto val = getAbsMean(getGreyNoise());
+    float getGreyNoiseAbsMean(int sample_rate) {
+        static auto val = getAbsMean(getGreyNoise(sample_rate));
         return val;
     }
 
@@ -157,8 +157,8 @@ soundBuffer<T>::soundBuffer( soundId const & id ) {
             {
                 ScopedLog l("Generating", "Pink Noise");
                 // using generate_with_smooth_transition because pink noise has some correlation between samples
-                generate_with_smooth_transition( id.period_length, [](float){
-                    static GaussianPinkNoiseAlgo a(SAMPLE_RATE);
+                generate_with_smooth_transition( id.period_length, [sample_rate = id.sample_rate_](float){
+                    static GaussianPinkNoiseAlgo a(sample_rate);
                     a.step();
                     return a.get();
                 } );
@@ -170,14 +170,14 @@ soundBuffer<T>::soundBuffer( soundId const & id ) {
             {
                 ScopedLog l("Generating", "Grey Noise");
                 // using generate_with_smooth_transition because grey noise has some correlation between samples
-                generate_with_smooth_transition( id.period_length, [](float){
+                generate_with_smooth_transition( id.period_length, [sample_rate = id.sample_rate_](float){
                     constexpr auto length_ftt =
 #ifdef NDEBUG
                     4096;
 #else
                     256;
 #endif
-                  static auto a = make_loudness_adapted_noise(SAMPLE_RATE, getPinkNoise, length_ftt, length_ftt);
+                  static auto a = make_loudness_adapted_noise<T>(sample_rate, NoiseType::Pink, length_ftt, length_ftt);
                   return a.step();
                 } );
                 normalize();

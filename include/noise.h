@@ -157,46 +157,64 @@ namespace imajuscule::audio {
 #endif
 
 
-    template<typename SOURCE_NOISE>
-    struct GaussianGreyNoiseAlgo {
-        using FPT = typename std::remove_reference<decltype(SOURCE_NOISE()())>::type::FPT;
-        using T = FPT;
+enum class NoiseType {
+  Pink,
+  White
+};
 
-        GaussianGreyNoiseAlgo(int sample_rate, SOURCE_NOISE source, unsigned int fft_length, unsigned int NumTaps) :
-        source(source),
-        loudness_compensation_filter(sample_rate, fft_length, NumTaps) {
-            ScopedLog l("Pre-fill", "loudness compensation filter");
-            int n = loudness_compensation_filter.size() +
-                    loudness_compensation_filter.getLatency().toInteger();
-            for(int i=0; i<n; ++i) {
-                // fill filter
-                step();
-            }
-        }
-
-      T step() {
-        auto & noise = source();
-        assert(counter < noise.size());
-
-        auto r = loudness_compensation_filter.step(noise[counter]);
-        ++counter;
-        if(counter == noise.size()) {
-          counter = 0;
-        }
-        return r;
-      }
-
-    private:
-        unsigned int counter = 0;
-        audio::audioelement::LoudnessCompensationFilterWithLatency<T> loudness_compensation_filter;
-        SOURCE_NOISE source;
-    };
-
-
-    template<typename T>
-    GaussianGreyNoiseAlgo<typename std::decay<T>::type>
-    make_loudness_adapted_noise(int sample_rate, T&& t, unsigned int fft_length, unsigned int NumTaps)
-    {
-        return { sample_rate, std::forward<T>(t), fft_length, NumTaps };
+template<typename T>
+struct GaussianGreyNoiseAlgo {
+  using FPT = T;
+  
+  GaussianGreyNoiseAlgo(int sample_rate,
+                        NoiseType source,
+                        unsigned int fft_length,
+                        unsigned int NumTaps)
+  : source(source)
+  , sample_rate_(sample_rate)
+  , loudness_compensation_filter(sample_rate, fft_length, NumTaps) {
+    ScopedLog l("Pre-fill", "loudness compensation filter");
+    int n = loudness_compensation_filter.size() +
+    loudness_compensation_filter.getLatency().toInteger();
+    for(int i=0; i<n; ++i) {
+      // fill filter
+      step();
     }
+  }
+  
+  T step() {
+    auto const & noise = [this]() -> soundBuffer<double> const & {
+      switch(source) {
+        case NoiseType::White:
+          return getWhiteNoise(sample_rate_);
+        case NoiseType::Pink:
+          return getPinkNoise(sample_rate_);
+      }
+    }();
+    assert(counter < noise.size());
+    
+    auto r = loudness_compensation_filter.step(noise[counter]);
+    ++counter;
+    if(counter == noise.size()) {
+      counter = 0;
+    }
+    return r;
+  }
+  
+private:
+  unsigned int counter = 0;
+  int sample_rate_;
+  audio::audioelement::LoudnessCompensationFilterWithLatency<T> loudness_compensation_filter;
+  NoiseType source;
+};
+
+
+template<typename T>
+auto make_loudness_adapted_noise(int sample_rate,
+                                 NoiseType t,
+                                 unsigned int fft_length,
+                                 unsigned int NumTaps) -> GaussianGreyNoiseAlgo<T>
+{
+  return { sample_rate, t, fft_length, NumTaps };
+}
 }

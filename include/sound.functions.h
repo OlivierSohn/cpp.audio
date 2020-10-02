@@ -2,44 +2,39 @@
 namespace imajuscule::audio {
 
   template<typename T>
-  constexpr T sample_rate() { return static_cast<T>(SAMPLE_RATE); };
-  template<typename T>
-  constexpr T half_sample_rate() { return static_cast<T>(SAMPLE_RATE) / static_cast<T>(2); };
-  template<typename T>
-  constexpr T sample_rate_milliseconds() { return static_cast<T>(SAMPLE_RATE) / static_cast<T>(1000); };
-  template<typename T>
-  constexpr T sample_rate_nanoseconds() { return static_cast<T>(SAMPLE_RATE) / static_cast<T>(1e9); };
-  template<typename T>
-  constexpr T inverse_sample_rate() {
-    static_assert(std::is_floating_point_v<T>);
-    return static_cast<T>(1) / static_cast<T>(SAMPLE_RATE);
+  constexpr T sample_rate_milliseconds(int sample_rate) {
+    return static_cast<T>(sample_rate) / static_cast<T>(1000);
   };
   template<typename T>
-  constexpr T nanos_per_frame() {
-    return inverse_sample_rate<T>() * static_cast<T>(1e9);
+  constexpr T sample_rate_nanoseconds(int sample_rate) {
+    return static_cast<T>(sample_rate) / static_cast<T>(1e9);
   };
   template<typename T>
-  constexpr T millis_per_frame() {
-    return inverse_sample_rate<T>() * static_cast<T>(1e3);
+  constexpr T nanos_per_frame(int sample_rate) {
+    return static_cast<T>(1e9) / sample_rate;
+  };
+  template<typename T>
+  constexpr T millis_per_frame(int sample_rate) {
+    return static_cast<T>(1e3) / sample_rate;
   };
 
-  constexpr int32_t nanoseconds_to_frames(uint64_t ns) {
-    float v = 0.5f + sample_rate_nanoseconds<float>() * static_cast<float>(ns);
+  constexpr int32_t nanoseconds_to_frames(uint64_t ns, int sample_rate) {
+    float v = 0.5f + sample_rate_nanoseconds<float>(sample_rate) * static_cast<float>(ns);
     Assert(v >= 0.f);
     Assert(v < static_cast<float>(std::numeric_limits<int32_t>::max()));
     return static_cast<int32_t>(v);
   }
-    constexpr int ms_to_frames(float duration_ms) {
+    constexpr int ms_to_frames(float duration_ms, int sample_rate) {
         Assert(duration_ms >= 0.f);
-        auto fval = sample_rate_milliseconds<float>() * duration_ms;
+        auto fval = sample_rate_milliseconds<float>(sample_rate) * duration_ms;
         Assert(fval >= 0.f);
         Assert(fval < static_cast<float>(std::numeric_limits<int>::max()));
         return static_cast<int>( 0.5f + fval );
     }
 
-    constexpr float frames_to_ms(int n) {
+    constexpr float frames_to_ms(int n, int sample_rate) {
         Assert(n >= 0);
-        return millis_per_frame<float>() * static_cast<float>(n);
+        return millis_per_frame<float>(sample_rate) * static_cast<float>(n);
     }
 
     template<typename T>
@@ -47,11 +42,11 @@ namespace imajuscule::audio {
         return sample_rate / static_cast<T>(period);
     }
 
-    constexpr int freq_to_period_in_samples( float freq_hz ) {
+    constexpr int freq_to_period_in_samples( float freq_hz, float sample_rate ) {
         if(freq_hz <= 0.f) {
             return 1;
         }
-        return static_cast<int>(SAMPLE_RATE / freq_hz);
+        return static_cast<int>(sample_rate / freq_hz);
     }
 
     template<typename T>
@@ -75,16 +70,19 @@ constexpr T freq_to_angle_increment(T freq, int sample_rate) {
   return 2 * freq / sample_rate;
 }
 
-template<typename T>
-constexpr T freq_to_angle_increment(T freq) {
-  return freq_to_angle_increment(freq, SAMPLE_RATE);
-}
-
     template<typename T>
-    constexpr T angle_increment_to_freq(T i) {
+    constexpr T angle_increment_to_freq(T i, T sample_rate) {
         static_assert(std::is_floating_point_v<T>);
-        return i * half_sample_rate<T>();
+        return i * 0.5 * sample_rate;
     }
+
+template<typename T>
+T angle_increment_to_period_in_continuous_samples(T i) {
+  if(i == 0.f) {
+    return static_cast<T>(1);
+  }
+  return 2. / std::abs(i);
+}
 
     template<typename T>
     constexpr T freq_to_period_in_seconds(T freq) {
@@ -92,11 +90,6 @@ constexpr T freq_to_angle_increment(T freq) {
           return 1;
       }
       return static_cast<T>(1) / freq;
-    }
-
-    template<typename T>
-    constexpr T seconds_to_samples(T seconds) {
-      return seconds * SAMPLE_RATE;
     }
 
   template<typename T>

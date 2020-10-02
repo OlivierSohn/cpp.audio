@@ -38,8 +38,8 @@ struct AsyncWavWriter {
   : n_audio_chans(nAudioChans)
   , sample_rate(sampleRate)
   , wav_write_queue(queueCapacityInSecondsOfAudioSignal * (sampleRate * nAudioChans))
-  , wav_write_active(true)
-  , thread_write_wav{[this, prefix]() {
+  , wav_write_active(true) {
+    thread_write_wav = std::make_unique<std::thread>([this, prefix]() {
     auto rootDir = "/Users/Olivier/dev/hs.hamazed/";
 #if 0
     // verify interpolation curves
@@ -93,8 +93,8 @@ struct AsyncWavWriter {
       // will not be too much.
       std::this_thread::sleep_for(std::chrono::milliseconds(static_cast<int>(queueCapacityInSecondsOfAudioSignal * 1000 / 100.)));
     }
-  }}
-  {}
+    });
+  }
   
 
   template<typename T>
@@ -110,7 +110,7 @@ struct AsyncWavWriter {
   
   ~AsyncWavWriter() {
     wav_write_active = false;
-    thread_write_wav.join();
+    thread_write_wav->join();
   }
 
 private:
@@ -123,7 +123,7 @@ private:
   >;
   Queue wav_write_queue;
   std::atomic_bool wav_write_active;
-  std::thread thread_write_wav;
+  std::unique_ptr<std::thread> thread_write_wav;
   int const n_audio_chans;
   int const sample_rate;
 };

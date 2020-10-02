@@ -4,6 +4,11 @@ namespace imajuscule::audio {
 
 #ifndef CUSTOM_SAMPLE_RATE
 
+// TODO This trick was done when we wanted to minimize captured data in realtime functors,
+// but now tha we use folly::Function, we can keep full-precision midi timestamps,
+// and store the extra information in extra variables. This will also allow
+// to support generalized sample rates.
+
   // The MIDI timestamps don't need sub-frame precision:
   // we drop bits strictly after the highest 1-bit of 'nanosPerFrame',
   // and use those dropped bits to store information about the source.
@@ -22,7 +27,7 @@ namespace imajuscule::audio {
   //
   struct MIDITimestampAndSource {
 
-    static constexpr uint64_t nanosPerFrame = static_cast<uint64_t>(0.5f + nanos_per_frame<float>());
+    static constexpr uint64_t nanosPerFrame = static_cast<uint64_t>(0.5f + nanos_per_frame<float>(SAMPLE_RATE));
     static constexpr uint64_t highestBitNanosPerFrame = relevantBits(nanosPerFrame);
     static constexpr uint64_t nSourceKeyBits = highestBitNanosPerFrame - 1;
     static constexpr uint64_t nTimingBits = 64 - nSourceKeyBits;
@@ -220,7 +225,7 @@ private:
             enqueueOneShot([&e,params](auto&chans, uint64_t){
               // error is ignored
               auto & c = chans.editChannel(params.channel_id);
-              chans.playComputableNoLock(c, e.fCompute(), {&e.buffer->buffer[0], {params.volumes}, params.length });
+              chans.playComputableNoLock(c, e.fCompute(), Request{&e.buffer->buffer[0], {params.volumes}, params.count_frames });
             });
             res = true;
           }

@@ -50,24 +50,22 @@ namespace imajuscule::audio {
         }
     };
 
-    struct soundId {
-        soundId() = default;
-
-        soundId( Sound sound, float freq_hz = 1.f )
-        :
-        sound(sound),
-        period_length( (sound == Sound::SILENCE) ? 1 : freq_to_period_in_samples( freq_hz ) )
-        {}
-
-        Sound sound;
-        int32_t period_length;
-        bool operator < (const soundId & other) const {
-            if(sound == other.sound) {
-                return ( period_length < other.period_length );
-            }
-            return( sound < other.sound );
-        }
-    };
+struct soundId {
+  soundId() = default;
+  
+  soundId(int sample_rate, Sound sound, float freq_hz = 1.f )
+  : sound(sound)
+  , period_length( (sound == Sound::SILENCE) ? 1 : freq_to_period_in_samples( freq_hz, sample_rate ) )
+  , sample_rate_(sample_rate)
+  {}
+  
+  Sound sound;
+  int32_t period_length;
+  int sample_rate_;
+  bool operator < (const soundId & o) const {
+    return std::make_tuple(sound, period_length, sample_rate_) < std::make_tuple(o.sound, o.period_length, o.sample_rate_);
+  }
+};
 
     static constexpr double soundBaseVolume(Sound::Type t) {
         switch(t) {
@@ -156,16 +154,18 @@ namespace imajuscule::audio {
         using F_GET_BUFFER = FGetBuffer<SOUND>;
         using FPT = float;
 
-        BufferIter() {
-            initializeForRun();
-        }
+      void set_sample_rate(int sample_rate) {
+        sample_rate_ = sample_rate;
+        end = F_GET_BUFFER()(sample_rate_).end();
+        initializeForRun();
+      }
 
         void initializeForRun() {
-            it = F_GET_BUFFER()().begin();
+            it = F_GET_BUFFER()(sample_rate_).begin();
             // randomize start position
             auto add = static_cast<int>(std::uniform_real_distribution<>{
                 0.f,
-                static_cast<float>(F_GET_BUFFER()().size()-1)
+                static_cast<float>(F_GET_BUFFER()(sample_rate_).size()-1)
             }(mersenne<SEEDED::No>()));
 
             it += add;
@@ -179,7 +179,7 @@ namespace imajuscule::audio {
         void operator ++() {
             ++it;
             if(it == end) {
-                it = F_GET_BUFFER()().begin();
+                it = F_GET_BUFFER()(sample_rate_).begin();
             }
         }
 
@@ -190,42 +190,43 @@ namespace imajuscule::audio {
             return v;
         }
 
-        int getPosition() const { return static_cast<int>(std::distance(F_GET_BUFFER()().begin(), it)); }
+        int getPosition() const { return static_cast<int>(std::distance(F_GET_BUFFER()(sample_rate_).begin(), it)); }
 
-        float getAbsMean() const { return F_GET_BUFFER().getAbsMean(); }
+        float getAbsMean() const { return F_GET_BUFFER().getAbsMean(sample_rate_); }
     private:
-        decltype(F_GET_BUFFER()().begin()) it, end = F_GET_BUFFER()().end();
+      int sample_rate_;
+      decltype(F_GET_BUFFER()(0).begin()) it, end;
     };
 
     /////////////////
     // instantiations
     /////////////////
 
-    soundBuffer<double> const & getWhiteNoise();
-    float getWhiteNoiseAbsMean();
+    soundBuffer<double> const & getWhiteNoise(int sample_rate);
+    float getWhiteNoiseAbsMean(int sample_rate);
 
-    soundBuffer<double> const & getPinkNoise();
-    float getPinkNoiseAbsMean();
+    soundBuffer<double> const & getPinkNoise(int sample_rate);
+    float getPinkNoiseAbsMean(int sample_rate);
 
-    soundBuffer<double> const & getGreyNoise();
-    float getGreyNoiseAbsMean();
+    soundBuffer<double> const & getGreyNoise(int sample_rate);
+    float getGreyNoiseAbsMean(int sample_rate);
 
     template<>
     struct FGetBuffer<Sound::PINK_NOISE> {
-        auto const & operator()() {
-            return getPinkNoise();
+        auto const & operator()(int sample_rate) {
+            return getPinkNoise(sample_rate);
         }
-        float getAbsMean() {
-            return getPinkNoiseAbsMean();
+        float getAbsMean(int sample_rate) {
+            return getPinkNoiseAbsMean(sample_rate);
         }
     };
     template<>
     struct FGetBuffer<Sound::GREY_NOISE> {
-        auto const & operator()() {
-            return getGreyNoise();
+        auto const & operator()(int sample_rate) {
+            return getGreyNoise(sample_rate);
         }
-        float getAbsMean() {
-            return getGreyNoiseAbsMean();
+        float getAbsMean(int sample_rate) {
+            return getGreyNoiseAbsMean(sample_rate);
         }
     };
 

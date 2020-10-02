@@ -50,6 +50,10 @@ namespace imajuscule::audio::audioelement {
       using FPT = typename ITER::FPT;
       using T = FPT;
 
+      void set_sample_rate(int s) {
+        ctrl.set_sample_rate(s);
+      }
+      
       void setFreqRange(range<float> const & r) {
         this->fmax = r.getMax();
         Assert(this->fmax);
@@ -106,6 +110,11 @@ namespace imajuscule::audio::audioelement {
       using FPT = T;
       using Tr = NumTraits<T>;
 
+      void set_sample_rate(int s) {
+        ctrl.set_sample_rate(s);
+        noise.set_sample_rate(s);
+      }
+      
       void setFreqRange(range<float> const & r) {
         ctrl.setFreqRange(r);
       }
@@ -233,8 +242,14 @@ namespace imajuscule::audio::audioelement {
     struct SoundEngine {
       using Algo = typename SoundEngineAlgo_<Mix, M>::type;
 
-      using audioElt = audioelement::VolumeAdjusted< audioelement::SimplyEnveloped < A, Algo > >;
-      using FPT = typename audioElt::FPT;
+      using FPT = typename Algo::FPT;
+      using audioElt =
+      audioelement::VolumeAdjusted<
+        audioelement::Enveloped <
+          Algo,
+          audioelement::AHDSREnvelope<A, FPT, audioelement::EnvelopeRelease::WaitForKeyRelease>
+        >
+      >;
 
       static constexpr auto hasEnvelope = true;
       static constexpr auto baseVolume = audioElt::baseVolume;
@@ -321,9 +336,9 @@ namespace imajuscule::audio::audioelement {
         }
       }
       
-      void setLoudnessParams(int low_index, float log_ratio, float loudness_level) {
+      void setLoudnessParams(int sample_rate, int low_index, float log_ratio, float loudness_level) {
         for(auto & r : ramps) {
-          r.getOsc().setLoudnessParams(low_index, log_ratio, loudness_level);
+          r.getOsc().setLoudnessParams(sample_rate, low_index, log_ratio, loudness_level);
         }
       }
       
@@ -439,15 +454,19 @@ namespace imajuscule::audio::audioelement {
             
       void set_sample_rate(int s) {
         sample_rate = s;
+        for (auto & r : ramps) {
+          r.set_sample_rate(s);
+        }
       }
 
     private:
       void play(float length, float freq1, float freq2,
                 float phase_ratio1, float phase_ratio2,
                 float freq_scatter) {
+        Assert(sample_rate);
         length *= powf(2.f,
                        std::uniform_real_distribution<float>{min_exp, max_exp}(mersenne<SEEDED::Yes>()));
-        auto n_frames = static_cast<float>(ms_to_frames(length));
+        auto n_frames = static_cast<float>(ms_to_frames(length, sample_rate));
         if(n_frames <= 0) {
           Logger::err("zero length");
           return;
@@ -467,7 +486,6 @@ namespace imajuscule::audio::audioelement {
           freq1 *= state_factor;
           freq2 *= state_factor;
 
-          Assert(sample_rate);
           ramp_spec->get().setup(freq_to_angle_increment(freq1, sample_rate),
                                  freq_to_angle_increment(freq2, sample_rate),
                                  n_frames,
@@ -550,7 +568,7 @@ namespace imajuscule::audio::audioelement {
             auto length = this->length;
             length *= powf(2.f,
                            std::uniform_real_distribution<float>{min_exp, max_exp}(mersenne<SEEDED::Yes>()));
-            auto n_frames = static_cast<float>(ms_to_frames(length));
+            auto n_frames = static_cast<float>(ms_to_frames(length, sample_rate));
             if(auto * ramp_spec = ramp_specs.get_next_ramp_for_build()) {
               ramp_spec->get().setup(freq_to_angle_increment(freq1_robot, sample_rate),
                                      freq_to_angle_increment(freq1_robot, sample_rate),
@@ -574,7 +592,7 @@ namespace imajuscule::audio::audioelement {
             auto length = this->length;
             length *= powf(2.f,
                            std::uniform_real_distribution<float>{min_exp, max_exp}(mersenne<SEEDED::Yes>()));
-            auto n_frames = static_cast<float>(ms_to_frames(length));
+            auto n_frames = static_cast<float>(ms_to_frames(length, sample_rate));
             if(auto * ramp_spec = ramp_specs.get_next_ramp_for_build()) {
               ramp_spec->get().setup(freq_to_angle_increment(freq2_robot, sample_rate),
                                      freq_to_angle_increment(freq2_robot, sample_rate),
@@ -603,7 +621,7 @@ namespace imajuscule::audio::audioelement {
             auto length = slide_length_scale * this->length;
             length *= powf(2.f,
                            std::uniform_real_distribution<float>{min_exp, max_exp}(mersenne<SEEDED::Yes>()));
-            auto n_frames = static_cast<float>(ms_to_frames(length));
+            auto n_frames = static_cast<float>(ms_to_frames(length, sample_rate));
             if(auto * ramp_spec = ramp_specs.get_next_ramp_for_build()) {
               ramp_spec->get().setup(freq_to_angle_increment(freq2_robot, sample_rate),
                                      freq_to_angle_increment(freq1_robot, sample_rate),
@@ -650,7 +668,7 @@ namespace imajuscule::audio::audioelement {
             auto length = this->length;
             length *= powf(2.f,
                            std::uniform_real_distribution<float>{min_exp, max_exp}(mersenne<SEEDED::Yes>()));
-            auto n_frames = static_cast<float>(ms_to_frames(length));
+            auto n_frames = static_cast<float>(ms_to_frames(length, sample_rate));
             if(auto * ramp_spec = ramp_specs.get_next_ramp_for_build()) {
               ramp_spec->get().setup(freq_to_angle_increment(freq1_robot, sample_rate),
                                      freq_to_angle_increment(freq2_robot, sample_rate),
@@ -736,7 +754,7 @@ namespace imajuscule::audio::audioelement {
         new_ramp->forgetPastSignals();
         new_ramp->setAngle(start_angle);
         new_ramp->setVolumeTarget(new_spec->volume());
-        new_ramp->editEnvelope().setEnvelopeCharacTime(xfade_len);
+        new_ramp->editEnvelope().setAHDSR(AHDSR{xfade_len, itp::LINEAR,0,0, itp::LINEAR,xfade_len,itp::LINEAR,1.}, sample_rate);
         if(!new_ramp->editEnvelope().tryAcquire()) {
           Assert(0);
         }
@@ -893,7 +911,7 @@ namespace imajuscule::audio::audioelement {
           vol2 = pow(har_att, d2);
         }
 
-        auto n_frames = static_cast<float>(ms_to_frames(length));
+        auto n_frames = static_cast<float>(ms_to_frames(length, sample_rate));
         if(n_frames <= 0) {
           Logger::err("length '%f' is too small", length);
           return false;
@@ -913,7 +931,7 @@ namespace imajuscule::audio::audioelement {
       bool do_initialize(bool initialize, int start_node, int pre_tries, int min_path_length, int additional_tries,
                     int articulative_pause_length)
       {
-        auto n_frames = static_cast<float>(ms_to_frames(length));
+        auto n_frames = static_cast<float>(ms_to_frames(length, sample_rate));
         if(n_frames <= 0) {
           Logger::err("length '%f' is too small", length);
           return false;

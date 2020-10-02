@@ -53,7 +53,8 @@ bool useConvolutionReverb(int const sample_rate,
       throw std::runtime_error("negative count frames");
     }
     DeinterlacedBuffers<T> db(ib);
-    return post.setConvolutionReverbIR(db,
+    return post.setConvolutionReverbIR(sample_rate,
+                                       db,
                                        wait_for_first_n_audio_cb_frames());
   }
   catch(std::exception const & e) {
@@ -81,8 +82,8 @@ struct AudioOutContext : public Context<AUP, Feat, T> {
   using Base::doTearDown;
 
   // the min latency used in case the initialization is done lazily
-  static constexpr float minLazyLatency = 0.005f;
-  static constexpr int lazySamplingRate = 44100;
+  static constexpr float minLazyLatency = 0.008f;
+  static constexpr int lazySamplingRate = 96000;
 
 private:
 
@@ -144,13 +145,13 @@ public:
       return false;
     }
     sample_rate_ = sample_rate;
-    initializeConvolutionReverb();
+    initializeConvolutionReverb(sample_rate);
     return true;
   }
 
-  void initializeConvolutionReverb()
+  void initializeConvolutionReverb(int sample_rate)
   {
-    dontUseConvolutionReverbs(chans);
+    dontUseConvolutionReverbs(chans, sample_rate);
 
     // this one needs to be high pass filtered (5hz loud stuff)
     /*    std::string dirname = std::string(impulse_responses_root_dir) + "/nyc.showroom";

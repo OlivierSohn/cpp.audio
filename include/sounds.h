@@ -13,17 +13,31 @@ namespace imajuscule::audio {
         return *(buffers.back());
       }
 
-      std::array<audioelement::Square<audioelement::SimpleLinearEnvelope<A, float>>, 8> squares;
-      std::array<audioelement::Oscillator<audioelement::SimpleLinearEnvelope<A, float>>, 8> oscillators;
-      std::array<audioelement::FreqRamp<audioelement::SimpleLinearEnvelope<A, float>>, 6> ramps;
+      using EnvelopeRelease = audioelement::EnvelopeRelease;
+      
+      std::array<audioelement::Square<
+        audioelement::AHDSREnvelope<A, float, EnvelopeRelease::WaitForKeyRelease>>,
+        8
+      > squares;
+      std::array<
+        audioelement::Oscillator<audioelement::AHDSREnvelope<A, float, EnvelopeRelease::WaitForKeyRelease>>,
+        8>
+      oscillators;
+      std::array<audioelement::FreqRamp<
+        audioelement::AHDSREnvelope<A, float, EnvelopeRelease::WaitForKeyRelease>>,
+        6>
+      ramps;
 
       std::array<
         audioelement::FinalAudioElement<
-          audioelement::SimplyEnveloped< A,
+          audioelement::Enveloped<
             audioelement::RingModulationAlgo<
               audioelement::LowPassAlgo<audioelement::PulseTrainAlgo<float>, 1>,
               audioelement::OscillatorAlgo<float>
-            >>>
+            >,
+            audioelement::AHDSREnvelope<A, float, EnvelopeRelease::WaitForKeyRelease>
+          >
+        >
       , 6> ringmods;
 
         std::array<audioelement::LowPass<audioelement::PulseTrainAlgo<float>, 1>, 6> lptrains;

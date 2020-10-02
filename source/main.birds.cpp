@@ -38,8 +38,8 @@ void birds(int const sample_rate) {
   AudioPlatform::PortAudio
   >;
 
-  Ctxt ctxt();
-  if (!ctxt.Init(sample_rate, 0.006)) {
+  Ctxt ctxt;
+  if (!ctxt.Init(sample_rate, 0.008)) {
     throw std::runtime_error("ctxt init failed");
   }
   auto & channel_handler = ctxt.getChannelHandler();
@@ -55,7 +55,7 @@ void birds(int const sample_rate) {
                                                                                                        static_cast<int>(std::numeric_limits<uint8_t>::max())));
   NoXFadeChans & channels = channels_;
 
-  Synth synth(sample_rate, buffers);
+  Synth synth(buffers);
 
   synth.initialize(channels);
 
@@ -170,6 +170,6 @@ void birds(int const sample_rate) {
 } // NS
 
 int main() {
-  imajuscule::audio::birds(44100);
+  imajuscule::audio::birds(96000);
   return 0;
 }

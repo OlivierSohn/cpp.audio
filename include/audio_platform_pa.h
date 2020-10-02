@@ -69,7 +69,7 @@ private:
   }
 };
 
-void analyzeTime(uint64_t t, int nFrames);
+void analyzeTime(uint64_t t, int nFrames, int sample_rate);
 #endif
 
 #ifdef IMJ_LOG_MEMORY
@@ -97,10 +97,15 @@ struct Context<AudioPlatform::PortAudio, F, Chans> {
   static constexpr auto nAudioOut = Chans::nOuts;
 
   template<typename Lock, typename ...Args>
-  Context(Lock & l, Args... args) : chans(l, args ...)
+  Context(Lock & l, Args... args)
+  : chans(l, args ...)
   , bInitialized(false)
   {}
 
+private:
+  int sample_rate_ = 0;
+  uint64_t nanos_per_audioelement_buffer = 0;
+  
 protected:
   Chans chans;
   bool bInitialized : 1;
@@ -113,11 +118,12 @@ private:
   int writer_idx = 0;
 #endif
 
-  static int playCallback( const void *inputBuffer, void *outputBuffer,
+  static int playCallback(const void *inputBuffer,
+                          void *outputBuffer,
                           unsigned long numFrames,
                           const PaStreamCallbackTimeInfo* timeInfo,
                           PaStreamCallbackFlags f [[maybe_unused]],
-                          void *userData )
+                          void *userData)
   {
 #ifndef NDEBUG
     PartialCallbackCheck partial_cb_check;
@@ -155,15 +161,21 @@ private:
       }
       return noTime; // then, MIDI synchronizatin will not work.
     }();
-
+    
+    auto This = static_cast<MeT*>(userData);
 #ifndef NDEBUG
-    analyzeTime(tNanos, numFrames);
+    analyzeTime(tNanos,
+                numFrames,
+                This->sample_rate_);
 #endif
-
-    reinterpret_cast<MeT*>(userData)->chans.step(static_cast<SAMPLE*>(outputBuffer), static_cast<int>(numFrames), tNanos);
+    
+    This->chans.step(static_cast<SAMPLE*>(outputBuffer),
+                     static_cast<int>(numFrames),
+                     tNanos,
+                     This->nanos_per_audioelement_buffer);
 #if IMJ_DEBUG_AUDIO_OUT
-    reinterpret_cast<MeT*>(userData)->async_wav_writer->sync_feed(static_cast<SAMPLE*>(outputBuffer),
-                                                                  static_cast<int>(numFrames));
+    This->async_wav_writer->sync_feed(static_cast<SAMPLE*>(outputBuffer),
+                                      static_cast<int>(numFrames));
 #endif
 
     return paContinue;
@@ -217,11 +229,11 @@ protected:
       using namespace audioelement;
 
       // we to the next multiple of 'n_frames_per_buffer'
-      int ceiledSLIS = n_frames_per_buffer * (1 + (ceiledSLIS-1) / n_frames_per_buffer);
+      int ceiledSLIS = n_frames_per_buffer * (1 + (suggestedLatencyInSamples-1) / n_frames_per_buffer);
       LG(INFO, " ceiled to the next multiple of %d : %d", n_frames_per_buffer, ceiledSLIS);
 
       // we have cracks on osx, rounding to the next power of 2 fixed this.
-      ceiledSLIS = ceil_power_of_two(suggestedLatencyInSamples);
+      ceiledSLIS = ceil_power_of_two(ceiledSLIS);
       LG(INFO, " ceiled to the next power of 2 : %d", ceiledSLIS);
 
       // The current portaudio doc says, about suggestedLatency:
@@ -245,6 +257,10 @@ protected:
       }
 #endif  // IMJ_DEBUG_AUDIO_OUT
 
+      nanos_per_audioelement_buffer = static_cast<uint64_t>(0.5f +
+                                                            audio::nanos_per_frame<float>(sample_rate) *
+                                                            static_cast<float>(audio::audioelement::n_frames_per_buffer));
+      sample_rate_ = sample_rate;
       PaError err = Pa_OpenStream(&stream,
                                   nullptr,
                                   &p,

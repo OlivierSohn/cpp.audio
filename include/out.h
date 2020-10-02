@@ -318,13 +318,13 @@ namespace imajuscule {
 
     ///////////////////////////////// convolution reverb
 
-    void dontUseConvolutionReverbs()
+    void dontUseConvolutionReverbs(int sample_rate)
     {
       if constexpr (disable) {
         return;
       }
 
-      muteAudio();
+      muteAudio(sample_rate);
 
       reverbs.flushToSilence();
       reverbs.clear();
@@ -333,7 +333,7 @@ namespace imajuscule {
     }
 
     template<typename T>
-    [[nodiscard]] bool setConvolutionReverbIR(audio::DeinterlacedBuffers<T> const & db, int n_audiocb_frames)
+    [[nodiscard]] bool setConvolutionReverbIR(int sample_rate, audio::DeinterlacedBuffers<T> const & db, int n_audiocb_frames)
     {
       if constexpr (disable) {
         Assert(0);
@@ -342,13 +342,13 @@ namespace imajuscule {
         bool res = false;
       // having the audio thread compute reverbs at the same time would make our calibration not very reliable
       // (due to cache effects for roots and possibly other) so we disable them now
-      muteAudio();
+      muteAudio(sample_rate);
 
       // locking here would possibly incur dropped audio frames due to the time spent setting the coefficients.
       // we ensured reverbs are not used so we don't need to lock.
         try {
             std::map<int, audio::ConvReverbOptimizationReport> results;
-            reverbs.setConvolutionReverbIR(nAudioIn, db, n_audiocb_frames, n_audiocb_frames, audio::sample_rate<double>(), results);
+            reverbs.setConvolutionReverbIR(nAudioIn, db, n_audiocb_frames, n_audiocb_frames, sample_rate, results);
             has_spatializer = db.countChannels() > nAudioIn;
             res = true;
         }
@@ -362,8 +362,10 @@ namespace imajuscule {
     }
 
     // Must be called from the audio realtime thread.
-    void transitionConvolutionReverbWetRatio(double wet) {
-        reverbs.transitionConvolutionReverbWetRatio(wet, audio::ms_to_frames(200));
+    void transitionConvolutionReverbWetRatio(double wet, int sample_rate) {
+        reverbs.transitionConvolutionReverbWetRatio(wet,
+                                                    audio::ms_to_frames(200,
+                                                                        sample_rate));
     }
 
     bool isReady() const
@@ -423,7 +425,7 @@ namespace imajuscule {
     audio::Compressor<double> compressor;
     bool has_spatializer = false;
 
-    void muteAudio() {
+    void muteAudio(int sample_rate) {
       LockFromNRT l(_lock.lock());
       readyTraits::write(ready, false, std::memory_order_relaxed);
       std::atomic_thread_fence(std::memory_order_release);
@@ -434,7 +436,7 @@ namespace imajuscule {
         // will be finished when we wake up (and subsequent cb calls will see the updated
         // 'ready' value)
         int n = audio::wait_for_first_n_audio_cb_frames();
-          float millisPerBuffer = audio::frames_to_ms(n);
+        float millisPerBuffer = audio::frames_to_ms(n, sample_rate);
         std::this_thread::sleep_for(std::chrono::milliseconds(static_cast<int>(0.5f + 20.f * ceil(millisPerBuffer))));
       }
     }
@@ -531,7 +533,11 @@ namespace imajuscule {
     }
 
     // called from audio callback
-    void step(SAMPLE *outputBuffer, int nFrames, uint64_t const tNanos) {
+
+    void step(SAMPLE *outputBuffer,
+              int nFrames,
+              uint64_t const tNanos,
+              uint64_t const nanos_per_audioelement_buffer) {
       /*
        static bool first(true);
        if(first) {
@@ -554,10 +560,6 @@ namespace imajuscule {
       post.declareBlockSize(nFrames);
 
       auto t = tNanos;
-      MAYBE_CONSTEXPR_SAMPLE_RATE uint64_t nanos_per_iteration =
-      static_cast<uint64_t>(
-                            0.5f + audio::nanos_per_frame<float>() * static_cast<float>(audio::audioelement::n_frames_per_buffer)
-                            );
 
       double precisionBuffer[audio::audioelement::n_frames_per_buffer * nOuts];
       while(nFrames > 0) {
@@ -575,7 +577,7 @@ namespace imajuscule {
           *outputBuffer = static_cast<SAMPLE>(precisionBuffer[i]);
         }
         nFrames -= audio::audioelement::n_frames_per_buffer;
-        t += nanos_per_iteration;
+        t += nanos_per_audioelement_buffer;
       }
     }
 
@@ -590,8 +592,8 @@ namespace imajuscule {
   };
 
   template<typename OutputData>
-  void dontUseConvolutionReverbs(OutputData & data) {
-    data.getPost().dontUseConvolutionReverbs();
+  void dontUseConvolutionReverbs(OutputData & data, int sample_rate) {
+    data.getPost().dontUseConvolutionReverbs(sample_rate);
   }
 
 }

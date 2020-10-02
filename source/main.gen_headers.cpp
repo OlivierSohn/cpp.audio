@@ -32,7 +32,7 @@ namespace imajuscule {
     }
 }
 
-void generateScript() {
+void generateScript(int const sample_rate) {
     using namespace imajuscule;
 
     LG(INFO, "File will be written in shared/.../Debug/<thefile>");
@@ -54,7 +54,7 @@ void generateScript() {
         add( freqs[i+1], normalized_frequencies, volumes );
     }
     add(freqs[n_freq-1], normalized_frequencies, volumes);
-    add(get_nyquist_frequency<float>(SAMPLE_RATE), normalized_frequencies, volumes);
+    add(get_nyquist_frequency<float>(sample_rate), normalized_frequencies, volumes);
 
     file.write_vec(volumes, "volumes");
 
@@ -120,6 +120,6 @@ void generateScript() {
 }
 
 int main(int argc, const char * argv[]) {
-    generateScript();
+  generateScript(imajuscule::SAMPLE_RATE); // todo compute coefficients for several sample rates
     return 0;
 }

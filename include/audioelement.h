@@ -205,7 +205,7 @@ namespace imajuscule::audio::audioelement {
     void setAngleIncrements(FPT a)
     {
       {
-        FPT signalPeriodSamples = freq_to_period_in_continuous_samples(angle_increment_to_freq(a));
+        FPT const signalPeriodSamples = angle_increment_to_period_in_continuous_samples(a);
         env.setMinChangeDurationSamples(static_cast<int>(0.5f + characTimeMultiplier * signalPeriodSamples));
       }
       algo.setAngleIncrements(a);
@@ -242,8 +242,13 @@ namespace imajuscule::audio::audioelement {
       return env.isEnvelopeFinished();
     }
 
-    void setLoudnessParams(int low_index, float log_ratio, float loudness_level) {
-      algo.setLoudnessParams(low_index, log_ratio, loudness_level);
+    void setLoudnessParams(int sample_rate, int low_index, float log_ratio, float loudness_level) {
+      algo.setLoudnessParams(sample_rate, low_index, log_ratio, loudness_level);
+    }
+
+    void set_sample_rate(int s) {
+      env.set_sample_rate(s);
+      algo.set_sample_rate(s);
     }
 
 #ifndef NDEBUG
@@ -479,9 +484,6 @@ namespace imajuscule::audio::audioelement {
 
       forEachHarmonic([](auto & algo) { algo.forgetPastSignals(); } );
     }
-    void setEnvelopeCharacTime(int len) {
-      forEachHarmonic([len](auto & algo) { algo.editEnvelope().setEnvelopeCharacTime(len); } );
-    }
 
     void step() {
       imagValue = {};
@@ -573,9 +575,9 @@ namespace imajuscule::audio::audioelement {
 
     FPT imag() const { return imagValue; }
 
-    void setLoudnessParams(int low_index, float log_ratio, float loudness_level) {
-      forEachHarmonic([low_index, log_ratio, loudness_level](auto & algo) {
-        algo.setLoudnessParams(low_index, log_ratio, loudness_level);
+    void setLoudnessParams(int sample_rate, int low_index, float log_ratio, float loudness_level) {
+      forEachHarmonic([sample_rate, low_index, log_ratio, loudness_level](auto & algo) {
+        algo.setLoudnessParams(sample_rate, low_index, log_ratio, loudness_level);
       });
     }
 
@@ -806,61 +808,6 @@ namespace imajuscule::audio::audioelement {
     }
   };
 
-  // note that today, this envelope is not compatible with SynthT, as
-  // 'setEnvelopeCharacTime' will overwrite whatever the synth user has
-  // set.
-  // Prefer using 'EnvelopeCRT' instead.
-  template <typename T, itp::interpolation AttackItp, itp::interpolation ReleaseItp>
-  struct SimpleEnvelopeBase : public WithMinChangeDuration {
-    static_assert(itp::intIsReal(AttackItp));
-    static_assert(itp::intIsReal(ReleaseItp));
-    static_assert(AttackItp != itp::PROPORTIONAL_VALUE_DERIVATIVE);
-    static_assert(ReleaseItp != itp::PROPORTIONAL_VALUE_DERIVATIVE);
-
-    using FPT = T;
-    using Param = int;
-    static constexpr auto Release = EnvelopeRelease::WaitForKeyRelease;
-
-    // len is in samples
-    void setEnvelopeCharacTime(int len) {
-      C = std::max(len,normalizedMinDt(SAMPLE_RATE));
-    }
-  private:
-    int32_t C = normalizedMinDt(SAMPLE_RATE);
-
-    int32_t getCharacTime() const {
-      return std::max(getMinChangeDuration(), C);
-    }
-
-  protected:
-
-    void startPressed() {}
-
-    Optional<T> stepPressed (int32_t counter) const {
-      return std::min
-      (static_cast<T>(1)
-       ,itp::interpolate( AttackItp
-                         , static_cast<T>(counter)
-                         , static_cast<T>(0)
-                         , static_cast<T>(1)
-                         , static_cast<T>(getCharacTime())));
-    }
-
-    int32_t getReleaseTime() const { return getCharacTime(); }
-
-    static constexpr itp::interpolation getReleaseItp() { return ReleaseItp; }
-
-    bool isAfterAttackBeforeSustain(int32_t counter) const {
-      return counter >= 0 && counter < C;
-    }
-  };
-
-  template <Atomicity A, typename T, itp::interpolation AttackItp, itp::interpolation ReleaseItp>
-  using SimpleEnvelope = EnvelopeCRT < A, SimpleEnvelopeBase <T, AttackItp, ReleaseItp> >;
-
-  template <Atomicity A, typename T>
-  using SimpleLinearEnvelope = SimpleEnvelope < A, T, itp::LINEAR, itp::LINEAR >;
-
   /* This inner state describes states when the outer state is 'KeyPressed',
   and the outer state counter is >= 1. */
   enum class AHD : unsigned char {
@@ -888,11 +835,8 @@ namespace imajuscule::audio::audioelement {
     using FPT = T;
     using Param = AHDSR;
     static constexpr auto Release = Rel;
-
-    void setEnvelopeCharacTime(int len) {
-      // we just ignore this, but it shows that the design is not optimal:
-      //   we should unify 'setEnvelopeCharacTime' with 'setAHDSR'
-      //Assert(0 && "ADSR enveloppes cannot be set using setEnvelopeCharacTime");
+    
+    void set_sample_rate(int s) {
     }
 
     void setAHDSR(AHDSR const & s, int const sample_rate) {
@@ -1065,9 +1009,6 @@ namespace imajuscule::audio::audioelement {
   template <Atomicity A, typename T, EnvelopeRelease Rel>
   using AHDSREnvelope = EnvelopeCRT < A, AHDSREnvelopeBase <T, Rel> >;
 
-  template <Atomicity A, typename ALGO>
-  using SimplyEnveloped = Enveloped<ALGO,SimpleLinearEnvelope<A, typename ALGO::FPT>>;
-
   // This value makes non-volume adjusted aoscillators be usable
   // with adjusted oscillators, at approximately the same volumes
   // for medium frequencies.
@@ -1110,6 +1051,10 @@ struct BaseVolumeAdjusted {
   }
 
   BaseVolumeAdjusted() = default;
+  
+  void set_sample_rate(int s) {
+    osc.set_sample_rate(s);
+  }
 
   // Used to limit the speed of variations.
   //
@@ -1124,9 +1069,6 @@ struct BaseVolumeAdjusted {
     osc.forgetPastSignals();
     volume.reset();
     volume_target.reset();
-  }
-  void setEnvelopeCharacTime(int len) {
-    osc.setEnvelopeCharacTime(len);
   }
   void onKeyPressed(int32_t delay) {
     osc.onKeyPressed(delay);
@@ -1147,8 +1089,8 @@ struct BaseVolumeAdjusted {
     osc.synchronizeAngles(other.osc);
   }
 
-  void setLoudnessParams(int low_index, float log_ratio, float loudness_level) {
-    osc.setLoudnessParams(low_index, log_ratio, loudness_level);
+  void setLoudnessParams(int sample_rate, int low_index, float log_ratio, float loudness_level) {
+    osc.setLoudnessParams(sample_rate, low_index, log_ratio, loudness_level);
   }
 
   void step() {
@@ -1229,14 +1171,14 @@ struct LoudnessVolumeAdjusted : BaseVolumeAdjusted<ALGO> {
   {}
 
   void setAngleIncrements(T ai) {
-    this->setVolumeTargetInternal(loudness::equal_loudness_volume(angle_increment_to_freq<T>(ai),
+    this->setVolumeTargetInternal(loudness::equal_loudness_volume(angle_increment_to_freq<T>(ai, sample_rate_),
                                                                   low_index_,
                                                                   log_ratio_,
                                                                   loudness_level));
     this->setAngleIncrementsInternal(ai);
   }
 
-  void setLoudnessParams(int low_index, float log_ratio, float loudness_level) {
+  void setLoudnessParams(int sample_rate, int low_index, float log_ratio, float loudness_level) {
     Assert(low_index >= 0);
     Assert(low_index < 16);
     low_index_ = low_index;
@@ -1244,12 +1186,14 @@ struct LoudnessVolumeAdjusted : BaseVolumeAdjusted<ALGO> {
     Assert(log_ratio <= 1.f);
     log_ratio_ = log_ratio;
     this->loudness_level = loudness_level;
+    sample_rate_ = sample_rate;
   }
 
 private:
   uint32_t low_index_ : 4;
   float loudness_level;
   float log_ratio_;
+  int sample_rate_;
 };
 
 
@@ -1264,10 +1208,6 @@ private:
     Phased() = default;
     Phased(T f) {
       setAngleIncrements(f);
-    }
-
-    void setEnvelopeCharacTime(int len) {
-      Assert(0);
     }
 
     bool isEnvelopeFinished() const {
@@ -1353,76 +1293,84 @@ private:
   template<typename T>
   using PCOscillator = FinalAudioElement<PCOscillatorAlgo<T>>;
 
-  template<Sound::Type SOUND>
-  struct soundBufferWrapperAlgo {
-    using MeT = soundBufferWrapperAlgo<SOUND>;
-
-    static constexpr auto hasEnvelope = false;
-    static constexpr auto baseVolume = reduceUnadjustedVolumes * soundBaseVolume(SOUND);
-    static constexpr auto isMonoHarmonic = false;
-
-    using F_GET_BUFFER = FGetBuffer<SOUND>;
-    using T = double;
-    using FPT = T;
-    static_assert(std::is_floating_point<FPT>::value);
-
-    soundBufferWrapperAlgo() {
-      F_GET_BUFFER().getAbsMean(); // just to initialize the static in it
+template<Sound::Type SOUND>
+struct soundBufferWrapperAlgo {
+  using MeT = soundBufferWrapperAlgo<SOUND>;
+  
+  static constexpr auto hasEnvelope = false;
+  static constexpr auto baseVolume = reduceUnadjustedVolumes * soundBaseVolume(SOUND);
+  static constexpr auto isMonoHarmonic = false;
+  
+  using F_GET_BUFFER = FGetBuffer<SOUND>;
+  using T = double;
+  using FPT = T;
+  static_assert(std::is_floating_point<FPT>::value);
+  
+  soundBufferWrapperAlgo() {
+  }
+  
+  void set_sample_rate(int s) {
+    sb = &F_GET_BUFFER()(s);
+    F_GET_BUFFER().getAbsMean(s); // just to initialize the static in it
+  }
+  
+  auto       & getOsc()       {return *this; }
+  auto const & getOsc() const {return *this; }
+  
+  void synchronizeAngles(MeT const & other) {
+    Assert(other.sb);
+    Assert(sb);
+    Assert(other.sb->size() == sb->size());
+    index = other.index;
+  }
+  
+  void forgetPastSignals() {
+  }
+  void setLoudnessParams(int sample_rate, int low_index, float log_ratio, float loudness_level) {}
+  void setAngleIncrements(T ai) {}
+  T angleIncrements() const { return 0; }
+  void setAngle(T a) {
+    Assert(sb);
+    // a is between -1 and 1
+    Assert(a <= 1.);
+    Assert(a >= -1.);
+    
+    // -1. -> 0
+    //  1. -> 0
+    index = static_cast<int>(((a + 1.) * sb->size() * 0.5) + 0.5);
+    if (index < 0) {
+      index = 0;
     }
-
-    auto       & getOsc()       {return *this; }
-    auto const & getOsc() const {return *this; }
-
-    void synchronizeAngles(MeT const & other) {
-        Assert(other.sb.size() == sb.size());
-        index = other.index;
+    --index; // because index will be incremented in step before being used
+  }
+  void onKeyPressed(int32_t) {
+    Assert(0);
+  }
+  void onKeyReleased(int32_t) {
+    Assert(0);
+  }
+  
+  T imag() const {
+    Assert(sb);
+    return (*sb)[index];
+  }
+  
+  void step() {
+    ++index;
+    Assert(sb);
+    if(index >= sb->size()) {
+      index = 0;
     }
-
-    void forgetPastSignals() {
-    }
-    void setLoudnessParams(int low_index, float log_ratio, float loudness_level) {}
-    void setAngleIncrements(T ai) {}
-    T angleIncrements() const { return 0; }
-    void setAngle(T a) {
-        // a is between -1 and 1
-        Assert(a <= 1.);
-        Assert(a >= -1.);
-
-        // -1. -> 0
-        //  1. -> 0
-        index = static_cast<int>(((a + 1.) * sb.size() * 0.5) + 0.5);
-        if (index < 0) {
-            index = 0;
-        }
-        --index; // because index will be incremented in step before being used
-    }
-    void setEnvelopeCharacTime(int len) {
-      Assert(0);
-    }
-    void onKeyPressed(int32_t) {
-      Assert(0);
-    }
-    void onKeyReleased(int32_t) {
-      Assert(0);
-    }
-
-    T imag() const { return sb[index]; }
-
-    void step() {
-      ++index;
-      if(index >= sb.size()) {
-        index = 0;
-      }
-    }
-
-    bool isEnvelopeFinished() const {
-      Assert(0);
-      return false;
-    }
-
-    int index = -1;
-    soundBuffer<double> const & sb = F_GET_BUFFER()();
-  };
+  }
+  
+  bool isEnvelopeFinished() const {
+    Assert(0);
+    return false;
+  }
+  
+  int index = -1;
+  soundBuffer<double> const * sb;
+};
 
   template<typename T>
   using WhiteNoise = FinalAudioElement< soundBufferWrapperAlgo<Sound::NOISE> >;
@@ -1501,7 +1449,7 @@ private:
     auto       & getOsc()       {return *this; }
     auto const & getOsc() const {return *this; }
 
-    void setLoudnessParams(int low_index, float log_ratio, float loudness_level) {}
+    void setLoudnessParams(int sample_rate, int low_index, float log_ratio, float loudness_level) {}
 
     T imag() const {
       if constexpr (O == FOscillator::SAW) {
@@ -1627,6 +1575,12 @@ template<class...AEs>
       return aes;
     }
 
+    void set_sample_rate(int s) {
+      for_each(aes, [s](auto & ae) {
+        ae.set_sample_rate(s);
+      });
+    }
+
     void setGains(decltype(gains) g) { gains = g; }
 
     void setFiltersOrder(int order) {
@@ -1638,11 +1592,6 @@ template<class...AEs>
     void forgetPastSignals() {
       for_each(aes, [](auto & ae) {
         ae.forgetPastSignals();
-      });
-    }
-    void setEnvelopeCharacTime(int len) {
-      for_each(aes, [len](auto & ae) {
-        ae.setEnvelopeCharacTime(len);
       });
     }
 
@@ -1684,9 +1633,9 @@ template<class...AEs>
       return sum;
     }
 
-    void setLoudnessParams(int low_index, float log_ratio, float loudness_level) {
+    void setLoudnessParams(int sample_rate, int low_index, float log_ratio, float loudness_level) {
       for_each(aes, [=](auto & ae) {
-        ae.setLoudnessParams(low_index, log_ratio, loudness_level);
+        ae.setLoudnessParams(sample_rate, low_index, log_ratio, loudness_level);
       });
     }
   };
@@ -1722,6 +1671,10 @@ template<class...AEs>
     using FilterFPT = typename InternalFilterFPTFromOrder<ORDER, FPT>::type;
     static_assert(std::is_floating_point<FPT>::value);
 
+    void set_sample_rate(int s) {
+      audio_element.set_sample_rate(s);
+    }
+    
     bool isEnvelopeFinished() const {
       return audio_element.isEnvelopeFinished();
     }
@@ -1749,9 +1702,6 @@ template<class...AEs>
     void forgetPastSignals() {
       filter_.forgetPastSignals();
       audio_element.forgetPastSignals();
-    }
-    void setEnvelopeCharacTime(int len) {
-      audio_element.setEnvelopeCharacTime(len);
     }
 
     void setFiltersOrder(int order) {
@@ -1787,7 +1737,7 @@ template<class...AEs>
     auto & get_element() const { return audio_element; }
     auto & filter() { return filter_; }
 
-    void setLoudnessParams(int low_index, float log_ratio, float loudness_level) {}
+    void setLoudnessParams(int sample_rate, int low_index, float log_ratio, float loudness_level) {}
   };
 
   template<typename T, int ORDER>
@@ -1805,6 +1755,12 @@ template<class...AEs>
     static constexpr auto low_index = 0;
     static constexpr auto high_index = 1;
 
+  protected:
+    void do_set_sample_rate(int s) {
+      cascade.set_sample_rate(s);
+    }
+
+  public:    
     void setCompensation(T sq_inv_width_factor) {
       // gain compensation to have an equal power of the central frequency for all widths
       compensation = expt<ORDER>(1 + sq_inv_width_factor);
@@ -1868,6 +1824,13 @@ template<class...AEs>
     using FPT = typename AEAlgo::FPT;
     using T = FPT;
 
+  protected:
+    void do_set_sample_rate(int s) {
+      lp.set_sample_rate(s);
+      hp.set_sample_rate(s);
+    }
+
+  public:
     T imag() const { return lp.imag() + hp.imag(); }
 
     bool isEnvelopeFinished() const {
@@ -1919,6 +1882,7 @@ template<class...AEs>
     using T = FPT;
     using Tr = NumTraits<T>;
     using AEWidth = AEAlgoWidth;
+    using Base::do_set_sample_rate;
     using Base::compensation;
     using Base::low_index;
     using Base::high_index;
@@ -1930,6 +1894,11 @@ template<class...AEs>
     static constexpr auto baseVolume = Algo::baseVolume;
     static constexpr auto isMonoHarmonic = Algo::isMonoHarmonic;
 
+    void set_sample_rate(int s) {
+      width.set_sample_rate(s);
+      do_set_sample_rate(s);
+    }
+    
     void forgetPastSignals() {
       getHP().forgetPastSignals();
       getLP().forgetPastSignals();
@@ -1965,7 +1934,7 @@ template<class...AEs>
       doStep();
     }
 
-    void setLoudnessParams(int low_index, float log_ratio, float loudness_level) const {}
+    void setLoudnessParams(int sample_rate, int low_index, float log_ratio, float loudness_level) const {}
 
     AEWidth & getWidth() { return width; }
 
@@ -1976,16 +1945,6 @@ template<class...AEs>
 
 
     void doSetAngleIncrements(std::array<T, 2> incs) {
-      /*
-       static auto deb = 0;
-       ++deb;
-       if(deb == 10000) {
-       deb = 0;
-       LG(INFO, "%.2f %.2f",
-       angle_increment_to_freq(incs[low_index]),
-       angle_increment_to_freq(incs[high_index]));
-       }
-       */
       getHP().setAngleIncrements(incs[low_index]);
       getLP().setAngleIncrements(incs[high_index]);
     }
@@ -2053,12 +2012,12 @@ template<class...AEs>
     auto const & getOsc() const { return *this; }
     auto       & getOsc()       { return *this; }
 
-    void setLoudnessParams(int low_index, float log_ratio, float loudness_level) {
+    void set_sample_rate(int s) {
+    }
+
+    void setLoudnessParams(int sample_rate, int low_index, float log_ratio, float loudness_level) {
     }
     void forgetPastSignals() {
-    }
-    void setEnvelopeCharacTime(int len) {
-      Assert(0);
     }
     void onKeyPressed(int32_t) {
       Assert(0);
@@ -2141,6 +2100,9 @@ template<class...AEs>
 
     LogRamp() : cur_sample(Tr::zero()), from{}, to{}, duration_in_samples{}
     {}
+
+    void set_sample_rate(int s) {
+    }
 
     void forgetPastSignals() {}
 
@@ -2382,6 +2344,9 @@ struct InterpolatedFreq {
   , duration_in_samples{}
   {}
 
+  void set_sample_rate(int s) {
+  }
+
   void forgetPastSignals() {
     f_result.reset();
   }
@@ -2473,6 +2438,10 @@ private:
   struct AbsIter {
     using FPT = typename Iterator::FPT;
 
+    void set_sample_rate(int s) {
+      it.set_sample_rate(s);
+    }
+        
     void initializeForRun() {
       it.initializeForRun();
     }
@@ -2499,9 +2468,12 @@ private:
 
     using uint_steps = int32_t;
 
-    SlowIter(itp::interpolation interp) : interp(interp) {
+    SlowIter(itp::interpolation interp = itp::LINEAR)
+    : interp(interp) {
     }
-    SlowIter() : SlowIter(itp::LINEAR) {
+
+    void set_sample_rate(int s) {
+      it.set_sample_rate(s);
     }
 
     void set_interpolation(itp::interpolation i) { interp.setInterpolation(i); }
@@ -2585,7 +2557,11 @@ private:
   struct WindFreqIter {
     template <class... Args>
     WindFreqIter(Args&&... args) : it(std::forward<Args>(args)...) {}
-
+    
+    void set_sample_rate(int s) {
+      it.set_sample_rate(s);
+    }
+    
     void initializeForRun() {
       it.initializeForRun();
     }
@@ -2625,6 +2601,10 @@ private:
     using T = FPT;
     using Tr = NumTraits<T>;
 
+    void set_sample_rate(int s) {
+      it.set_sample_rate(s);
+    }
+    
     void forgetPastSignals() {
       it.initializeForRun();
     }
@@ -2702,6 +2682,13 @@ private:
 
     using Tr = NumTraits<T>;
 
+    void set_sample_rate(int s) {
+      for_each(ctrls, [s](auto & c) {
+        c.set_sample_rate(s);
+      });
+      osc.set_sample_rate(s);
+    }
+
     T angle() const { return osc.angle(); }
     void setAngle(T a) {
       osc.setAngle(a);
@@ -2710,8 +2697,8 @@ private:
       osc.synchronizeAngles(other.osc);
     }
 
-    void setLoudnessParams(int low_index, float log_ratio, float loudness_level) {
-      osc.setLoudnessParams(low_index, log_ratio, loudness_level);
+    void setLoudnessParams(int sample_rate, int low_index, float log_ratio, float loudness_level) {
+      osc.setLoudnessParams(sample_rate, low_index, log_ratio, loudness_level);
     }
 
     void setFiltersOrder(int order) {
@@ -2762,9 +2749,6 @@ private:
 
     bool isEnvelopeFinished() const {
       return osc.isEnvelopeFinished();
-    }
-    void setEnvelopeCharacTime(int len) {
-      osc.setEnvelopeCharacTime(len);
     }
     void onKeyPressed(int32_t delay) {
       osc.onKeyPressed(delay);
