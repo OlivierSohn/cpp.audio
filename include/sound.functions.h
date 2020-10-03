@@ -50,15 +50,6 @@ namespace imajuscule::audio {
     }
 
     template<typename T>
-    constexpr T freq_to_period_in_continuous_samples( T freq_hz ) {
-        if(freq_hz <= 0.f) {
-            return static_cast<T>(1);
-        }
-        return sample_rate<T>() / freq_hz;
-    }
-
-
-    template<typename T>
     constexpr T get_nyquist_frequency(T sample_rate) {
         return period_in_samples_to_freq(sample_rate, static_cast<T>(2));
     }
