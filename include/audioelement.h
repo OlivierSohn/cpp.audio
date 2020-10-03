@@ -464,8 +464,12 @@ namespace imajuscule::audio::audioelement {
 
     using FPT = typename ALGO::FPT;
 
+    void set_sample_rate(int) {
+      // see setHarmonics
+    }
+
     template <typename Arr>
-    void setHarmonics(Arr const & props) {
+    void setHarmonics(Arr const & props, int const sample_rate) {
       harmonics.clear();
 
       // discard the last consecutive harmonics of zero volume.
@@ -476,6 +480,7 @@ namespace imajuscule::audio::audioelement {
       harmonics.reserve(sz);
       for(int i=0; i<sz; ++i) {
         harmonics.emplace_back(EA{},props[i]);
+        harmonics.back().first.set_sample_rate(sample_rate);
       }
     }
 
@@ -582,7 +587,8 @@ namespace imajuscule::audio::audioelement {
     }
 
   private:
-    // the order of elements in the pair is optimized to have linear memory accesses in step():
+    // TODO we could omit harmonics that have a 0 volume, and store the harmonic index in the vector,
+    //      synchronizeAngles must be rewritten carefully.
     std::vector<std::pair<EA, harmonicProperties_t>> harmonics;
     EnvelopeStateAcquisition<atomicity> stateAcquisition;
     FPT imagValue;
@@ -835,7 +841,7 @@ namespace imajuscule::audio::audioelement {
     using FPT = T;
     using Param = AHDSR;
     static constexpr auto Release = Rel;
-    
+
     void set_sample_rate(int s) {
     }
 
@@ -1051,7 +1057,7 @@ struct BaseVolumeAdjusted {
   }
 
   BaseVolumeAdjusted() = default;
-  
+
   void set_sample_rate(int s) {
     osc.set_sample_rate(s);
   }
@@ -1296,34 +1302,34 @@ private:
 template<Sound::Type SOUND>
 struct soundBufferWrapperAlgo {
   using MeT = soundBufferWrapperAlgo<SOUND>;
-  
+
   static constexpr auto hasEnvelope = false;
   static constexpr auto baseVolume = reduceUnadjustedVolumes * soundBaseVolume(SOUND);
   static constexpr auto isMonoHarmonic = false;
-  
+
   using F_GET_BUFFER = FGetBuffer<SOUND>;
   using T = double;
   using FPT = T;
   static_assert(std::is_floating_point<FPT>::value);
-  
+
   soundBufferWrapperAlgo() {
   }
-  
+
   void set_sample_rate(int s) {
     sb = &F_GET_BUFFER()(s);
     F_GET_BUFFER().getAbsMean(s); // just to initialize the static in it
   }
-  
+
   auto       & getOsc()       {return *this; }
   auto const & getOsc() const {return *this; }
-  
+
   void synchronizeAngles(MeT const & other) {
     Assert(other.sb);
     Assert(sb);
     Assert(other.sb->size() == sb->size());
     index = other.index;
   }
-  
+
   void forgetPastSignals() {
   }
   void setLoudnessParams(int sample_rate, int low_index, float log_ratio, float loudness_level) {}
@@ -1334,7 +1340,7 @@ struct soundBufferWrapperAlgo {
     // a is between -1 and 1
     Assert(a <= 1.);
     Assert(a >= -1.);
-    
+
     // -1. -> 0
     //  1. -> 0
     index = static_cast<int>(((a + 1.) * sb->size() * 0.5) + 0.5);
@@ -1349,12 +1355,12 @@ struct soundBufferWrapperAlgo {
   void onKeyReleased(int32_t) {
     Assert(0);
   }
-  
+
   T imag() const {
     Assert(sb);
     return (*sb)[index];
   }
-  
+
   void step() {
     ++index;
     Assert(sb);
@@ -1362,12 +1368,12 @@ struct soundBufferWrapperAlgo {
       index = 0;
     }
   }
-  
+
   bool isEnvelopeFinished() const {
     Assert(0);
     return false;
   }
-  
+
   int index = -1;
   soundBuffer<double> const * sb;
 };
@@ -1448,6 +1454,8 @@ struct soundBufferWrapperAlgo {
 
     auto       & getOsc()       {return *this; }
     auto const & getOsc() const {return *this; }
+
+    void set_sample_rate(int) {}
 
     void setLoudnessParams(int sample_rate, int low_index, float log_ratio, float loudness_level) {}
 
@@ -1674,7 +1682,7 @@ template<class...AEs>
     void set_sample_rate(int s) {
       audio_element.set_sample_rate(s);
     }
-    
+
     bool isEnvelopeFinished() const {
       return audio_element.isEnvelopeFinished();
     }
@@ -1760,7 +1768,7 @@ template<class...AEs>
       cascade.set_sample_rate(s);
     }
 
-  public:    
+  public:
     void setCompensation(T sq_inv_width_factor) {
       // gain compensation to have an equal power of the central frequency for all widths
       compensation = expt<ORDER>(1 + sq_inv_width_factor);
@@ -1898,7 +1906,7 @@ template<class...AEs>
       width.set_sample_rate(s);
       do_set_sample_rate(s);
     }
-    
+
     void forgetPastSignals() {
       getHP().forgetPastSignals();
       getLP().forgetPastSignals();
@@ -2225,6 +2233,8 @@ template<class...AEs>
     , duration_in_samples{}
     {}
 
+    void set_sample_rate(int) {}
+
     void forgetPastSignals() {}
 
     void setAngleIncrementsRange(range<float> const &) const { Assert(0); } // use setup / setAngleIncrements instead
@@ -2441,7 +2451,7 @@ private:
     void set_sample_rate(int s) {
       it.set_sample_rate(s);
     }
-        
+
     void initializeForRun() {
       it.initializeForRun();
     }
@@ -2555,11 +2565,11 @@ private:
   struct WindFreqIter {
     template <class... Args>
     WindFreqIter(Args&&... args) : it(std::forward<Args>(args)...) {}
-    
+
     void set_sample_rate(int s) {
       it.set_sample_rate(s);
     }
-    
+
     void initializeForRun() {
       it.initializeForRun();
     }
@@ -2602,7 +2612,7 @@ private:
     void set_sample_rate(int s) {
       it.set_sample_rate(s);
     }
-    
+
     void forgetPastSignals() {
       it.initializeForRun();
     }
