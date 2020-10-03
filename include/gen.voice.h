@@ -11,8 +11,8 @@ namespace imajuscule::audio::voice {
     CENTER_OCTAVE_MIN_LONG_TERM,
     CENTER_OCTAVE_MAX_LONG_TERM,
     CENTER_SHORT_TERM_RATIO,
-    N_SLOW_ITER_SHORT_TERM,
-    N_SLOW_ITER_LONG_TERM,
+    SECONDS_SLOW_ITER_SHORT_TERM,
+    SECONDS_SLOW_ITER_LONG_TERM,
     ORDER_FILTERS,
     SINE_GAIN,
     SEED,
@@ -149,8 +149,8 @@ namespace imajuscule::audio::voice {
     CENTER_OCTAVE_MIN_LONG_TERM,
     CENTER_OCTAVE_MAX_LONG_TERM,
     CENTER_SHORT_TERM_RATIO,
-    N_SLOW_ITER_SHORT_TERM,
-    N_SLOW_ITER_LONG_TERM,
+    SECONDS_SLOW_ITER_SHORT_TERM,
+    SECONDS_SLOW_ITER_LONG_TERM,
     ORDER_FILTERS,
     SINE_GAIN,
 
@@ -281,8 +281,8 @@ namespace imajuscule::audio::voice {
     static const float M; };
 
   template<> struct Limits<CENTER_SHORT_TERM_RATIO> : public NormalizedParamLimits {};
-  template<> struct Limits<N_SLOW_ITER_SHORT_TERM> : public NormalizedParamLimits {};
-  template<> struct Limits<N_SLOW_ITER_LONG_TERM> : public NormalizedParamLimits {};
+  template<> struct Limits<SECONDS_SLOW_ITER_SHORT_TERM> : public NormalizedParamLimits {};
+  template<> struct Limits<SECONDS_SLOW_ITER_LONG_TERM> : public NormalizedParamLimits {};
 
   template<> struct Limits<LENGTH> {
     static const float m;
@@ -334,8 +334,8 @@ namespace imajuscule::audio::voice {
   struct SetSlowParams<Mode::WIND> {
     template<typename CTRL>
     static void set(CTRL & ctrl, int n_slow_steps_short, int n_slow_steps_long, float ratio) {
-      ctrl.getUnderlyingIter().set_n_slow_steps(n_slow_steps_long); // TODO sample rate dependant
-      ctrl.set_short_term_noise_rate(n_slow_steps_short);           // TODO sample rate dependant
+      ctrl.getUnderlyingIter().set_n_slow_steps(n_slow_steps_long);
+      ctrl.set_short_term_noise_rate(n_slow_steps_short);
       ctrl.set_short_term_noise_amplitude(ratio);
     }
   };
@@ -378,11 +378,11 @@ namespace imajuscule::audio::voice {
       auto & bpr_center_ctrl = std::get<2>(ctrl.get()).getCtrl();
 
       bpf_center_ctrl.getUnderlyingIter().set_n_slow_steps(n_slow_steps);
-      bpf_center_ctrl.setFreqRange(ra);
+      bpf_center_ctrl.setAngleIncrementsRange(ra);
       bpf_width.getUnderlyingIter().set_n_slow_steps(n_slow_steps);
 
       bpr_center_ctrl.getUnderlyingIter().set_n_slow_steps(n_slow_steps);
-      bpr_center_ctrl.setFreqRange(ra);
+      bpr_center_ctrl.setAngleIncrementsRange(ra);
       bpr_width.getUnderlyingIter().set_n_slow_steps(n_slow_steps);
     }
   };
@@ -430,8 +430,8 @@ namespace imajuscule::audio::voice {
         {"Long Center Min", Limits<CENTER_OCTAVE_MIN_LONG_TERM>::m, Limits<CENTER_OCTAVE_MIN_LONG_TERM>::M},
         {"Long Center Max", Limits<CENTER_OCTAVE_MAX_LONG_TERM>::m, Limits<CENTER_OCTAVE_MAX_LONG_TERM>::M},
         {"Short Center Ratio", Limits<CENTER_SHORT_TERM_RATIO>::m, Limits<CENTER_SHORT_TERM_RATIO>::M},
-        {"Iter exp short", Limits<N_SLOW_ITER_SHORT_TERM>::m, Limits<N_SLOW_ITER_SHORT_TERM>::M},
-        {"Iter exp long", Limits<N_SLOW_ITER_LONG_TERM>::m, Limits<N_SLOW_ITER_LONG_TERM>::M},
+        {"Iter exp short", Limits<SECONDS_SLOW_ITER_SHORT_TERM>::m, Limits<SECONDS_SLOW_ITER_SHORT_TERM>::M},
+        {"Iter exp long", Limits<SECONDS_SLOW_ITER_LONG_TERM>::m, Limits<SECONDS_SLOW_ITER_LONG_TERM>::M},
         {"Filters Order", Limits<ORDER_FILTERS>::m, Limits<ORDER_FILTERS>::M},
         {"[Sine] Gain", Limits<SINE_GAIN>::m, Limits<SINE_GAIN>::M},
         {"Seed", Limits<SEED>::m, Limits<SEED>::M},
@@ -483,7 +483,7 @@ namespace imajuscule::audio::voice {
                                             float length_scale_exp,
                                             float xfade,
                                             float phase_ratio1, float phase_ratio2,
-                                            float d1, float d2, // TODO
+                                            float d1, float d2,
                                             float harmonic_attenuation,
                                             int filter_order,
                                             float bandpass_width_min,
@@ -503,8 +503,8 @@ namespace imajuscule::audio::voice {
         normalize<CENTER_OCTAVE_MIN_LONG_TERM>(1.f),
         normalize<CENTER_OCTAVE_MAX_LONG_TERM>(8.f),
         normalize<CENTER_SHORT_TERM_RATIO>(0.f),
-        /*normalize<N_SLOW_ITER_SHORT_TERM>*/(0.f),
-        /*normalize<N_SLOW_ITER_LONG_TERM>*/(1.f),
+        /*normalize<SECONDS_SLOW_ITER_SHORT_TERM>*/(0.f),
+        /*normalize<SECONDS_SLOW_ITER_LONG_TERM>*/(1.f),
         static_cast<float>(filter_order-Limits<ORDER_FILTERS>::m),
         1.f,
         0,
@@ -620,13 +620,13 @@ namespace imajuscule::audio::voice {
       return result;
     }
 
-    static constexpr auto max_n_slow_iter = 100000.f;
+    static constexpr auto max_seconds_slow_iter = 2.268f;
 
     static Program::ARRAY make_noise_wind(int filter_order,
                                           range<float> bp_width,
                                           range<float> bp_center,
                                           float n_slow_iter) {
-      auto a = make_common(0, 0, 6, 0, 0, itp::PROPORTIONAL_VALUE_DERIVATIVE, 0.12f, 93.3f, 2.f, .5f, 2201, 0.f, 0.f, 0,0,0, filter_order, bp_width.getMin(), bp_width.getMax());
+      auto a = make_common(0, 0, 6, 0, 0, itp::PROPORTIONAL_VALUE_DERIVATIVE, 0.12f, 93.3f, 2.f, .5f, 0.0499f, 0.f, 0.f, 0,0,0, filter_order, bp_width.getMin(), bp_width.getMax());
       Program::ARRAY result;
       result.resize(std::get<Mode::WIND>(params_all).size());
       for(int idx = 0; idx<a.size(); ++idx) {
@@ -641,17 +641,17 @@ namespace imajuscule::audio::voice {
       result[index(SINE_GAIN)] = 0.f;
       result[index(CENTER_OCTAVE_MIN_LONG_TERM)] = normalize<CENTER_OCTAVE_MIN_LONG_TERM>(bp_center.getMin()),
       result[index(CENTER_OCTAVE_MAX_LONG_TERM)] = normalize<CENTER_OCTAVE_MAX_LONG_TERM>(bp_center.getMax()),
-      result[index(N_SLOW_ITER_LONG_TERM)] = std::log(n_slow_iter) / std::log(max_n_slow_iter);  // TODO sample rate dependant
-      // TODO is N_SLOW_ITER_SHORT_TERM mising here?
+      result[index(SECONDS_SLOW_ITER_LONG_TERM)] = std::log(n_slow_iter) / std::log(max_seconds_slow_iter);
+      // keep default value for SECONDS_SLOW_ITER_SHORT_TERM
 
       return result;
     }
 
     static Program::ARRAY make_sine_wind(range<float> bp_center,
                                          float short_center_ratio,
-                                         float n_slow_iter_long_term,
-                                         float n_slow_iter_short_term) {
-      auto a = make_common(0, 0, 6, 0, 0, itp::LINEAR, 0.12f, 93.3f, 2.f, .5f, 2201, 0.f, 0.f, 0,0,0, 1, 0.f, 0.f);
+                                         float seconds_slow_iter_long_term,
+                                         float seconds_slow_iter_short_term) {
+      auto a = make_common(0, 0, 6, 0, 0, itp::LINEAR, 0.12f, 93.3f, 2.f, .5f, 0.0499f, 0.f, 0.f, 0,0,0, 1, 0.f, 0.f);
       Program::ARRAY result;
       result.resize(std::get<Mode::WIND>(params_all).size());
       for(int idx = 0; idx<a.size(); ++idx) {
@@ -662,12 +662,12 @@ namespace imajuscule::audio::voice {
         result[index(e)] = a[idx];
       }
       result[index(LOUDNESS_COMPENSATION_AMOUNT)] = 1.f; // to not have volume discontinuities when freq varies fast
-      result[index(SINE_GAIN)] = 0.01f; // to have the same volume as noise winds
+      result[index(SINE_GAIN)] = 0.1f; // to have the same volume as noise winds
       result[index(CENTER_OCTAVE_MIN_LONG_TERM)] = normalize<CENTER_OCTAVE_MIN_LONG_TERM>(bp_center.getMin()),
       result[index(CENTER_OCTAVE_MAX_LONG_TERM)] = normalize<CENTER_OCTAVE_MAX_LONG_TERM>(bp_center.getMax()),
-      result[index(N_SLOW_ITER_LONG_TERM)] = std::log(n_slow_iter_long_term) / std::log(max_n_slow_iter); // TODO sample rate dependant?
-      result[index(N_SLOW_ITER_SHORT_TERM)] = std::log(n_slow_iter_short_term) / std::log(max_n_slow_iter); // TODO sample rate dependant?
-      result[index(CENTER_SHORT_TERM_RATIO)] = short_center_ratio;
+      result[index(SECONDS_SLOW_ITER_LONG_TERM)] = std::log(seconds_slow_iter_long_term) / std::log(max_seconds_slow_iter);
+      result[index(SECONDS_SLOW_ITER_SHORT_TERM)] = std::log(seconds_slow_iter_short_term) / std::log(max_seconds_slow_iter);
+      result[index(CENTER_SHORT_TERM_RATIO)] = normalize<CENTER_SHORT_TERM_RATIO>(short_center_ratio);
 
       return result;
     }
@@ -676,7 +676,7 @@ namespace imajuscule::audio::voice {
                                           range<float> bp_width,
                                           range<float> bp_center,
                                           float n_slow_iter) {
-      auto a = make_common(0, 0, 6, 0, 0, itp::PROPORTIONAL_VALUE_DERIVATIVE, 0.12f, 93.3f, 2.f, .5f, 2201, 0.f, 0.f, 0,0,0, filter_order, bp_width.getMin(), bp_width.getMax());
+      auto a = make_common(0, 0, 6, 0, 0, itp::PROPORTIONAL_VALUE_DERIVATIVE, 0.12f, 93.3f, 2.f, .5f, 0.0499f, 0.f, 0.f, 0,0,0, filter_order, bp_width.getMin(), bp_width.getMax());
       Program::ARRAY result;
       result.resize(std::get<Mode::WIND>(params_all).size());
       for(int idx = 0; idx<a.size(); ++idx) {
@@ -692,8 +692,8 @@ namespace imajuscule::audio::voice {
       result[index(SINE_GAIN)] = 0.01f;
       result[index(CENTER_OCTAVE_MIN_LONG_TERM)] = normalize<CENTER_OCTAVE_MIN_LONG_TERM>(bp_center.getMin()),
       result[index(CENTER_OCTAVE_MAX_LONG_TERM)] = normalize<CENTER_OCTAVE_MAX_LONG_TERM>(bp_center.getMax()),
-      result[index(N_SLOW_ITER_LONG_TERM)] = std::log(n_slow_iter) / std::log(max_n_slow_iter); // TODO sample rate dependant?
-      // TODO is N_SLOW_ITER_SHORT_TERM missing here?
+      result[index(SECONDS_SLOW_ITER_LONG_TERM)] = std::log(n_slow_iter) / std::log(max_seconds_slow_iter);
+      // keep default value for SECONDS_SLOW_ITER_SHORT_TERM
 
       return result;
     }
@@ -762,46 +762,46 @@ namespace imajuscule::audio::voice {
       else if constexpr (MODE==Mode::WIND) {
         static ProgramsI ps {{
           {"Medium wind in trees",
-            make_noise_wind(1, {0.f, 0.f}, {1.f, 8.f}, 100000.f),
+            make_noise_wind(1, {0.f, 0.f}, {1.f, 8.f}, 2.268f),
             {}
           }, {"Steady wind",
-            make_noise_wind(4, {1.3f, 1.3f}, {5.2f, 5.5f}, 3981.f),
+            make_noise_wind(4, {1.3f, 1.3f}, {5.2f, 5.5f}, 0.09f),
             {}
           }, {"Strong wind",
-            make_noise_wind(4, {3.8f, 3.8f}, {1.f, 8.f}, 100000.f),
+            make_noise_wind(4, {3.8f, 3.8f}, {1.f, 8.f}, 2.268f),
             {}
           }, {"Vinyl cracks",
-            make_noise_wind(89, {3.45f, 5.f}, {8.1f, 8.1f}, 33.f),
+            make_noise_wind(89, {3.45f, 5.f}, {8.1f, 8.1f}, 0.000748f),
             {}
           }, {"Small animal eating",
-            make_noise_wind(61, {0.f, 5.f}, {8.1f, 8.1f}, 10.f),
+            make_noise_wind(61, {0.f, 5.f}, {8.1f, 8.1f}, 0.000227f),
             {}
           }, {"Heavy rain in a car",
-            make_noise_wind(33, {3.45f, 5.f}, {8.1f, 8.1f}, 10.f),
+            make_noise_wind(33, {3.45f, 5.f}, {8.1f, 8.1f}, 0.000227f),
             {}
           }, {"Light rain in a car",
-            make_noise_wind(89, {3.45f, 5.f}, {8.1f, 8.1f}, 10.f),
+            make_noise_wind(89, {3.45f, 5.f}, {8.1f, 8.1f}, 0.000227f),
             {}
           }, {"Heavy rain",
-            make_noise_wind(13, {5.f, 5.f}, {7.8f, 8.f}, 12.5f),
+            make_noise_wind(13, {5.f, 5.f}, {7.8f, 8.f}, 0.000283f),
             {}
           }, {"Light rain",
-            make_noise_wind(13, {3.45f, 3.45f}, {8.0f, 8.3f}, 10.f),
+            make_noise_wind(13, {3.45f, 3.45f}, {8.0f, 8.3f}, 0.000227f),
             {}
           }, {"Bubbles",
-            make_noise_wind(129, {2.45f, 3.25f}, {4.8f, 8.3f}, 1009.9f),
+            make_noise_wind(129, {2.45f, 3.25f}, {4.8f, 8.3f}, 0.0229f),
             {}
           }, {"Earth rumbling",
-            make_noise_wind(30, {1.95f, 5.f}, {2.5f, 3.2f}, 7009.3f),
+            make_noise_wind(30, {1.95f, 5.f}, {2.5f, 3.2f}, 0.1589f),
             {}
           }, {"Sine wind",
-            make_sine_wind({4.6f, 6.8f}, 0.2f, 100000.f, 22.3f ),
+            make_sine_wind({4.6f, 6.8f}, 0.2f, 2.268f, 0.0005f ),
             {}
           }, {"Kettle whistle pure",
-            make_sine_wind({7.5f, 7.7f}, 0.f, 22.3f, 22.3f),
+            make_sine_wind({7.5f, 7.7f}, 0.f, 0.0005f, 0.0005f),
             {}
           }, {"Kettle whistle mixed",
-            make_mixed_wind(7, {.9f, .9f}, {7.5f, 7.7f}, 316.f),
+            make_mixed_wind(7, {.9f, .9f}, {7.5f, 7.7f}, 0.00716f),
             {}
           },
         }};
@@ -869,6 +869,14 @@ namespace imajuscule::audio::voice {
       return { m, M };
     }
 
+    template<ImplParams N1, ImplParams N2>
+    range<float> octaveRangeToAngleIncrementsRange(int sample_rate) const {
+      auto r = octaveRangeToFreqRange<N1, N2>();
+      return {
+        freq_to_angle_increment(r.getMin(), sample_rate),
+        freq_to_angle_increment(r.getMax(), sample_rate)
+      };
+    }
   protected:
 
     template<typename Element, int nAudioOut>
@@ -949,13 +957,13 @@ namespace imajuscule::audio::voice {
       }});
 
       if constexpr (MODE == Mode::WIND) {
-        auto ra = octaveRangeToFreqRange<
+        auto ra = octaveRangeToAngleIncrementsRange<
         CENTER_OCTAVE_MIN_LONG_TERM,
         CENTER_OCTAVE_MAX_LONG_TERM
-        >();
+        >(sample_rate);
 
-        float n_slow_steps = std::pow(max_n_slow_iter, denorm<N_SLOW_ITER_LONG_TERM>());
-        float n_slow_steps_short = std::pow(max_n_slow_iter, denorm<N_SLOW_ITER_SHORT_TERM>());
+        float n_slow_steps = sample_rate * std::pow(max_seconds_slow_iter, denorm<SECONDS_SLOW_ITER_LONG_TERM>());
+        float n_slow_steps_short = sample_rate * std::pow(max_seconds_slow_iter, denorm<SECONDS_SLOW_ITER_SHORT_TERM>());
 
         for(auto & r : engine.getRamps()) {
           auto & mix = r.getOsc().getOsc();
@@ -966,7 +974,7 @@ namespace imajuscule::audio::voice {
           // f_control controls the frequency of the Mix (has an effect only for sinus and low pass)
           SetSlowParams<MODE>::set(f_control.get(), n_slow_steps_short, n_slow_steps, ratio);
           // needs to be after the previous call
-          f_control.get().setFreqRange(ra);
+          f_control.get().setAngleIncrementsRange(ra);
         }
       }
 

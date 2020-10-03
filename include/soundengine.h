@@ -54,13 +54,13 @@ namespace imajuscule::audio::audioelement {
         ctrl.set_sample_rate(s);
       }
       
-      void setFreqRange(range<float> const & r) {
-        this->fmax = r.getMax();
-        Assert(this->fmax);
+      void setAngleIncrementsRange(range<float> const & r) {
+        Assert(r.getMin() > 0);
+        Assert(r.getMax() > 0);
+        Assert(r.getMin() <= r.getMax());
+        this->log_increment_min = std::log(r.getMin());
+        this->log_increment_max = std::log(r.getMax());
         invApproxRange = 1.f / (2.f * ctrl.getAbsMean());
-        x = std::log(r.getMin()) / std::log(fmax);
-        Assert(x > 0.f);
-        Assert(x <= 1.f);
       }
 
       void initializeForRun() {
@@ -80,27 +80,23 @@ namespace imajuscule::audio::audioelement {
       }
 
       T step() {
-        Assert(fmax && x);
         ctrl.step();
         auto v = ctrl.imag() * invApproxRange;
         Assert(v >= 0.f); // else, use AbsIter
-        auto exponent = x + (1.f-x) * v;
-        /*
-         static auto deb = 0;
-         ++deb;
-         if(deb == 10000) {
-         deb = 0;
-         LG(INFO, "exp: %.2f", exponent);
-         }
-         */
-        return powf(fmax, exponent);
+        // v is roughly between 0 and 1, but could be bigger than 1.
+        // when v is 0, we want increment_min,
+        // when v is 1, we want increment_max,
+        // and an exponential interpolation between them
+        Assert(log_increment_max >= log_increment_min);
+        T const log_increment = log_increment_min + (log_increment_max - log_increment_min) * v;
+        return std::exp(log_increment);
       }
 
       auto & getUnderlyingIter() { return ctrl.getUnderlyingIter(); }
 
     private:
-      float invApproxRange;
-      float fmax = 0.f, x = 0.f;
+      T invApproxRange;
+      T log_increment_max{}, log_increment_min{};
       audioelement::Ctrl<ITER> ctrl;
     };
 
@@ -115,8 +111,8 @@ namespace imajuscule::audio::audioelement {
         noise.set_sample_rate(s);
       }
       
-      void setFreqRange(range<float> const & r) {
-        ctrl.setFreqRange(r);
+      void setAngleIncrementsRange(range<float> const & r) {
+        ctrl.setAngleIncrementsRange(r);
       }
 
       void forgetPastSignals() {
@@ -129,17 +125,17 @@ namespace imajuscule::audio::audioelement {
       }
 
       void set_short_term_noise_rate(float f) {
-        ratio = 20000.f * f;
+        ratio = f;
       }
 
       T step() {
-        auto long_term_freq = ctrl.step();
-        Assert(long_term_freq > 0.f);
+        auto long_term_angle_increment = ctrl.step();
+        Assert(long_term_angle_increment > 0.f);
         Assert(ratio >= 0.f);
         // keep short term noise rate inv. proportional to long term frequency
-        noise.set_n_slow_steps(1 + ratio / long_term_freq);
+        noise.set_n_slow_steps(1 + ratio / long_term_angle_increment);
         ++noise;
-        return long_term_freq * std::pow(Tr::two(), *noise * noise_amplitude);
+        return long_term_angle_increment * std::pow(Tr::two(), *noise * noise_amplitude);
       }
 
       auto get_duration_in_samples() const {
@@ -168,8 +164,7 @@ namespace imajuscule::audio::audioelement {
 
     private:
       T noise_amplitude;
-      // we want approx. 1000 for 10000Hx
-      T ratio = .1f;
+      T ratio = -1.f;
       CTRL ctrl;
       NOISE_ITER noise;
     };
@@ -455,7 +450,10 @@ namespace imajuscule::audio::audioelement {
       void set_sample_rate(int s) {
         sample_rate = s;
         for (auto & r : ramps) {
-          r.set_sample_rate(s);
+          r.set_sample_rate(sample_rate);
+        }
+        for (auto & r : ramp_specs.a) {
+          r.get().set_sample_rate(sample_rate);
         }
       }
 
@@ -741,7 +739,7 @@ namespace imajuscule::audio::audioelement {
 
       void playNextSpec() {
         auto rampsStatus = get_ramps();
-        Assert(rampsStatus.envelopeDone); // might be null if length of ramp is too small ?
+        Assert(!goOn() || rampsStatus.envelopeDone); // might be null if length of ramp is too small ?
         auto new_ramp = rampsStatus.envelopeDone;
         if(!new_ramp) {
           return;
@@ -752,6 +750,7 @@ namespace imajuscule::audio::audioelement {
         }
         new_ramp->getOsc().getAlgo().getCtrl() = new_spec->get();
         new_ramp->forgetPastSignals();
+        new_ramp->set_sample_rate(sample_rate);
         new_ramp->setAngle(start_angle);
         new_ramp->setVolumeTarget(new_spec->volume());
         new_ramp->editEnvelope().setAHDSR(AHDSR{xfade_len, itp::LINEAR,0,0, itp::LINEAR,xfade_len,itp::LINEAR,1.}, sample_rate);

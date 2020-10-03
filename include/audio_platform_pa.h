@@ -25,6 +25,7 @@ struct TimeStats {
     dt += thisDt;
     ++n;
     if(n==1000) {
+      // TODO use another thread to log these
       LG(INFO, "avg: %f (us) max: %d (us)", dt / static_cast<float>(n), maxDt);
       n = 0;
       dt = 0;
@@ -55,6 +56,7 @@ struct PartialCallbackCheck {
   PartialCallbackCheck()
   {
     if(unlikely(flag() != 0)) {
+      // TODO use another thread to log these (and remove ScopedNoMemoryLogs)
       ScopedNoMemoryLogs s; // because we log an error
       LG(ERR, "The audio engine assumes that the playCallback call executes till the end, but the previous call has been killed.");
       Assert(0);
@@ -142,6 +144,7 @@ private:
 
 #ifdef IMJ_LOG_AUDIO_OVERFLOW
     if(f) {
+      // TODO use another thread to log these (and remove ScopedNoMemoryLogs)
       ScopedNoMemoryLogs s; // because we log an error
       LG(ERR, "audio overflow: %d", f);
     }
@@ -164,11 +167,13 @@ private:
     
     auto This = static_cast<MeT*>(userData);
 #ifndef NDEBUG
+#  ifndef IMJ_LOG_AUDIO_TIME // when we have a callback that takes too long to exectute, analyzeTime(...) will detect a problem, so to avoid gaving too much of these logs, when IMJ_LOG_AUDIO_TIME is on, we deactivate analyzeTime
     analyzeTime(tNanos,
                 numFrames,
                 This->sample_rate_);
+#  endif
 #endif
-    
+
     This->chans.step(static_cast<SAMPLE*>(outputBuffer),
                      static_cast<int>(numFrames),
                      tNanos,

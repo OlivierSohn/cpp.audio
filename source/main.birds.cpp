@@ -44,7 +44,12 @@ void birds(int const sample_rate) {
   }
   auto & channel_handler = ctxt.getChannelHandler();
 
-  using Synth = audioelement::Voice<Ctxt, audioelement::SoundEngineMode::BIRDS>;
+  constexpr audioelement::SoundEngineMode mode =
+  //audioelement::SoundEngineMode::ROBOTS;
+  audioelement::SoundEngineMode::WIND;
+  //audioelement::SoundEngineMode::BIRDS;
+
+  using Synth = audioelement::Voice<Ctxt, mode>;
 
   static constexpr auto n_mnc = Synth::n_channels;
   using mnc_buffer = typename Synth::MonoNoteChannel::buffer_t;
@@ -69,24 +74,13 @@ void birds(int const sample_rate) {
 
   std::this_thread::sleep_for(std::chrono::milliseconds(1000));
 
-  /*
-  auto res = synth.onEvent2(sample_rate,
-                            mkNoteChange(ref,
-                                         vol,
-                                         fs[*match_idx].freq),
-                            channel_handler,
-                            channels,
-                            {});
-  if (res != onEventResult::OK) {
-    throw std::logic_error("dropped note change");
-  }
-  std::cout << n << ": pitch " << ref.getFrequency() << " newpitch " << fs[*match_idx].freq << " Vol " << vol  << " initial_vol " << initial_velocity[i] << " " << res << std::endl;
-  */
-
   std::optional<NoteId> noteid;
 
-  v.useProgram(8); // keep it first as it reinitializes params
-  std::cout << "using program 8" << std::endl;
+  constexpr int program_index = 1;
+  // for 7 (Light rain in a car) we use 1 ms per cb (filter order is 89 !!!).
+  // for 6 (Light rain) we use 0.2 ms
+  v.useProgram(program_index); // keep it first as it reinitializes params
+  std::cout << "using program '" << v.getProgram(program_index).name << "'" << std::endl;
 
 
   /*
@@ -106,35 +100,41 @@ void birds(int const sample_rate) {
       std::this_thread::yield();
     }
   }
-   */
+  //*/
 
   while(true) {
+
     if(noteid) {
+      std::cout << "enter number to change program, or letter to play note, or 'q' to quit:" << std::endl;
+      std::string str;
+      std::cin >> str;
+
+      std::cout << "pressed:" << str << std::endl;
+      if (str == "q") {
+        std::cout << "quitting" << std::endl;
+        break;
+      }
+
       auto res = synth.onEvent2(sample_rate,
                                 mkNoteOff(*noteid),
                                 channel_handler,
                                 channels,
                                 {});
-      std::cout << "XXX " << *noteid << std::endl;
+      std::cout << "XXX " << *noteid << " " << res << std::endl;
       noteid.reset();
       std::this_thread::sleep_for(std::chrono::milliseconds(100));
+  
+      try {
+        int const n = std::stoi(str);
+        if (n >= 0 && n < v.countPrograms()) {
+          v.useProgram(n); // keep it first as it reinitializes params
+          std::cout << "using program '" << v.getProgram(n).name << "'" << std::endl;
+        }
+      } catch(std::invalid_argument const &) {
+        std::cout << "not a number" << std::endl;
+      }
     }
 
-    std::cout << "enter char or 'q':" << std::endl;
-    char ch;
-    std::cin >> ch;
-
-    std::cout << "pressed:" << ch << std::endl;
-    if (ch == 'q') {
-      std::cout << "quitting" << ch << std::endl;
-      break;
-    }
-
-    int const n = ch - '0';
-    if (n >= 0 && n < 10 && n < v.countPrograms()) {
-      v.useProgram(n); // keep it first as it reinitializes params
-      std::cout << "using program " << n << std::endl;
-    }
     /*v.set_random_pan(false);
      v.set_random(b.random);
      if(!b.random) {
@@ -158,7 +158,14 @@ void birds(int const sample_rate) {
                                      {});
     std::cout << *noteid << ": pitch " << frequency << " vol " << volume << " " << res << std::endl;
 
-    std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+    /*switch(mode) {
+      case audioelement::SoundEngineMode::WIND:
+        std::this_thread::sleep_for(std::chrono::milliseconds(10000));
+        break;
+      case audioelement::SoundEngineMode::BIRDS:
+        std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+        break;
+    }*/
   }
 
   ctxt.onApplicationShouldClose();

@@ -2106,7 +2106,7 @@ template<class...AEs>
 
     void forgetPastSignals() {}
 
-    void setFreqRange(range<float> const &) const { Assert(0); } // use set instead
+    void setAngleIncrementsRange(range<float> const &) const { Assert(0); } // use set instead
     void set_interpolation(itp::interpolation) const {Assert(0);} // use set instead
     void set_n_slow_steps(unsigned int) const { Assert(0); }
 
@@ -2227,7 +2227,7 @@ template<class...AEs>
 
     void forgetPastSignals() {}
 
-    void setFreqRange(range<float> const &) const { Assert(0); } // use setup / setAngleIncrements instead
+    void setAngleIncrementsRange(range<float> const &) const { Assert(0); } // use setup / setAngleIncrements instead
     void set_interpolation(itp::interpolation) const {Assert(0);} // use setup instead
     void set_n_slow_steps(unsigned int) const { Assert(0); }
 
@@ -2351,7 +2351,7 @@ struct InterpolatedFreq {
     f_result.reset();
   }
 
-  void setFreqRange(range<float> const &) const { Assert(0); } // use setup / setAngleIncrements instead
+  void setAngleIncrementsRange(range<float> const &) const { Assert(0); } // use setup / setAngleIncrements instead
   void set_interpolation(itp::interpolation) const {Assert(0);} // use setup instead
   void set_n_slow_steps(unsigned int) const { Assert(0); }
 
@@ -2544,8 +2544,6 @@ private:
       slow_it = 0;
       prev = *it;
       ++it;
-      //                LG(INFO, "++it:");
-      //                it.log();
     }
 
   };
