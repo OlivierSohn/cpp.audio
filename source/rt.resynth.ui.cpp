@@ -287,7 +287,7 @@ private:
     {
       auto slider_sizer = new wxBoxSizer(wxHORIZONTAL);
       {
-        wxSize boundsSz(20, -1);
+        wxSize boundsSz(50, -1);
         
         auto minText = new wxStaticText(this,
                                         wxWindow::NewControlId(),
@@ -329,13 +329,11 @@ private:
 struct ReinitializingParameters {
   // modifiying one of these params requires to reinitialize the resynth
   int sample_rate = 88200;
-  float input_delay_seconds = 1.f;
   float window_size_seconds = 0.1814f;
   float window_stride_ratio = 0.5f;
   
   void init(RtResynth & r) {
     r.init(sample_rate,
-           input_delay_seconds,
            window_size_seconds,
            window_stride_ratio);
   }
@@ -348,13 +346,8 @@ struct MyApp : public wxApp {
     {
       "Input delay",
       "seconds",
-      [this](){
-        return reinit_params.input_delay_seconds;
-      },
-      [this](float v){
-        reinit_params.input_delay_seconds = v;
-        reinit_params.init(resynth);
-      },
+      [this](){ return resynth.getInputDelaySeconds(); },
+      [this](float v){ resynth.setInputDelaySeconds(v); },
       0.f,
       1.f
     },

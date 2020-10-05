@@ -541,7 +541,6 @@ public:
   }
     
   void init(int const sample_rate = 88200,
-            float const input_delay_seconds = 1.f,
             float const window_size_seconds = 0.1814f,
             float const window_stride_ratio = 0.5f
             ) {
@@ -552,9 +551,6 @@ public:
     
     if (sample_rate <= 0) {
       throw std::invalid_argument("sample_rate is too small");
-    }
-    if (input_delay_seconds < 0.f) {
-      throw std::invalid_argument("input_delay_seconds is too small");
     }
     if (window_size <= 0) {
       throw std::invalid_argument("window_size_seconds is too small");
@@ -604,20 +600,13 @@ public:
     
     input_queue = std::make_unique<Queue>(sample_rate); // one second of input can fit in the queue
     
-    std::size_t const input_delay_frames = input_delay_seconds * sample_rate;
-    delayed_input = {input_delay_frames+1};
-    
-    if (!input.Init([this,
-                     input_delay_frames](const SAMPLE * buf, int nFrames){
+    if (!input.Init([this](const SAMPLE * buf, int nFrames){
       if (!thread_resynth_active) {
         return;
       }
       for (int i=0; i<nFrames; ++i) {
-        if (input_delay_frames > 1) {
-          delayed_input.feed(buf[i]);
-          input_queue->try_push(*delayed_input.cycleEnd());
-        } else {
-          input_queue->try_push(buf[i]);
+        if (!input_queue->try_push(buf[i])) {
+          // TODO error reporting
         }
       }
     },
@@ -657,10 +646,6 @@ public:
       };
       
       int end = 0;
-
-      samples.clear();
-      samples.resize(window_size, {});
-      
             
       n = 0;
       
@@ -780,8 +765,32 @@ public:
         }
       };
       
+      auto init_delayed_input = [this,
+                                 sample_rate,
+                                 window_size
+                                 ](bool const force){
+        int const input_delay_frames = input_delay_seconds * sample_rate;
+        if (force || delayed_input.size() != input_delay_frames + 1) {
+          delayed_input.resize(input_delay_frames + 1); // this also resets the elements to zero
+
+          samples.clear();
+          samples.resize(window_size, {});
+        }
+        return input_delay_frames;
+      };
+      
+      // force reinitialization
+      std::size_t input_delay_frames = init_delayed_input(true);
+
       while (thread_resynth_active) {
-        while (input_queue->try_pop(samples[end])) {
+        SAMPLE sample;
+        while (input_queue->try_pop(sample)) {
+          if (input_delay_frames > 1) {
+            delayed_input.feed(sample);
+            samples[end] = *delayed_input.cycleEnd();
+          } else {
+            samples[end] = sample;
+          }
           ++ end;
           if (end == window_size) {
             process(sample_rate,
@@ -790,6 +799,9 @@ public:
                     frequencies_sqmag,
                     freqmags);
             step(freqmags);
+            
+            input_delay_frames = init_delayed_input(false);
+            
             const int offset = window_size-windowoverlapp;
             for (end=0; end<windowoverlapp; ++end) {
               samples[end] = samples[end + offset];
@@ -821,7 +833,14 @@ public:
   }
   
   // These methods can be used with no need to reinitialize
-  
+
+  void setInputDelaySeconds(float f) {
+    if (f < 0) {
+      throw std::invalid_argument("input_delay_seconds is too small");
+    }
+    input_delay_seconds = f;
+  }
+
   void setMinVolume(float f) {
     if (f < 0) {
       throw std::invalid_argument("min_volume is too small");
@@ -843,6 +862,9 @@ public:
     max_track_pitches = f;
   }
 
+  float getInputDelaySeconds() const {
+    return input_delay_seconds;
+  }
   float getMinVolume() const {
     return min_volume;
   }
@@ -867,6 +889,7 @@ private:
   std::unique_ptr<std::thread> thread_resynth;
   std::unique_ptr<Queue> input_queue;
   cyclic<SAMPLE> delayed_input;
+  std::atomic<float> input_delay_seconds = 1.f;
   std::atomic<float> min_volume = 0.0001;
   std::atomic<float> nearby_distance_tones = 0.4;
   std::atomic<float> max_track_pitches = 1.;
