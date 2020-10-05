@@ -1,18 +1,45 @@
-/*
- Notes :
- - We are using portaudio HEAD that fixes a bug when the same device is used as input and output
- (the bug was that buffer sizes had to be identical)
-
- */
 
 /* Backlog:
 
-- Improve accuracy of low frequency detection, using small and large ffts:
+ - display, in columns:
+ the raw spectogram (freq + volume),
+ the "midi pitches" + volume, along with the intervals
+ the interval centers + volumes
+ the autotuned centers + volumes
+ 
+ - make an arpegiating effect where current frequencies are played individually in
+ sequence from bottom to top.
+ varying parameters :
+ . arpegiating speed
+ . arpegiating overlap:
+       ---
+    ---
+ ---
+ or
+   ---
+  ---
+ ---
+ or
+             ---
+       ---
+ ---
+
+ - Improve accuracy of low frequency detection, using small and large ffts:
    small ffts will be used for high frequencies (good temporal accuracy)
    and large ffts will be used for low frequencies (poor temporal accuracy)
  
 - Add a curve 0..1 -> 0..1 to change (compress / expand) volumes
  */
+
+
+
+/*
+ Notes :
+ - We are using portaudio HEAD that fixes a bug when the same device is used as input and output
+ (the bug was that buffer sizes had to be identical)
+ 
+ */
+
 
 
 /*
