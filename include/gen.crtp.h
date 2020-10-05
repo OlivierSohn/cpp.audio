@@ -232,8 +232,8 @@ void setPhase(MonoNoteChannel & c, CS & cs)
     template<typename ChannelsT>
     bool initialize(ChannelsT & chans) {
       for(auto & c : seconds(channels)) {
-        // using WithLock::No : since we own all these channels and they are not playing, we don't need
-        // to take the audio lock.
+        // using WithLock::No : since we own these channels and they are not playing,
+        // we don't need to take the audio lock.
         if(!c.template open<WithLock::No>(chans, 0.f)) {
           return false;
         }
@@ -241,16 +241,15 @@ void setPhase(MonoNoteChannel & c, CS & cs)
       return true;
     }
 
-    ~ImplCRTP() {
-      finalize();
-    }
-
-    void finalize() {
+    template<typename ChannelsT>
+    void finalize(ChannelsT & chans) {
       for(auto & c : seconds(channels)) {
         if(c.channel == nullptr) {
           continue;
         }
-        c.reset();
+        // using WithLock::No : since we own these channels and they are not playing anymore,
+        // we don't need to take the audio lock.
+        c.template close<WithLock::No>(chans);
         c.channel = nullptr;
       }
     }

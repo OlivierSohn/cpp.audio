@@ -65,10 +65,17 @@ namespace imajuscule::audio {
                 return channel != nullptr;
             }
 
-            void reset() {
-                Assert(channel);
-                channel->reset();
-            }
+          void reset() {
+            Assert(channel);
+            channel->reset();
+          }
+
+          template<WithLock lock_policy, typename ChannelsT>
+          void close(ChannelsT & out) {
+            Assert(channel);
+            out.template closeChannel<lock_policy>(out.getChannelId(*channel),
+                                                   CloseMode::NOW);
+          }
 
             void show() {
               if(channel) {

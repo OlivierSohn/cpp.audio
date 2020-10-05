@@ -190,6 +190,13 @@ private:
           Assert(id != AUDIO_CHANNEL_NONE);
           return channels[id];
         }
+      
+      uint8_t getChannelId(Channel const & c) const {
+        std::ptrdiff_t diff = &c - channels.data();
+        Assert(diff >= 0);
+        Assert(diff <= std::numeric_limits<uint8_t>::max());
+        return static_cast<uint8_t>(diff);
+      }
 
         bool empty() const { return channels.empty(); }
 

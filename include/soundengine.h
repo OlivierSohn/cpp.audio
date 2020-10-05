@@ -135,6 +135,7 @@ namespace imajuscule::audio::audioelement {
         // keep short term noise rate inv. proportional to long term frequency
         noise.set_n_slow_steps(1 + ratio / long_term_angle_increment);
         ++noise;
+        // TODO optimize this pow:
         return long_term_angle_increment * std::pow(Tr::two(), *noise * noise_amplitude);
       }
 

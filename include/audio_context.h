@@ -122,7 +122,17 @@ public:
 
   void finalize() {
     if(bInitialized) {
-      chans.getChannels().closeAllChannels(0);
+      // Commented out because 'closeAllChannels' uses a queue to execute its action,
+      // but since the audio stream is deactivated right after this, the action stays
+      // in the queue until another stream reactivates the queue, and the channel
+      // close themselves at that point, which is not what we want. (Note that the channel activation
+      // is not done through the queue, but directly).
+      //
+      // Another good reason to comment this out is that it is recommended to call 'onApplicationShouldClose'
+      // and sleep one second before calling finalize, so if you follow this recommendation,
+      // the channels should be closed already at this point, hence this action becomes useless.
+
+      // chans.getChannels().closeAllChannels(0);
     }
   }
 

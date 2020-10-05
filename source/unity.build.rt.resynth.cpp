@@ -3,6 +3,12 @@
 
 #include <iostream>
 
+#include <wx/wxprec.h>
+#ifndef WX_PRECOMP
+#include <wx/wx.h>
+#endif
+
 #include "public.h"
 
-#include "main.rt.resynth.cpp"
+#include "rt.resynth.lib.cpp"
+#include "rt.resynth.ui.cpp"

@@ -76,7 +76,7 @@ void birds(int const sample_rate) {
 
   std::optional<NoteId> noteid;
 
-  constexpr int program_index = 1;
+  constexpr int program_index = 5;
   // for 7 (Light rain in a car) we use 1 ms per cb (filter order is 89 !!!).
   // for 6 (Light rain) we use 0.2 ms
   v.useProgram(program_index); // keep it first as it reinitializes params

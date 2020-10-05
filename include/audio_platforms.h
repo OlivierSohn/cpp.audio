@@ -37,9 +37,9 @@ struct AsyncWavWriter {
   AsyncWavWriter(int nAudioChans, int sampleRate, std::string const & prefix)
   : n_audio_chans(nAudioChans)
   , sample_rate(sampleRate)
-  , wav_write_queue(queueCapacityInSecondsOfAudioSignal * (sampleRate * nAudioChans))
-  , wav_write_active(true) {
-    thread_write_wav = std::make_unique<std::thread>([this, prefix]() {
+  , queue(queueCapacityInSecondsOfAudioSignal * (sampleRate * nAudioChans))
+  , active(true) {
+    thread = std::make_unique<std::thread>([this, prefix]() {
     auto rootDir = "/Users/Olivier/dev/hs.hamazed/";
 #if 0
     // verify interpolation curves
@@ -82,10 +82,10 @@ struct AsyncWavWriter {
     
     while (true) {
       SAMPLE val;
-      while (wav_write_queue.try_pop(val)) {
+      while (queue.try_pop(val)) {
         writer.writeSample(val);
       }
-      if (!wav_write_active) {
+      if (!active) {
         break;
       }
       // sleep instead of yield to avoid 100% cpu usage.
@@ -101,7 +101,7 @@ struct AsyncWavWriter {
   void sync_feed(T * buf, int numFrames) {
     for (int i=0; i<numFrames; ++i) {
       for (int j=0; j<n_audio_chans; ++j) {
-        if (!wav_write_queue.try_push(buf[n_audio_chans*i + j])) {
+        if (!queue.try_push(buf[n_audio_chans*i + j])) {
           LG(ERR, "Audio debug : dropped sample");
         }
       }
@@ -109,8 +109,8 @@ struct AsyncWavWriter {
   }
   
   ~AsyncWavWriter() {
-    wav_write_active = false;
-    thread_write_wav->join();
+    active = false;
+    thread->join();
   }
 
 private:
@@ -121,11 +121,69 @@ private:
   /* TOTAL_ORDER = */ true,
   /* SPSC = */ true
   >;
-  Queue wav_write_queue;
-  std::atomic_bool wav_write_active;
-  std::unique_ptr<std::thread> thread_write_wav;
+  Queue queue;
+  std::atomic_bool active;
+  std::unique_ptr<std::thread> thread;
+
   int const n_audio_chans;
   int const sample_rate;
+};
+
+/* Debug utility to asynchronously log messages coming from the realtime threads */
+template<typename Data>
+struct AsyncLogger {
+  static constexpr float queueCapacityInSecondsOfAudioSignal = 1.;
+  static constexpr auto prefix = "!!! ";
+  
+  AsyncLogger(int queueCapacity)
+  : queue(queueCapacity)
+  , active(true) {
+    thread = std::make_unique<std::thread>([this]() {
+      while (true) {
+        if (int const n = count_dropped.exchange(0)) {
+          std::cout << prefix << n << " messages have been dropped (queue was full)" << std::endl;
+        }
+        Data data;
+        while (queue.try_pop(data)) {
+          std::cout << prefix;
+          std::visit([](auto && d){ std::cout << d; }, data);
+          std::cout << std::endl;
+        }
+        if (!active) {
+          break;
+        }
+        // sleep instead of yield to avoid 100% cpu usage.
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+      }
+    });
+  }
+  
+  template<typename T>
+  void sync_feed(T const& t) {
+    if (!queue.try_push(Data{t})) {
+      ++count_dropped;
+    }
+  }
+  
+  ~AsyncLogger() {
+    active = false;
+    thread->join();
+  }
+  
+private:
+  using Queue = atomic_queue::AtomicQueueB2<
+  /* T = */ Data,
+  /* A = */ std::allocator<Data>,
+  /* MAXIMIZE_THROUGHPUT */ true,
+  /* TOTAL_ORDER = */ true,
+  /* SPSC = */ true
+  >;
+  Queue queue;
+  std::atomic_bool active;
+  std::unique_ptr<std::thread> thread;
+  
+  std::atomic_int count_dropped{0};
+  static_assert(decltype(count_dropped)::is_always_lock_free);
 };
 
 } // NS
