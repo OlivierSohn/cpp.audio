@@ -220,8 +220,9 @@ T diameter(T a, T b, T c) {
 // for example, with nearby_distance = 3 half tones,
 //   .....  could lead to 2 pitches:
 //   A..B.  or a single pitch:
-//   ..A..  depending on where we start analyzing, so we should have a notion of pitch interval, and analyze pitches in a monotonic order
-//          once the last interval would be bigger than nearby_distance, we create a new interval.
+//   ..A..  depending on where we start analyzing. So we have a notion of pitch interval, and analyze pitches in a monotonic order:
+//          we "aggregate" frequencies in the last interval, and when aggregating a frequency would leand to an interval with
+//          a diameter bigger than nearby_distance, we create a new interval.
 // The output of this phase is a list of pitch intervals where each interval is a list of pitch + amplitude.
 void aggregate_pitches(double const nearby_distance_tones,
                        // invariant : ordered by pitch
@@ -542,11 +543,11 @@ public:
     
   void init(int const sample_rate = 88200,
             float const window_size_seconds = 0.1814f,
-            float const window_stride_ratio = 0.5f
+            float const window_center_stride_seconds = 0.09f
             ) {
     // we need an even window size
     int const window_size = 2 * static_cast<int>(0.5 * window_size_seconds * sample_rate);
-    int const window_center_stride = window_stride_ratio * window_size;
+    int const window_center_stride = window_center_stride_seconds * sample_rate;
     int const windowoverlapp = std::max(0, window_size - window_center_stride);
     
     if (sample_rate <= 0) {
