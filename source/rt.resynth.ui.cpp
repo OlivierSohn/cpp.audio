@@ -23,6 +23,12 @@ struct Param {
   float min, max;
 };
 
+struct PollParam {
+  using OptionalVariant = std::optional<std::variant<int, float>>;
+  std::string name;
+  std::function<OptionalVariant()> get;
+};
+
 template<typename T, typename U>
 void Add(T * widget,
          U * sizer,
@@ -35,11 +41,16 @@ void Add(T * widget,
              border);
 }
 
+enum class TimerId {
+  RefreshUI
+};
+
 class MyFrame : public wxFrame
 {
 public:
   MyFrame(std::vector<Param> const & non_realtime_params,
-          std::vector<Param> const & realtime_params)
+          std::vector<Param> const & realtime_params,
+          std::vector<PollParam> const & poll_params)
   : wxFrame(NULL,
             wxID_ANY,
             "Resynth",
@@ -48,7 +59,12 @@ public:
             wxSTAY_ON_TOP |
             wxDEFAULT_FRAME_STYLE |
             wxFULL_REPAINT_ON_RESIZE)
+  , uiTimer(this,
+            static_cast<int>(TimerId::RefreshUI))
+  , poll_params(poll_params)
   {
+    this->Connect( wxEVT_TIMER, wxTimerEventHandler( MyFrame::OnUITimer ), NULL, this );
+    
     auto menuFile = new wxMenu();
 
     auto const helloId = wxWindow::NewControlId();
@@ -101,10 +117,41 @@ public:
       Add(sliders_sizer,
           global_sliders_sizer);
     }
+    {
+      auto rt_sizer = new wxBoxSizer(wxHORIZONTAL);
+      wxColor label_color(100,
+                          100,
+                          250);
+      poll_ui.reserve(poll_params.size());
+      for (auto const & param: poll_params) {
+        auto [sizer, value] = createPollParamUI(param,
+                                                 label_color);
+        poll_ui.push_back(value);
+        Add(sizer,
+            rt_sizer,
+            0,
+            wxALL | wxALIGN_CENTER);
+
+      }
+      Add(rt_sizer,
+          global_sliders_sizer);
+    }
     SetSizerAndFit(global_sliders_sizer);
+
+    uiTimer.Start(100);
+  }
+  
+  ~MyFrame() {
+    if (uiTimer.IsRunning()) {
+      uiTimer.Stop();
+    }
   }
 
 private:
+  wxTimer uiTimer;
+  std::vector<PollParam> const & poll_params;
+  std::vector<wxStaticText*> poll_ui;
+  
   void OnExit(wxCommandEvent& event)
   {
     Close(true);
@@ -117,6 +164,23 @@ private:
   void OnHello(wxCommandEvent& event)
   {
     wxLogMessage("Hello world from wxWidgets!");
+  }
+  void OnUITimer(wxTimerEvent &) {
+    for (int i=0, sz=static_cast<int>(poll_params.size()); i<sz; ++i) {
+      std::optional<std::variant<int, float>> const value = poll_params[i].get();
+      std::string label;
+      if (value) {
+        label = std::visit([&label](auto && v) {
+          using T = std::decay_t<decltype(v)>;
+          if constexpr (std::is_floating_point_v<T>) {
+            return float_to_string(v);
+          } else {
+            return std::to_string(v);
+          }
+        }, *value);
+      }
+      poll_ui[i]->SetLabel(label);
+    }
   }
   
   wxBoxSizer * createFloatSlider(Param const & param,
@@ -323,7 +387,39 @@ private:
 
     return global_sizer;
   }
-  
+
+  std::pair<wxBoxSizer *, wxStaticText*>
+  createPollParamUI(PollParam const & param,
+                    wxColor const & label_color)
+  {
+    auto sizer = new wxBoxSizer(wxHORIZONTAL);
+    
+    auto label = new wxStaticText(this,
+                                  wxWindow::NewControlId(),
+                                  param.name + ":",
+                                  wxDefaultPosition,
+                                  wxDefaultSize);
+    label->SetForegroundColour(label_color);
+    
+    wxSize valueSz(80, -1);
+    
+    auto value = new wxStaticText(this,
+                                  wxWindow::NewControlId(),
+                                  "",
+                                  wxDefaultPosition,
+                                  valueSz);
+    
+    Add(label,
+        sizer,
+        0,
+        wxALL | wxALIGN_CENTER);
+    Add(value,
+        sizer,
+        0,
+        wxALL | wxALIGN_CENTER);
+    return {sizer, value};
+  }
+
 };
 
 struct ReinitializingParameters {
@@ -348,18 +444,18 @@ struct MyApp : public wxApp {
       1.f
     },
     {
-      "Analysis window size",
-      "seconds",
-      [this](){ return resynth.getWindowSizeSeconds(); },
-      [this](float v){ resynth.setWindowSizeSeconds(v); },
-      0.f,
-      1.f
-    },
-    {
       "Analysis period",
       "seconds",
       [this](){ return resynth.getWindowCenterStrideSeconds(); },
       [this](float v){ resynth.setWindowCenterStrideSeconds(v); },
+      0.f,
+      1.f
+    },
+    {
+      "Analysis window size",
+      "seconds",
+      [this](){ return resynth.getWindowSizeSeconds(); },
+      [this](float v){ resynth.setWindowSizeSeconds(v); },
       0.f,
       1.f
     },
@@ -389,6 +485,82 @@ struct MyApp : public wxApp {
       0.f,
       10.f
     }
+  },
+  poll_params{
+    {
+      "Total Load",
+      [this]() -> PollParam::OptionalVariant {
+        std::optional<float> a = resynth.getDurationProcess();
+        std::optional<float> b = resynth.getDurationStep();
+        std::optional<float> c = resynth.getDurationCopy();
+        if (a && b && c) {
+          float const secs = *a + *b + *c;
+          float analysis_stride_secs = resynth.getEffectiveWindowCenterStrideSeconds(reinit_params.sample_rate);
+          if (analysis_stride_secs) {
+            return secs / analysis_stride_secs;
+          }
+        }
+        return {};
+      }
+    },
+    {
+      "Process Load",
+      [this]() -> PollParam::OptionalVariant {
+        if (std::optional<float> secs = resynth.getDurationProcess()) {
+          float analysis_stride_secs = resynth.getEffectiveWindowCenterStrideSeconds(reinit_params.sample_rate);
+          if (analysis_stride_secs) {
+            return *secs / analysis_stride_secs;
+          }
+        }
+        return {};
+      }
+    },
+    {
+      "Step Load",
+      [this]() -> PollParam::OptionalVariant {
+        if (std::optional<float> secs = resynth.getDurationStep()) {
+          float analysis_stride_secs = resynth.getEffectiveWindowCenterStrideSeconds(reinit_params.sample_rate);
+          if (analysis_stride_secs) {
+            return *secs / analysis_stride_secs;
+          }
+        }
+        return {};
+      }
+    },
+    {
+      "Copy Load",
+      [this]() -> PollParam::OptionalVariant {
+        if (std::optional<float> secs = resynth.getDurationCopy()) {
+          float analysis_stride_secs = resynth.getEffectiveWindowCenterStrideSeconds(reinit_params.sample_rate);
+          if (analysis_stride_secs) {
+            return *secs / analysis_stride_secs;
+          }
+        }
+        return {};
+      }
+    },
+    {
+      "Audio input queue fill ratio",
+      [this](){ return resynth.getAudioInputQueueFillRatio(); }
+    },
+    {
+      "Audio input frames dropped",
+      [this](){ return resynth.countDroppedInputFrames(); }
+    },
+    {
+      "Notes dropped\n"
+      "(increase 'Pitch interval diameter'\n"
+      "to avoid them)",
+      [this](){ return resynth.countDroppedNoteOns(); }
+    },
+    {
+      "Failed compute insertions",
+      [this](){ return resynth.countFailedComputeInsertions(); }
+    },
+    {
+      "Retried oneshot insertions",
+      [this](){ return resynth.countRetriedOneshotInsertions(); }
+    },
   }
   {}
 
@@ -396,7 +568,8 @@ struct MyApp : public wxApp {
     reinit_params.init(resynth);
     
     auto frame = new MyFrame(reinitializing_params,
-                             realtime_params);
+                             realtime_params,
+                             poll_params);
     frame->Show(true);
     return true;
   }
@@ -405,6 +578,7 @@ private:
   
   ReinitializingParameters reinit_params;
   std::vector<Param> reinitializing_params, realtime_params;
+  std::vector<PollParam> poll_params;
 };
 
 

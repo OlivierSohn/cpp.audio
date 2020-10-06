@@ -7,139 +7,139 @@
 
 namespace imajuscule::audio {
 
-  // Whether to synchronize the start phase with the currently playing oscillators of same frequency,
-  // to avoid phase cancellation (used mainly for constant frequency oscillators)
-  enum class SynchronizePhase {
-    Yes,
-    No
+// Whether to synchronize the start phase with the currently playing oscillators of same frequency,
+// to avoid phase cancellation (used mainly for constant frequency oscillators)
+enum class SynchronizePhase {
+  Yes,
+  No
+};
+// If the phase has not been synchronized with another oscillator, defines the phase initialization
+enum class DefaultStartPhase {
+  Zero,
+  Random
+};
+
+using interleaved_buf_t = a64::vector<float>;
+
+template<typename T>
+struct ForEach;
+
+template<>
+struct ForEach<interleaved_buf_t> {
+  template<typename F>
+  static void run(interleaved_buf_t & b, F f) {
+    f(b);
   };
-  // If the phase has not been synchronized with another oscillator, defines the phase initialization
-  enum class DefaultStartPhase {
-    Zero,
-    Random
-  };
+};
 
-  using interleaved_buf_t = a64::vector<float>;
-
-  template<typename T>
-  struct ForEach;
-
-  template<>
-  struct ForEach<interleaved_buf_t> {
-    template<typename F>
-    static void run(interleaved_buf_t & b, F f) {
+template<int N>
+struct ForEach<std::array<interleaved_buf_t, N>> {
+  template<typename F>
+  static void run(std::array<interleaved_buf_t, N> & a, F f) {
+    for(auto & b : a) {
       f(b);
-    };
+    }
   };
+};
 
-  template<int N>
-  struct ForEach<std::array<interleaved_buf_t, N>> {
-    template<typename F>
-    static void run(std::array<interleaved_buf_t, N> & a, F f) {
-      for(auto & b : a) {
-        f(b);
-      }
-    };
-  };
+template<typename InterleavedBuffer, typename F>
+void forEach(InterleavedBuffer & b, F f) {
+  ForEach<InterleavedBuffer>::run(b, f);
+}
 
-  template<typename InterleavedBuffer, typename F>
-  void forEach(InterleavedBuffer & b, F f) {
-    ForEach<InterleavedBuffer>::run(b, f);
+template<
+
+int NParams,
+typename Parameters,
+typename InterleavedBuffer,
+int SizeInterleaved,
+typename ProcessData_
+
+>
+struct Impl {
+  using ProcessData = ProcessData_;
+  
+  virtual Program const & getProgram(int i) const = 0;
+  virtual int countPrograms() const = 0;
+  
+  virtual ~Impl() = default;
+  
+  static constexpr auto NPARAMS = NParams;
+  static constexpr auto size_interleaved = SizeInterleaved;
+  
+  void initializeSlow() {
+    forEach(interleaved, [](interleaved_buf_t & v) {
+      v.resize(size_interleaved, 0.f);
+    });
+    params.resize(NPARAMS);
   }
-
-  template<
-
-  int NParams,
-  typename Parameters,
-  typename InterleavedBuffer,
-  int SizeInterleaved,
-  typename ProcessData_
-
-  >
-  struct Impl {
-    using ProcessData = ProcessData_;
-
-    virtual Program const & getProgram(int i) const = 0;
-    virtual int countPrograms() const = 0;
-
-    virtual ~Impl() = default;
-
-    static constexpr auto NPARAMS = NParams;
-    static constexpr auto size_interleaved = SizeInterleaved;
-
-    void initializeSlow() {
-      forEach(interleaved, [](interleaved_buf_t & v) {
-        v.resize(size_interleaved, 0.f);
-      });
-      params.resize(NPARAMS);
+  
+  void initializeSteal(Impl && o) {
+    interleaved = std::move(o.interleaved);
+    forEach(interleaved, [](interleaved_buf_t & v) {
+      std::fill(v.begin(), v.end(), 0.f);
+      Assert(v.size() == size_interleaved);
+    });
+    params = std::move(o.params);
+    Assert(params.size() == NPARAMS);
+  }
+  
+  void setParameter(int index, float value, int sampleOffset = 0 /* not supported yet */) {
+    Assert(index < params.size());
+    params[index] = value;
+  }
+  
+  void useProgram(int index) {
+    auto const & p = getProgram(index);
+    MIDI_LG(INFO, "with program %d of %d", index, countPrograms());
+    Assert(p.params.size() == NPARAMS);
+    for (auto i = 0; i < NPARAMS; i++) {
+      params[i] = p.params[i];
     }
+  }
+  
+protected:
+  Parameters params;
+  InterleavedBuffer interleaved;
+};
 
-    void initializeSteal(Impl && o) {
-      interleaved = std::move(o.interleaved);
-      forEach(interleaved, [](interleaved_buf_t & v) {
-        std::fill(v.begin(), v.end(), 0.f);
-        Assert(v.size() == size_interleaved);
-      });
-      params = std::move(o.params);
-      Assert(params.size() == NPARAMS);
-    }
-
-    void setParameter(int index, float value, int sampleOffset = 0 /* not supported yet */) {
-      Assert(index < params.size());
-      params[index] = value;
-    }
-
-    void useProgram(int index) {
-      auto const & p = getProgram(index);
-      MIDI_LG(INFO, "with program %d of %d", index, countPrograms());
-      Assert(p.params.size() == NPARAMS);
-      for (auto i = 0; i < NPARAMS; i++) {
-        params[i] = p.params[i];
-      }
-    }
-
-  protected:
-    Parameters params;
-    InterleavedBuffer interleaved;
-  };
-
-  // When another oscillator with the same frequency exists,
-  // we synchronize the phase to avoid cancellations.
-  //
-  // Else, we randomize the phase to keep some nice randomness.
-  struct Phase {
-    Phase(bool deterministic, float value) : deterministic(deterministic), value(value) {}
-    bool isDeterministic() const { return deterministic; }
-    float getDeterministicValue() const { Assert(deterministic); return value; }
-  private:
-    bool deterministic;
-    float value;
-  };
-  static inline Phase mkDeterministicPhase(float v) { return Phase{true,v}; }
-  static inline Phase mkNonDeterministicPhase() { return Phase{false,{}}; }
+// When another oscillator with the same frequency exists,
+// we synchronize the phase to avoid cancellations.
+//
+// Else, we randomize the phase to keep some nice randomness.
+struct Phase {
+  Phase(bool deterministic, float value) : deterministic(deterministic), value(value) {}
+  bool isDeterministic() const { return deterministic; }
+  float getDeterministicValue() const { Assert(deterministic); return value; }
+private:
+  bool deterministic;
+  float value;
+};
+static inline Phase mkDeterministicPhase(float v) { return Phase{true,v}; }
+static inline Phase mkNonDeterministicPhase() { return Phase{false,{}}; }
 
 
-  struct TimeDelay {
-
-    Optional<uint64_t> get() const {
-      return (delay == noValue) ? Optional<uint64_t>{} : Optional<uint64_t>{delay};
-    }
-
-    void set(uint64_t v) {
-      delay = v;
-    }
-
-  private:
-    static constexpr uint64_t noValue = std::numeric_limits<uint64_t>::max();
-    uint64_t delay = noValue;
-  };
+struct TimeDelay {
+  
+  Optional<uint64_t> get() const {
+    return (delay == noValue) ? Optional<uint64_t>{} : Optional<uint64_t>{delay};
+  }
+  
+  void set(uint64_t v) {
+    delay = v;
+  }
+  
+private:
+  static constexpr uint64_t noValue = std::numeric_limits<uint64_t>::max();
+  uint64_t delay = noValue;
+};
 
 #ifndef CUSTOM_SAMPLE_RATE
-  // The first call is expensive, as the array is allocated.
-  std::array<TimeDelay, MIDITimestampAndSource::nSources> & midiDelays();
+// The first call is expensive, as the array is allocated.
+std::array<TimeDelay, MIDITimestampAndSource::nSources> & midiDelays();
 #endif
 
-  uint64_t & maxMIDIJitter();
+uint64_t & maxMIDIJitter();
 
 template<SynchronizePhase Sync, DefaultStartPhase Phase, typename MonoNoteChannel, typename CS>
 void setPhase(MonoNoteChannel & c, CS & cs)
@@ -173,148 +173,148 @@ void setPhase(MonoNoteChannel & c, CS & cs)
   }
 }
 
-  template<
-  AudioOutPolicy outPolicy,
-  int nOuts,
-  XfadePolicy xfade_policy_,
-  typename AE,
-  SynchronizePhase Sync,
-  DefaultStartPhase Phase,
-  bool handle_note_off,
-  typename EventIterator,
-  typename Base,
-  int n_max_voices = 8
+template<
+AudioOutPolicy outPolicy,
+int nOuts,
+XfadePolicy xfade_policy_,
+typename AE,
+SynchronizePhase Sync,
+DefaultStartPhase Phase,
+bool handle_note_off,
+typename EventIterator,
+typename Base,
+int n_max_voices = 8
 
-  >
-  struct ImplCRTP : public Base {
-
-    static constexpr auto nAudioOut = nOuts;
-    static constexpr auto xfade_policy = xfade_policy_;
-    static constexpr Atomicity atomicity = getAtomicity<outPolicy>();
-
-    using Element = AE;
-    using MonoNoteChannel = MonoNoteChannel<Element, Channel<atomicity, nOuts, xfade_policy_, MaxQueueSize::One>>;
-
-    using Base::get_xfade_length;
-    using Base::get_gain;
-    using Base::setupAudioElement;
-
-    // notes played in rapid succession can have a common audio interval during xfades
-    // even if their noteOn / noteOff intervals are disjoint.
-    // n_max_simultaneous_notes_per_voice controls the possibility to support that 'well'.
-    // TODO if the release time is long, and notes are consecutive and short, this number
-    // should be increased.
-    static constexpr auto n_max_simultaneous_notes_per_voice = 2;
-    // assumes a single channel is used per note
-    static constexpr auto n_channels = n_max_voices * n_max_simultaneous_notes_per_voice;
-
-  protected:
-
-    LocalPairArray<std::optional<NoteId>, MonoNoteChannel, n_channels> channels;
-
-  private:
-    std::atomic_int count_acquire_race_errors{0};
-    static_assert(decltype(count_acquire_race_errors)::is_always_lock_free);
-
-  public:
-
-    int getAndResetAcquireRaceErrors() {
-      int res = count_acquire_race_errors;
-      count_acquire_race_errors -= res;
-      return res;
+>
+struct ImplCRTP : public Base {
+  
+  static constexpr auto nAudioOut = nOuts;
+  static constexpr auto xfade_policy = xfade_policy_;
+  static constexpr Atomicity atomicity = getAtomicity<outPolicy>();
+  
+  using Element = AE;
+  using MonoNoteChannel = MonoNoteChannel<Element, Channel<atomicity, nOuts, xfade_policy_, MaxQueueSize::One>>;
+  
+  using Base::get_xfade_length;
+  using Base::get_gain;
+  using Base::setupAudioElement;
+  
+  // notes played in rapid succession can have a common audio interval during xfades
+  // even if their noteOn / noteOff intervals are disjoint.
+  // n_max_simultaneous_notes_per_voice controls the possibility to support that 'well'.
+  // TODO if the release time is long, and notes are consecutive and short, this number
+  // should be increased.
+  static constexpr auto n_max_simultaneous_notes_per_voice = 2;
+  // assumes a single channel is used per note
+  static constexpr auto n_channels = n_max_voices * n_max_simultaneous_notes_per_voice;
+  
+protected:
+  
+  LocalPairArray<std::optional<NoteId>, MonoNoteChannel, n_channels> channels;
+  
+private:
+  std::atomic_int count_acquire_race_errors{0};
+  static_assert(decltype(count_acquire_race_errors)::is_always_lock_free);
+  
+public:
+  
+  int getAndResetAcquireRaceErrors() {
+    int res = count_acquire_race_errors;
+    count_acquire_race_errors -= res;
+    return res;
+  }
+  
+  template <typename A>
+  ImplCRTP(std::array<A, n_channels> & as)
+  : channels(std::optional<NoteId>{}, as)
+  {}
+  
+  template<typename ChannelsT>
+  bool initialize(ChannelsT & chans) {
+    for(auto & c : seconds(channels)) {
+      // using WithLock::No : since we own these channels and they are not playing,
+      // we don't need to take the audio lock.
+      if(!c.template open<WithLock::No>(chans, 0.f)) {
+        return false;
+      }
     }
-
-    template <typename A>
-    ImplCRTP(std::array<A, n_channels> & as)
-    : channels(std::optional<NoteId>{}, as)
-    {}
-
-    template<typename ChannelsT>
-    bool initialize(ChannelsT & chans) {
+    return true;
+  }
+  
+  template<typename ChannelsT>
+  void finalize(ChannelsT & chans) {
+    for(auto & c : seconds(channels)) {
+      if(c.channel == nullptr) {
+        continue;
+      }
+      // using WithLock::No : since we own these channels and they are not playing anymore,
+      // we don't need to take the audio lock.
+      c.template close<WithLock::No>(chans);
+      c.channel = nullptr;
+    }
+  }
+  
+  // returns true if at least one channel has an active enveloppe.
+  bool areEnvelopesFinished() const {
+    for(auto const & c : seconds(channels)) {
+      if(!c.elem.getEnvelope().isEnvelopeFinished()) {
+        return false;
+      }
+    }
+    return true;
+  }
+  
+  // Note: Logic Audio Express 9 calls this when two projects are opened and
+  // the second project starts playing, so we are not in an "initialized" state.
+  template<typename Chans>
+  void allNotesOff(Chans & chans) {
+    MIDI_LG(INFO, "all notes off");
+    chans.enqueueOneShot([this](auto &, auto){
       for(auto & c : seconds(channels)) {
-        // using WithLock::No : since we own these channels and they are not playing,
-        // we don't need to take the audio lock.
-        if(!c.template open<WithLock::No>(chans, 0.f)) {
-          return false;
-        }
+        c.elem.editEnvelope().onKeyReleased(0);
       }
-      return true;
-    }
-
-    template<typename ChannelsT>
-    void finalize(ChannelsT & chans) {
+    });
+  }
+  
+  template<typename Chans>
+  void allSoundsOff(Chans & chans) {
+    MIDI_LG(INFO, "all sounds off");
+    chans.enqueueOneShot([this](auto &, auto){
       for(auto & c : seconds(channels)) {
-        if(c.channel == nullptr) {
-          continue;
-        }
-        // using WithLock::No : since we own these channels and they are not playing anymore,
-        // we don't need to take the audio lock.
-        c.template close<WithLock::No>(chans);
-        c.channel = nullptr;
+        c.elem.editEnvelope().onKeyReleased(0);
       }
+    });
+  }
+  
+  template <typename F>
+  void forEachElems(F f) {
+    for(auto & c : seconds(channels)) {
+      f(c.elem);
     }
-
-    // returns true if at least one channel has an active enveloppe.
-    bool areEnvelopesFinished() const {
-      for(auto const & c : seconds(channels)) {
-        if(!c.elem.getEnvelope().isEnvelopeFinished()) {
-          return false;
-        }
-      }
-      return true;
-    }
-
-    // Note: Logic Audio Express 9 calls this when two projects are opened and
-    // the second project starts playing, so we are not in an "initialized" state.
-    template<typename Chans>
-    void allNotesOff(Chans & chans) {
-      MIDI_LG(INFO, "all notes off");
-      chans.enqueueOneShot([this](auto &, auto){
-        for(auto & c : seconds(channels)) {
-          c.elem.editEnvelope().onKeyReleased(0);
-        }
-      });
-    }
-
-    template<typename Chans>
-    void allSoundsOff(Chans & chans) {
-      MIDI_LG(INFO, "all sounds off");
-      chans.enqueueOneShot([this](auto &, auto){
-        for(auto & c : seconds(channels)) {
-          c.elem.editEnvelope().onKeyReleased(0);
-        }
-      });
-    }
-
-    template <typename F>
-    void forEachElems(F f) {
-      for(auto & c : seconds(channels)) {
-        f(c.elem);
-      }
-    }
-
-    template<typename Out, typename Chans>
-    onEventResult onEvent2(int const sample_rate, Event const & e, Out & out, Chans & chans
+  }
+  
+  template<typename Out, typename Chans>
+  onEventResult onEvent2(int const sample_rate, Event const & e, Out & out, Chans & chans
 #ifndef CUSTOM_SAMPLE_RATE
-                           ,Optional<MIDITimestampAndSource> maybeMidiTimeAndSource
+                         ,Optional<MIDITimestampAndSource> maybeMidiTimeAndSource
 #endif
-                           )
-    {
-      using Request = typename Chans::Request;
-      static_assert(Out::policy == outPolicy);
-      switch(e.type) {
-        case EventType::NoteOn:
+  )
+  {
+    using Request = typename Chans::Request;
+    static_assert(Out::policy == outPolicy);
+    switch(e.type) {
+      case EventType::NoteOn:
       {
         Assert(e.noteOn.velocity > 0.f ); // this case is handled by the wrapper... else we need to do a noteOff
         MIDI_LG(INFO, "on  %d", e.noteOn.pitch);
         MonoNoteChannel * channel = nullptr;
-
+        
         // 1. [with maybe-lock]
         //      reserve a channel by maybe-CAS the envelope State Finished2 -> SoonKeyPressed
-
+        
         {
           typename Out::LockFromNRT L(out.get_lock());
-
+          
           for(auto & c : seconds(channels)) {
             if(!c.elem.editEnvelope().tryAcquire()) {
               continue;
@@ -324,25 +324,25 @@ void setPhase(MonoNoteChannel & c, CS & cs)
             break;
           }
         }
-
+        
         if(!channel) {
           // note that we could sleep and retry or yield and retry.
           return onDroppedNote(e);
         }
         auto & c = *channel;
         int32_t channel_index = channels.index(c);
-
+        
         // 2. [without maybe-lock]
         //      set the noteid
         //      setup the channel (dynamic allocations allowed for soundengine)
-
+        
         channels.corresponding(*channel) = e.noteid;
-
+        
         c.elem.forgetPastSignals(); // this does _not_ touch the envelope
         c.elem.algo.set_sample_rate(sample_rate);
         c.elem.algo.setVolumeTarget(e.noteOn.velocity);
         int const xfade_frames_length = static_cast<int>(0.5f + (get_xfade_length() * sample_rate));
-
+        
         // setupAudioElement is allowed to be slow, allocate / deallocate memory, etc...
         // because it's not running in the audio realtime thread.
         Volumes<nAudioOut> pannedVol;
@@ -351,17 +351,17 @@ void setPhase(MonoNoteChannel & c, CS & cs)
           // we let the noteoff reset the envelope state.
           return onDroppedNote(e);
         }
-
+        
         Assert(!c.elem.getEnvelope().isEnvelopeFinished());
-
+        
         // 3. [with maybe-lock]
         //      register the maybe-oneshot that does
         //        - maybe phase cancellation avoidance (in setPhase)
         //        - register the compute and trigger onKeyPress
-
+        
         {
           typename Out::LockFromNRT L(out.get_lock());
-
+          
           chans.enqueueOneShot([this,
                                 channel_index,
                                 pannedVol,
@@ -375,42 +375,42 @@ void setPhase(MonoNoteChannel & c, CS & cs)
             if constexpr (xfade_policy == XfadePolicy::UseXfade) {
               c.channel->set_xfade((xfade_frames_length%2) + 1); // make it odd
             }
-
+            
             // we issue this call to make sure that the 'tryAcquire' effect will be visible in this thread.
             if(unlikely(!c.elem.editEnvelope().acquireStates())) {
               // error : we did 'tryAcquire' but now, it's not acquired anymore!
               ++count_acquire_race_errors;
               return;
             }
-
+            
             // The caller is responsible for growing the channel request queue if needed
             if(!chans.playComputableNoLock(*c.channel,
                                            c.elem.fCompute(),
                                            Request{
-                                             &c.elem.buffer->buffer[0],
-                                             pannedVol,
-                                             // e.noteOn.length is always 0, so we wait for noteOff event to know the duration
-                                             std::numeric_limits<decltype(std::declval<Request>().duration_in_frames)>::max()
-                                           }))
+              &c.elem.buffer->buffer[0],
+              pannedVol,
+              // e.noteOn.length is always 0, so we wait for noteOff event to know the duration
+              std::numeric_limits<decltype(std::declval<Request>().duration_in_frames)>::max()
+            }))
             {
               // there is currently no error reporting from the realtime thread.
               return;
             }
             setPhase<Sync, Phase>(c, channels);
           });
-
+          
 #ifndef CUSTOM_SAMPLE_RATE
           if(maybeMidiTimeAndSource) {
             chans.enqueueMIDIOneShot(get_value(maybeMidiTimeAndSource)
-                                   , [&c, sample_rate](Chans & chans, auto midiTimingAndSrc, uint64_t curTimeNanos){
-
+                                     , [&c, sample_rate](Chans & chans, auto midiTimingAndSrc, uint64_t curTimeNanos){
+              
               auto srcKey = midiTimingAndSrc.getSourceKey();
               uint64_t midiTimeNanos = midiTimingAndSrc.getNanosTime();
-
+              
               /*
-              * We introduce an artificial MIDI delay to avoid jitter.
-              */
-
+               * We introduce an artificial MIDI delay to avoid jitter.
+               */
+              
               Assert(srcKey < midiDelays().size());
               auto & srcDelay = midiDelays()[srcKey];
               {
@@ -432,9 +432,9 @@ void setPhase(MonoNoteChannel & c, CS & cs)
                 }
               }
               auto delayNanos = get_value(srcDelay.get());
-
+              
               uint64_t targetNanos = midiTimeNanos + delayNanos;
-
+              
               if(targetNanos < curTimeNanos) {
                 // we're late.
                 c.elem.editEnvelope().onKeyPressed(0);
@@ -458,8 +458,8 @@ void setPhase(MonoNoteChannel & c, CS & cs)
           }
         }
       }
-          break;
-        case EventType::NoteOff:
+        break;
+      case EventType::NoteOff:
       {
         if(!handle_note_off) { // TODO remove handle_note_off, redundant with autorelease notion?
           MIDI_LG(INFO, "off (ignored) %f", e.ref_frequency.getFrequency());
@@ -473,35 +473,32 @@ void setPhase(MonoNoteChannel & c, CS & cs)
         if(maybeMidiTimeAndSource) {
           typename Out::LockFromNRT L(out.get_lock());
           chans.enqueueMIDIOneShot(get_value(maybeMidiTimeAndSource)
-                                 , [this,
-                                    noteid = e.noteid,
-                                    sample_rate](auto &, auto midiTimingAndSrc, uint64_t curTimeNanos){
-            // We can have multiple notes with the same pitch, and different durations.
-            // Hence, here we just close the first opened channel with matching pitch
-            // and matching midi source.
+                                   , [this,
+                                      noteid = e.noteid,
+                                      sample_rate](auto &, auto midiTimingAndSrc, uint64_t curTimeNanos){
             for(auto &i : firsts(channels)) {
               if (!i || *i != noteid) {
                 continue;
               }
               auto & c = channels.corresponding(i);
-
+              
               if(!c.midiDelay) {
                 // the note-on had no MIDI timestamp, but this note-off has one
                 // so it's not what we are looking for.
                 continue;
               }
-
+              
               auto d = get_value(c.midiDelay);
               if(d.getSourceKey() != midiTimingAndSrc.getSourceKey()) {
                 // not the same MIDI source.
                 continue;
               }
-
+              
               uint64_t targetNanos = midiTimingAndSrc.getNanosTime() + d.getNanosTime();
-
+              
               auto delay = (targetNanos < curTimeNanos) ? 0 : nanoseconds_to_frames(targetNanos-curTimeNanos,
                                                                                     sample_rate);
-
+              
               if(!c.elem.getEnvelope().canHandleExplicitKeyReleaseNow(delay)) {
                 continue;
               }
@@ -517,8 +514,6 @@ void setPhase(MonoNoteChannel & c, CS & cs)
         {
           typename Out::LockFromNRT L(out.get_lock());
           chans.enqueueOneShot([this, noteid = e.noteid](auto &, uint64_t curTimeNanos){
-            // We can have multiple notes with the same pitch, and different durations.
-            // Hence, here we just close the first opened channel with matching pitch.
             for(auto &i : firsts(channels)) {
               if (!i || *i != noteid) {
                 continue;
@@ -540,83 +535,81 @@ void setPhase(MonoNoteChannel & c, CS & cs)
           });
         }
       }
-          break;
-        case EventType::NoteChange:
+        break;
+      case EventType::NoteChange:
+      {
+        MIDI_LG(INFO, "change %d", e.noteChange.ref_pitch);
         {
-          MIDI_LG(INFO, "change %d", e.noteChange.ref_pitch);
-          {
-            typename Out::LockFromNRT L(out.get_lock());
-            chans.enqueueOneShot([this,
-                                  volume = e.noteChange.changed_velocity,
-                                  noteid = e.noteid,
-                                  increments = freq_to_angle_increment(e.noteChange.changed_frequency, sample_rate)](auto &,
-                                                                        uint64_t){
-              // We can have multiple notes with the same pitch, and different durations.
-              // We adjust the volume of all opened channels with matching pitch.
-              for(auto &i : firsts(channels)) {
-                if (!i || *i != noteid) {
-                  continue;
-                }
-                auto & c = channels.corresponding(i);
-                c.elem.algo.setVolumeTarget(volume);
-                c.elem.algo.setAngleIncrements(increments);
+          typename Out::LockFromNRT L(out.get_lock());
+          chans.enqueueOneShot([this,
+                                volume = e.noteChange.changed_velocity,
+                                noteid = e.noteid,
+                                increments = freq_to_angle_increment(e.noteChange.changed_frequency, sample_rate)](auto &,
+                                                                                                                   uint64_t){
+            for(auto &i : firsts(channels)) {
+              if (!i || *i != noteid) {
+                continue;
               }
-            });
-          }
+              auto & c = channels.corresponding(i);
+              c.elem.algo.setVolumeTarget(volume);
+              c.elem.algo.setAngleIncrements(increments);
+            }
+          });
         }
-          break;
       }
-      return onEventResult::OK;
+        break;
     }
+    return onEventResult::OK;
+  }
+  
+protected:
+  onEventResult onDroppedNote(Event const & e) const {
+    MIDI_LG(WARN, "dropped note '%f' Hz", e.ref_frequency.getFrequency);
+    return onEventResult::DROPPED_NOTE;
+  }
+};
 
-  protected:
-    onEventResult onDroppedNote(Event const & e) const {
-      MIDI_LG(WARN, "dropped note '%f' Hz", e.ref_frequency.getFrequency);
-      return onEventResult::DROPPED_NOTE;
-    }
-  };
-
-  template<typename T, ReverbType ReverbT>
-  struct Wrapper {
-    static constexpr auto n_channels = T::n_channels;
-    static constexpr auto with_lock = WithLock::No;
-
-    using ProcessData = typename T::ProcessData;
-
-    using OutputData = outputDataBase<
-    Channels<T::nAudioOut, T::xfade_policy, T::max_queue_size, AudioOutPolicy::Slave>,
-    ReverbT
-    >;
-
-    template <class... Args>
-    Wrapper(int sampleRate, int nOrchestratorsMax, Args&&... args)
-    : plugin(std::forward<Args>(args)...)
-    , out{
-      GlobalAudioLock<AudioOutPolicy::Slave>::get(),
-      n_channels,
-      nOrchestratorsMax
-    }
-    , sample_rate(sampleRate)
-    {
-      dontUseConvolutionReverbs(out, sample_rate);
-      plugin.template initialize(out.getChannels());
-    }
-
-    void doProcessing (ProcessData& data) {
-      return plugin.doProcessing(sample_rate, data, out, out.getChannels());
-    }
-
-    void allNotesOff() {
-      return plugin.template allNotesOff(out.getChannels());
-    }
-
-    void allSoundsOff() {
-      return plugin.template allSoundsOff(out.getChannels());
-    }
-
-    OutputData out;
-    T plugin;
-    int sample_rate;
-  };
+template<typename T, ReverbType ReverbT>
+struct Wrapper {
+  static constexpr auto n_channels = T::n_channels;
+  static constexpr auto with_lock = WithLock::No;
+  
+  using ProcessData = typename T::ProcessData;
+  
+  using OutputData = outputDataBase<
+  Channels<T::nAudioOut, T::xfade_policy, T::max_queue_size, AudioOutPolicy::Slave>,
+  ReverbT
+  >;
+  
+  template <class... Args>
+  Wrapper(int sampleRate, int nOrchestratorsMax, Args&&... args)
+  : plugin(std::forward<Args>(args)...)
+  , out{
+    GlobalAudioLock<AudioOutPolicy::Slave>::get(),
+    n_channels,
+    nOrchestratorsMax
+  }
+  , sample_rate(sampleRate)
+  {
+    dontUseConvolutionReverbs(out, sample_rate);
+    plugin.template initialize(out.getChannels());
+  }
+  
+  void doProcessing (ProcessData& data) {
+    return plugin.doProcessing(sample_rate, data, out, out.getChannels());
+  }
+  
+  void allNotesOff() {
+    return plugin.template allNotesOff(out.getChannels());
+  }
+  
+  void allSoundsOff() {
+    return plugin.template allSoundsOff(out.getChannels());
+  }
+  
+  OutputData out;
+  T plugin;
+  int sample_rate;
+};
 
 } // NS imajuscule::audio

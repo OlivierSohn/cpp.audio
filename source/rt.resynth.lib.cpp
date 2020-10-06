@@ -1,26 +1,23 @@
 
 /* Backlog:
 
+ 
+ - since we don't have timestamps yet,
+ . if the stride is smaller than audio output buffers, the temporal coherency will be broken.
+     (because we will have at the same time in the one shot queue actions for multiple analyses)
+ . if the stride is smaller than audio input buffers size, the temporal coherency will be broken
+     (because we don't wait between successive analyses)
+  using midi timestamps could help fixing this
+ 
  - control AHDSR parameters in real time
-
- - monitor queues states, and report errors through flags (atomic counters) when we failed to try_push :
- enqueueOneShot / audio input, etc...
  
  - UI feedback :
- number of dropped input samples,
- "processing time per second of audio" = samplerate * "time to process one window" / windowsize
  FFT size in frames,
  window size in frames,
  stride in frames
 
  - investigate: is it ok to have a fft size bigger than the window size? Is there a side effect?
 
- - 'samples' has size = "window size"
- this choice was made to improve memory locality but
- when stride is very small, copying the overlap after each processing
- can become significant : for a stride = 1, for each audio frame, we copy "window size" audio frames!
- if 'samples' had twice its size, we would copy, on average, a single frame per audio frame which is much more reasonable.
- 
  - display, in columns:
  the raw spectogram (freq + volume),
  the "midi pitches" + volume, along with the intervals
@@ -51,6 +48,12 @@
  - Improve accuracy of low frequency detection, using small and large ffts:
  small ffts will be used for high frequencies (good temporal accuracy)
  and large ffts will be used for low frequencies (poor temporal accuracy)
+
+ - (micro optimization) 'samples' has size = "window size"
+ this choice was made to improve memory locality but
+ when stride is very small, copying the overlap after each processing
+ can become significant : for a stride = 1, for each audio frame, we copy "window size" audio frames!
+ if 'samples' had twice its size, we would copy, on average, a single frame per audio frame which is much more reasonable.
  */
 
 
@@ -590,8 +593,8 @@ public:
         return;
       }
       for (int i=0; i<nFrames; ++i) {
-        if (!input_queue->try_push(buf[i])) {
-          // TODO error reporting
+        if (unlikely(!input_queue->try_push(buf[i]))) {
+          ++ count_dropped_input_frames;
         }
       }
     },
@@ -766,8 +769,7 @@ public:
                   volume
                 });
               } else {
-                // dropped note:
-                //
+                ++dropped_note_on;
               }
             }
           }
@@ -782,10 +784,7 @@ public:
         }
       };
       
-      std::vector<double> half_window;
-
       auto init_data = [this,
-                        &half_window,
                         sample_rate
                         ](bool const force){
         int const input_delay_frames = input_delay_seconds * sample_rate;
@@ -831,25 +830,59 @@ public:
             if (!thread_resynth_active) {
               break;
             }
-            process(sample_rate,
-                    samples.begin(),
-                    samples.begin() + end,
-                    half_window,
-                    frequencies_sqmag,
-                    freqmags);
+
+            std::optional<float>
+            duration_process_seconds,
+            duration_step_seconds,
+            duration_copy_seconds;
+            
+            {
+              std::optional<profiling::CpuDuration> dt;
+              {
+                profiling::ThreadCPUTimer timer(dt);
+                
+                process(sample_rate,
+                        samples.begin(),
+                        samples.begin() + end,
+                        half_window,
+                        frequencies_sqmag,
+                        freqmags);
+              }
+              if (dt) duration_process_seconds = dt->count() / 1000000.;
+            }
             
             int const window_center_stride = std::max(1,
                                                       static_cast<int>(0.5f + window_center_stride_seconds * sample_rate));
-            step(freqmags,
-                 window_center_stride); // we pass the future stride, on purpose
+            {
+              std::optional<profiling::CpuDuration> dt;
+              {
+                profiling::ThreadCPUTimer timer(dt);
+                step(freqmags,
+                     window_center_stride); // we pass the future stride, on purpose
+              }
+              if (dt) duration_step_seconds = dt->count() / 1000000.;
+            }
             
             std::tie(input_delay_frames, window_size) = init_data(false);
             
-            int const windowoverlapp = std::max(0, window_size - window_center_stride);
-            const int offset = window_size-windowoverlapp;
-            for (end=0; end<windowoverlapp; ++end) {
-              samples[end] = samples[end + offset];
+            {
+              std::optional<profiling::CpuDuration> dt;
+              {
+                profiling::ThreadCPUTimer timer(dt);
+                int const windowoverlapp = std::max(0, window_size - window_center_stride);
+                const int offset = window_size-windowoverlapp;
+                for (end=0; end<windowoverlapp; ++end) {
+                  samples[end] = samples[end + offset];
+                }
+              }
+              if (dt) duration_copy_seconds = dt->count() / 1000000.;
             }
+            
+            setDurations(duration_process_seconds,
+                         duration_step_seconds,
+                         duration_copy_seconds);
+            
+            storeAudioInputQueueFillRatio(input_queue->unsafe_num_elements() / static_cast<float>(input_queue->size()));
           }
         }
         std::this_thread::yield(); // should we sleep?
@@ -926,8 +959,19 @@ public:
   float getWindowSizeSeconds() const {
     return window_size_seconds;
   }
+  float getEffectiveWindowSizeSeconds(int sample_rate) const {
+    return std::max(getWindowSizeSeconds(),
+                    2.f/sample_rate);
+  }
   float getWindowCenterStrideSeconds() const {
     return window_center_stride_seconds;
+  }
+  float getEffectiveWindowCenterStrideSeconds(int sample_rate) const {
+    if (!sample_rate) {
+      return 0.f;
+    }
+    return std::max(getWindowCenterStrideSeconds(),
+                    1.f/sample_rate);
   }
   float getMinVolume() const {
     return min_volume;
@@ -939,6 +983,49 @@ public:
     return max_track_pitches;
   }
   
+  void storeAudioInputQueueFillRatio(float f) {
+    input_queue_fill_ratio = f;
+  }
+
+  float getAudioInputQueueFillRatio() const {
+    return input_queue_fill_ratio;
+  }
+  int countDroppedInputFrames() const {
+    return count_dropped_input_frames;
+  }
+
+  int countDroppedNoteOns() const {
+    return dropped_note_on;
+  }
+
+  int countFailedComputeInsertions() const {
+    return channels->countFailedComputeInsertions();
+  }
+  int countRetriedOneshotInsertions() const {
+    return channels->countRetriedOneshotInsertions();
+  }
+
+  std::optional<float> getDurationProcess() {
+    float const f = dt_process_seconds;
+    if (f < 0) {
+      return {};
+    }
+    return f;
+  }
+  std::optional<float> getDurationStep() {
+    float const f = dt_step_seconds;
+    if (f < 0) {
+      return {};
+    }
+    return f;
+  }
+  std::optional<float> getDurationCopy() {
+    float const f = dt_copy_seconds;
+    if (f < 0) {
+      return {};
+    }
+    return f;
+  }
 private:
   Ctxt ctxt;
   ChannelHandler & channel_handler;
@@ -952,6 +1039,9 @@ private:
   std::atomic_bool thread_resynth_active{false};
   std::unique_ptr<std::thread> thread_resynth;
   std::unique_ptr<Queue> input_queue;
+  std::atomic_int count_dropped_input_frames = 0;
+  static_assert(decltype(count_dropped_input_frames)::is_always_lock_free);
+
   cyclic<SAMPLE> delayed_input;
   std::atomic<float> input_delay_seconds = 1.f;
   std::atomic<float> window_size_seconds = 0.1814f;
@@ -959,6 +1049,7 @@ private:
   std::atomic<float> min_volume = 0.0001;
   std::atomic<float> nearby_distance_tones = 0.4;
   std::atomic<float> max_track_pitches = 1.;
+  static_assert(std::atomic<float>::is_always_lock_free);
 
   int n;
 
@@ -966,7 +1057,7 @@ private:
   using SampleVector = std::vector<Sample>;
   using SampleVectorConstIterator = SampleVector::const_iterator;
   SampleVector samples;
-
+  std::vector<double> half_window;
   FrequenciesSqMag<double> frequencies_sqmag;
   std::vector<FreqMag<double>> freqmags;
   std::vector<PitchVolume> freqmags_data;
@@ -976,6 +1067,28 @@ private:
   std::vector<std::optional<int>> pitch_changes;
   std::vector<bool> continue_playing;
   std::vector<PlayedNote> played_notes;
+  
+  std::atomic<float> dt_process_seconds = -1.f;
+  std::atomic<float> dt_step_seconds = -1.f;
+  std::atomic<float> dt_copy_seconds = -1.f;
+  std::atomic<float> input_queue_fill_ratio = 0.f;
+  std::atomic_int dropped_note_on = 0;
+
+  void setDurations(std::optional<float> duration_process_seconds,
+                    std::optional<float> duration_step_seconds,
+                    std::optional<float> duration_copy_seconds) {
+    auto set = [](std::optional<float> const & secs, std::atomic<float> & atom) {
+      if (secs) {
+        atom = *secs;
+      } else {
+        atom = -1.f;
+      }
+    };
+    set(duration_process_seconds, dt_process_seconds);
+    set(duration_step_seconds, dt_step_seconds);
+    set(duration_copy_seconds, dt_copy_seconds);
+  }
+
 };
 
 } // NS

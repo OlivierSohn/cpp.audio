@@ -75,8 +75,11 @@ namespace imajuscule::audio {
                 auto & outputBuffer = ios_data->buf;
                 outputBuffer.resize(sizeBuffer); // hopefully we already reserved enough
 
-              // TODO is audioTimeStamp->mWordClockTime in nanoseconds?
-              ios_data->chans->step(outputBuffer.data(), numFrames, audioTimeStamp?audioTimeStamp->mWordClockTime:0);
+              ios_data->chans->step(outputBuffer.data(),
+                                    numFrames,
+                                    // TODO is audioTimeStamp->mWordClockTime in nanoseconds?
+                                    audioTimeStamp?audioTimeStamp->mWordClockTime:0,
+                                    0);
 
                 for (UInt32 i=0; i<buffers->mNumberBuffers; ++i) {
                     Assert(sizeBuffer * sizeof(SInt16) <= buffers->mBuffers[i].mDataByteSize);

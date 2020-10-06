@@ -117,17 +117,17 @@ private:
         }
 
         Channels(AudioLockPolicyImpl<policy> & l
-                , int nChannelsMax
-                , int nOrchestratorsMaxPerChannel=0
-                 , int nComputesMin = 0):
+                , int nChannelsMax):
         _lock(l)
       // (almost) worst case scenario : each channel is playing an audiolement crossfading with another audio element
       // "almost" only because the assumption is that requests vector holds at most one audioelement at any time
       // if there are multiple audioelements in request vector, we need to be more precise about when audioelements start to be computed...
-      , computes(std::max(nComputesMin, 2*nChannelsMax))
-      , oneShots(2*nChannelsMax)
+      // Also, if the output buffer size is big, we may have multiple events in the queue for the same note,
+      // so we use a multiplicative factor of 4:
+      , computes(4*nChannelsMax)
+      , oneShots(4*nChannelsMax)
 #ifndef CUSTOM_SAMPLE_RATE
-      , oneShotsMIDI(2*nChannelsMax)
+      , oneShotsMIDI(4*nChannelsMax)
 #endif
       {
         Assert(nChannelsMax >= 0);
@@ -146,7 +146,12 @@ private:
       void enqueueOneShot(F f) {
         if constexpr(shouldNRTThreadUseOneshotsQueue<policy>()) {
           nRealtimeFuncs.fetch_add(1, std::memory_order_relaxed);
+          bool failed = false;
           while(!oneShots.tryEnqueue(f)) {
+            if (!failed) {
+              failed = true;
+              ++retried_oneshot_insertion;
+            }
             std::this_thread::yield();
           }
         }
@@ -162,8 +167,12 @@ private:
       void enqueueMIDIOneShot(MIDITimestampAndSource m, F f) {
         if constexpr(shouldNRTThreadUseOneshotsQueue<policy>()) {
           nRealtimeFuncs.fetch_add(1, std::memory_order_relaxed);
+          bool failed = false;
           while(!oneShotsMIDI.tryEnqueue({m,f})) {
-            std::this_thread::yield();
+            if (!failed) {
+              failed = true;
+              ++retried_midioneshot_insertion;
+            }
           }
         }
         else {
@@ -175,6 +184,7 @@ private:
         template<typename F>
         bool registerCompute(F f) {
           if(!computes.tryInsert(std::move(f))) {
+            ++failed_compute_insertion;
             return false;
           }
           nRealtimeFuncs.fetch_add(1, std::memory_order_relaxed);
@@ -444,6 +454,12 @@ private:
 
         decltype(std::declval<AudioLockPolicyImpl<policy>>().lock()) get_lock() { return _lock.lock(); }
 
+      int countFailedComputeInsertions() const {
+        return failed_compute_insertion;
+      }
+      int countRetriedOneshotInsertions() const {
+        return retried_oneshot_insertion;
+      }
 
     private:
         AudioLockPolicyImpl<policy> & _lock;
@@ -468,6 +484,12 @@ private:
         // any computes / oneshot functions ATM.
         std::atomic_int nRealtimeFuncs; // all operations are 'memory_order_relaxed'
         static_assert(std::atomic_int::is_always_lock_free);
+      
+      std::atomic_int failed_compute_insertion = 0;
+      std::atomic_int retried_oneshot_insertion = 0;
+#ifndef CUSTOM_SAMPLE_RATE
+      std::atomic_int retried_midioneshot_insertion = 0;
+#endif
 
         [[nodiscard]] bool playNolock( uint8_t channel_id, StackVector<Request> && v) {
             bool res = true;
