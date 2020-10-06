@@ -330,12 +330,10 @@ struct ReinitializingParameters {
   // modifiying one of these params requires to reinitialize the resynth
   int sample_rate = 88200;
   float window_size_seconds = 0.1814f;
-  float window_center_stride_seconds = 0.09f;
   
   void init(RtResynth & r) {
     r.init(sample_rate,
-           window_size_seconds,
-           window_center_stride_seconds);
+           window_size_seconds);
   }
 };
 
@@ -367,13 +365,8 @@ struct MyApp : public wxApp {
     {
       "Analysis period",
       "seconds",
-      [this](){
-        return reinit_params.window_center_stride_seconds;
-      },
-      [this](float v){
-        reinit_params.window_center_stride_seconds = v;
-        reinit_params.init(resynth);
-      },
+      [this](){ return resynth.getWindowCenterStrideSeconds(); },
+      [this](float v){ resynth.setWindowCenterStrideSeconds(v); },
       0.f,
       1.f
     },

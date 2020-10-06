@@ -1,6 +1,24 @@
 
 /* Backlog:
 
+ - control AHDSR parameters in real time
+
+ - monitor queues states, and report errors through flags (atomic counters) when we failed to try_push :
+ enqueueOneShot / audio input, etc...
+ 
+ - UI feedback :
+ number of dropped input samples,
+ "processing time per second of audio" = samplerate * "time to process one window" / windowsize
+ FFT size in frames,
+ window size in frames,
+ stride in frames
+
+ - 'samples' has size = "window size"
+ this choice was made to improve memory locality but
+ when stride is very small, copying the overlap after each processing
+ can become significant : for a stride = 1, for each audio frame, we copy "window size" audio frames!
+ if 'samples' had twice its size, we would copy, on average, a single frame per audio frame which is much more reasonable.
+ 
  - display, in columns:
  the raw spectogram (freq + volume),
  the "midi pitches" + volume, along with the intervals
@@ -23,12 +41,14 @@
              ---
        ---
  ---
+ 
+ - customize resynthesys:
+  Add a curve 0..1 -> 0..1 to change (compress / expand) volumes
+  Add a filter notion : "volume(freq)" to allow to low-pass or high-pass for example
 
  - Improve accuracy of low frequency detection, using small and large ffts:
-   small ffts will be used for high frequencies (good temporal accuracy)
-   and large ffts will be used for low frequencies (poor temporal accuracy)
- 
-- Add a curve 0..1 -> 0..1 to change (compress / expand) volumes
+ small ffts will be used for high frequencies (good temporal accuracy)
+ and large ffts will be used for low frequencies (poor temporal accuracy)
  */
 
 
@@ -542,22 +562,16 @@ public:
   }
     
   void init(int const sample_rate = 88200,
-            float const window_size_seconds = 0.1814f,
-            float const window_center_stride_seconds = 0.09f
+            float const window_size_seconds = 0.1814f
             ) {
     // we need an even window size
     int const window_size = 2 * static_cast<int>(0.5 * window_size_seconds * sample_rate);
-    int const window_center_stride = window_center_stride_seconds * sample_rate;
-    int const windowoverlapp = std::max(0, window_size - window_center_stride);
-    
+
     if (sample_rate <= 0) {
       throw std::invalid_argument("sample_rate is too small");
     }
     if (window_size <= 0) {
       throw std::invalid_argument("window_size_seconds is too small");
-    }
-    if (window_center_stride < 1) {
-      throw std::invalid_argument("window_stride_ratio is too small");
     }
 
     if (thread_resynth_active) {
@@ -568,30 +582,6 @@ public:
     if (!synth.initialize(*channels)) {
       throw std::logic_error("failed to initialize synth");
     }
-
-    synth.forEachElems([sample_rate, window_center_stride](auto & e) {
-      // envelope (now that we track the volume, we only need a minimal envelope)
-      
-      // TODO try the following effect via volume tracking only (not evelope):
-      // make the volume decrease slower than in reality (notion of meta envelope)
-      
-      e.algo.editEnvelope().setAHDSR(audioelement::AHDSR{
-        0, itp::LINEAR,
-        0,
-        0, itp::LINEAR,
-        0, itp::LINEAR,
-        1.f
-      }, sample_rate);
-      
-      // limit the speed of volume adjustment:
-      
-      e.algo.setMaxFilterIncrement(2. / static_cast<double>(window_center_stride));
-      
-      // frequency control
-      
-      e.algo.getOsc().getAlgo().getCtrl().setup(window_center_stride,
-                                                itp::LINEAR);
-    });
     
     if (!ctxt.Init(sample_rate, minOutLatency)) {
       throw std::runtime_error("ctxt init failed");
@@ -618,7 +608,6 @@ public:
     
     thread_resynth_active = true;
     thread_resynth = std::make_unique<std::thread>([window_size,
-                                                    windowoverlapp,
                                                     this,
                                                     sample_rate](){
       Assert(0 == window_size%2);
@@ -650,8 +639,11 @@ public:
             
       n = 0;
       
+      std::optional<int> stride_for_synth_config;
       auto step = [sample_rate,
-                   this](std::vector<FreqMag<double>> const & fs) {
+                   &stride_for_synth_config,
+                   this
+                   ](std::vector<FreqMag<double>> const & fs, int const future_stride) {
         ++n;
         
         frequencies_to_pitches(midi,
@@ -677,6 +669,40 @@ public:
                       played_pitches,
                       pitch_changes,
                       continue_playing);
+        
+        // reconfigure synth if needed
+        
+        if (!stride_for_synth_config || *stride_for_synth_config != future_stride) {
+          stride_for_synth_config = future_stride;
+          channels->enqueueOneShot([this,
+                                    sample_rate,
+                                    stride = future_stride](auto & chans, auto){
+            synth.forEachElems([sample_rate,
+                                stride](auto & e) {
+              // envelope (now that we track the volume, we only need a minimal envelope)
+              
+              // TODO try the following effect via volume tracking only (not evelope):
+              // make the volume decrease slower than in reality (notion of meta envelope)
+              
+              e.algo.editEnvelope().setAHDSR(audioelement::AHDSR{
+                0, itp::LINEAR,
+                0,
+                0, itp::LINEAR,
+                0, itp::LINEAR,
+                1.f
+              }, sample_rate);
+              
+              // limit the speed of volume adjustment:
+              
+              e.algo.setMaxFilterIncrement(2. / static_cast<double>(stride));
+              
+              // frequency control
+              
+              e.algo.getOsc().getAlgo().getCtrl().setup(stride,
+                                                        itp::LINEAR);
+            });
+          });
+        }
         
         bool changed = false;
         
@@ -794,12 +820,21 @@ public:
           }
           ++ end;
           if (end == window_size) {
+            if (!thread_resynth_active) {
+              break;
+            }
             process(sample_rate,
                     samples.begin(),
                     samples.begin() + end,
                     frequencies_sqmag,
                     freqmags);
-            step(freqmags);
+            
+            int const window_center_stride = std::max(1,
+                                                      static_cast<int>(0.5f + window_center_stride_seconds * sample_rate));
+            step(freqmags,
+                 window_center_stride);
+
+            int const windowoverlapp = std::max(0, window_size - window_center_stride);
             
             input_delay_frames = init_delayed_input(false);
             
@@ -818,12 +853,12 @@ public:
     if (!thread_resynth_active) {
       return;
     }
-    if (!input.Teardown()) {
-      throw std::runtime_error("input teardown failed");
-    }
     thread_resynth_active = false;
     thread_resynth->join();
     thread_resynth.reset();
+    if (!input.Teardown()) {
+      throw std::runtime_error("input teardown failed");
+    }
     input_queue.reset();
     
     ctxt.onApplicationShouldClose();
@@ -840,6 +875,13 @@ public:
       throw std::invalid_argument("input_delay_seconds is too small");
     }
     input_delay_seconds = f;
+  }
+
+  void setWindowCenterStrideSeconds(float f) {
+    if (f < 0) {
+      throw std::invalid_argument("window_center_stride_seconds is too small");
+    }
+    window_center_stride_seconds = f;
   }
 
   void setMinVolume(float f) {
@@ -866,6 +908,9 @@ public:
   float getInputDelaySeconds() const {
     return input_delay_seconds;
   }
+  float getWindowCenterStrideSeconds() const {
+    return window_center_stride_seconds;
+  }
   float getMinVolume() const {
     return min_volume;
   }
@@ -891,6 +936,7 @@ private:
   std::unique_ptr<Queue> input_queue;
   cyclic<SAMPLE> delayed_input;
   std::atomic<float> input_delay_seconds = 1.f;
+  std::atomic<float> window_center_stride_seconds = 0.09f;
   std::atomic<float> min_volume = 0.0001;
   std::atomic<float> nearby_distance_tones = 0.4;
   std::atomic<float> max_track_pitches = 1.;
