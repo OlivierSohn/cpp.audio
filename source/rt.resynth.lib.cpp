@@ -1,6 +1,7 @@
 
 /* Backlog:
 
+ - merge enqueueMIDIOneShot with the standard one
  
  - since we don't have timestamps yet,
  . if the stride is smaller than audio output buffers, the temporal coherency will be broken.

@@ -119,25 +119,8 @@ static inline Phase mkDeterministicPhase(float v) { return Phase{true,v}; }
 static inline Phase mkNonDeterministicPhase() { return Phase{false,{}}; }
 
 
-struct TimeDelay {
-  
-  Optional<uint64_t> get() const {
-    return (delay == noValue) ? Optional<uint64_t>{} : Optional<uint64_t>{delay};
-  }
-  
-  void set(uint64_t v) {
-    delay = v;
-  }
-  
-private:
-  static constexpr uint64_t noValue = std::numeric_limits<uint64_t>::max();
-  uint64_t delay = noValue;
-};
-
-#ifndef CUSTOM_SAMPLE_RATE
-// The first call is expensive, as the array is allocated.
-std::array<TimeDelay, MIDITimestampAndSource::nSources> & midiDelays();
-#endif
+// key = source, value = maybe delay
+std::unordered_map<uint64_t, std::optional<uint64_t>> & midiDelays();
 
 uint64_t & maxMIDIJitter();
 
@@ -294,11 +277,11 @@ public:
   }
   
   template<typename Out, typename Chans>
-  onEventResult onEvent2(int const sample_rate, Event const & e, Out & out, Chans & chans
-#ifndef CUSTOM_SAMPLE_RATE
-                         ,Optional<MIDITimestampAndSource> maybeMidiTimeAndSource
-#endif
-  )
+  onEventResult onEvent2(int const sample_rate,
+                         Event const & e,
+                         Out & out,
+                         Chans & chans,
+                         std::optional<MIDITimestampAndSource> const & maybeMidiTimeAndSource)
   {
     using Request = typename Chans::Request;
     static_assert(Out::policy == outPolicy);
@@ -399,7 +382,6 @@ public:
             setPhase<Sync, Phase>(c, channels);
           });
           
-#ifndef CUSTOM_SAMPLE_RATE
           if(maybeMidiTimeAndSource) {
             chans.enqueueMIDIOneShot(get_value(maybeMidiTimeAndSource)
                                      , [&c, sample_rate](Chans & chans, auto midiTimingAndSrc, uint64_t curTimeNanos){
@@ -411,46 +393,39 @@ public:
                * We introduce an artificial MIDI delay to avoid jitter.
                */
               
-              Assert(srcKey < midiDelays().size());
-              auto & srcDelay = midiDelays()[srcKey];
+              auto & mayDelay = midiDelays()[srcKey];
               {
                 auto const margin = maxMIDIJitter();
-                uint64_t candidateDelay = margin + (curTimeNanos - midiTimeNanos);
-                auto mayDelay = srcDelay.get();
+                uint64_t const candidateDelay = margin + (curTimeNanos - midiTimeNanos);
                 if(!mayDelay) {
-                  srcDelay.set(candidateDelay);
-                }
-                else {
+                  mayDelay = candidateDelay;
+                } else {
                   // a delay is already registered.
-                  if(cyclic_unsigned_dist(candidateDelay, get_value(mayDelay)) > 2 * (margin + 100000)) {
+                  if(cyclic_unsigned_dist(candidateDelay, *mayDelay) > 2 * (margin + 100000)) {
                     // The change is significant enough, so we apply the change.
                     // The previous delay was maybe determined based
                     // on events that were generated while the program was starting,
                     // hence their timings were off.
-                    srcDelay.set(candidateDelay);
+                    mayDelay = candidateDelay;
                   }
                 }
               }
-              auto delayNanos = get_value(srcDelay.get());
+              auto const delayNanos = *mayDelay;
               
-              uint64_t targetNanos = midiTimeNanos + delayNanos;
+              uint64_t const targetNanos = midiTimeNanos + delayNanos;
               
               if(targetNanos < curTimeNanos) {
                 // we're late.
                 c.elem.editEnvelope().onKeyPressed(0);
                 c.midiDelay = {{delayNanos + (curTimeNanos - targetNanos), srcKey}};
-              }
-              else {
+              } else {
                 // we're on time.
                 c.elem.editEnvelope().onKeyPressed(nanoseconds_to_frames(targetNanos-curTimeNanos,
                                                                          sample_rate));
                 c.midiDelay = {{delayNanos, srcKey}};
               }
             });
-          }
-          else
-#endif
-          {
+          } else {
             chans.enqueueOneShot([&c](Chans & chans, uint64_t tNanos){
               c.elem.editEnvelope().onKeyPressed(0);
               c.midiDelay = {};
@@ -469,7 +444,6 @@ public:
           return onEventResult::OK;
         }
         MIDI_LG(INFO, "off %f", e.ref_frequency.getFrequency());
-#ifndef CUSTOM_SAMPLE_RATE
         if(maybeMidiTimeAndSource) {
           typename Out::LockFromNRT L(out.get_lock());
           chans.enqueueMIDIOneShot(get_value(maybeMidiTimeAndSource)
@@ -508,10 +482,7 @@ public:
             // The corresponding noteOn was skipped,
             // because too many notes were being played at the same time
           });
-        }
-        else
-#endif
-        {
+        } else {
           typename Out::LockFromNRT L(out.get_lock());
           chans.enqueueOneShot([this, noteid = e.noteid](auto &, uint64_t curTimeNanos){
             for(auto &i : firsts(channels)) {

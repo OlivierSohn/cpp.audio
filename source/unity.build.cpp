@@ -1,7 +1,6 @@
 #include "private.h"
 
 #include "events.cpp"
-#include "samples.cpp"
 #include "sound.cpp"
 #include "parse.music.cpp"
 #include "gen.voice.cpp"
@@ -18,16 +17,13 @@
 
 namespace imajuscule::audio {
   /*
-      The first call is expensive, as the array is allocated.
-
       TODO to hear exactly what other players are hearing,
       each client should use the same delays for the same sources,
       plus a per-client global offset.
   */
-  std::array<TimeDelay, MIDITimestampAndSource::nSources> & midiDelays() {
-    // 'TimeDelay's will be default initialized by the array.
-    static std::array<TimeDelay, MIDITimestampAndSource::nSources> arr;
-    return arr;
+  std::unordered_map<uint64_t, std::optional<uint64_t>> & midiDelays() {
+    static std::unordered_map<uint64_t, std::optional<uint64_t>> m;
+    return m;
   }
 
   /*

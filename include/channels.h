@@ -1,67 +1,25 @@
 
 namespace imajuscule::audio {
 
+struct MIDITimestampAndSource {
+    MIDITimestampAndSource(uint64_t t,
+                           uint64_t sourceKey)
+    : time(t)
+    , key(sourceKey)
+    {}
 
-#ifndef CUSTOM_SAMPLE_RATE
-
-// TODO This trick was done when we wanted to minimize captured data in realtime functors,
-// but now tha we use folly::Function, we can keep full-precision midi timestamps,
-// and store the extra information in extra variables. This will also allow
-// to support generalized sample rates.
-
-  // The MIDI timestamps don't need sub-frame precision:
-  // we drop bits strictly after the highest 1-bit of 'nanosPerFrame',
-  // and use those dropped bits to store information about the source.
-  //
-  // 0000000000000000000000011100101 = nanosPerFrame
-  //                        |
-  //                        highest 1-bit of 'nanosPerFrame'
-  //                        |
-  // 1100010101011100100010010101011 = MIDI timestamp A
-  //                         vvvvvvv : these bits are dropped, but taken into account for rounding.
-  // 1100010101011100100010010000000 = MIDI timestamp A, rounded (down)
-  //
-  // 1100010101011100100010011101011 = MIDI timestamp B
-  //                         vvvvvvv : these bits are dropped, but taken into account for rounding.
-  // 1100010101011100100010100000000 = MIDI timestamp B, rounded (up)
-  //
-  struct MIDITimestampAndSource {
-
-    static constexpr uint64_t nanosPerFrame = static_cast<uint64_t>(0.5f + nanos_per_frame<float>(SAMPLE_RATE));
-    static constexpr uint64_t highestBitNanosPerFrame = relevantBits(nanosPerFrame);
-    static constexpr uint64_t nSourceKeyBits = highestBitNanosPerFrame - 1;
-    static constexpr uint64_t nTimingBits = 64 - nSourceKeyBits;
-    using SplitT = Split<uint64_t, nTimingBits, nSourceKeyBits>;
-    static constexpr uint64_t nSources = 1 + SplitT::maxLow;
-    static_assert(nSources == pow2(nSourceKeyBits));
-
-    static constexpr uint64_t getNanosTimeGranularity() {
-      return 1 << nSourceKeyBits;
-    }
-
-    MIDITimestampAndSource():split(0,0) {}
-
-    MIDITimestampAndSource(uint64_t t, uint64_t sourceKey) : split(approximate(t),sourceKey) {
-    }
-
+  MIDITimestampAndSource() : MIDITimestampAndSource(0,0) {}
+  
     uint64_t getNanosTime() const {
-      return split.getHighWithZeros();
+      return time;
     }
     uint64_t getSourceKey() const {
-      return split.getLow();
+      return key;
     }
 
 private:
-    SplitT split;
-
-    static constexpr uint64_t approximate(uint64_t t) {
-      // round up or down, depending on the first ignored bit value.
-      uint64_t firstIgnoredBit = t & (static_cast<uint64_t>(1) << (nSourceKeyBits - 1));
-      uint64_t floored = t >> nSourceKeyBits;
-      return (firstIgnoredBit == 0) ? floored : floored + 1;
-    }
+    uint64_t time, key;
   };
-#endif
 
     template<
     int nOuts,
@@ -92,7 +50,6 @@ private:
                                             , const uint64_t // the time of the start of the buffer that will be computed.
                                             )>;
 
-#ifndef CUSTOM_SAMPLE_RATE
       /*
        * The function is executed once, and then removed from the queue.
        */
@@ -103,7 +60,6 @@ private:
                                                 , MIDITimestampAndSource
                                                 , const uint64_t // the time of the start of the buffer that will be computed.
                                                 )>;
-#endif
 
       /*
        * returns false when the lambda can be removed
@@ -126,9 +82,7 @@ private:
       // so we use a multiplicative factor of 4:
       , computes(4*nChannelsMax)
       , oneShots(4*nChannelsMax)
-#ifndef CUSTOM_SAMPLE_RATE
       , oneShotsMIDI(4*nChannelsMax)
-#endif
       {
         Assert(nChannelsMax >= 0);
         Assert(nChannelsMax <= std::numeric_limits<uint8_t>::max()); // else need to update AUDIO_CHANNEL_NONE
@@ -160,7 +114,6 @@ private:
         }
       }
 
-#ifndef CUSTOM_SAMPLE_RATE
       // this method should not be called from the real-time thread
       // because it yields() and retries.
       template<typename F>
@@ -179,7 +132,6 @@ private:
           f(*this, m, 0);
         }
       }
-#endif
 
         template<typename F>
         bool registerCompute(F f) {
@@ -419,14 +371,12 @@ private:
         void run_computes(int const nFrames, uint64_t const tNanos) {
           int nRemoved(0);
 
-#ifndef CUSTOM_SAMPLE_RATE
           nRemoved += oneShotsMIDI.dequeueAll([this, tNanos](auto & p) {
             if (p.second.heapAllocatedMemory()) {
               throw std::runtime_error("no allocation is allowed in functors");
             }
             p.second(*this, p.first, tNanos);
           });
-#endif
 
           nRemoved += oneShots.dequeueAll([this, tNanos](auto & f) {
             if (f.heapAllocatedMemory()) {
@@ -468,9 +418,7 @@ private:
         std::vector<Channel> channels;
         std::vector<uint8_t> autoclosing_ids;
 
-#ifndef CUSTOM_SAMPLE_RATE
         lockfree::scmp::fifo<std::pair<MIDITimestampAndSource,OneShotMidiFunc>> oneShotsMIDI;
-#endif
         lockfree::scmp::fifo<OneShotFunc> oneShots;
 
         // computes could be owned by the channels but it is maybe cache-wise more efficient
@@ -487,9 +435,7 @@ private:
       
       std::atomic_int failed_compute_insertion = 0;
       std::atomic_int retried_oneshot_insertion = 0;
-#ifndef CUSTOM_SAMPLE_RATE
       std::atomic_int retried_midioneshot_insertion = 0;
-#endif
 
         [[nodiscard]] bool playNolock( uint8_t channel_id, StackVector<Request> && v) {
             bool res = true;
