@@ -1,8 +1,7 @@
 
 /* Backlog:
 
- - merge enqueueMIDIOneShot with the standard one
- 
+ - send MIDI timestamps:
  - since we don't have timestamps yet,
  . if the stride is smaller than audio output buffers, the temporal coherency will be broken.
      (because we will have at the same time in the one shot queue actions for multiple analyses)

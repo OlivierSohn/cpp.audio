@@ -22,7 +22,7 @@ namespace imajuscule::audio {
       plus a per-client global offset.
   */
   std::unordered_map<uint64_t, std::optional<uint64_t>> & midiDelays() {
-    static std::unordered_map<uint64_t, std::optional<uint64_t>> m;
+    static std::unordered_map<uint64_t, std::optional<uint64_t>> m(100);
     return m;
   }
 

@@ -214,6 +214,8 @@ public:
   
   template<typename ChannelsT>
   bool initialize(ChannelsT & chans) {
+    midiDelays(); // to allocate the memory for the container
+    
     for(auto & c : seconds(channels)) {
       // using WithLock::No : since we own these channels and they are not playing,
       // we don't need to take the audio lock.
@@ -382,12 +384,12 @@ public:
             setPhase<Sync, Phase>(c, channels);
           });
           
-          if(maybeMidiTimeAndSource) {
-            chans.enqueueMIDIOneShot(get_value(maybeMidiTimeAndSource)
-                                     , [&c, sample_rate](Chans & chans, auto midiTimingAndSrc, uint64_t curTimeNanos){
-              
-              auto srcKey = midiTimingAndSrc.getSourceKey();
-              uint64_t midiTimeNanos = midiTimingAndSrc.getNanosTime();
+          chans.enqueueOneShot([&c,
+                                sample_rate,
+                                maybeMidiTimeAndSource](Chans & chans, uint64_t curTimeNanos){
+            if(maybeMidiTimeAndSource) {
+              auto srcKey = maybeMidiTimeAndSource->getSourceKey();
+              uint64_t midiTimeNanos = maybeMidiTimeAndSource->getNanosTime();
               
               /*
                * We introduce an artificial MIDI delay to avoid jitter.
@@ -424,13 +426,11 @@ public:
                                                                          sample_rate));
                 c.midiDelay = {{delayNanos, srcKey}};
               }
-            });
-          } else {
-            chans.enqueueOneShot([&c](Chans & chans, uint64_t tNanos){
+            } else {
               c.elem.editEnvelope().onKeyPressed(0);
               c.midiDelay = {};
-            });
-          }
+            }
+          });
         }
       }
         break;
@@ -444,67 +444,42 @@ public:
           return onEventResult::OK;
         }
         MIDI_LG(INFO, "off %f", e.ref_frequency.getFrequency());
-        if(maybeMidiTimeAndSource) {
-          typename Out::LockFromNRT L(out.get_lock());
-          chans.enqueueMIDIOneShot(get_value(maybeMidiTimeAndSource)
-                                   , [this,
-                                      noteid = e.noteid,
-                                      sample_rate](auto &, auto midiTimingAndSrc, uint64_t curTimeNanos){
-            for(auto &i : firsts(channels)) {
-              if (!i || *i != noteid) {
-                continue;
-              }
-              auto & c = channels.corresponding(i);
+        typename Out::LockFromNRT L(out.get_lock());
+        chans.enqueueOneShot([this,
+                              noteid = e.noteid,
+                              sample_rate,
+                              maybeMidiTimeAndSource](auto &, uint64_t curTimeNanos){
+          for(auto &i : firsts(channels)) {
+            if (!i || *i != noteid) {
+              continue;
+            }
+            auto & c = channels.corresponding(i);
+            
+            if(maybeMidiTimeAndSource) {
+              Assert(c.midiDelay);
               
-              if(!c.midiDelay) {
-                // the note-on had no MIDI timestamp, but this note-off has one
-                // so it's not what we are looking for.
-                continue;
-              }
+              auto d = *c.midiDelay;
               
-              auto d = get_value(c.midiDelay);
-              if(d.getSourceKey() != midiTimingAndSrc.getSourceKey()) {
-                // not the same MIDI source.
-                continue;
-              }
+              Assert(d.getSourceKey() == maybeMidiTimeAndSource->getSourceKey());
               
-              uint64_t targetNanos = midiTimingAndSrc.getNanosTime() + d.getNanosTime();
+              uint64_t targetNanos = maybeMidiTimeAndSource->getNanosTime() + d.getNanosTime();
               
               auto delay = (targetNanos < curTimeNanos) ? 0 : nanoseconds_to_frames(targetNanos-curTimeNanos,
                                                                                     sample_rate);
-              
-              if(!c.elem.getEnvelope().canHandleExplicitKeyReleaseNow(delay)) {
-                continue;
+              if(c.elem.getEnvelope().canHandleExplicitKeyReleaseNow(delay)) {
+                c.elem.editEnvelope().onKeyReleased(delay);
               }
-              c.elem.editEnvelope().onKeyReleased(delay);
-              return;
+            } else {
+              Assert(!c.midiDelay);
+              if(c.elem.getEnvelope().canHandleExplicitKeyReleaseNow(0)) {
+                c.elem.editEnvelope().onKeyReleased(0);
+              }
             }
-            // The corresponding noteOn was skipped,
-            // because too many notes were being played at the same time
-          });
-        } else {
-          typename Out::LockFromNRT L(out.get_lock());
-          chans.enqueueOneShot([this, noteid = e.noteid](auto &, uint64_t curTimeNanos){
-            for(auto &i : firsts(channels)) {
-              if (!i || *i != noteid) {
-                continue;
-              }
-              auto & c = channels.corresponding(i);
-              if(c.midiDelay) {
-                // the note-one had a corresponding MIDI timestamp, but this note-off has no MIDI timestamp
-                // so it's not what we are ooking for.
-                continue;
-              }
-              if(!c.elem.getEnvelope().canHandleExplicitKeyReleaseNow(0)) {
-                continue;
-              }
-              c.elem.editEnvelope().onKeyReleased(0);
-              return;
-            }
-            // The corresponding noteOn was skipped,
-            // because too many notes were being played at the same time
-          });
-        }
+            return;
+          }
+          // The corresponding noteOn was skipped,
+          // because too many notes were being played at the same time
+        });
       }
         break;
       case EventType::NoteChange:

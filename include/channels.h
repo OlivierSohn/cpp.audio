@@ -51,17 +51,6 @@ private:
                                             )>;
 
       /*
-       * The function is executed once, and then removed from the queue.
-       */
-       // I added this because I needed to capture 'MIDITimestampAndSource' and
-       // didn't have any space left in the std::function (and didn't want to dynamically allocate).
-      // TODO now that we use folly::Function, this might not be needed anymore (we can capture more without allocating)
-      using OneShotMidiFunc = folly::Function<void(Channels &
-                                                , MIDITimestampAndSource
-                                                , const uint64_t // the time of the start of the buffer that will be computed.
-                                                )>;
-
-      /*
        * returns false when the lambda can be removed
        */
       using ComputeFunc = folly::Function<bool(const int  // the number of frames to compute
@@ -82,7 +71,6 @@ private:
       // so we use a multiplicative factor of 4:
       , computes(4*nChannelsMax)
       , oneShots(4*nChannelsMax)
-      , oneShotsMIDI(4*nChannelsMax)
       {
         Assert(nChannelsMax >= 0);
         Assert(nChannelsMax <= std::numeric_limits<uint8_t>::max()); // else need to update AUDIO_CHANNEL_NONE
@@ -111,25 +99,6 @@ private:
         }
         else {
           f(*this, 0);
-        }
-      }
-
-      // this method should not be called from the real-time thread
-      // because it yields() and retries.
-      template<typename F>
-      void enqueueMIDIOneShot(MIDITimestampAndSource m, F f) {
-        if constexpr(shouldNRTThreadUseOneshotsQueue<policy>()) {
-          nRealtimeFuncs.fetch_add(1, std::memory_order_relaxed);
-          bool failed = false;
-          while(!oneShotsMIDI.tryEnqueue({m,f})) {
-            if (!failed) {
-              failed = true;
-              ++retried_midioneshot_insertion;
-            }
-          }
-        }
-        else {
-          f(*this, m, 0);
         }
       }
 
@@ -370,14 +339,7 @@ private:
         */
         void run_computes(int const nFrames, uint64_t const tNanos) {
           int nRemoved(0);
-
-          nRemoved += oneShotsMIDI.dequeueAll([this, tNanos](auto & p) {
-            if (p.second.heapAllocatedMemory()) {
-              throw std::runtime_error("no allocation is allowed in functors");
-            }
-            p.second(*this, p.first, tNanos);
-          });
-
+          
           nRemoved += oneShots.dequeueAll([this, tNanos](auto & f) {
             if (f.heapAllocatedMemory()) {
               throw std::runtime_error("no allocation is allowed in functors");
@@ -418,7 +380,6 @@ private:
         std::vector<Channel> channels;
         std::vector<uint8_t> autoclosing_ids;
 
-        lockfree::scmp::fifo<std::pair<MIDITimestampAndSource,OneShotMidiFunc>> oneShotsMIDI;
         lockfree::scmp::fifo<OneShotFunc> oneShots;
 
         // computes could be owned by the channels but it is maybe cache-wise more efficient
@@ -435,7 +396,6 @@ private:
       
       std::atomic_int failed_compute_insertion = 0;
       std::atomic_int retried_oneshot_insertion = 0;
-      std::atomic_int retried_midioneshot_insertion = 0;
 
         [[nodiscard]] bool playNolock( uint8_t channel_id, StackVector<Request> && v) {
             bool res = true;
