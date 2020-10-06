@@ -805,6 +805,9 @@ namespace imajuscule::audio::audioelement {
   protected:
     int32_t minChangeDuration = 0; // allowed to change when the counter is 0, to avoid discontinuities
     int32_t nextMinChangeDuration = 0; // copied to 'minChangeDuration' when 'ahdCounter' == 0
+    
+    // TODO do the same mechanism for all envelope params (AHDSR)
+    // to allow realtime envelop changes without audio cracks
 
     void updateMinChangeDuration() {
       minChangeDuration = nextMinChangeDuration;
@@ -846,22 +849,31 @@ namespace imajuscule::audio::audioelement {
     }
 
     void setAHDSR(AHDSR const & s, int const sample_rate) {
-      int32_t min_dt = normalizedMinDt(sample_rate);
+      int32_t const min_dt = normalizedMinDt(sample_rate);
 
       Assert(min_dt > 0);
 
-      bool hasDecay = s.sustain < 0.999999;
+      bool const hasDecay = s.sustain < 0.999999;
+
       SMinusOne =
       hasDecay ?
-      clamp_ret (s.sustain, 0.f, 1.f) - 1.f:
+      clamp_ret(s.sustain,
+                0.f,
+                1.f) - 1.f:
       0.f;
-      A = std::max( s.attack, min_dt );
-      H = std::max( s.hold, 0 );
+ 
+      A = std::max(s.attack,
+                   min_dt );
+      H = std::max(s.hold,
+                   0);
       D =
       hasDecay ?
-      std::max( s.decay, min_dt) :
+      std::max(s.decay,
+               min_dt) :
       0;
-      R = std::max( s.release, min_dt);
+      
+      R = std::max(s.release,
+                   min_dt);
       attackItp = s.attackItp;
       decayItp = s.decayItp;
       releaseItp = s.releaseItp;
@@ -907,8 +919,7 @@ namespace imajuscule::audio::audioelement {
             break;
         }
 
-        return itp::interpolate(
-                                getInterpolation()
+        return itp::interpolate(getInterpolation()
                                 , static_cast<T>(ahdCounter)
                                 , from
                                 , toMinusFrom
@@ -2368,13 +2379,20 @@ struct InterpolatedFreq {
   auto & getUnderlyingIter() { Assert(0); return *this; }
 
   // Once this has been called, 'setAngleIncrements' _must_ be called
-  //   (to specify the start frequency) before calling 'step'.
+  //   (to specify the start frequency) before calling 'step', unless 'setAngleIncrements'
+  //   has been called at least once after the last 'forgetPastSignals'
   // Else, the behaviour is undefined.
   void setup(T duration_in_samples_,
              itp::interpolation i) {
     Assert(duration_in_samples_ > 0);
     duration_in_samples = duration_in_samples_;
     interp.setInterpolation(i);
+
+    cur_sample = 0;
+    if (f_result) {
+      from = *f_result;
+      C = get_linear_proportionality_constant();
+    }
   }
 
   void setAngleIncrements(T increments) {

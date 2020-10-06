@@ -286,6 +286,7 @@ protected:
   bool doInit(float minLatency, int sample_rate) {
     LG(INFO, "AudioOut::doInit");
     LG(INFO, "AudioOut::doInit : initializing %s", Pa_GetVersionText());
+    Assert(!bInitialized);
     PaError err = Pa_Initialize();
     if(likely(err == paNoError)) {
       bInitialized = true;
@@ -428,9 +429,11 @@ struct AudioInput<AudioPlatform::PortAudio> {
 
   bool Init(RecordF f, int const sample_rate, double const minLatency) {
     LG(INFO, "AudioIn::do_wakeup : initializing %s", Pa_GetVersionText());
+    Assert(!bInitialized);
     auto err = Pa_Initialize();
     if(likely(err == paNoError))
     {
+      bInitialized = true;
       LG(INFO, "AudioIn::do_wakeup : done initializing %s", Pa_GetVersionText());
 
       LG(INFO,"AudioIn::do_wakeup : %d host apis", Pa_GetHostApiCount());
@@ -517,8 +520,7 @@ struct AudioInput<AudioPlatform::PortAudio> {
   }
 
   bool Teardown() {
-    if(stream)
-    {
+    if(stream) {
       PaError err = Pa_CloseStream( stream );
       stream = nullptr;
       if( unlikely(err != paNoError) ) {
@@ -528,17 +530,21 @@ struct AudioInput<AudioPlatform::PortAudio> {
       }
     }
 
-    PaError err = Pa_Terminate();
-    if(unlikely(err != paNoError))
-    {
-      LG(ERR, "AudioIn::do_sleep : PA_Terminate failed : %s", Pa_GetErrorText(err));
-      return false;
-    }
 #if IMJ_DEBUG_AUDIO_IN
     if (async_wav_writer) {
       async_wav_writer.reset();
     }
 #endif
+
+    if (bInitialized) {
+      bInitialized = false;
+      PaError err = Pa_Terminate();
+      if(unlikely(err != paNoError))
+      {
+        LG(ERR, "AudioIn::do_sleep : PA_Terminate failed : %s", Pa_GetErrorText(err));
+        return false;
+      }
+    }
     return true;
   }
 
@@ -548,6 +554,7 @@ struct AudioInput<AudioPlatform::PortAudio> {
 
 private:
   PaStream *stream = nullptr;
+  bool bInitialized = false;
   int sample_rate_ = 0;
   RecordF recordF;
 #if IMJ_DEBUG_AUDIO_IN
