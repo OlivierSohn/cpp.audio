@@ -23,9 +23,10 @@ void testDeduceNotes() {
   // this way we retain temporal precision in the high frequencies, and trade temporal precision
   // for frequency accuracy only for lower frequencies, where this is needed.
   
-  std::vector<double> half_window = half_gaussian_window<double>(4, 400);
-  //std::vector<double> half_window = half_gaussian_window<double>(8, 400);
-  //std::vector<double> half_window = half_gaussian_window<double>(8, 4000);
+  std::vector<double> half_window;
+  half_gaussian_window<double>(4, 400, half_window);
+  //half_gaussian_window<double>(8, 400, half_window);
+  //half_gaussian_window<double>(8, 4000, half_window);
   normalize_window(half_window);
   
   int const zero_padding_factor = 1;

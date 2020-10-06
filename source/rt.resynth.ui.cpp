@@ -327,13 +327,11 @@ private:
 };
 
 struct ReinitializingParameters {
-  // modifiying one of these params requires to reinitialize the resynth
+  // modifiying sample_rate requires to reinitialize the resynth
   int sample_rate = 88200;
-  float window_size_seconds = 0.1814f;
   
   void init(RtResynth & r) {
-    r.init(sample_rate,
-           window_size_seconds);
+    r.init(sample_rate);
   }
 };
 
@@ -350,15 +348,10 @@ struct MyApp : public wxApp {
       1.f
     },
     {
-      "FFT length",
+      "Analysis window size",
       "seconds",
-      [this](){
-        return reinit_params.window_size_seconds;
-      },
-      [this](float v){
-        reinit_params.window_size_seconds = v;
-        reinit_params.init(resynth);
-      },
+      [this](){ return resynth.getWindowSizeSeconds(); },
+      [this](float v){ resynth.setWindowSizeSeconds(v); },
       0.f,
       1.f
     },
