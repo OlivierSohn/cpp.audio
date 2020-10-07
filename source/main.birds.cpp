@@ -88,7 +88,7 @@ void birds(int const sample_rate) {
     noteid = mk_note_id();
     float volume = 0.1f;
     float frequency = 200.f;
-    auto const res  = synth.onEvent2(sample_rate,
+    auto const res  = synth.onEvent(sample_rate,
                                      mkNoteOn(*noteid,
                                               frequency,
                                               volume),
@@ -115,11 +115,11 @@ void birds(int const sample_rate) {
         break;
       }
 
-      auto res = synth.onEvent2(sample_rate,
-                                mkNoteOff(*noteid),
-                                channel_handler,
-                                channels,
-                                {});
+      auto res = synth.onEvent(sample_rate,
+                               mkNoteOff(*noteid),
+                               channel_handler,
+                               channels,
+                               {});
       std::cout << "XXX " << *noteid << " " << res << std::endl;
       noteid.reset();
       std::this_thread::sleep_for(std::chrono::milliseconds(100));
@@ -149,13 +149,13 @@ void birds(int const sample_rate) {
     float volume = 0.1f;
     float frequency = 200.f;
 
-    auto const res  = synth.onEvent2(sample_rate,
-                                     mkNoteOn(*noteid,
-                                              frequency,
-                                              volume),
-                                     channel_handler,
-                                     channels,
-                                     {});
+    auto const res  = synth.onEvent(sample_rate,
+                                    mkNoteOn(*noteid,
+                                             frequency,
+                                             volume),
+                                    channel_handler,
+                                    channels,
+                                    {});
     std::cout << *noteid << ": pitch " << frequency << " vol " << volume << " " << res << std::endl;
 
     /*switch(mode) {

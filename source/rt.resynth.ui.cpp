@@ -50,7 +50,7 @@ class MyFrame : public wxFrame
 public:
   MyFrame(std::vector<Param> const & non_realtime_params,
           std::vector<Param> const & realtime_params,
-          std::vector<PollParam> const & poll_params)
+          std::vector<std::vector<PollParam>> const & poll_params)
   : wxFrame(NULL,
             wxID_ANY,
             "Resynth",
@@ -61,7 +61,6 @@ public:
             wxFULL_REPAINT_ON_RESIZE)
   , uiTimer(this,
             static_cast<int>(TimerId::RefreshUI))
-  , poll_params(poll_params)
   {
     this->Connect( wxEVT_TIMER, wxTimerEventHandler( MyFrame::OnUITimer ), NULL, this );
     
@@ -118,20 +117,26 @@ public:
           global_sliders_sizer);
     }
     {
-      auto rt_sizer = new wxBoxSizer(wxHORIZONTAL);
+      auto rt_sizer = new wxBoxSizer(wxVERTICAL);
       wxColor label_color(100,
                           100,
                           250);
-      poll_ui.reserve(poll_params.size());
-      for (auto const & param: poll_params) {
-        auto [sizer, value] = createPollParamUI(param,
-                                                 label_color);
-        poll_ui.push_back(value);
-        Add(sizer,
+      
+      for (auto const & params: poll_params) {
+        auto rt2_sizer = new wxBoxSizer(wxHORIZONTAL);
+        for (auto const & param:params) {
+          auto [sizer, value] = createPollParamUI(param,
+                                                  label_color);
+          poll_params_ui.emplace_back(param, value);
+          Add(sizer,
+              rt2_sizer,
+              0,
+              wxALL | wxALIGN_CENTER);
+        }
+        Add(rt2_sizer,
             rt_sizer,
             0,
-            wxALL | wxALIGN_CENTER);
-
+            wxALL);
       }
       Add(rt_sizer,
           global_sliders_sizer);
@@ -149,8 +154,7 @@ public:
 
 private:
   wxTimer uiTimer;
-  std::vector<PollParam> const & poll_params;
-  std::vector<wxStaticText*> poll_ui;
+  std::vector<std::pair<PollParam, wxStaticText*>> poll_params_ui;
   
   void OnExit(wxCommandEvent& event)
   {
@@ -166,8 +170,8 @@ private:
     wxLogMessage("Hello world from wxWidgets!");
   }
   void OnUITimer(wxTimerEvent &) {
-    for (int i=0, sz=static_cast<int>(poll_params.size()); i<sz; ++i) {
-      std::optional<std::variant<int, float>> const value = poll_params[i].get();
+    for (auto & [param, ui] : poll_params_ui) {
+      std::optional<std::variant<int, float>> const value = param.get();
       std::string label;
       if (value) {
         label = std::visit([&label](auto && v) {
@@ -179,10 +183,24 @@ private:
           }
         }, *value);
       }
-      poll_ui[i]->SetLabel(label);
+      ui->SetLabel(label);
     }
   }
   
+  const wxColor dark_grey{
+    100,
+    100,
+    100
+  };
+  const wxColor value_unchanged_color{
+    220,
+    220,
+    220
+  };
+  const wxColor value_incorrect_color{
+    *wxRED
+  };
+
   wxBoxSizer * createFloatSlider(Param const & param,
                                  wxColor const & label_color) {
     std::string const & name = param.name;
@@ -208,15 +226,6 @@ private:
     
     int const current_int_value = std::min(max_int_value,
                                            float_value_to_int_value(current_float_value));
-    
-    wxColor dark_grey(100,
-                       100,
-                       100);
-    wxColor value_unchanged_color(220,
-                                  220,
-                                  220);
-    wxColor value_incorrect_color(*wxRED);
-
     auto slider = new wxSlider(this,
                                sliderId,
                                current_int_value,
@@ -245,7 +254,7 @@ private:
                                       wxDefaultSize);
         label->SetForegroundColour(label_color);
         
-        wxSize valueSz(45, -1);
+        wxSize valueSz(70, -1);
         
         auto value_label = new wxTextCtrl(this,
                                           wxWindow::NewControlId(),
@@ -254,7 +263,6 @@ private:
                                           valueSz,
                                           wxTE_PROCESS_ENTER);
         value_label->SetForegroundColour(value_unchanged_color);
-        value_label->SetSelection(0, 0); // unselect
         
         auto unit_label = new wxStaticText(this,
                                            wxWindow::NewControlId(),
@@ -281,10 +289,7 @@ private:
                       slider,
                       &param,
                       float_value_to_int_value,
-                      value_label,
-                      dark_grey,
-                      value_unchanged_color,
-                      value_incorrect_color
+                      value_label
                       ](wxCommandEvent & event){
           try {
             std::string const str = event.GetString().ToStdString();
@@ -315,11 +320,10 @@ private:
         });
         
         slider->Bind(wxEVT_SCROLL_THUMBTRACK,
-                     [&param,
+                     [this,
+                      &param,
                       value_label,
-                      position_to_float,
-                      dark_grey,
-                      value_unchanged_color
+                      position_to_float
                       ](wxScrollEvent & event){
           float const candidate = position_to_float(event.GetPosition());
           value_label->SetLabel(float_to_string(candidate));
@@ -329,10 +333,10 @@ private:
         
         // wxEVT_SCROLL_CHANGED is not sent on osx, so we use wxEVT_SCROLL_THUMBRELEASE instead
         slider->Bind(wxEVT_SCROLL_THUMBRELEASE,
-                     [&param,
+                     [this,
+                      &param,
                       value_label,
-                      position_to_float,
-                      value_unchanged_color
+                      position_to_float
                       ](wxScrollEvent & event){
           float const candidate = position_to_float(event.GetPosition());
           if (candidate != param.get()) {
@@ -408,7 +412,7 @@ private:
                                   "",
                                   wxDefaultPosition,
                                   valueSz);
-    
+    value->SetForegroundColour(dark_grey);
     Add(label,
         sizer,
         0,
@@ -488,79 +492,86 @@ struct MyApp : public wxApp {
   },
   poll_params{
     {
-      "Total Load",
-      [this]() -> PollParam::OptionalVariant {
-        std::optional<float> a = resynth.getDurationProcess();
-        std::optional<float> b = resynth.getDurationStep();
-        std::optional<float> c = resynth.getDurationCopy();
-        if (a && b && c) {
-          float const secs = *a + *b + *c;
-          float analysis_stride_secs = resynth.getEffectiveWindowCenterStrideSeconds(reinit_params.sample_rate);
-          if (analysis_stride_secs) {
-            return secs / analysis_stride_secs;
+      {
+        "Total Load",
+        [this]() -> PollParam::OptionalVariant {
+          std::optional<float> a = resynth.getDurationProcess();
+          std::optional<float> b = resynth.getDurationStep();
+          std::optional<float> c = resynth.getDurationCopy();
+          if (a && b && c) {
+            float const secs = *a + *b + *c;
+            float analysis_stride_secs = resynth.getEffectiveWindowCenterStrideSeconds(reinit_params.sample_rate);
+            if (analysis_stride_secs) {
+              return secs / analysis_stride_secs;
+            }
           }
+          return {};
         }
-        return {};
+      },
+      {
+        "Process Load",
+        [this]() -> PollParam::OptionalVariant {
+          if (std::optional<float> secs = resynth.getDurationProcess()) {
+            float analysis_stride_secs = resynth.getEffectiveWindowCenterStrideSeconds(reinit_params.sample_rate);
+            if (analysis_stride_secs) {
+              return *secs / analysis_stride_secs;
+            }
+          }
+          return {};
+        }
+      },
+      {
+        "Step Load",
+        [this]() -> PollParam::OptionalVariant {
+          if (std::optional<float> secs = resynth.getDurationStep()) {
+            float analysis_stride_secs = resynth.getEffectiveWindowCenterStrideSeconds(reinit_params.sample_rate);
+            if (analysis_stride_secs) {
+              return *secs / analysis_stride_secs;
+            }
+          }
+          return {};
+        }
+      },
+      {
+        "Copy Load",
+        [this]() -> PollParam::OptionalVariant {
+          if (std::optional<float> secs = resynth.getDurationCopy()) {
+            float analysis_stride_secs = resynth.getEffectiveWindowCenterStrideSeconds(reinit_params.sample_rate);
+            if (analysis_stride_secs) {
+              return *secs / analysis_stride_secs;
+            }
+          }
+          return {};
+        }
       }
     },
     {
-      "Process Load",
-      [this]() -> PollParam::OptionalVariant {
-        if (std::optional<float> secs = resynth.getDurationProcess()) {
-          float analysis_stride_secs = resynth.getEffectiveWindowCenterStrideSeconds(reinit_params.sample_rate);
-          if (analysis_stride_secs) {
-            return *secs / analysis_stride_secs;
-          }
-        }
-        return {};
+      {
+        "Audio input queue fill ratio",
+        [this](){ return resynth.getAudioInputQueueFillRatio(); }
+      },
+      {
+        "Audio input frames dropped",
+        [this](){ return resynth.countDroppedInputFrames(); }
       }
     },
     {
-      "Step Load",
-      [this]() -> PollParam::OptionalVariant {
-        if (std::optional<float> secs = resynth.getDurationStep()) {
-          float analysis_stride_secs = resynth.getEffectiveWindowCenterStrideSeconds(reinit_params.sample_rate);
-          if (analysis_stride_secs) {
-            return *secs / analysis_stride_secs;
-          }
-        }
-        return {};
-      }
-    },
-    {
-      "Copy Load",
-      [this]() -> PollParam::OptionalVariant {
-        if (std::optional<float> secs = resynth.getDurationCopy()) {
-          float analysis_stride_secs = resynth.getEffectiveWindowCenterStrideSeconds(reinit_params.sample_rate);
-          if (analysis_stride_secs) {
-            return *secs / analysis_stride_secs;
-          }
-        }
-        return {};
-      }
-    },
-    {
-      "Audio input queue fill ratio",
-      [this](){ return resynth.getAudioInputQueueFillRatio(); }
-    },
-    {
-      "Audio input frames dropped",
-      [this](){ return resynth.countDroppedInputFrames(); }
-    },
-    {
-      "Notes dropped\n"
-      "(increase 'Pitch interval diameter'\n"
-      "to avoid them)",
-      [this](){ return resynth.countDroppedNoteOns(); }
-    },
-    {
-      "Failed compute insertions",
-      [this](){ return resynth.countFailedComputeInsertions(); }
-    },
-    {
-      "Retried oneshot insertions",
-      [this](){ return resynth.countRetriedOneshotInsertions(); }
-    },
+      {
+        "Notes dropped\n"
+        "(increase 'Pitch interval diameter'\n"
+        "to avoid them)",
+        [this](){ return resynth.countDroppedNoteOns(); }
+      },
+      {
+        "Failed compute insertions",
+        [this](){ return resynth.countFailedComputeInsertions(); }
+      },
+      {
+        "Retried oneshot insertions",
+        [this](){ return resynth.countRetriedOneshotInsertions(); }
+      },
+    }
+    
   }
   {}
 
@@ -578,7 +589,7 @@ private:
   
   ReinitializingParameters reinit_params;
   std::vector<Param> reinitializing_params, realtime_params;
-  std::vector<PollParam> poll_params;
+  std::vector<std::vector<PollParam>> poll_params;
 };
 
 

@@ -856,7 +856,7 @@ namespace imajuscule::audio::voice {
     float octaveToFreq() const {
       constexpr auto lowest_f = 10.f;
       auto m = denorm<N>();
-      return lowest_f * pow(2.f, m);
+      return lowest_f * std::pow(2.f, m);
     }
 
     template<ImplParams N1, ImplParams N2>
@@ -1120,7 +1120,7 @@ namespace imajuscule::audio::voice {
     using Base::interleaved;
     using Base::get_xfade_length;
 
-    using Parent::onEvent2;
+    using Parent::onEvent;
     using Parent::channels;
 
     using MonoNoteChannel = typename Parent::MonoNoteChannel;
@@ -1131,12 +1131,6 @@ namespace imajuscule::audio::voice {
 
     template <class... Args>
     Impl_(Args&&... args) : Parent (std::forward<Args>(args)...) {}
-
-    template<typename Out, typename Chans>
-    onEventResult onEvent(int const sample_rate, Event const & e, Out & out, Chans & chans)
-    {
-      return onEvent2(sample_rate, e, out, chans, {});
-    }
 
     template<typename Out, typename Chans>
     void doProcessing (int sample_rate, ProcessData& data, Out & out, Chans & chans)
@@ -1170,7 +1164,7 @@ namespace imajuscule::audio::voice {
 
         while(nextEventPosition == currentFrame) {
           Event e = it.dereference();
-          onEvent(sample_rate, e, out, chans);
+          onEvent(sample_rate, e, out, chans, {});
           ++it;
           nextEventPosition = getNextEventPosition(it, end);
         }

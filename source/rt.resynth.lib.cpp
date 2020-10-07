@@ -1,13 +1,17 @@
 
 /* Backlog:
+  
+ - visualize all notes, to be able to tell how many we have at any given time,
+ even low volumes ones (use colors to distinguish them)
+ - verify notechanges, noteon, noteoff take midi time into account
+ (use very long output buffers)
 
- - send MIDI timestamps:
- - since we don't have timestamps yet,
- . if the stride is smaller than audio output buffers, the temporal coherency will be broken.
-     (because we will have at the same time in the one shot queue actions for multiple analyses)
- . if the stride is smaller than audio input buffers size, the temporal coherency will be broken
-     (because we don't wait between successive analyses)
-  using midi timestamps could help fixing this
+ - use log scales for ui params
+ analysis period,
+ analysis window size,
+ min volume,
+ pitch interval,
+ pitch tracking
  
  - control AHDSR parameters in real time
  
@@ -408,6 +412,46 @@ void track_pitches(double const max_track_pitches,
   }
 }
 
+// we have a limited amount of channels in the synthethizer, so we prioritize
+// detected pithces by their respective perceived loudness.
+template<typename F>
+void
+order_pitches_by_perceived_loudness(F perceived_loudness,
+                                    // invariant : ordered by pitch
+                                    std::vector<PitchVolume> const & new_pitches,
+                                    std::vector<float> & autotuned_pitches_perceived_loudness,
+                                    std::vector<int> & autotuned_pitches_idx_sorted_by_perceived_loudness) {
+  autotuned_pitches_perceived_loudness.clear();
+  autotuned_pitches_perceived_loudness.reserve(new_pitches.size());
+
+#ifndef NDEBUG
+  double pitch = std::numeric_limits<double>::lowest();
+#endif
+
+  for (auto const & pv : new_pitches) {
+#ifndef NDEBUG
+    Assert(pitch < pv.midipitch); // verify invariant
+    pitch = pv.midipitch;
+#endif
+    autotuned_pitches_perceived_loudness.push_back(perceived_loudness(pv));
+  }
+
+  autotuned_pitches_idx_sorted_by_perceived_loudness.clear();
+  autotuned_pitches_idx_sorted_by_perceived_loudness.resize(new_pitches.size());
+  std::iota(autotuned_pitches_idx_sorted_by_perceived_loudness.begin(),
+            autotuned_pitches_idx_sorted_by_perceived_loudness.end(),
+            0);
+  std::sort(autotuned_pitches_idx_sorted_by_perceived_loudness.begin(),
+            autotuned_pitches_idx_sorted_by_perceived_loudness.end(),
+            [&autotuned_pitches_perceived_loudness] (int a, int b){
+    return
+    autotuned_pitches_perceived_loudness[a] <
+    autotuned_pitches_perceived_loudness[b];
+  }
+            );
+}
+
+
 // This may change the order of elements
 void remove_dead_notes(std::vector<bool> const & continue_playing,
                        std::vector<PlayedNote> & played_pitches) {
@@ -531,9 +575,16 @@ private:
   static constexpr auto n_mnc = Synth::n_channels;
   using mnc_buffer = typename Synth::MonoNoteChannel::buffer_t;
   
+  struct InputSample {
+    float value;
+  };
+  struct CountDroppedFrames {
+    int count = 0;
+  };
+  using QueueItem = std::variant<InputSample,CountDroppedFrames>;
   using Queue = atomic_queue::AtomicQueueB2<
-  /* T = */ SAMPLE,
-  /* A = */ std::allocator<SAMPLE>,
+  /* T = */ QueueItem,
+  /* A = */ std::allocator<QueueItem>,
   /* MAXIMIZE_THROUGHPUT */ true,
   /* TOTAL_ORDER = */ true,
   /* SPSC = */ true
@@ -554,6 +605,8 @@ public:
     pitch_intervals.reserve(200);
     reduced_pitches.reserve(200);
     autotuned_pitches.reserve(200);
+    autotuned_pitches_perceived_loudness.reserve(200);
+    autotuned_pitches_idx_sorted_by_perceived_loudness.reserve(200);
     played_pitches.reserve(200);
     pitch_changes.reserve(200);
     continue_playing.reserve(200);
@@ -588,13 +641,25 @@ public:
     
     input_queue = std::make_unique<Queue>(sample_rate); // one second of input can fit in the queue
     
-    if (!input.Init([this](const SAMPLE * buf, int nFrames){
+    if (!input.Init([this](const float * buf, int nFrames){
       if (!thread_resynth_active) {
         return;
       }
+      if (notify_dropped_frames.count) {
+        if (unlikely(!input_queue->try_push(notify_dropped_frames))) {
+          int const nLocalDroppedFrames = nFrames;
+          notify_dropped_frames.count += nLocalDroppedFrames;
+          count_dropped_input_frames += nLocalDroppedFrames;
+          return;
+        }
+        notify_dropped_frames.count = 0;
+      }
       for (int i=0; i<nFrames; ++i) {
-        if (unlikely(!input_queue->try_push(buf[i]))) {
-          ++ count_dropped_input_frames;
+        if (unlikely(!input_queue->try_push(InputSample{buf[i]}))) {
+          int const nLocalDroppedFrames = nFrames-i;
+          notify_dropped_frames.count += nLocalDroppedFrames;
+          count_dropped_input_frames += nLocalDroppedFrames;
+          return;
         }
       }
     },
@@ -606,21 +671,23 @@ public:
     thread_resynth_active = true;
     thread_resynth = std::make_unique<std::thread>([this,
                                                     sample_rate](){
-      auto process = [](int const sample_rate,
-                        SampleVectorConstIterator from,
-                        SampleVectorConstIterator to,
-                        std::vector<double> const & half_window,
-                        FrequenciesSqMag<double> & frequencies_sqmag,
-                        std::vector<FreqMag<double>> & freqmags) {
+      auto process = [this](int const sample_rate,
+                            SampleVectorConstIterator from,
+                            SampleVectorConstIterator to,
+                            std::vector<double> const & half_window,
+                            FrequenciesSqMag<double> & frequencies_sqmag,
+                            std::vector<FreqMag<double>> & freqmags) {
         int constexpr zero_padding_factor = 1;
         int constexpr windowed_signal_stride = 1;
         
-        findFrequenciesSqMag(from,
-                             to,
-                             windowed_signal_stride,
-                             half_window,
-                             zero_padding_factor,
-                             frequencies_sqmag);
+        findFrequenciesSqMag<fft::Fastest>(from,
+                                           to,
+                                           windowed_signal_stride,
+                                           half_window,
+                                           zero_padding_factor,
+                                           work_vector_signal,
+                                           work_vector_freqs,
+                                           frequencies_sqmag);
         
         extractLocalMaxFreqsMags(sample_rate / windowed_signal_stride,
                                  frequencies_sqmag,
@@ -636,7 +703,7 @@ public:
       auto step = [sample_rate,
                    &stride_for_synth_config,
                    this
-                   ](std::vector<FreqMag<double>> const & fs, int const future_stride) {
+                   ](std::vector<FreqMag<double>> const & fs, MIDITimestampAndSource const & miditime, int const future_stride) {
         ++n;
         
         frequencies_to_pitches(midi,
@@ -662,6 +729,19 @@ public:
                       played_pitches,
                       pitch_changes,
                       continue_playing);
+        
+        // 60 dB SPL is a normal conversation, see https://en.wikipedia.org/wiki/Sound_pressure#Sound_pressure_level
+        int constexpr loudness_idx = loudness::phons_to_index(60.f);
+        order_pitches_by_perceived_loudness([loudness_idx](PitchVolume const & pv) {
+          return
+          pv.volume *
+          loudness::equal_loudness_volume_db(loudness::pitches,
+                                             pv.midipitch,
+                                             loudness_idx);
+        },
+                                            autotuned_pitches,
+                                            autotuned_pitches_perceived_loudness,
+                                            autotuned_pitches_idx_sorted_by_perceived_loudness);
         
         // reconfigure synth if needed
         
@@ -705,11 +785,11 @@ public:
           for (auto play : continue_playing) {
             ++idx;
             if (!play) {
-              auto res = synth.onEvent2(sample_rate,
-                                        mkNoteOff(played_pitches[idx].noteid),
-                                        channel_handler,
-                                        *channels,
-                                        {});
+              auto res = synth.onEvent(sample_rate,
+                                       mkNoteOff(played_pitches[idx].noteid),
+                                       channel_handler,
+                                       *channels,
+                                       miditime);
               if (logs) std::cout << n << ": XXX pitch " << played_pitches[idx].midi_pitch << " " << res << std::endl;
               if (res != onEventResult::OK) {
                 throw std::logic_error("dropped note off");
@@ -735,13 +815,13 @@ public:
             if (pitch_change) {
               PlayedNote & played = played_pitches[*pitch_change];
               
-              auto res = synth.onEvent2(sample_rate,
-                                        mkNoteChange(played.noteid,
-                                                     volume,
-                                                     new_freq),
-                                        channel_handler,
-                                        *channels,
-                                        {});
+              auto res = synth.onEvent(sample_rate,
+                                       mkNoteChange(played.noteid,
+                                                    volume,
+                                                    new_freq),
+                                       channel_handler,
+                                       *channels,
+                                       miditime);
               if (res != onEventResult::OK) {
                 throw std::logic_error("dropped note change");
               }
@@ -753,13 +833,13 @@ public:
               static int noteid = 0;
               ++noteid;
               NoteId const note_id{noteid};
-              auto const res = synth.onEvent2(sample_rate,
-                                              mkNoteOn(note_id,
-                                                       new_freq,
-                                                       volume),
-                                              channel_handler,
-                                              *channels,
-                                              {});
+              auto const res = synth.onEvent(sample_rate,
+                                             mkNoteOn(note_id,
+                                                      new_freq,
+                                                      volume),
+                                             channel_handler,
+                                             *channels,
+                                             miditime);
               if (logs) std::cout << n << ": pitch " << new_pitch << " vol " << volume << " " << res << std::endl;
               if (res == onEventResult::OK) {
                 played_pitches.push_back({
@@ -815,20 +895,35 @@ public:
       
       // force reinitialization
       auto [input_delay_frames, window_size] = init_data(true);
+      
+      constexpr uint64_t midi_src_id = 0;
+      
+      double const nanos_pre_frame = 1. / static_cast<double>(sample_rate);
+      uint64_t count_queued_frames = 0;
+      uint64_t local_count_dropped_input_frames = 0;
 
       while (thread_resynth_active) {
-        SAMPLE sample;
-        while (input_queue->try_pop(sample)) {
+        QueueItem var;
+        while (input_queue->try_pop(var)) {
+          if (std::holds_alternative<CountDroppedFrames>(var)) {
+            local_count_dropped_input_frames += std::get<CountDroppedFrames>(var).count;
+            if (!thread_resynth_active) {
+              return;
+            }
+            continue;
+          }
+          Assert(std::holds_alternative<InputSample>(var));
+          ++count_queued_frames;
           if (input_delay_frames > 1) {
-            delayed_input.feed(sample);
+            delayed_input.feed(std::get<InputSample>(var).value);
             samples[end] = *delayed_input.cycleEnd();
           } else {
-            samples[end] = sample;
+            samples[end] = std::get<InputSample>(var).value;
           }
           ++ end;
           if (end == window_size) {
             if (!thread_resynth_active) {
-              break;
+              return;
             }
 
             std::optional<float>
@@ -858,6 +953,8 @@ public:
               {
                 profiling::ThreadCPUTimer timer(dt);
                 step(freqmags,
+                     MIDITimestampAndSource((count_queued_frames + local_count_dropped_input_frames) * nanos_pre_frame,
+                                            midi_src_id),
                      window_center_stride); // we pass the future stride, on purpose
               }
               if (dt) duration_step_seconds = dt->count() / 1000000.;
@@ -882,7 +979,7 @@ public:
                          duration_step_seconds,
                          duration_copy_seconds);
             
-            storeAudioInputQueueFillRatio(input_queue->unsafe_num_elements() / static_cast<float>(input_queue->size()));
+            storeAudioInputQueueFillRatio(input_queue->was_size() / static_cast<float>(input_queue->capacity()));
           }
         }
         std::this_thread::yield(); // should we sleep?
@@ -1039,10 +1136,11 @@ private:
   std::atomic_bool thread_resynth_active{false};
   std::unique_ptr<std::thread> thread_resynth;
   std::unique_ptr<Queue> input_queue;
+  CountDroppedFrames notify_dropped_frames;
   std::atomic_int count_dropped_input_frames = 0;
   static_assert(decltype(count_dropped_input_frames)::is_always_lock_free);
 
-  cyclic<SAMPLE> delayed_input;
+  cyclic<float> delayed_input;
   std::atomic<float> input_delay_seconds = 1.f;
   std::atomic<float> window_size_seconds = 0.1814f;
   std::atomic<float> window_center_stride_seconds = 0.09f;
@@ -1058,14 +1156,19 @@ private:
   using SampleVectorConstIterator = SampleVector::const_iterator;
   SampleVector samples;
   std::vector<double> half_window;
+  a64::vector<double> work_vector_signal;
+  typename fft::RealFBins_<fft::Fastest, double, a64::Alloc>::type work_vector_freqs;
+
   FrequenciesSqMag<double> frequencies_sqmag;
   std::vector<FreqMag<double>> freqmags;
   std::vector<PitchVolume> freqmags_data;
   std::vector<PitchInterval> pitch_intervals;
   std::vector<PitchVolume> reduced_pitches, autotuned_pitches;
+  std::vector<float> autotuned_pitches_perceived_loudness;
+  std::vector<int> autotuned_pitches_idx_sorted_by_perceived_loudness;
   std::vector<PlayedNote> played_pitches;
   std::vector<std::optional<int>> pitch_changes;
-  std::vector<bool> continue_playing;
+  std::vector<bool> continue_playing; // indexed like 'played_pitches'
   std::vector<PlayedNote> played_notes;
   
   std::atomic<float> dt_process_seconds = -1.f;

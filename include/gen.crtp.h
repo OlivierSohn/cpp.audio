@@ -135,7 +135,6 @@ void setPhase(MonoNoteChannel & c, CS & cs)
         // same channel, or different frequency.
         continue;
       }
-      // We found a matching TunedPitch
       auto & otherChannel = cs.corresponding(p);
       Assert(&otherChannel != &c);
       // To prevent phase cancellation, the phase of the new note will be
@@ -279,11 +278,11 @@ public:
   }
   
   template<typename Out, typename Chans>
-  onEventResult onEvent2(int const sample_rate,
-                         Event const & e,
-                         Out & out,
-                         Chans & chans,
-                         std::optional<MIDITimestampAndSource> const & maybeMidiTimeAndSource)
+  onEventResult onEvent(int const sample_rate,
+                        Event const & e,
+                        Out & out,
+                        Chans & chans,
+                        std::optional<MIDITimestampAndSource> const & maybeMidiTimeAndSource)
   {
     using Request = typename Chans::Request;
     static_assert(Out::policy == outPolicy);

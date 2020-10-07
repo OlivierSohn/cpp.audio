@@ -1188,10 +1188,10 @@ struct LoudnessVolumeAdjusted : BaseVolumeAdjusted<ALGO> {
   {}
   
   void setAngleIncrements(T ai) {
-    this->setVolumeTargetInternal(loudness::equal_loudness_volume(angle_increment_to_freq<T>(ai, sample_rate_),
-                                                                  low_index_,
-                                                                  log_ratio_,
-                                                                  loudness_level));
+    this->setVolumeTargetInternal(loudness::equal_loudness_volume_from_freq(angle_increment_to_freq<T>(ai, sample_rate_),
+                                                                            low_index_,
+                                                                            log_ratio_,
+                                                                            loudness_level));
     this->setAngleIncrementsInternal(ai);
   }
   
@@ -1940,7 +1940,8 @@ struct BandAlgo_ : public Base {
   
   void step() {
     width.step();
-    T width_factor = pow(Tr::two(), width_range.getAt(std::abs(width.imag())));
+    T width_factor = std::pow(Tr::two(),
+                              width_range.getAt(std::abs(width.imag())));
     
     Assert(width_factor);
     auto inv_width_factor = Tr::one() / width_factor;

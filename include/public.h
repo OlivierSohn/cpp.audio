@@ -15,13 +15,24 @@
 #include "sound.defines.h"
 #include "audio_platforms.h"
 
-#include "loudness_filter_coefficients.h"
-#include "loudness.h"
+#include "midi.h"
+
 #include "sound.functions.h"
 #include "stereo.h"
 #include "sound.h"
+
+#include "loudness_filter_coefficients.h"
+#include "loudness.h"
 #include "loudness_filter.h"
+
 #include "audioelement.h"
+
+#include "noise.h"
+#include "sounds.h"
+
+#include "request.h"
+#include "note.h"
+
 
 #ifndef NO_OUTPUT
 # if TARGET_OS_IOS
@@ -33,16 +44,11 @@
 # endif
 #endif
 
-#include "midi.h"
-#include "noise.h"
-#include "sounds.h"
-#include "request.h"
 #include "channel.h"
 #include "out.h"
 #include "audio_context.h"
 #include "channels.h"
 #include "channels_aggregate.h"
-#include "note.h"
 #include "soundengine.h"
 #include "parse.music.h"
 #include "events.h"

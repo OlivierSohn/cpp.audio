@@ -163,4 +163,21 @@ private:
   IEventList * list;
 };
 
+struct MIDITimestampAndSource {
+  MIDITimestampAndSource(uint64_t t,
+                         uint64_t sourceKey)
+  : time(t)
+  , src_key(sourceKey)
+  {}
+
+  uint64_t getNanosTime() const {
+    return time;
+  }
+  uint64_t getSourceKey() const {
+    return src_key;
+  }
+  
+private:
+  uint64_t time, src_key;
+};
 } // namespace

@@ -64,7 +64,8 @@ onEventResult playOneThing(int const sample_rate,
                             midi.midi_pitch_to_freq(b.midiPitch),
                             1.0),
                    out,
-                   chans);
+                   chans,
+                   {});
 }
 
 template<typename Voice, typename OutputData, typename Chans>
@@ -76,6 +77,7 @@ onEventResult stopPlaying(int const sample_rate,
   return v.onEvent(sample_rate,
                    mkNoteOff(NoteId{midiPitch}),
                    out,
-                   chans);
+                   chans,
+                   {});
 }
 } // NS

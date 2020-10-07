@@ -1,26 +1,6 @@
 
 namespace imajuscule::audio {
 
-struct MIDITimestampAndSource {
-  MIDITimestampAndSource(uint64_t t,
-                         uint64_t sourceKey)
-  : time(t)
-  , key(sourceKey)
-  {}
-  
-  MIDITimestampAndSource() : MIDITimestampAndSource(0,0) {}
-  
-  uint64_t getNanosTime() const {
-    return time;
-  }
-  uint64_t getSourceKey() const {
-    return key;
-  }
-  
-private:
-  uint64_t time, key;
-};
-
 template<
 int nOuts,
 XfadePolicy XF,

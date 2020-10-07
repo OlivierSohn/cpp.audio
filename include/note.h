@@ -1,48 +1,6 @@
 
 namespace imajuscule::audio {
 
-struct Midi {
-  static constexpr double unity_tuning_stretch = 1.;
-  
-  // Midi A(69) according to http://subsynth.sourceforge.net/midinote2freq.html
-  static constexpr float freq_A = 440.f;
-  static constexpr double A_pitch = 69.;
-  
-  // TODO constexpr that, using  https://github.com/elbeno/constexpr/blob/master/src/include/cx_math.h
-  Midi(double const tuning_stretch = unity_tuning_stretch)
-  : half_tone_ratio_(std::pow(2., tuning_stretch/12.))
-  , tuning_stretch_(tuning_stretch)
-  {}
-  
-  double getHalfToneRatio() const {
-    return half_tone_ratio_;
-  }
-  
-  std::optional<double> frequency_to_midi_pitch(double const freq) const {
-    if (freq <= 0) {
-      return {};
-    }
-    return 69. + (12. / tuning_stretch_) * std::log2(freq/440.);
-  }
-  
-  double Ainterval_to_freq(double const interval_from_A) const {
-    return freq_A * std::pow(half_tone_ratio_, interval_from_A);
-  }
-
-  double midi_pitch_to_freq(double pitch) const {
-    return Ainterval_to_freq(pitch - A_pitch);
-  }
-  
-  double transpose_frequency(double const freq, int n) const {
-    return freq * std::pow(half_tone_ratio_, n);
-  }
-
-private:
-  double const half_tone_ratio_;
-  double const tuning_stretch_;
-};
-
-
     enum Note : unsigned char{
         NOTE_ERROR,
         Silence,

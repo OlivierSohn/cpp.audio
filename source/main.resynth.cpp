@@ -36,14 +36,16 @@ void testDeduceNotes() {
   std::vector<std::vector<double>> deinterlaced;
   read_wav_as_floats(reader, deinterlaced);
   
-  std::vector<DeducedNote<double>> notes = deduceNotes(deinterlaced.begin()->begin(),
-                                                       deinterlaced.begin()->end(),
-                                                       reader.getSampleRate(),
-                                                       windowed_signal_stride,
-                                                       half_window,
-                                                       window_center_stride,
-                                                       zero_padding_factor,
-                                                       0.05776226504);
+  a64::vector<double> v;
+  std::vector<DeducedNote<double>> notes = deduceNotesSlow(deinterlaced.begin()->begin(),
+                                                           deinterlaced.begin()->end(),
+                                                           reader.getSampleRate(),
+                                                           windowed_signal_stride,
+                                                           half_window,
+                                                           window_center_stride,
+                                                           zero_padding_factor,
+                                                           v,
+                                                           0.05776226504);
   
   // formula in http://support.ircam.fr/docs/AudioSculpt/3.0/co/Window%20Size.html
   // uses 5 as constant factor

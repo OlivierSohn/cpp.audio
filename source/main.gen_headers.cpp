@@ -6,7 +6,7 @@ namespace imajuscule {
         using namespace imajuscule;
         using namespace imajuscule::loudness;
 
-        auto vol = equal_loudness_volume(freq);
+        auto vol = equal_loudness_volume_from_freq(freq);
         auto normalized_f = freq / get_nyquist_frequency<typename VEC::value_type>();
         normalized_frequencies.push_back(normalized_f);
         volumes.push_back(vol);
