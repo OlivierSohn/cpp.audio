@@ -903,12 +903,12 @@ namespace imajuscule::audio::audioelement {
         if(!std::uniform_int_distribution<>{0,1}(mersenne<SEEDED::Yes>())) {
           // f1 is shifted up by d1
           freq1_robot = midi.transpose_frequency(freq1_robot, d1);
-          vol1 = pow(har_att, d1);
+          vol1 = std::pow(har_att, d1);
         }
         else {
           // f2 is shifted up by d2
           freq2_robot = midi.transpose_frequency(freq2_robot, d2);
-          vol2 = pow(har_att, d2);
+          vol2 = std::pow(har_att, d2);
         }
 
         auto n_frames = static_cast<float>(ms_to_frames(length, sample_rate));
