@@ -2,7 +2,7 @@
 
 namespace imajuscule {
     namespace audio {
-        int initAudioSession() {
+        int initAudioSession(double const minLatency) {
             
             if(AudioSessionInitialize(nullptr, nullptr, nullptr, nullptr) != noErr) {
                 return 1;
@@ -18,7 +18,8 @@ namespace imajuscule {
                 return 1;
             }
             
-            Float32 bufferSizeInSec = 0.005f;
+            Float32 bufferSizeInSec = std::max(minLatency,
+                                               0.005);
             if(AudioSessionSetProperty(kAudioSessionProperty_PreferredHardwareIOBufferDuration,
                                        sizeof(Float32), &bufferSizeInSec) != noErr) {
                 return 1;

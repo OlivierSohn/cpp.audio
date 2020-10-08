@@ -2,7 +2,7 @@
 
 namespace imajuscule::audio {
 
-        int initAudioSession();
+        int initAudioSession(double minLatency);
         extern OSStatus startAudioUnit(AudioUnit audioUnit);
         extern OSStatus stopProcessingAudio(AudioUnit audioUnit);
         int initAudioStreams(Features f, AudioUnit & audioUnit, void * cb_data,
@@ -100,7 +100,7 @@ namespace imajuscule::audio {
             bool doInit(float minLatency, int const sample_rate) {
                 LG(INFO, "AudioOut::doInit");
                 bInitialized = true;
-                if(0==initAudioSession())
+                if(0==initAudioSession(minLatency))
                 {
                     static imajuscule::audio::iOSOutputData<Chans> ios_odata;
                     Assert(!ios_odata.chans || (ios_odata.chans==&chans));
@@ -154,8 +154,8 @@ namespace imajuscule::audio {
 template<>
 struct AudioInput<AudioPlatform::AudioUnits> {
 
-  bool Init(RecordF f, int const sample_rate) {
-    if(0==audio::initAudioSession())
+  bool Init(RecordF f, int const sample_rate, double const minLatency) {
+    if(0==audio::initAudioSession(minLatency))
     {
       recordF = f;
       convertedSampleBuffer.resize(1024);
