@@ -155,6 +155,12 @@ void setPhase(MonoNoteChannel & c, CS & cs)
   }
 }
 
+struct NoopElementInitializer {
+  template<typename Element>
+  void operator()(Element const &) {
+  }
+};
+
 template<
 AudioOutPolicy outPolicy,
 int nOuts,
@@ -165,8 +171,8 @@ DefaultStartPhase Phase,
 bool handle_note_off,
 typename EventIterator,
 typename Base,
-int n_max_voices = 8
-
+int n_max_voices = 8,
+typename ElementInitializer = NoopElementInitializer
 >
 struct ImplCRTP : public Base {
   
@@ -192,14 +198,24 @@ struct ImplCRTP : public Base {
   
 protected:
   
+  // We use this datastructure because we generally iterate on the indexes,
+  // and once we find out match, we go to the corresponding channel. But instead we could simply use:
+  //std::array<std::optional<NoteId>, n_channels> index_to_noteid;
+  //std::array<MonoNoteChannel, n_channels> channels;
+
   LocalPairArray<std::optional<NoteId>, MonoNoteChannel, n_channels> channels;
   
 private:
+  std::optional<ElementInitializer> synchronous_element_initializer;
   std::atomic_int count_acquire_race_errors{0};
   static_assert(decltype(count_acquire_race_errors)::is_always_lock_free);
   
 public:
   
+  void setSynchronousElementInitializer(ElementInitializer const & i) {
+    synchronous_element_initializer = i;
+  }
+
   int getAndResetAcquireRaceErrors() {
     int res = count_acquire_race_errors;
     count_acquire_race_errors -= res;
@@ -271,9 +287,11 @@ public:
   }
   
   template <typename F>
-  void forEachElems(F f) {
-    for(auto & c : seconds(channels)) {
-      f(c.elem);
+  void forEachActiveElem(F f) {
+    for(auto &c : seconds(channels)) {
+      if (!c.elem.getEnvelope().isEnvelopeFinished()) {
+        f(c.elem);
+      }
     }
   }
   
@@ -310,7 +328,6 @@ public:
         }
         
         if(!channel) {
-          // note that we could sleep and retry or yield and retry.
           return onDroppedNote(e);
         }
         auto & c = *channel;
@@ -326,6 +343,10 @@ public:
         c.elem.algo.set_sample_rate(sample_rate);
         c.elem.algo.setVolumeTarget(e.noteOn.velocity);
         int const xfade_frames_length = static_cast<int>(0.5f + (get_xfade_length() * sample_rate));
+        
+        if (synchronous_element_initializer) {
+          (*synchronous_element_initializer)(c.elem);
+        }
         
         // setupAudioElement is allowed to be slow, allocate / deallocate memory, etc...
         // because it's not running in the audio realtime thread.
@@ -448,7 +469,7 @@ public:
                               noteid = e.noteid,
                               sample_rate,
                               maybeMidiTimeAndSource](auto &, uint64_t curTimeNanos){
-          for(auto &i : firsts(channels)) {
+          for(auto &i : firsts(channels)) { // TODO this is linear complexity in number of channels, can we do constant complexity with a unordered_map? Is it better? (we have not so many channels so we need to benchamark...)
             if (!i || *i != noteid) {
               continue;
             }

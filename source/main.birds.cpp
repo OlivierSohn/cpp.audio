@@ -67,11 +67,6 @@ void birds(int const sample_rate) {
   auto & v = synth;
   v.initializeSlow(); // does something only the 1st time
 
-  synth.forEachElems([](auto & e) {
-    // no need to setup anything
-  });
-
-
   std::this_thread::sleep_for(std::chrono::milliseconds(1000));
 
   std::optional<NoteId> noteid;

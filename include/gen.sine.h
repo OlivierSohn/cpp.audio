@@ -32,7 +32,8 @@ namespace imajuscule::audio::sine {
     DefaultStartPhase Phase,
     bool close_channel_on_note_off,
     typename EventIterator,
-    int nVoices = 32 // using 32 voices to support long releases
+    int nVoices = 32, // using 32 voices to support long releases
+    typename Initializer = NoopElementInitializer
   >
   using Synth = ImplCRTP <
     outPolicy,
@@ -44,7 +45,8 @@ namespace imajuscule::audio::sine {
     close_channel_on_note_off,
     EventIterator,
     SynthImpl,
-    nVoices
+    nVoices,
+    Initializer
   >;
 
 } // NS imajuscule::audio::sine
