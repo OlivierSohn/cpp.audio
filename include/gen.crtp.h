@@ -294,6 +294,12 @@ public:
       }
     }
   }
+  template <typename F>
+  void forEachElem(F f) {
+    for(auto & c : seconds(channels)) {
+      f(c.elem);
+    }
+  }
   
   template<typename Out, typename Chans>
   onEventResult onEvent(int const sample_rate,
