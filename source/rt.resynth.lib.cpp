@@ -1,31 +1,13 @@
 
 /* Backlog:
- 
- -------
- Bug fix
- -------
- 
- We do the setup asynchronously, there is a race condition because in onEvent, we setAngleIncrement, whereas
- the corresponding setup may not have been executed yet.
- so we should do:
- . async action for notes that are currently playing only (based on our state vector)
- . sync action for new notes
-
- synth.setSynchronousElementInitializer(action) {
-   init_func = action;
- }
- ::onEvent {
-   if (init_func) {
-     init_func(element);
-   }
-   setupAudioelement(element)
- }
 
  ----------------
  Creative effects
  ----------------
 
- - make autotune available in the UI (for now, use evenly spaced authorized pitches)
+ - implement a "slow down" :
+ use 2 windows, drop 2 windows, etc...
+ advance at a 4th of the speed, instead of at the normal speed
  
  - make an arpegiating effect where current frequencies are played individually in
  sequence from bottom to top.
@@ -1115,7 +1097,14 @@ public:
                        pitch_intervals,
                        reduced_pitches);
         
-        autotune_pitches([](double pitch){ return pitch; },
+        autotune_pitches([factor = this->autotune_factor.load()](double pitch) -> double {
+          if (!factor) {
+            return pitch;
+          } else {
+            int const discrete_pitch = static_cast<int>(pitch + 0.5);
+            return static_cast<double>(factor * (discrete_pitch / factor));
+          }
+        },
                          reduced_pitches,
                          autotuned_pitches);
         
@@ -1531,6 +1520,13 @@ public:
   NonRealtimeAnalysisFrame const & getAnalysisData() const {
     return analysis_data;
   }
+  
+  int getAutotuneFactor() const {
+    return autotune_factor;
+  }
+  void setAutotuneFactor(int f) {
+    autotune_factor = f;
+  }
 private:
   Ctxt ctxt;
   ChannelHandler & channel_handler;
@@ -1561,6 +1557,7 @@ private:
   std::atomic<float> min_volume = 0.0001;
   std::atomic<float> nearby_distance_tones = 0.4;
   std::atomic<float> max_track_pitches = 1.;
+  std::atomic_int autotune_factor = 0;
   static_assert(std::atomic<float>::is_always_lock_free);
   
   int64_t n;

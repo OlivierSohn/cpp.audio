@@ -453,14 +453,6 @@ struct MyApp : public wxApp {
       {
         // no need to control sample rate for now
         {
-          "Input delay",
-          "seconds",
-          [this](){ return resynth.getInputDelaySeconds(); },
-          [this](float v){ resynth.setInputDelaySeconds(v); },
-          0.f,
-          1.f
-        },
-        {
           "Analysis period",
           "seconds",
           [this](){ return resynth.getWindowCenterStrideSeconds(); },
@@ -475,14 +467,7 @@ struct MyApp : public wxApp {
           [this](float v){ resynth.setWindowSizeSeconds(v); },
           0.f,
           1.f
-        }
-      },
-      wxColor(100,
-              150,
-              200)
-    },
-    {
-      {
+        },
         {
           "Min volume",
           "",
@@ -491,6 +476,13 @@ struct MyApp : public wxApp {
           0.f,
           0.001f
         },
+      },
+      wxColor(100,
+              150,
+              200)
+    },
+    {
+      {
         {
           "Pitch interval diameter",
           "pitches",
@@ -506,6 +498,14 @@ struct MyApp : public wxApp {
           [this](float v){ resynth.setMaxTrackPitches(v); },
           0.f,
           10.f
+        },
+        {
+          "Autotune factor\n(discrete, 0 to disable)",
+          "",
+          [this](){ return resynth.getAutotuneFactor(); },
+          [this](int v){ resynth.setAutotuneFactor(v); },
+          0.f,
+          40.f
         }
       },
       wxColor(150,
