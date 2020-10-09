@@ -19,7 +19,6 @@ struct NoteOnEvent
 {
   float frequency;
   float velocity;      ///< range [0.0, 1.0]
-  int32_t length;           ///< in sample frames (optional, Note Off has to follow in any case!)
 };
 
 struct NoteChangeEvent
@@ -77,7 +76,6 @@ inline Event mkNoteOn(NoteId const & noteid,
           noteid);
   e.noteOn.frequency = frequency;
   e.noteOn.velocity = velocity;
-  e.noteOn.length = std::numeric_limits<decltype(e.noteOn.length)>::max();
   return e;
 }
 
