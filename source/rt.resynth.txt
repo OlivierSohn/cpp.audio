@@ -1,0 +1,217 @@
+
+/* Backlog:
+
+ ----------------
+ Creative effects
+ ----------------
+
+ - autotune with major / minor scales.
+ - autotune with single note:
+ . mode where all octaves are taken
+ . mode where just the note + harmonics (volume scaled) are taken
+ - autotune with chord:
+ . mode where all octaves are taken
+ . mode where just the chord is taken
+ . mode where just the chord + harmonics is taken
+ - pitch shifter
+ . use double fft to detect main pitch, shift pitch according to played notes
+ (if many notes are played a duplication ocurs)
+
+ - implement a "slow down" :
+ use 2 windows, drop 2 windows, etc...
+ advance at a 4th of the speed, instead of at the normal speed
+ 
+ - make an arpegiating effect where current frequencies are played individually in
+ sequence from bottom to top.
+ varying parameters :
+ . arpegiating speed
+ . arpegiating overlap
+ . gap
+ . sustain
+ . one-way / 2-ways / 2-ways-bounds-exclusive
+ ---
+ ...---
+ ......---
+ or
+ ---
+ .---
+ ..---
+ or
+ ---
+ ......---
+ ............---
+ or
+ --- --- ---  (gap = 1, one-way)
+ .-- .-- .--
+ ..- ..- ..-
+ or
+ --- ..- ---  (gap = 1, 2-ways)
+ .-- .-- .--
+ ..- --- ..-
+ or
+ ---..----   (gap = 0, 2-ways)
+ .--.--.--
+ ..----..-
+ or
+ --..--.     (gap = 0, 2-ways-bounds-exclusive)
+ .-.-.-.
+ ..--..-
+ or
+ --.--.--.  (gap = 1, sustain=2, one-way-infinite)
+ .--.--.--
+ -.--.--.-
+
+ We can detect which notes begin together, to have the notion of chord, or simply consider that all playing notes are part of the same chord
+ 
+ - control AHDSR parameters in realtime
+
+ - an interesting effect occurs when reinjecting a delayed version of the output in the input,
+ it was discovered by using the "external" feedback from speakers to mic, and by delaying the input signal by one second.
+ to implement "internal" feedback, we need additional parameters:
+ feedback volume:
+ feedback delay:
+ and a queue where the producer is the audio output thread, the consumer is the analysis thread.
+ The analysis thread reads from both the input and the output queue.
+ If the latencies for in and out are different, the sizes of the queues should be augmented by the number of samples corresponding to the max latency
+
+ - customize resynthesys:
+ Add a curve 0..1 -> 0..1 to change (compress / expand) volumes
+ Add a filter notion : "volume(freq)" to allow to low-pass or high-pass for example
+
+ --
+ UI
+ --
+ 
+ - use log scales for ui params
+ analysis period,
+ analysis window size,
+ min volume,
+ pitch interval,
+ pitch tracking
+ 
+ - Display in UI :
+ FFT size in frames,
+ window size in frames,
+ stride in frames
+ 
+ ------
+ Others
+ ------
+ 
+ - Find a way to that verify notechanges, noteon, noteoff take midi time into account
+ (output buffers have a limited size so we can't easily test by using long output buffers)
+ 
+ - (micro optimization) 'samples' has size = "window size"
+ this choice was made to improve memory locality but
+ when stride is very small, copying the overlap after each processing
+ can become significant : for a stride = 1, for each audio frame, we copy "window size" audio frames!
+ if 'samples' had twice its size, we would copy, on average, a single frame per audio frame which is much more reasonable.
+
+ --------------
+ Peak detection
+ --------------
+ 
+ - Improve accuracy of low frequency detection, using small and large ffts:
+ small ffts will be used for high frequencies (good temporal accuracy)
+ and large ffts will be used for low frequencies (poor temporal accuracy)
+ 
+ - there is a method where using the derivative of the audio signal we get a more precise fourier transform :
+ https://hal.archives-ouvertes.fr/hal-00308047/document
+ However I'm not sure it will help, in the paper they don't seem to know about quadratic interpolation for peak finding?
+ 
+ - when detecting peaks, to have better precision on close peaks, we could iteratively remove the highest peak contribution from the spectrum.
+ But it's not an easy task : when 2 peaks are close, they interfere with each other so ideally we should iterativelly optimize the pair of peaks.
+ cf. TEST(ParabollaGaussian, test)
+ 
+ Then we can use these parameters:
+ 
+ static PitchReductionMethod constexpr pitch_method =
+ PitchReductionMethod::PonderateByVolume;
+ static VolumeReductionMethod constexpr volume_method =
+ VolumeReductionMethod::SumVolumes;
+ 
+ - write unit tests for frequency detection:
+ . generate a signal with known frequencies / amplitudes.
+ . for every type of window, detect peaks
+ 
+
+ */
+
+
+
+/*
+ -----------------
+ Development Notes
+ -----------------
+
+ - We are using portaudio HEAD that fixes a bug when the same device is used as input and output
+ (the bug was that buffer sizes had to be identical)
+ 
+ */
+
+
+
+/*
+ --------------------------------------
+ About jitter (and how we cope with it)
+ --------------------------------------
+ 
+ Here is what is likely to happen with threads jitter, using an example.
+ 
+ To simplify, we will assume that each audio input callback call handles 'widow_center_stride' input samples,
+ and that the input signal contains 4 events (0, 1, 2, 3) which are exactly 'window_center_stride' apart, like so:
+ 
+ input signal: 0--1--2--3--
+ 
+ We have 3 threads running: the audio input thread, the processing thread and the audio output thread.
+ The audio input thread writes in a queue read by the process thread, and
+ the process thread writes in a queue read by the audio output thread.
+ 
+ In an ideal world, all threads run at the same regular intervals, with no overlap:
+ 
+ audio in thread :    0--      1--      2--      3--       // we represent both the input signal and the time it takes for the input thread to run
+ process thread  :       ---      ---      ---      ---    // we represent the time it takes for the thread to run
+ audio out thread:          0--      1--      2--      3-- // we represent both the output signal and the time it takes for the output thread to run
+ 
+ -> output signal : 0--1--2--3--
+ 
+ In this ideal case, the events maintain their timings. But let's see how we can diverge from the ideal case:
+ 
+ A. We can imagine that the 'process' thread has jitter:
+ 
+ audio in thread :    0--      1--      2--      3--
+ process thread  :       ---                ---     ---
+ audio out thread:          0--      ---      1-2      3--
+ 
+ -> output signal : 0-----1-23--
+ 
+ B. We can imagine that the 'process' thread runs less often that the audio threads:
+ 
+ audio in thread :    0--      1--      2--      3--
+ process thread  :       ---               ---
+ audio out thread:          0--      ---      12-      3--
+ 
+ -> output signal : 0-----12-3--
+ 
+ C. we can imagine that the audio in thread has jitter:
+ 
+ audio in thread :    0--      1--            2--3--
+ process thread  :       ---      ---      ---      ---
+ audio out thread:          0--      1--      ---      23-
+ 
+ -> output signal : 0--1-----23-
+ 
+ D. we can imagine that the audio out thread has jitter:
+ 
+ audio in thread :    0--      1--      2--      3--
+ process thread  :       ---      ---      ---      ---
+ audio out thread:          0--      1--            2-3---
+ 
+ -> output signal : 0--1--2-3---
+ 
+ In the real world, it is likely that A., B. C. and D. happen simulataneously.
+ 
+ To cope with this, we use midi timestamps to accurately
+ trigger the relevant actions at the right time in the audio out thread.
+ */
+

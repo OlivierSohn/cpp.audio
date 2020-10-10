@@ -1,45 +1,5 @@
 
-#include <string>
-
 namespace imajuscule::audio::rtresynth {
-
-inline std::string float_to_string(float v) {
-  std::string s = std::to_string(v);
-  if (s.find('.') != std::string::npos) {
-    while(s.back() == '0') {
-      s.pop_back();
-    }
-    if (s.back() == '.') {
-      s.push_back('0');
-    }
-  }
-  return s;
-}
-
-struct Param {
-  std::string name, unit;
-  std::function<float()> get;
-  std::function<void(float)> set;
-  float min, max;
-};
-
-struct PollParam {
-  using OptionalVariant = std::optional<std::variant<int, float>>;
-  std::string name;
-  std::function<OptionalVariant()> get;
-};
-
-template<typename T, typename U>
-void Add(T * widget,
-         U * sizer,
-         int proportion = 1,
-         int flag = wxALL | wxEXPAND, // cannot mix wxEXPAND with wxALIGN***
-         int border = 5) {
-  sizer->Add(widget,
-             proportion,
-             flag,
-             border);
-}
 
 enum class TimerId {
   RefreshUI
@@ -49,8 +9,9 @@ class MyFrame : public wxFrame
 {
 public:
 
-  MyFrame(std::vector<std::pair<std::vector<Param>, wxColor>> const & params,
-          std::vector<std::vector<PollParam>> const & poll_params,
+  MyFrame(std::vector<std::pair<std::vector<ParamProxy<float>>, wxColor>> const & params,
+          std::vector<std::vector<ParamPollProxy>> const & poll_params,
+          Autotune const & autotune,
           PitchWindow::PitchFunction const & pitch_func)
   : wxFrame(NULL,
             wxID_ANY,
@@ -98,7 +59,8 @@ public:
           auto sliders_sizer2 = new wxBoxSizer(wxHORIZONTAL);
           
           for (auto const & param : params2) {
-            Add(createFloatSlider(param,
+            Add(createFloatSlider(this,
+                                  param,
                                   label_color),
                 sliders_sizer2);
           }
@@ -106,6 +68,13 @@ public:
               params_sliders_sizer);
         }
         Add(params_sliders_sizer,
+            sliders_sizer);
+      }
+      {
+        auto autotune_sizer = mkAutotuneSizer(this,
+                                              autotune);
+        
+        Add(autotune_sizer,
             sliders_sizer);
       }
       {
@@ -119,7 +88,8 @@ public:
           for (auto const & params: poll_params) {
             auto rt2_sizer = new wxBoxSizer(wxHORIZONTAL);
             for (auto const & param:params) {
-              auto [sizer, value] = createPollParamUI(param,
+              auto [sizer, value] = createPollParamUI(this,
+                                                      param,
                                                       label_color);
               poll_params_ui.emplace_back(param, value);
               Add(sizer,
@@ -159,7 +129,7 @@ public:
 
 private:
   wxTimer uiTimer;
-  std::vector<std::pair<PollParam, wxStaticText*>> poll_params_ui;
+  std::vector<std::pair<ParamPollProxy, wxStaticText*>> poll_params_ui;
   PitchWindow * pitch_ui;
   
   void OnExit(wxCommandEvent& event)
@@ -196,244 +166,6 @@ private:
       ui->SetLabel(label);
     }
   }
-  
-  const wxColor dark_grey{
-    100,
-    100,
-    100
-  };
-  const wxColor value_unchanged_color{
-    220,
-    220,
-    220
-  };
-  const wxColor value_incorrect_color{
-    *wxRED
-  };
-
-  wxBoxSizer * createFloatSlider(Param const & param,
-                                 wxColor const & label_color) {
-    std::string const & name = param.name;
-    std::string const & unit = param.unit;
-    float const min_float_value = param.min;
-    float const max_float_value = param.max;
-    
-    auto const sliderId = wxWindow::NewControlId();
-
-    float const current_float_value = param.get();
-    Assert(current_float_value <= max_float_value);
-    Assert(current_float_value >= min_float_value);
-    
-    int constexpr min_int_value = 0;
-    int constexpr max_int_value = 1000;
-    int constexpr n_int_values = 1 + max_int_value - min_int_value;
-
-    auto float_value_to_int_value = [min_float_value, max_float_value](float float_value){
-      float float_value_ratio = (float_value - min_float_value) / (max_float_value - min_float_value);
-      
-      return static_cast<int>(float_value_ratio * n_int_values);
-    };
-    
-    int const current_int_value = std::min(max_int_value,
-                                           float_value_to_int_value(current_float_value));
-    auto slider = new wxSlider(this,
-                               sliderId,
-                               current_int_value,
-                               min_int_value,
-                               max_int_value,
-                               wxDefaultPosition,
-                               wxDefaultSize,
-                               wxSL_HORIZONTAL,
-                               wxDefaultValidator);
-
-    auto position_to_float = [min_float_value,
-                              max_float_value
-                              ](int position){
-      return min_float_value + (max_float_value - min_float_value) * (position - min_int_value) / static_cast<float>(n_int_values-1);
-    };
-
-    auto global_sizer = new wxBoxSizer(wxVERTICAL);
-
-    {
-      auto title_sizer = new wxBoxSizer(wxHORIZONTAL);
-      {
-        auto label = new wxStaticText(this,
-                                      wxWindow::NewControlId(),
-                                      name+":",
-                                      wxDefaultPosition,
-                                      wxDefaultSize);
-        label->SetForegroundColour(label_color);
-        
-        wxSize valueSz(70, -1);
-        
-        auto value_label = new wxTextCtrl(this,
-                                          wxWindow::NewControlId(),
-                                          float_to_string(current_float_value),
-                                          wxDefaultPosition,
-                                          valueSz,
-                                          wxTE_PROCESS_ENTER);
-        value_label->SetForegroundColour(value_unchanged_color);
-        
-        auto unit_label = new wxStaticText(this,
-                                           wxWindow::NewControlId(),
-                                           unit,
-                                           wxDefaultPosition,
-                                           wxDefaultSize);
-        unit_label->SetForegroundColour(dark_grey);
-        
-        Add(label,
-            title_sizer,
-            1,
-            wxALL | wxALIGN_CENTER);
-        Add(value_label,
-            title_sizer,
-            0,
-            wxALL | wxALIGN_CENTER);
-        Add(unit_label,
-            title_sizer,
-            1,
-            wxALL | wxALIGN_CENTER);
-                
-        value_label->Bind(wxEVT_TEXT_ENTER,
-                     [this,
-                      slider,
-                      &param,
-                      float_value_to_int_value,
-                      value_label
-                      ](wxCommandEvent & event){
-          try {
-            std::string const str = event.GetString().ToStdString();
-            float const candidate = std::stof(str);
-            int const i = float_value_to_int_value(candidate);
-            slider->SetValue(i);
-            if (candidate != param.get()) {
-              value_label->SetForegroundColour(dark_grey);
-              // I would like the window to be redrawn, taking this color into account
-              // but unfortunately, nothing hereunder triggers a redraw, so I comment it out.
-              /*
-              value_label->Refresh();
-              value_label->Update();
-              Refresh();
-              Update();
-              value_label->GetParent()->Layout();
-              Refresh();
-              Update();
-              */
-              // The UI may becomes unresponsive if this is long:
-              param.set(candidate);
-            }
-            value_label->SetForegroundColour(value_unchanged_color);
-          } catch (std::invalid_argument const & e) {
-            value_label->SetForegroundColour(value_incorrect_color);
-            std::cout << e.what() << std::endl;
-          }
-        });
-        
-        slider->Bind(wxEVT_SCROLL_THUMBTRACK,
-                     [this,
-                      &param,
-                      value_label,
-                      position_to_float
-                      ](wxScrollEvent & event){
-          float const candidate = position_to_float(event.GetPosition());
-          value_label->SetLabel(float_to_string(candidate));
-          value_label->SetForegroundColour((candidate == param.get()) ? value_unchanged_color : dark_grey);
-          value_label->GetParent()->Layout();
-        });
-        
-        // wxEVT_SCROLL_CHANGED is not sent on osx, so we use wxEVT_SCROLL_THUMBRELEASE instead
-        slider->Bind(wxEVT_SCROLL_THUMBRELEASE,
-                     [this,
-                      &param,
-                      value_label,
-                      position_to_float
-                      ](wxScrollEvent & event){
-          float const candidate = position_to_float(event.GetPosition());
-          if (candidate != param.get()) {
-            // The UI may becomes unresponsive if this is long:
-            param.set(candidate);
-          }
-          value_label->SetForegroundColour(value_unchanged_color);
-        });
-
-      }
-      Add(title_sizer,
-          global_sizer,
-          1,
-          wxALL); // do not expand
-    }
-    {
-      auto slider_sizer = new wxBoxSizer(wxHORIZONTAL);
-      {
-        wxSize boundsSz(50, -1);
-        
-        auto minText = new wxStaticText(this,
-                                        wxWindow::NewControlId(),
-                                        float_to_string(min_float_value),
-                                        wxDefaultPosition,
-                                        boundsSz,
-                                        wxST_NO_AUTORESIZE);
-        minText->SetForegroundColour(dark_grey);
-        
-        auto maxText = new wxStaticText(this,
-                                        wxWindow::NewControlId(),
-                                        float_to_string(max_float_value),
-                                        wxDefaultPosition,
-                                        boundsSz,
-                                        wxST_NO_AUTORESIZE);
-        maxText->SetForegroundColour(dark_grey);
-        
-        Add(minText,
-            slider_sizer,
-            0,
-            wxALL | wxALIGN_CENTER);
-        Add(slider,
-            slider_sizer,
-            1);
-        Add(maxText,
-            slider_sizer,
-            0,
-            wxALL | wxALIGN_CENTER);
-      }
-      Add(slider_sizer,
-          global_sizer);
-    }
-
-    return global_sizer;
-  }
-
-  std::pair<wxBoxSizer *, wxStaticText*>
-  createPollParamUI(PollParam const & param,
-                    wxColor const & label_color)
-  {
-    auto sizer = new wxBoxSizer(wxHORIZONTAL);
-    
-    auto label = new wxStaticText(this,
-                                  wxWindow::NewControlId(),
-                                  param.name + ":",
-                                  wxDefaultPosition,
-                                  wxDefaultSize);
-    label->SetForegroundColour(label_color);
-    
-    wxSize valueSz(80, -1);
-    
-    auto value = new wxStaticText(this,
-                                  wxWindow::NewControlId(),
-                                  "",
-                                  wxDefaultPosition,
-                                  valueSz);
-    value->SetForegroundColour(dark_grey);
-    Add(label,
-        sizer,
-        0,
-        wxALL | wxALIGN_CENTER);
-    Add(value,
-        sizer,
-        0,
-        wxALL | wxALIGN_CENTER);
-    return {sizer, value};
-  }
-
 };
 
 struct ReinitializingParameters {
@@ -477,9 +209,7 @@ struct MyApp : public wxApp {
           0.001f
         },
       },
-      wxColor(100,
-              150,
-              200)
+      color_slider_label_1
     },
     {
       {
@@ -499,18 +229,8 @@ struct MyApp : public wxApp {
           0.f,
           10.f
         },
-        {
-          "Autotune factor\n(discrete, 0 to disable)",
-          "",
-          [this](){ return resynth.getAutotuneFactor(); },
-          [this](int v){ resynth.setAutotuneFactor(v); },
-          0.f,
-          40.f
-        }
       },
-      wxColor(150,
-              100,
-              200)
+      color_slider_label_2
     }
   }
   , poll_params
@@ -518,7 +238,7 @@ struct MyApp : public wxApp {
     {
       {
         "Total Load",
-        [this]() -> PollParam::OptionalVariant {
+        [this]() -> ParamPollProxy::OptionalVariant {
           std::optional<float> a = resynth.getDurationProcess();
           std::optional<float> b = resynth.getDurationStep();
           std::optional<float> c = resynth.getDurationCopy();
@@ -534,7 +254,7 @@ struct MyApp : public wxApp {
       },
       {
         "Process Load",
-        [this]() -> PollParam::OptionalVariant {
+        [this]() -> ParamPollProxy::OptionalVariant {
           if (std::optional<float> secs = resynth.getDurationProcess()) {
             float analysis_stride_secs = resynth.getEffectiveWindowCenterStrideSeconds(reinit_params.sample_rate);
             if (analysis_stride_secs) {
@@ -546,7 +266,7 @@ struct MyApp : public wxApp {
       },
       {
         "Step Load",
-        [this]() -> PollParam::OptionalVariant {
+        [this]() -> ParamPollProxy::OptionalVariant {
           if (std::optional<float> secs = resynth.getDurationStep()) {
             float analysis_stride_secs = resynth.getEffectiveWindowCenterStrideSeconds(reinit_params.sample_rate);
             if (analysis_stride_secs) {
@@ -558,7 +278,7 @@ struct MyApp : public wxApp {
       },
       {
         "Copy Load",
-        [this]() -> PollParam::OptionalVariant {
+        [this]() -> ParamPollProxy::OptionalVariant {
           if (std::optional<float> secs = resynth.getDurationCopy()) {
             float analysis_stride_secs = resynth.getEffectiveWindowCenterStrideSeconds(reinit_params.sample_rate);
             if (analysis_stride_secs) {
@@ -595,6 +315,31 @@ struct MyApp : public wxApp {
         [this](){ return resynth.countRetriedOneshotInsertions(); }
       },
     }
+  },
+  autotune{
+    {
+      "Autotune",
+      [this](){ return resynth.getAutotuneType(); },
+      [this](AutotuneType v){ resynth.setAutotuneType(v); },
+    },
+    {
+      "Autotune scale type",
+      [this](){ return resynth.getAutotuneMusicalScale(); },
+      [this](MusicalScaleType v){ resynth.setAutotuneMusicalScale(v); },
+    },
+    {
+      "Autotune scale root",
+      [this](){ return resynth.getAutotuneMusicalScaleRoot(); },
+      [this](Note v){ resynth.setAutotuneMusicalScaleRoot(v); },
+    },
+    {
+      "Autotune interval size",
+      "",
+      [this](){ return resynth.getAutotuneFactor(); },
+      [this](int v){ resynth.setAutotuneFactor(v); },
+      0,
+      40
+    },
   }
   {}
 
@@ -603,11 +348,12 @@ struct MyApp : public wxApp {
 
     auto frame = new MyFrame(params,
                              poll_params,
+                             autotune,
                              [this](std::vector<PlayedNote> & result, std::vector<PlayedNote> & result_dropped, std::optional<int64_t> & frame_id){
       result.clear();
       result_dropped.clear();
 
-      RtResynth::NonRealtimeAnalysisFrame const & analysis_data = resynth.getAnalysisData();
+      NonRealtimeAnalysisFrame const & analysis_data = resynth.getAnalysisData();
 
       auto & vec = analysis_data.getPlayingNotes();
       auto & vec_dropped = analysis_data.getDroppedNotes();
@@ -627,7 +373,10 @@ struct MyApp : public wxApp {
             std::copy(vec_dropped.begin(),
                       vec_dropped.end(),
                       std::back_inserter(result_dropped));
-            frame_id = analysis_data.getFrameId();
+            frame_id.reset();
+            if (auto status = analysis_data.getFrameStatus()) {
+              frame_id = status->frame_id;
+            }
             return;
           }
         }
@@ -643,8 +392,9 @@ private:
   RtResynth resynth;
   
   ReinitializingParameters reinit_params;
-  std::vector<std::pair<std::vector<Param>, wxColor>> params;
-  std::vector<std::vector<PollParam>> poll_params;
+  std::vector<std::pair<std::vector<ParamProxy<float>>, wxColor>> params;
+  std::vector<std::vector<ParamPollProxy>> poll_params;
+  Autotune autotune;
 };
 
 

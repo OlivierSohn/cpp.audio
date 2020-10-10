@@ -1,597 +1,5 @@
 
-/* Backlog:
-
- ----------------
- Creative effects
- ----------------
-
- - implement a "slow down" :
- use 2 windows, drop 2 windows, etc...
- advance at a 4th of the speed, instead of at the normal speed
- 
- - make an arpegiating effect where current frequencies are played individually in
- sequence from bottom to top.
- varying parameters :
- . arpegiating speed
- . arpegiating overlap
- . gap
- . sustain
- . one-way / 2-ways / 2-ways-bounds-exclusive
- ---
- ...---
- ......---
- or
- ---
- .---
- ..---
- or
- ---
- ......---
- ............---
- or
- --- --- ---  (gap = 1, one-way)
- .-- .-- .--
- ..- ..- ..-
- or
- --- ..- ---  (gap = 1, 2-ways)
- .-- .-- .--
- ..- --- ..-
- or
- ---..----   (gap = 0, 2-ways)
- .--.--.--
- ..----..-
- or
- --..--.     (gap = 0, 2-ways-bounds-exclusive)
- .-.-.-.
- ..--..-
- or
- --.--.--.  (gap = 1, sustain=2, one-way-infinite)
- .--.--.--
- -.--.--.-
-
- We can detect which notes begin together, to have the notion of chord, or simply consider that all playing notes are part of the same chord
- 
- - control AHDSR parameters in real time
-
- - an interesting effect occurs when reinjecting a delayed version of the output in the input,
- it was discovered by using the "external" feedback from speakers to mic, and by delaying the input signal by one second.
- to implement "internal" feedback, we need additional parameters:
- feedback volume:
- feedback delay:
- and a queue where the producer is the audio output thread, the consumer is the analysis thread.
- The analysis thread reads from both the input and the output queue.
- If the latencies for in and out are different, the sizes of the queues should be augmented by the number of samples corresponding to the max latency
-
- - customize resynthesys:
- Add a curve 0..1 -> 0..1 to change (compress / expand) volumes
- Add a filter notion : "volume(freq)" to allow to low-pass or high-pass for example
-
- --
- UI
- --
- 
- - use log scales for ui params
- analysis period,
- analysis window size,
- min volume,
- pitch interval,
- pitch tracking
- 
- - Display in UI :
- FFT size in frames,
- window size in frames,
- stride in frames
- 
- ------
- Others
- ------
- 
- - Find a way to that verify notechanges, noteon, noteoff take midi time into account
- (output buffers have a limited size so we can't easily test by using long output buffers)
- 
- - (micro optimization) 'samples' has size = "window size"
- this choice was made to improve memory locality but
- when stride is very small, copying the overlap after each processing
- can become significant : for a stride = 1, for each audio frame, we copy "window size" audio frames!
- if 'samples' had twice its size, we would copy, on average, a single frame per audio frame which is much more reasonable.
-
- --------------
- Peak detection
- --------------
- 
- - Improve accuracy of low frequency detection, using small and large ffts:
- small ffts will be used for high frequencies (good temporal accuracy)
- and large ffts will be used for low frequencies (poor temporal accuracy)
- 
- - there is a method where using the derivative of the audio signal we get a more precise fourier transform :
- https://hal.archives-ouvertes.fr/hal-00308047/document
- However I'm not sure it will help, in the paper they don't seem to know about quadratic interpolation for peak finding?
- 
- - when detecting peaks, to have better precision on close peaks, we could iteratively remove the highest peak contribution from the spectrum.
- But it's not an easy task : when 2 peaks are close, they interfere with each other so ideally we should iterativelly optimize the pair of peaks.
- cf. TEST(ParabollaGaussian, test)
- 
- Then we can use these parameters:
- 
- static PitchReductionMethod constexpr pitch_method =
- PitchReductionMethod::PonderateByVolume;
- static VolumeReductionMethod constexpr volume_method =
- VolumeReductionMethod::SumVolumes;
- 
- - write unit tests for frequency detection:
- . generate a signal with known frequencies / amplitudes.
- . for every type of window, detect peaks
- 
-
- */
-
-
-
-/*
- -----------------
- Development Notes
- -----------------
-
- - We are using portaudio HEAD that fixes a bug when the same device is used as input and output
- (the bug was that buffer sizes had to be identical)
- 
- */
-
-
-
-/*
- --------------------------------------
- About jitter (and how we cope with it)
- --------------------------------------
- 
- Here is what is likely to happen with threads jitter, using an example.
- 
- To simplify, we will assume that each audio input callback call handles 'widow_center_stride' input samples,
- and that the input signal contains 4 events (0, 1, 2, 3) which are exactly 'window_center_stride' apart, like so:
- 
- input signal: 0--1--2--3--
- 
- We have 3 threads running: the audio input thread, the processing thread and the audio output thread.
- The audio input thread writes in a queue read by the process thread, and
- the process thread writes in a queue read by the audio output thread.
- 
- In an ideal world, all threads run at the same regular intervals, with no overlap:
- 
- audio in thread :    0--      1--      2--      3--       // we represent both the input signal and the time it takes for the input thread to run
- process thread  :       ---      ---      ---      ---    // we represent the time it takes for the thread to run
- audio out thread:          0--      1--      2--      3-- // we represent both the output signal and the time it takes for the output thread to run
- 
- -> output signal : 0--1--2--3--
- 
- In this ideal case, the events maintain their timings. But let's see how we can diverge from the ideal case:
- 
- A. We can imagine that the 'process' thread has jitter:
- 
- audio in thread :    0--      1--      2--      3--
- process thread  :       ---                ---     ---
- audio out thread:          0--      ---      1-2      3--
- 
- -> output signal : 0-----1-23--
- 
- B. We can imagine that the 'process' thread runs less often that the audio threads:
- 
- audio in thread :    0--      1--      2--      3--
- process thread  :       ---               ---
- audio out thread:          0--      ---      12-      3--
- 
- -> output signal : 0-----12-3--
- 
- C. we can imagine that the audio in thread has jitter:
- 
- audio in thread :    0--      1--            2--3--
- process thread  :       ---      ---      ---      ---
- audio out thread:          0--      1--      ---      23-
- 
- -> output signal : 0--1-----23-
- 
- D. we can imagine that the audio out thread has jitter:
- 
- audio in thread :    0--      1--      2--      3--
- process thread  :       ---      ---      ---      ---
- audio out thread:          0--      1--            2-3---
- 
- -> output signal : 0--1--2-3---
- 
- In the real world, it is likely that A., B. C. and D. happen simulataneously.
- 
- To cope with this, we use midi timestamps to accurately
- trigger the relevant actions at the right time in the audio out thread.
- */
-
-
 namespace imajuscule::audio {
-
-struct PitchVolume {
-  double midipitch;
-  double volume;
-};
-
-void frequencies_to_pitches(Midi const & midi,
-                            std::vector<FreqMag<double>> const & fs,
-                            std::vector<PitchVolume> & res) {
-  res.clear();
-#ifndef NDEBUG
-  double freq = std::numeric_limits<double>::lowest();
-#endif
-  for (auto const & f : fs) {
-#ifndef NDEBUG
-    Assert(freq < f.freq); // verify invariant
-    freq = f.freq;
-#endif
-    if (auto pitch = midi.frequency_to_midi_pitch(f.freq)) {
-      res.push_back({
-        *pitch,
-        DbToMag<double>()(f.mag_db)
-      });
-    }
-  }
-}
-
-enum class PitchReductionMethod {
-  IntervalCenter,
-  MaxVolume,
-  PonderateByVolume
-};
-
-enum class VolumeReductionMethod{
-  MaxVolume,
-  SumVolumes
-};
-
-class PitchInterval {
-  double min_pitch, max_pitch;
-  double maxVolumePitch;
-  double maxVolume{};
-  double sumProductsPitchVolume{};
-  double sumVolumes{};
-
- public:
-  PitchInterval(PitchVolume const & pv)
-  : min_pitch(pv.midipitch)
-  , max_pitch(pv.midipitch)
-  , maxVolumePitch(pv.midipitch)
-  {
-    aggregate(pv);
-  }
-
-  double minPitch() const {
-    return min_pitch;
-  }
-  double maxPitch() const {
-    return max_pitch;
-  }
-
-  void extend(PitchVolume const & pv) {
-    min_pitch = std::min(min_pitch,
-                         pv.midipitch);
-    max_pitch = std::max(max_pitch,
-                         pv.midipitch);
-    aggregate(pv);
-  }
-
-  double getPitch(PitchReductionMethod m) const {
-    switch(m) {
-      case PitchReductionMethod::IntervalCenter:
-        return 0.5 * (min_pitch + max_pitch);
-      case PitchReductionMethod::MaxVolume:
-        return maxVolumePitch;
-      case PitchReductionMethod::PonderateByVolume:
-        Assert(sumVolumes);
-        return sumProductsPitchVolume / sumVolumes;
-    }
-  }
-
-  double getVolume(VolumeReductionMethod m) const {
-    switch(m) {
-      case VolumeReductionMethod::MaxVolume:
-        return maxVolume;
-      case VolumeReductionMethod::SumVolumes:
-        return sumVolumes;
-    }
-  }
-
-private:
-  void aggregate(PitchVolume const & pv) {
-    sumVolumes += pv.volume;
-    sumProductsPitchVolume += pv.midipitch * pv.volume;
-
-    if (maxVolume < pv.volume) {
-      maxVolume = pv.volume;
-      maxVolumePitch = pv.midipitch;
-    }
-  }
-};
-
-
-template<typename T>
-T diameter(T a, T b, T c) {
-  return std::max({a, b, c}) - std::min({a, b, c});
-}
-
-// We aggregate nearby pitches to keep the number of channels needed to a reasonable amount, especially when handling percusive sounds
-// which have a lot of pitch peaks.
-
-// - Aggregation phase:
-// We have a rule to aggregate nearby pitches ('nearby_distance', in number of tones):
-// for example, with nearby_distance = 3 half tones,
-//   .....  could lead to 2 pitches:
-//   A..B.  or a single pitch:
-//   ..A..  depending on where we start analyzing. So we have a notion of pitch interval, and analyze pitches in a monotonic order:
-//          we "aggregate" frequencies in the last interval, and when aggregating a frequency would leand to an interval with
-//          a diameter bigger than nearby_distance, we create a new interval.
-// The output of this phase is a list of pitch intervals where each interval is a list of pitch + amplitude.
-void aggregate_pitches(double const nearby_distance_tones,
-                       // invariant : ordered by pitch
-                       std::vector<PitchVolume> const & pitch_volumes,
-                       // invariant : ordered by pitch
-                       std::vector<PitchInterval> & pitch_intervals) {
-  pitch_intervals.clear();
-  pitch_intervals.reserve(pitch_volumes.size());
-  
-  std::optional<PitchInterval> cur;
-#ifndef NDEBUG
-  double pitch = std::numeric_limits<double>::lowest();
-  int idx = -1;
-#endif
-  for (auto const & pv : pitch_volumes) {
-#ifndef NDEBUG
-    ++idx;
-    Assert(pitch < pv.midipitch); // verify invariant
-    pitch = pv.midipitch;
-#endif
-    if (cur && (diameter(cur->minPitch(),
-                         cur->maxPitch(),
-                         pv.midipitch) > nearby_distance_tones)) {
-      pitch_intervals.push_back(*cur);
-      cur.reset();
-    }
-    if (!cur) {
-      cur = {pv};
-    } else {
-      cur->extend(pv);
-    }
-  }
-
-  if (cur) {
-    pitch_intervals.push_back(*cur);
-    cur.reset();
-  }
-}
-
-// - Reduction phase:
-// each interval will be reduced to a single pitch and amplitude. The amplitude will be the sum of amplitudes,
-// the pitch can be either the pitch of max amplitude, or the center of the interval, or a ponderation of the pitches by amplitudes.
-void reduce_pitches(PitchReductionMethod const pitch_method,
-                    VolumeReductionMethod const volume_method,
-                    double const min_volume,
-                    std::vector<PitchInterval> const & pitch_intervals,
-                    std::vector<PitchVolume> & reduced_pitches) {
-  reduced_pitches.clear();
-  reduced_pitches.reserve(pitch_intervals.size());
-  for (auto const & i : pitch_intervals) {
-    double const vol = i.getVolume(volume_method);
-    if (vol < min_volume) {
-      continue;
-    }
-    reduced_pitches.push_back({
-      i.getPitch(pitch_method),
-      vol
-    });
-  }
-}
-
-// - Autotune phase:
-// the reduced frequency will be changed to the closest allowed frequency (in pitch space).
-// the amplitudes of frequencies that fall in the same closest frequency will be added
-template<typename Autotune>
-void autotune_pitches(Autotune pitch_transform,
-                      // invariant : ordered by pitch
-                      std::vector<PitchVolume> const & input,
-                      // invariant : ordered by pitch
-                      std::vector<PitchVolume> & output) {
-  output.clear();
-  output.reserve(input.size());
-#ifndef NDEBUG
-  double pitch = std::numeric_limits<double>::lowest();
-#endif
-  for (auto const & pv : input) {
-#ifndef NDEBUG
-    Assert(pitch < pv.midipitch); // verify invariant
-    pitch = pv.midipitch;
-#endif
-    double const transformedPitch = pitch_transform(pv.midipitch);
-    if (!output.empty() && (std::abs(output.back().midipitch - transformedPitch) < 0.0001)) {
-      output.back().volume += pv.volume;
-    } else {
-      output.push_back({transformedPitch, pv.volume});
-    }
-  }
-}
-
-
-// A note currently played
-struct PlayedNote {
-  // The id of the analysis frame at which the note was started
-  int64_t note_on_frame_id;
-  
-  // the identifier of the played note
-  NoteId noteid;
-
-  // the current midi_pitch
-  double midi_pitch;
-
-  // the current frequency
-  float cur_freq;
-  
-  // the current volume
-  // Not currently used during analysis, but could be used during matching :
-  // if the volume is currently low and the now volume is much higher, we could trigger a noteon
-  float cur_velocity;
-};
-
-// - Tracking phase:
-// we will determine whether the frequencies are noteon or notechange, based on currently runing oscillators.
-// we need a "max_track_pitches" upperbound for the distance between pitches that can be associated.
-// the caller must take into account the period of the analysis, and adapt 'max_track_pitches' accordingly
-void track_pitches(double const max_track_pitches,
-                   // invariant : ordered by pitch
-                   std::vector<PitchVolume> const & new_pitches,
-                   // invariant : ordered by pitch (current pitch)
-                   std::vector<PlayedNote> const & played_pitches,
-                   // indexes homogenous to indexes of 'new_pitches',
-                   // values  homogenous to indexes of 'played_pitches'
-                   // invariant : all non-empty elements are distinct
-                   std::vector<std::optional<int>> & pitch_changes,
-                   std::vector<bool> & continue_playing) {
-  pitch_changes.clear();
-  pitch_changes.resize(new_pitches.size());
-
-  continue_playing.clear();
-  continue_playing.resize(played_pitches.size(), false);
-  
-  int idx = -1;
-#ifndef NDEBUG
-  double pitch2 = std::numeric_limits<double>::lowest();
-  for (auto const & p : played_pitches) {
-    Assert(pitch2 <= p.midi_pitch);
-    pitch2 = p.midi_pitch;
-  }
-  double pitch = std::numeric_limits<double>::lowest();
-#endif
-  auto const begin = played_pitches.begin();
-  auto it = played_pitches.begin();
-  auto const end = played_pitches.end();
-  for (auto const & newPv : new_pitches) {
-    ++idx;
-#ifndef NDEBUG
-    Assert(pitch < newPv.midipitch); // verify invariant
-    pitch = newPv.midipitch;
-#endif
-    for (; it != end; ++it) {
-      if (it->midi_pitch < newPv.midipitch - max_track_pitches) {
-        continue;
-      }
-      if (it->midi_pitch <= newPv.midipitch + max_track_pitches) {
-        std::size_t const idx_played = std::distance(begin, it);
-        pitch_changes[idx] = idx_played;
-        continue_playing[idx_played] = true;
-        ++it;
-        // note that there could be other options, if 'it+1' is also in the right range.
-        // but to not complicate the algorithm too much we take the first one.
-      }
-      break;
-    }
-  }
-}
-
-// we have a limited amount of channels in the synthethizer, so we prioritize
-// detected pithces by their respective perceived loudness.
-template<typename F>
-void
-order_pitches_by_perceived_loudness(F perceived_loudness,
-                                    // invariant : ordered by pitch
-                                    std::vector<PitchVolume> const & new_pitches,
-                                    std::vector<float> & autotuned_pitches_perceived_loudness,
-                                    std::vector<int> & autotuned_pitches_idx_sorted_by_perceived_loudness) {
-  autotuned_pitches_perceived_loudness.clear();
-  autotuned_pitches_perceived_loudness.reserve(new_pitches.size());
-
-#ifndef NDEBUG
-  double pitch = std::numeric_limits<double>::lowest();
-#endif
-
-  for (auto const & pv : new_pitches) {
-#ifndef NDEBUG
-    Assert(pitch < pv.midipitch); // verify invariant
-    pitch = pv.midipitch;
-#endif
-    autotuned_pitches_perceived_loudness.push_back(perceived_loudness(pv));
-  }
-
-  autotuned_pitches_idx_sorted_by_perceived_loudness.clear();
-  autotuned_pitches_idx_sorted_by_perceived_loudness.resize(new_pitches.size());
-  std::iota(autotuned_pitches_idx_sorted_by_perceived_loudness.begin(),
-            autotuned_pitches_idx_sorted_by_perceived_loudness.end(),
-            0);
-  std::sort(autotuned_pitches_idx_sorted_by_perceived_loudness.begin(),
-            autotuned_pitches_idx_sorted_by_perceived_loudness.end(),
-            [&autotuned_pitches_perceived_loudness] (int a, int b){
-    return
-    autotuned_pitches_perceived_loudness[a] > // so that loud frequencies come first
-    autotuned_pitches_perceived_loudness[b];
-  }
-            );
-}
-
-
-// This may change the order of elements
-void remove_dead_notes(std::vector<bool> const & continue_playing,
-                       std::vector<PlayedNote> & played_pitches) {
-  auto new_end = std::remove_if(played_pitches.begin(),
-                                played_pitches.end(),
-                                [first = played_pitches.data(),
-                                 &continue_playing]
-                                (PlayedNote const & note) {
-    std::ptrdiff_t n = &note-first;
-    Assert(n >= 0);
-    if (n < continue_playing.size()) {
-      return !continue_playing[n];
-    } else {
-      return false;
-    }
-  });
-  played_pitches.erase(new_end,
-                       played_pitches.end());
-}
-
-void sort_by_current_pitch(std::vector<PlayedNote> & played_pitches) {
-  std::sort(played_pitches.begin(),
-            played_pitches.end(),
-            [](PlayedNote const & n, PlayedNote const & m) {
-    return n.midi_pitch < m.midi_pitch;
-  });
-}
-
-
-void print(std::vector<PlayedNote> const & played_pitches) {
-  int i=0;
-  struct PitchCount {
-    int pitch_idx;
-    int count;
-  };
-  std::optional<PitchCount> pc;
-  for (auto const & played : played_pitches) {
-    int const pitch_idx = static_cast<int>(0.5f + played.midi_pitch);
-    if (pc) {
-      if (pc->pitch_idx == pitch_idx) {
-        ++pc->count;
-      } else {
-        for (; i < pc->pitch_idx; ++i) {
-          std::cout << " ";
-        }
-        std::cout << pc->count;
-        ++i;
-        pc->count = 1;
-        pc->pitch_idx = pitch_idx;
-      }
-    } else {
-      pc = {pitch_idx, 1};
-    }
-  }
-  if (pc) {
-    for (; i < pc->pitch_idx; ++i) {
-      std::cout << " ";
-    }
-    std::cout << pc->count;
-  }
-  std::cout << std::endl;
-}
-
 
 namespace audioelement {
 
@@ -609,6 +17,10 @@ FinalAudioElement<
  >
 >;
 
+} // NS audioelement
+
+namespace rtresynth {
+
 template<typename T>
 struct ResynthElementInitializer {
   ResynthElementInitializer(int const sample_rate,
@@ -617,7 +29,7 @@ struct ResynthElementInitializer {
   , stride(stride)
   {}
 
-  void operator()(ResynthFinalElement<T> & e) const {
+  void operator()(audioelement::ResynthFinalElement<T> & e) const {
     // envelope (now that we track the volume, we only need a minimal envelope)
     
     // TODO try the following effect via volume tracking only (not evelope):
@@ -651,7 +63,7 @@ using synthOf = sine::Synth < // the name of the namespace is misleading : it ca
 Ctxt::policy
 , Ctxt::nAudioOut
 , XfadePolicy::SkipXfade
-, ResynthFinalElement<T>
+, audioelement::ResynthFinalElement<T>
 , SynchronizePhase::Yes
 , DefaultStartPhase::Random
 , true
@@ -659,9 +71,6 @@ Ctxt::policy
 , 127  // lots of voices
 , ResynthElementInitializer<T>
 >;
-
-} // NS audioelement
-
 
 struct RtResynth {
 private:
@@ -690,106 +99,10 @@ private:
   static VolumeReductionMethod constexpr volume_method =
   VolumeReductionMethod::SumVolumes;
     
-  using Synth = audioelement::synthOf<Ctxt, double>;
+  using Synth = synthOf<Ctxt, double>;
   
   static constexpr auto n_mnc = Synth::n_channels;
   using mnc_buffer = typename Synth::MonoNoteChannel::buffer_t;
-  
-  // producer : analysis thread
-  // consumer : data thread
-  struct NoteOn {
-    PlayedNote note;
-  };
-  struct NoteOnDropped {
-    PlayedNote note;
-  };
-  struct NoteChange {
-    PlayedNote note;
-  };
-  struct NoteOff {
-    NoteId note_id;
-  };
-  struct CurrentNoteState {
-    PlayedNote note;
-  };
-  struct CountDroppedItems {
-    int count = 0;
-  };
-  struct EndOfAnalysisFrame {
-    int64_t frame_id;
-  };
-  // most of the items will be 'Event' (192 bits) and 'PlayedNote' (192 bits) if the consumer is slow),
-  // so it's nice that these 2 types have the biggest size in the variant
-  using DataQueueItem = std::variant<
-  NoteOn,
-  NoteOnDropped,
-  NoteChange,
-  NoteOff,
-  CurrentNoteState,
-  CountDroppedItems,
-  EndOfAnalysisFrame
-  >;
-  
-  using DataQueue = atomic_queue::AtomicQueueB2<
-  /* T = */ DataQueueItem,
-  /* A = */ std::allocator<DataQueueItem>,
-  /* MAXIMIZE_THROUGHPUT */ true,
-  /* TOTAL_ORDER = */ true,
-  /* SPSC = */ true
-  >;
-  static constexpr std::size_t data_queue_capacity = 1024; // if we receive too many 'CountDroppedItems' that's a sign that this is not enough
-  void try_push_data_note_on(PlayedNote const & n) {
-    if (unlikely(pending_dropped_data_items.count)) {
-      ++pending_dropped_data_items.count;
-      return;
-    }
-    try_push_data_internal(NoteOn{n});
-  }
-  void try_push_data_note_on_dropped(PlayedNote const & n) {
-    if (unlikely(pending_dropped_data_items.count)) {
-      ++pending_dropped_data_items.count;
-      return;
-    }
-    try_push_data_internal(NoteOnDropped{n});
-  }
-  void try_push_data_note_change(PlayedNote const & n) {
-    if (unlikely(pending_dropped_data_items.count)) {
-      ++pending_dropped_data_items.count;
-      return;
-    }
-    try_push_data_internal(NoteChange{n});
-  }
-  void try_push_data_note_off(PlayedNote const & n) {
-    if (unlikely(pending_dropped_data_items.count)) {
-      ++pending_dropped_data_items.count;
-      return;
-    }
-    try_push_data_internal(NoteOff{n.noteid});
-  }
-  void try_push_end_of_analysis_frame(int64_t id) {
-    if (unlikely(pending_dropped_data_items.count)) {
-      if (!data_queue.try_push(pending_dropped_data_items)) {
-        return;
-      }
-      pending_dropped_data_items.count = 0;
-      // because some data has been dropped, we send the full state.
-      for (PlayedNote const & note : played_pitches) {
-        try_push_data_internal(CurrentNoteState{note});
-        if (pending_dropped_data_items.count) {
-          // we failed to send the full state.
-          // we will try to re-send the full state at the next frame end
-          return;
-        }
-      }
-    }
-    Assert(!pending_dropped_data_items.count);
-    try_push_data_internal(EndOfAnalysisFrame{id});
-  }
-  void try_push_data_internal(DataQueueItem const & item) {
-    if (!data_queue.try_push(item)) {
-      ++pending_dropped_data_items.count;
-    }
-  }
   
   // producer : Audio input callback
   // consumer : analysis thread
@@ -810,155 +123,10 @@ private:
   
 public:
   
-  /*
-   The UI needs access to the "playing pitches" info.
-   
-   But we don't want to wait on a mutex in the analysis thread.
-   
-   Alternative 1:
-   -------------
-   We have a mutex which we try_lock in the analysis thread:
-   if we succeed, we copy the infos to another place, protected by the mutex.
-   If we fail, we just increment an atomic to say that an analysis frame was dropped.
-   
-   The ui takes the lock to copy the infos to yet another place, and then processes it
-   
-   Alternative 2:
-   -------------
-   The analysis thread fills a queue with items.
-   A reader thread, will:
-   - on NoteOn, NoteOff, NoteChange:
-   if unlocked, lock the mutex
-   change vector_playednotes accordingly
-   - on CountDroppedItems :
-   if unlocked, lock the mutex
-   clear vector_playednotes // the producer will send use the whole state via 'PlayedNote'(s)
-   - on CurrentNoteState:
-   Assert(mutex is locked) // just before pushing the first 'CurrentNoteState', the producer makes sure that 'DroppedItems' was pushed to the queue
-   if unlocked, lock the mutex
-   append to vector_playednotes
-   - on EndOfAnalysisFrame id :
-   if unlocked, lock the mutex
-   set frame id
-   release the mutex
-   
-   The ui reads the infos using this same mutex.
-   (the ui should allocate its vectors (for copy) outside the mutex scope)
-   
-   Conclusions:
-   -----------
-   With Alternative 2, the ui is guaranteed to read the most up-to-date frame,
-   while with alternative 1 this is not the case (maybe the most recent frame has been dropped)
-   so we chose alternative 2.
-   */
-  class NonRealtimeAnalysisFrame {
-    mutable std::mutex mutex;
-    bool owns_mutex = false;
-    std::vector<PlayedNote> vec;
-    std::vector<PlayedNote> vec_dropped;
-    std::optional<int64_t> frame_id;
-    
-    void initialize_frame_if_needed() {
-      if (!owns_mutex) {
-        mutex.lock();
-        owns_mutex = true;
-        vec_dropped.clear();
-      }
-    }
-    void onItem(NoteOn const & n) {
-      initialize_frame_if_needed();
-      vec.push_back(n.note);
-    }
-    void onItem(NoteOnDropped const & n) {
-      initialize_frame_if_needed();
-      vec_dropped.push_back(n.note);
-    }
-    void onItem(CurrentNoteState const & n) {
-      initialize_frame_if_needed();
-      vec.push_back(n.note);
-    }
-    void onItem(NoteOff const & n) {
-      initialize_frame_if_needed();
-      auto it = std::find_if(vec.begin(),
-                             vec.end(),
-                             [noteid = n.note_id](PlayedNote const & n) { return n.noteid == noteid; });
-      if (it == vec.end()) {
-        throw std::logic_error("orphan note off");
-      }
-      vec.erase(it);
-    }
-    void onItem(NoteChange const & n) {
-      initialize_frame_if_needed();
-      auto it = std::find_if(vec.begin(),
-                             vec.end(),
-                             [noteid = n.note.noteid](PlayedNote const & n) { return n.noteid == noteid; });
-      if (it == vec.end()) {
-        throw std::logic_error("orphan note change");
-      }
-      *it = n.note;
-    }
-    
-    void onItem(CountDroppedItems const &) {
-      initialize_frame_if_needed();
-      vec.clear();
-    }
-    
-    void onItem(EndOfAnalysisFrame const & end_of_frame) {
-      initialize_frame_if_needed();
-      frame_id = end_of_frame.frame_id;
-      mutex.unlock();
-      owns_mutex = false;
-    }
-    
-  public:
-    NonRealtimeAnalysisFrame() {
-      vec.reserve(300);
-      vec_dropped.reserve(300);
-    }
-    
-    ~NonRealtimeAnalysisFrame() {
-      if (owns_mutex) {
-        mutex.unlock();
-        owns_mutex = false;
-      }
-    }
-    
-    std::mutex & getMutex() const { return mutex; }
-    
-    // you must lock the mutex for this call
-    std::optional<int64_t> getFrameId() const { return frame_id; }
-    // you must lock the mutex while you read the vector
-    std::vector<PlayedNote> const & getPlayingNotes() const { return vec; }
-    // you must lock the mutex while you read the vector
-    std::vector<PlayedNote> const & getDroppedNotes() const { return vec_dropped; }
-    
-    // there is no need to lock the mutex when calling this
-    void onItem(DataQueueItem const & i) {
-      // we need to be fast on reading 'NoteOn', 'NoteOff', 'NoteChange', then 'CurrentNoteState', then 'EndOfAnalysisFrame', then 'CountDroppedItems'
-      if (std::holds_alternative<NoteOn>(i)) {
-        onItem(std::get<NoteOn>(i));
-      } else if (std::holds_alternative<NoteOff>(i)) {
-        onItem(std::get<NoteOff>(i));
-      } else if (std::holds_alternative<NoteChange>(i)) {
-        onItem(std::get<NoteChange>(i));
-      } else if (std::holds_alternative<CurrentNoteState>(i)) {
-        onItem(std::get<CurrentNoteState>(i));
-      } else if (std::holds_alternative<EndOfAnalysisFrame>(i)) {
-        onItem(std::get<EndOfAnalysisFrame>(i));
-      } else if (std::holds_alternative<NoteOnDropped>(i)) {
-        onItem(std::get<NoteOnDropped>(i));
-      } else if (std::holds_alternative<CountDroppedItems>(i)) {
-        onItem(std::get<CountDroppedItems>(i));
-      } else {
-        throw std::logic_error("unhandled alternative");
-      }
-    }
-  };
   
   RtResynth()
   : synth(buffers)
-  , channel_handler(ctxt.getChannelHandler())
-  , data_queue(data_queue_capacity) {
+  , channel_handler(ctxt.getChannelHandler()) {
     auto [channels_,remover] = channel_handler.getChannels().getChannelsNoXFade().emplace_front(channel_handler.get_lock_policy(),
                                                                                                 std::min(n_mnc,
                                                                                                          static_cast<int>(std::numeric_limits<uint8_t>::max())));
@@ -976,26 +144,10 @@ public:
     pitch_changes.reserve(200);
     continue_playing.reserve(200);
     played_notes.resize(200);
-    
-    {
-      thread_analysis_data_active = true;
-      thread_analysis_data = std::make_unique<std::thread>([this](){
-        while(thread_analysis_data_active) {
-          DataQueueItem item;
-          while(data_queue.try_pop(item)) {
-            analysis_data.onItem(item);
-          }
-          std::this_thread::yield();
-        }
-      });
-    }
   }
   
   ~RtResynth() {
-    teardown();
-    
-    thread_analysis_data_active = false;
-    thread_analysis_data->join();
+    teardown();    
   }
   
   void init(int const sample_rate = 88200) {
@@ -1097,14 +249,53 @@ public:
                        pitch_intervals,
                        reduced_pitches);
         
-        autotune_pitches([factor = this->autotune_factor.load()](double pitch) -> double {
-          if (!factor) {
-            return pitch;
-          } else {
-            int const discrete_pitch = static_cast<int>(pitch + 0.5);
-            return static_cast<double>(factor * (discrete_pitch / factor));
-          }
-        },
+        std::function<double(double const)> autotune;
+        switch(autotune_type) {
+          case AutotuneType::None :
+            autotune = [](double v) {return v;};
+            break;
+          case AutotuneType::FixedSizeIntervals:
+            autotune = [factor = this->autotune_factor.load()](double pitch) -> double {
+              if (!factor) {
+                return pitch;
+              } else {
+                int const discrete_pitch = static_cast<int>(pitch + 0.5);
+                return static_cast<double>(factor * (discrete_pitch / factor));
+              }
+            };
+            break;
+          case AutotuneType::MusicalScale:
+            const auto * scale = &getMusicalScale(autotune_musical_scale_type);
+            autotune = [scale,
+                        root_pitch = Midi::A_pitch + half_tones_distance(Note::La,
+                                                                         autotune_musical_scale_root_note)](double const pitch) {
+              // translate pitch to the right octave
+              double const half_tones_dist = pitch - root_pitch;
+              double const octave_dist = half_tones_dist / Midi::num_halftones_per_octave;
+              int octaves_translation;
+              // static_cast from floating point to integral rounds towards zero
+              if (octave_dist >= 0.) {
+                octaves_translation = static_cast<int>(octave_dist);
+              } else {
+                octaves_translation = static_cast<int>(octave_dist) - 1;
+              }
+
+              double const translated_pitch = pitch - octaves_translation * Midi::num_halftones_per_octave;
+
+              Assert(translated_pitch >= root_pitch);
+              Assert(translated_pitch < root_pitch + Midi::num_halftones_per_octave);
+
+              double const relative_translated_pitch = translated_pitch - root_pitch;
+
+              Assert(relative_translated_pitch >= 0.);
+              Assert(relative_translated_pitch < Midi::num_halftones_per_octave);
+              
+              double const offset = scale->distance_to(relative_translated_pitch);
+              return pitch - offset;
+            };
+            break;
+        }
+        autotune_pitches(autotune,
                          reduced_pitches,
                          autotuned_pitches);
         
@@ -1132,7 +323,7 @@ public:
         if (!stride_for_synth_config || *stride_for_synth_config != future_stride) {
           stride_for_synth_config = future_stride;
 
-          audioelement::ResynthElementInitializer<double> initializer{sample_rate, future_stride};
+          ResynthElementInitializer<double> initializer{sample_rate, future_stride};
           
           // This will apply the new params for new notes:
           synth.setSynchronousElementInitializer(initializer);
@@ -1163,7 +354,7 @@ public:
               if (res != onEventResult::OK) {
                 throw std::logic_error("dropped note off");
               }
-              try_push_data_note_off(played_pitches[idx]);
+              analysis_data.try_push_note_off(played_pitches[idx]);
               changed = true;
             }
           }
@@ -1199,7 +390,7 @@ public:
             played.midi_pitch = new_pitch;
             played.cur_velocity = volume;
             
-            try_push_data_note_change(played);
+            analysis_data.try_push_note_change(played);
           } else {
             static int noteid = 0;
             ++noteid;
@@ -1222,10 +413,10 @@ public:
             };
             if (res == onEventResult::OK) {
               played_pitches.push_back(new_note);
-              try_push_data_note_on(played_pitches.back());
+              analysis_data.try_push_note_on(played_pitches.back());
             } else {
               ++dropped_note_on;
-              try_push_data_note_on_dropped(new_note);
+              analysis_data.try_push_note_on_dropped(new_note);
             }
           }
         }
@@ -1234,7 +425,10 @@ public:
         
         sort_by_current_pitch(played_pitches);
         
-        try_push_end_of_analysis_frame(n);
+        analysis_data.try_push(NonRealtimeAnalysisFrame::EndOfFrame{
+          n,
+          std::chrono::microseconds(static_cast<int>(1000000. * static_cast<double>(future_stride)/sample_rate))
+        }, played_pitches);
         
         if (changed && print_changes) {
           print(played_pitches);
@@ -1527,6 +721,24 @@ public:
   void setAutotuneFactor(int f) {
     autotune_factor = f;
   }
+  AutotuneType getAutotuneType() const {
+    return autotune_type;
+  }
+  void setAutotuneType(AutotuneType f) {
+    autotune_type = f;
+  }
+  MusicalScaleType getAutotuneMusicalScale() const {
+    return autotune_musical_scale_type;
+  }
+  void setAutotuneMusicalScale(MusicalScaleType f) {
+    autotune_musical_scale_type = f;
+  }
+  Note getAutotuneMusicalScaleRoot() const {
+    return autotune_musical_scale_root_note;
+  }
+  void setAutotuneMusicalScaleRoot(Note f) {
+    autotune_musical_scale_root_note = f;
+  }
 private:
   Ctxt ctxt;
   ChannelHandler & channel_handler;
@@ -1544,11 +756,7 @@ private:
   std::atomic_int count_dropped_input_frames = 0;
   static_assert(decltype(count_dropped_input_frames)::is_always_lock_free);
   
-  DataQueue data_queue;
-  CountDroppedItems pending_dropped_data_items;
   NonRealtimeAnalysisFrame analysis_data;
-  std::atomic_bool thread_analysis_data_active{false};
-  std::unique_ptr<std::thread> thread_analysis_data;
   
   cyclic<float> delayed_input;
   std::atomic<float> input_delay_seconds = 0.f;
@@ -1557,9 +765,17 @@ private:
   std::atomic<float> min_volume = 0.0001;
   std::atomic<float> nearby_distance_tones = 0.4;
   std::atomic<float> max_track_pitches = 1.;
-  std::atomic_int autotune_factor = 0;
   static_assert(std::atomic<float>::is_always_lock_free);
-  
+
+  std::atomic<AutotuneType> autotune_type = AutotuneType::None;
+  static_assert(std::atomic<AutotuneType>::is_always_lock_free);
+  std::atomic_int autotune_factor = 2;
+  static_assert(std::atomic_int::is_always_lock_free);
+  std::atomic<MusicalScaleType> autotune_musical_scale_type = MusicalScaleType::Major;
+  static_assert(std::atomic<MusicalScaleType>::is_always_lock_free);
+  std::atomic<Note> autotune_musical_scale_root_note = Note::La;
+  static_assert(std::atomic<Note>::is_always_lock_free);
+
   int64_t n;
   
   using Sample = double;
@@ -1605,4 +821,5 @@ private:
   
 };
 
-} // NS
+} // NS resynth
+} // NS imajuscule::audio

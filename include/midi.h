@@ -31,10 +31,11 @@ struct Midi_ {
   // Midi A(69) according to http://subsynth.sourceforge.net/midinote2freq.html
   static constexpr float freq_A = 440.f;
   static constexpr double A_pitch = 69.;
-  
+  static constexpr int num_halftones_per_octave = 12;
+
   // TODO constexpr that, using  https://github.com/elbeno/constexpr/blob/master/src/include/cx_math.h
   constexpr Midi_(double const tuning_stretch = unity_tuning_stretch)
-  : half_tone_ratio_(pow<is_constexpr>(2., tuning_stretch/12.))
+  : half_tone_ratio_(pow<is_constexpr>(2., tuning_stretch/num_halftones_per_octave))
   , tuning_stretch_(tuning_stretch)
   {}
   

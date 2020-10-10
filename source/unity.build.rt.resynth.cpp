@@ -12,7 +12,12 @@
 
 #include "public.h"
 
+#include "rt.resynth.lib.autotune.cpp"
+#include "rt.resynth.lib.algo.cpp"
+#include "rt.resynth.lib.locked.data.cpp"
 #include "rt.resynth.lib.cpp"
 
+#include "rt.resynth.ui.params.cpp"
 #include "rt.resynth.ui.pitch.cpp"
+#include "rt.resynth.ui.autotune.cpp"
 #include "rt.resynth.ui.cpp"
