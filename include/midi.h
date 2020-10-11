@@ -84,7 +84,7 @@ inline int half_tones_distance(Note const & a,
 constexpr int num_halftones_per_octave = 12;
 // Midi A(69) according to http://subsynth.sourceforge.net/midinote2freq.html
 constexpr float freq_A = 440.f;
-constexpr double A_pitch = 69.;
+constexpr int A_pitch = 69;
 constexpr int ref_A_octave = 4;
 
 struct NoteOctave {

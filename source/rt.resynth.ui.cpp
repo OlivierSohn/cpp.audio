@@ -23,7 +23,7 @@ public:
   , uiTimer(this,
             static_cast<int>(TimerId::RefreshUI))
   {
-    pitch_ui = new PitchWindow(this, pitch_func);
+    pitch_ui = new PitchWindow(this, Orientation::Horizontal, pitch_func);
 
     this->Connect( wxEVT_TIMER, wxTimerEventHandler( MyFrame::OnUITimer ), NULL, this );
     
@@ -49,74 +49,69 @@ public:
     Bind(wxEVT_MENU, &MyFrame::OnHello, this, helloId);
     Bind(wxEVT_MENU, &MyFrame::OnAbout, this, wxID_ABOUT);
     Bind(wxEVT_MENU, &MyFrame::OnExit, this, wxID_EXIT);
-
-    auto sizer = new wxBoxSizer(wxHORIZONTAL);
+    
+    auto sliders_sizer= new wxBoxSizer(wxVERTICAL);
     {
-      auto sliders_sizer= new wxBoxSizer(wxVERTICAL);
-      {
-        auto params_sliders_sizer = new wxBoxSizer(wxVERTICAL);
-        for (auto const & [params2, label_color] : params) {
-          auto sliders_sizer2 = new wxBoxSizer(wxHORIZONTAL);
-          
-          for (auto const & param : params2) {
-            Add(createFloatSlider(this,
-                                  param,
-                                  label_color),
-                sliders_sizer2);
-          }
-          Add(sliders_sizer2,
-              params_sliders_sizer);
-        }
-        Add(params_sliders_sizer,
-            sliders_sizer);
-      }
-      {
-        auto autotune_sizer = mkAutotuneSizer(this,
-                                              autotune);
+      auto params_sliders_sizer = new wxBoxSizer(wxVERTICAL);
+      for (auto const & [params2, label_color] : params) {
+        auto sliders_sizer2 = new wxBoxSizer(wxHORIZONTAL);
         
-        Add(autotune_sizer,
-            sliders_sizer);
-      }
-      {
-        auto poll_params_sizer = new wxBoxSizer(wxVERTICAL);
-        {
-          auto rt_sizer = new wxBoxSizer(wxVERTICAL);
-          wxColor label_color(100,
-                              100,
-                              250);
-          
-          for (auto const & params: poll_params) {
-            auto rt2_sizer = new wxBoxSizer(wxHORIZONTAL);
-            for (auto const & param:params) {
-              auto [sizer, value] = createPollParamUI(this,
-                                                      param,
-                                                      label_color);
-              poll_params_ui.emplace_back(param, value);
-              Add(sizer,
-                  rt2_sizer,
-                  0,
-                  wxALL | wxALIGN_CENTER);
-            }
-            Add(rt2_sizer,
-                rt_sizer,
-                0,
-                wxALL);
-          }
-          Add(rt_sizer,
-              poll_params_sizer);
+        for (auto const & param : params2) {
+          Add(createFloatSlider(this,
+                                param,
+                                label_color),
+              sliders_sizer2);
         }
-        Add(poll_params_sizer,
-            sliders_sizer);
+        Add(sliders_sizer2,
+            params_sliders_sizer);
       }
-      Add(sliders_sizer,
-          sizer);
+      Add(params_sliders_sizer,
+          sliders_sizer);
     }
-    Add(pitch_ui,
-        sizer,
-        0,
-        wxALL);
+    {
+      auto autotune_sizer = mkAutotuneSizer(this,
+                                            autotune);
+      
+      Add(autotune_sizer,
+          sliders_sizer);
+    }
+    {
+      auto poll_params_sizer = new wxBoxSizer(wxVERTICAL);
+      {
+        auto rt_sizer = new wxBoxSizer(wxVERTICAL);
+        wxColor label_color(100,
+                            100,
+                            250);
+        
+        for (auto const & params: poll_params) {
+          auto rt2_sizer = new wxBoxSizer(wxHORIZONTAL);
+          for (auto const & param:params) {
+            auto [sizer, value] = createPollParamUI(this,
+                                                    param,
+                                                    label_color);
+            poll_params_ui.emplace_back(param, value);
+            Add(sizer,
+                rt2_sizer,
+                0,
+                wxALL | wxALIGN_CENTER);
+          }
+          Add(rt2_sizer,
+              rt_sizer,
+              0,
+              wxALL);
+        }
+        Add(rt_sizer,
+            poll_params_sizer);
+      }
+      Add(pitch_ui,
+          sliders_sizer,
+          0,
+          wxALL | wxEXPAND);
+      Add(poll_params_sizer,
+          sliders_sizer);
+    }
 
-    SetSizerAndFit(sizer);
+    SetSizerAndFit(sliders_sizer);
 
     uiTimer.Start(100);
   }
@@ -323,12 +318,12 @@ struct MyApp : public wxApp {
       [this](AutotuneType v){ resynth.setAutotuneType(v); },
     },
     {
-      "Mode",
+      "Scale mode",
       [this](){ return resynth.getAutotuneMusicalScaleMode(); },
       [this](MusicalScaleMode v){ resynth.setAutotuneMusicalScaleMode(v); },
     },
     {
-      "Root",
+      "Root note",
       [this](){ return resynth.getAutotuneMusicalScaleRoot(); },
       [this](Note v){ resynth.setAutotuneMusicalScaleRoot(v); },
     },

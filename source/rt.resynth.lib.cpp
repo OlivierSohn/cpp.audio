@@ -258,15 +258,23 @@ public:
             autotune = [](double v) {return v;};
             break;
           case AutotuneType::FixedSizeIntervals:
-            autotune = [factor = this->autotune_factor.load()](double pitch) -> double {
+          {
+            int offset = half_tones_distance(Note::Do,
+                                             autotune_musical_scale_root_note);
+            if (offset < 0) {
+              offset += num_halftones_per_octave;
+            }
+            autotune = [factor = autotune_factor.load(),
+                        offset](double pitch) -> double {
               if (!factor) {
-                return pitch;
+                return offset + pitch;
               } else {
                 int const discrete_pitch = static_cast<int>(pitch + 0.5);
-                return static_cast<double>(factor * (discrete_pitch / factor));
+                return static_cast<double>(offset + factor * (discrete_pitch / factor));
               }
             };
             break;
+          }
           case AutotuneType::MusicalScale:
             const auto * scale = &getMusicalScale(autotune_musical_scale_mode);
             autotune = [scale,

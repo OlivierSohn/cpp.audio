@@ -15,79 +15,64 @@ wxSizer * mkAutotuneSizer(wxWindow * parent,
   global_sizer->GetStaticBox()->SetBackgroundColour(autotune_bg_color1);
 
   {
-    wxStaticBoxSizer * sizer = new wxStaticBoxSizer(wxHORIZONTAL,
-                                                    parent,
-                                                    "");
-    wxStaticBoxSizer * sizer_scale = new wxStaticBoxSizer(wxVERTICAL,
-                                                          parent,
-                                                          "Scale");
-    wxStaticBoxSizer * sizer_interval = new wxStaticBoxSizer(wxVERTICAL,
-                                                             parent,
-                                                             "Intervals");
-    sizer->GetStaticBox()->SetBackgroundColour(autotune_bg_color2);
-    sizer_scale->GetStaticBox()->SetBackgroundColour(autotune_bg_color2);
-    sizer_interval->GetStaticBox()->SetBackgroundColour(autotune_bg_color2);
-    sizer->GetStaticBox()->SetForegroundColour(color_slider_label_2);
-    sizer_scale->GetStaticBox()->SetForegroundColour(color_slider_label_2);
-    sizer_interval->GetStaticBox()->SetForegroundColour(color_slider_label_2);
-    {
-      {
-        
-        wxSizer * scale_type = createChoice(parent,
-                                            a.scale_type,
-                                            color_slider_label_2,
-                                            ChoiceType::RadioBoxH);
-        wxSizer * scale_root = createChoice(parent,
-                                            a.scale_root,
-                                            color_slider_label_2,
-                                            ChoiceType::RadioBoxH);
-        Add(scale_type,
-            sizer_scale,
-            0,
-            wxALL | wxALIGN_LEFT);
-        Add(scale_root,
-            sizer_scale,
-            0,
-            wxALL | wxALIGN_LEFT);
-      }
-      {
-        
-        wxSizer * intervals = createIntSlider(parent,
-                                              a.intervals_size,
-                                              color_slider_label_2);
-        Add(intervals,
-            sizer_interval,
-            0,
-            0);
-      }
-      
-      Add(sizer_interval,
-          sizer,
-          0,
-          wxALL | wxALIGN_TOP);
-      Add(sizer_scale,
-          sizer,
-          0,
-          wxALL | wxALIGN_TOP);
-    }
+    wxStaticBoxSizer * sizer_vert = new wxStaticBoxSizer(wxVERTICAL,
+                                                         parent,
+                                                         "");
+    wxBoxSizer * sizer_horiz = new wxBoxSizer(wxHORIZONTAL);
+    sizer_vert->GetStaticBox()->SetBackgroundColour(autotune_bg_color2);
+    sizer_vert->GetStaticBox()->SetForegroundColour(color_slider_label_2);
+    
+    wxSizer * scale_type = createChoice(parent,
+                                        a.scale_type,
+                                        color_slider_label_2,
+                                        ChoiceType::RadioBoxH);
+    
+    wxSizer * intervals = createIntSlider(parent,
+                                          a.intervals_size,
+                                          color_slider_label_2);
+    
+    wxSizer * scale_root = createChoice(parent,
+                                        a.scale_root,
+                                        color_slider_label_2,
+                                        ChoiceType::RadioBoxH);
     wxSizer * type = createChoice(parent,
                                   a.type,
                                   color_slider_label_2,
                                   ChoiceType::RadioBoxV,
-                                  [sizer_interval, sizer_scale](AutotuneType const t){
-      forEachWindow(sizer_interval,
-                    [enabled = (t == AutotuneType::FixedSizeIntervals)](wxWindow & w) { w.Enable(enabled); });
-      forEachWindow(sizer_scale,
-                    [enabled = (t == AutotuneType::MusicalScale)](wxWindow & w) { w.Enable(enabled); });
+                                  [intervals, scale_type, scale_root](AutotuneType const t){
+      forEachWindow(intervals,
+                    [t](wxWindow & w) { w.Enable(t == AutotuneType::FixedSizeIntervals); });
+      forEachWindow(scale_type,
+                    [t](wxWindow & w) { w.Enable(t == AutotuneType::MusicalScale); });
+      forEachWindow(scale_root,
+                    [t](wxWindow & w) { w.Enable(t != AutotuneType::None); });
     });
+
+    Add(scale_type,
+        sizer_horiz,
+        0,
+        wxALL | wxALIGN_CENTER);
+    Add(intervals,
+        sizer_horiz,
+        0,
+        wxALL | wxALIGN_CENTER);
     
+    Add(scale_root,
+        sizer_vert,
+        0,
+        wxALL | wxALIGN_CENTER);
+    Add(sizer_horiz,
+        sizer_vert,
+        0,
+        wxALL | wxALIGN_CENTER);
+
     Add(type,
         global_sizer,
         0,
         wxALL);
-    Add(sizer,
+    Add(sizer_vert,
         global_sizer,
-        0,
+        1,
         wxALL | wxALIGN_CENTER);
   }
   return global_sizer;

@@ -6,19 +6,35 @@ constexpr double func_inv_log_1() {
   return 1. / r;
 }
 
+enum class Orientation {
+  Horizontal,
+  Vertical
+};
+
 struct PitchWindow
 : public wxWindow {
+  
+  static wxSize getSize(int x, int y, Orientation o) {
+    switch(o) {
+      case Orientation::Vertical:
+        return {x, y};
+      case Orientation::Horizontal:
+        return {y, x};
+    }
+  }
+
   using PitchFunction = std::function<void(std::vector<PlayedNote> &,
                                            std::vector<PlayedNote> &,
                                            std::optional<int64_t> &)>;
-
   PitchWindow(wxWindow * parent,
+              Orientation o,
               PitchFunction const & f)
   : wxWindow(parent,
-            wxID_ANY,
-            wxDefaultPosition,
-            wxSize(200,600))
+             wxID_ANY,
+             wxDefaultPosition,
+             getSize(200, -1, o))
   , pitch_func(f)
+  , orientation(o)
   {
     SetBackgroundStyle(wxBG_STYLE_PAINT);
     // The line above is to fix this assert:
@@ -42,15 +58,6 @@ struct PitchWindow
   bool TryFetchNewFrame() {
     std::optional<int64_t> const prev_frame_id = frame_id;
     pitch_func(played_notes, dropped_notes, frame_id);
-    if (prev_frame_id && frame_id) {
-      if ((*frame_id - *prev_frame_id) > 1) {
-        /*LG(INFO,
-           "skipped display of %d analysis frames @ %d",
-           (*frame_id - *prev_frame_id) - 1,
-           *prev_frame_id);
-        */
-      }
-    }
     if (frame_id == prev_frame_id) {
       return false;
     }
@@ -60,6 +67,7 @@ struct PitchWindow
 
 private:
   PitchFunction pitch_func;
+  Orientation orientation;
   std::vector<PlayedNote> played_notes, dropped_notes;
   std::optional<int64_t> frame_id, prev_frame_id_;
 
@@ -85,7 +93,7 @@ private:
 
   static constexpr int margin = 1;
   static constexpr int x_start_note_names = margin;
-  static constexpr int sz_note_names = 20;
+  static constexpr int sz_note_names = 15;
   static constexpr int x_start_pitches = x_start_note_names + sz_note_names + margin;
   
   void OnPaint(wxPaintEvent& event) {
@@ -101,21 +109,35 @@ private:
     dc.SetBrush(*wxBLACK_BRUSH);
     dc.DrawRectangle(sz);
 
-    auto pitch_to_height = [height_pitches = sz.y]
+    auto pitch_to_height = [this,
+                            height_pitches = (orientation == Orientation::Vertical) ? sz.y : sz.x]
     (float pitch) -> float {
       float ratio = (pitch - min_pitch) / (max_pitch - min_pitch);
-      return (1.f - ratio) * height_pitches;
+      if(orientation == Orientation::Vertical) {
+        return (1.f - ratio) * height_pitches;
+      } else {
+        return ratio * height_pitches;
+      }
     };
     
+    int const width_pitches = ((orientation == Orientation::Vertical) ? sz.x : sz.y) - x_start_pitches;
     auto draw_volume = [&dc,
-                        width_pitches = sz.x - x_start_pitches]
+                        this,
+                        width_pitches]
     (float const velocity, int const y) {
       double logVelocity = (log_vol_min - std::log(velocity)) * inv_log_vol_min;
       wxCoord const w = static_cast<int>(std::max(1., logVelocity * width_pitches));
-      dc.DrawLine(x_start_pitches,
-                  y,
-                  x_start_pitches + w,
-                  y);
+      if(orientation == Orientation::Vertical) {
+        dc.DrawLine(x_start_pitches,
+                    y,
+                    x_start_pitches + w,
+                    y);
+      } else {
+        dc.DrawLine(y,
+                    width_pitches - x_start_pitches,
+                    y,
+                    width_pitches - (x_start_pitches + w));
+      }
     };
     
     
@@ -127,20 +149,8 @@ private:
     }
     
     dc.SetPen(color_pitch_note_change);
-    
-    auto f = [](PlayedNote const & n) {
-      if (!n.midi_pitch) {
-        return 0.;
-      }
-      return n.cur_velocity / (n.midi_pitch * n.midi_pitch);
-    };
-    
-    std::optional<PlayedNote> max_volume;
-    for (auto const & n : played_notes) {
-      if (!max_volume || f(*max_volume) < f(n)) {
-        max_volume = n;
-      }
 
+    for (auto const & n : played_notes) {
       Assert(frame_id);
       if (n.note_on_frame_id == *frame_id) {
         dc.SetPen(color_pitch_note_on);
@@ -152,9 +162,18 @@ private:
         std::ostringstream s;
         s << note.note;
         s << note.octave;
-        dc.DrawText(s.str(),
-                    x_start_note_names,
-                    y);
+        wxString const text = s.str();
+        wxCoord text_w, text_h;
+        dc.GetTextExtent(text, &text_w, &text_h);
+        if(orientation == Orientation::Vertical) {
+          dc.DrawText(text,
+                      x_start_note_names,
+                      y - text_h/2);
+        } else {
+          dc.DrawText(text,
+                      y - text_w/2,
+                      width_pitches - x_start_note_names);
+        }
       }
       
       if (n.note_on_frame_id == *frame_id) {
@@ -164,12 +183,9 @@ private:
     
     auto const dropped = countDroppedFrames();
     
-    auto str = "dropped display frames : " + std::to_string(dropped ? *dropped : 0);
+    dc.SetTextForeground(dark_grey);
+    auto str = "Dropped display frames : " + std::to_string(dropped ? *dropped : 0);
     dc.DrawText(str, 20., 20.);
-
-    //auto str2 = "max volume at pitch : " + (max_volume ? std::to_string(max_volume->midi_pitch) : "?");
-    //dc.DrawText(str2, 20., 50.);
-
   }
 };
 

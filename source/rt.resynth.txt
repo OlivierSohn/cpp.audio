@@ -4,6 +4,13 @@
  ----------------
  Creative effects
  ----------------
+ 
+ - record some presets
+ . save as json
+
+ - an interesting robotic effect occurs with feedback and varying autotune interval size :
+ the fact that the interval size changes breaks the feedback loop so the variation should be fast enough so that the sound will not saturate.
+ Hence we need to automate, using oscillators and ranges, meta parameter variation.
 
  - autotune with single note:
  . mode where all octaves are taken

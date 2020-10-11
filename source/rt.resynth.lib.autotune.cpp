@@ -2,8 +2,8 @@ namespace imajuscule::audio::rtresynth {
 
 enum class AutotuneType {
   None,
-  FixedSizeIntervals,
   MusicalScale,
+  FixedSizeIntervals,
   // when adding values, please update 'CountEnumValues<AutotuneType>'
 };
 enum class MusicalScaleMode {
@@ -30,11 +30,11 @@ namespace imajuscule::audio::rtresynth {
 std::ostream & operator << (std::ostream & os, AutotuneType t) {
   switch(t) {
     case AutotuneType::None:
-      os << "None"; break;
-    case AutotuneType::FixedSizeIntervals:
-      os << "Intervals"; break;
+      os << "Disabled"; break;
     case AutotuneType::MusicalScale:
       os << "Scale"; break;
+    case AutotuneType::FixedSizeIntervals:
+      os << "Intervals"; break;
   }
   return os;
 }
