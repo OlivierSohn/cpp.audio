@@ -1,11 +1,13 @@
 namespace imajuscule::audio::rtresynth {
 
+constexpr int default_border = 5;
+
 template<typename T, typename U>
 void Add(T * widget,
          U * sizer,
          int proportion = 1,
          int flag = wxALL | wxEXPAND, // cannot mix wxEXPAND with wxALIGN***
-         int border = 5) {
+         int border = default_border) {
   sizer->Add(widget,
              proportion,
              flag,
@@ -74,6 +76,16 @@ const wxColor color_slider_label_2{
   200
 };
 
+const wxColor autotune_bg_color1{
+  40,
+  30,
+  40
+};
+const wxColor autotune_bg_color2{
+  30,
+  30,
+  40
+};
 
 inline std::string float_to_string(float v) {
   std::string s = std::to_string(v);
@@ -89,7 +101,8 @@ inline std::string float_to_string(float v) {
 }
 
 enum class ChoiceType {
-  RadioBox,
+  RadioBoxH,
+  RadioBoxV,
   ComboBox
 };
 
@@ -100,8 +113,8 @@ template<typename T, typename F = std::function<void(T)>>
 wxBoxSizer * createChoice(wxWindow * parent,
                           const EnumeratedParamProxy<T> & param,
                           wxColor const & label_color,
-                          F const & onNewValue = [](T){},
-                          ChoiceType const choice_type = ChoiceType::RadioBox) {
+                          ChoiceType const choice_type,
+                          F const & onNewValue = [](T){}) {
   std::vector<wxString> values;
   values.reserve(CountEnumValues<T>::count);
   for (int i=0; i<CountEnumValues<T>::count; ++i) {
@@ -112,10 +125,10 @@ wxBoxSizer * createChoice(wxWindow * parent,
   }
   
   auto on_event = [parent,
-                  onNewValue,
-                  &param
-                  ](wxCommandEvent & event){
-    T const candidate = static_cast<T>(event.GetInt());
+                   onNewValue,
+                   &param
+                   ](int idx){
+    T const candidate = static_cast<T>(idx);
     if (candidate != param.get()) {
       // The UI may becomes unresponsive if this is long:
       param.set(candidate);
@@ -127,33 +140,66 @@ wxBoxSizer * createChoice(wxWindow * parent,
   
   auto global_sizer = new wxBoxSizer(wxVERTICAL);
   
-  wxWindow * choice;
-  
   switch(choice_type) {
-    case ChoiceType::RadioBox:
-      choice = new wxRadioBox(parent,
-                              wxWindow::NewControlId(),
-                              param.name,
-                              wxDefaultPosition,
-                              wxDefaultSize,
-                              values.size(),
-                              values.data(),
-                              1);
-      choice->Bind(wxEVT_RADIOBOX,
-                   on_event);
-      break;
-    case ChoiceType::ComboBox:
-      choice = new wxComboBox(parent,
-                              wxWindow::NewControlId(),
-                              values[to_underlying(current_value)],
-                              wxDefaultPosition,
-                              wxDefaultSize,
-                              values.size(),
-                              values.data(),
-                              wxCB_READONLY);
-      choice->Bind(wxEVT_COMBOBOX,
-                   on_event);
+    case ChoiceType::RadioBoxH:
+    case ChoiceType::RadioBoxV:
     {
+      // with 'wxRadioBox' we can't customize the label color
+      // (there is a display bug where only part of the label is displayed)
+      // so we do this:
+      auto inner_sizer = new wxBoxSizer((choice_type == ChoiceType::RadioBoxH) ? wxHORIZONTAL : wxVERTICAL);
+      
+      bool first = true;
+      int idx = 0;
+      for (auto const & label : values) {
+        wxRadioButton * radio = new wxRadioButton(parent,
+                                                  wxWindow::NewControlId(),
+                                                  label,
+                                                  wxDefaultPosition,
+                                                  wxDefaultSize,
+                                                  first?wxRB_GROUP:0);
+        //radio->SetForegroundColour(value_unchanged_color);
+        radio->Bind(wxEVT_RADIOBUTTON,
+                    [on_event, idx](wxCommandEvent &){
+          on_event(idx);
+        });
+        if (idx == to_underlying(current_value)) {
+          radio->SetValue(true);
+        }
+        first = false;
+        Add(radio,
+            inner_sizer,
+            0,
+            wxALL);
+        ++idx;
+      }
+      wxStaticBoxSizer * stat_box_sizer = new wxStaticBoxSizer((choice_type == ChoiceType::RadioBoxH) ? wxHORIZONTAL: wxVERTICAL,
+                                                               parent,
+                                                               param.name);
+      stat_box_sizer->GetStaticBox()->SetForegroundColour(label_color);
+      Add(inner_sizer,
+          stat_box_sizer,
+          0,
+          0); // no border
+      Add(stat_box_sizer,
+          global_sizer,
+          0);
+      break;
+    }
+    case ChoiceType::ComboBox:
+    {
+      wxComboBox * combo_box = new wxComboBox(parent,
+                                              wxWindow::NewControlId(),
+                                              values[to_underlying(current_value)],
+                                              wxDefaultPosition,
+                                              wxDefaultSize,
+                                              values.size(),
+                                              values.data(),
+                                              wxCB_READONLY);
+      combo_box->Bind(wxEVT_COMBOBOX,
+                      [on_event](wxCommandEvent & e){
+        on_event(e.GetInt());
+      });
       auto label = new wxStaticText(parent,
                                     wxWindow::NewControlId(),
                                     param.name+":",
@@ -161,20 +207,18 @@ wxBoxSizer * createChoice(wxWindow * parent,
                                     wxDefaultSize);
       label->SetForegroundColour(label_color);
       
-      
       Add(label,
           global_sizer,
           0,
           wxALL | wxALIGN_CENTER);
-    }
+      Add(combo_box,
+          global_sizer,
+          0,
+          wxALL | wxALIGN_CENTER);
       break;
+    }
   }
   
-  Add(choice,
-      global_sizer,
-      0,
-      wxALL | wxALIGN_CENTER);
-
   onNewValue(current_value);
   return global_sizer;
 }
@@ -248,7 +292,7 @@ wxBoxSizer * createSlider(wxWindow * parent,
       
       Add(label,
           title_sizer,
-          1,
+          0,
           wxALL | wxALIGN_CENTER);
       Add(value_label,
           title_sizer,
@@ -256,7 +300,7 @@ wxBoxSizer * createSlider(wxWindow * parent,
           wxALL | wxALIGN_CENTER);
       Add(unit_label,
           title_sizer,
-          1,
+          0,
           wxALL | wxALIGN_CENTER);
       
       value_label->Bind(wxEVT_TEXT_ENTER,
@@ -300,7 +344,7 @@ wxBoxSizer * createSlider(wxWindow * parent,
     Add(title_sizer,
         global_sizer,
         0,
-        wxALL | wxALIGN_CENTER); // do not expand
+        wxALL | wxALIGN_CENTER);
   }
   {
     auto slider_sizer = new wxBoxSizer(wxHORIZONTAL);
@@ -329,7 +373,8 @@ wxBoxSizer * createSlider(wxWindow * parent,
           wxALL | wxALIGN_CENTER);
       Add(slider,
           slider_sizer,
-          1);
+          0,
+          wxALL | wxALIGN_CENTER);
       Add(maxText,
           slider_sizer,
           0,

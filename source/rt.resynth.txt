@@ -5,7 +5,6 @@
  Creative effects
  ----------------
 
- - autotune with major / minor scales.
  - autotune with single note:
  . mode where all octaves are taken
  . mode where just the note + harmonics (volume scaled) are taken

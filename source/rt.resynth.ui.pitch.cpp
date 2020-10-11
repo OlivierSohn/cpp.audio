@@ -51,12 +51,27 @@ struct PitchWindow
         */
       }
     }
-    return frame_id != prev_frame_id;
+    if (frame_id == prev_frame_id) {
+      return false;
+    }
+    prev_frame_id_ = prev_frame_id;
+    return true;
   }
+
 private:
   PitchFunction pitch_func;
   std::vector<PlayedNote> played_notes, dropped_notes;
-  std::optional<int64_t> frame_id;
+  std::optional<int64_t> frame_id, prev_frame_id_;
+
+  std::optional<int64_t> countDroppedFrames() const {
+    if (frame_id && prev_frame_id_) {
+      int const dropped = (*frame_id - *prev_frame_id_) - 1;
+      if (dropped >= 1) {
+        return {dropped};
+      }
+    }
+    return {};
+  }
   
   const wxColor color_pitch_note_change{51, 204, 204};
   const wxColor color_pitch_note_on{255, 255, 255};
@@ -69,11 +84,16 @@ private:
   static constexpr double inv_log_vol_min = 1. / log_vol_min;
 
   static constexpr int margin = 1;
-
-  static constexpr int x_start_pitches = margin;
+  static constexpr int x_start_note_names = margin;
+  static constexpr int sz_note_names = 20;
+  static constexpr int x_start_pitches = x_start_note_names + sz_note_names + margin;
   
   void OnPaint(wxPaintEvent& event) {
     wxAutoBufferedPaintDC dc(this);
+
+    //wxFont font(75, wxFONTFAMILY_SWISS, wxFONTSTYLE_NORMAL, wxFONTWEIGHT_NORMAL, false);
+    //dc.SetFont(font);
+    dc.SetTextForeground(*wxWHITE);
 
     // 0,0 is top left corner.
     
@@ -108,7 +128,18 @@ private:
     
     dc.SetPen(color_pitch_note_change);
     
+    auto f = [](PlayedNote const & n) {
+      if (!n.midi_pitch) {
+        return 0.;
+      }
+      return n.cur_velocity / (n.midi_pitch * n.midi_pitch);
+    };
+    
+    std::optional<PlayedNote> max_volume;
     for (auto const & n : played_notes) {
+      if (!max_volume || f(*max_volume) < f(n)) {
+        max_volume = n;
+      }
 
       Assert(frame_id);
       if (n.note_on_frame_id == *frame_id) {
@@ -116,11 +147,28 @@ private:
       }
       int const y = pitch_to_height(n.midi_pitch);
       draw_volume(n.cur_velocity, y);
+      auto [note, deviation] = midi_pitch_to_note_deviation(n.midi_pitch);
+      if (std::abs(deviation) < 0.00001) {
+        std::ostringstream s;
+        s << note.note;
+        s << note.octave;
+        dc.DrawText(s.str(),
+                    x_start_note_names,
+                    y);
+      }
       
       if (n.note_on_frame_id == *frame_id) {
         dc.SetPen(color_pitch_note_change);
       }
     }
+    
+    auto const dropped = countDroppedFrames();
+    
+    auto str = "dropped display frames : " + std::to_string(dropped ? *dropped : 0);
+    dc.DrawText(str, 20., 20.);
+
+    //auto str2 = "max volume at pitch : " + (max_volume ? std::to_string(max_volume->midi_pitch) : "?");
+    //dc.DrawText(str2, 20., 50.);
 
   }
 };

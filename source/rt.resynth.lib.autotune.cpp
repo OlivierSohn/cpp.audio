@@ -6,11 +6,11 @@ enum class AutotuneType {
   MusicalScale,
   // when adding values, please update 'CountEnumValues<AutotuneType>'
 };
-enum class MusicalScaleType {
+enum class MusicalScaleMode {
   Major,
   MinorNatural,
   MinorHarmonic
-  // when adding values, please update 'CountEnumValues<MusicalScaleType>'
+  // when adding values, please update 'CountEnumValues<MusicalScaleMode>'
 };
 
 } // NS
@@ -21,7 +21,7 @@ struct CountEnumValues<audio::rtresynth::AutotuneType> {
   static int constexpr count = 3;
 };
 template<>
-struct CountEnumValues<audio::rtresynth::MusicalScaleType> {
+struct CountEnumValues<audio::rtresynth::MusicalScaleMode> {
   static int constexpr count = 3;
 };
 } // NS
@@ -39,14 +39,14 @@ std::ostream & operator << (std::ostream & os, AutotuneType t) {
   return os;
 }
 
-std::ostream & operator << (std::ostream & os, MusicalScaleType t) {
+std::ostream & operator << (std::ostream & os, MusicalScaleMode t) {
   switch(t) {
-    case MusicalScaleType::Major:
+    case MusicalScaleMode::Major:
       os << "Major"; break;
-    case MusicalScaleType::MinorNatural:
-      os << "MinorNatural"; break;
-    case MusicalScaleType::MinorHarmonic:
-      os << "MinorHarmonic"; break;
+    case MusicalScaleMode::MinorNatural:
+      os << "Minor natural"; break;
+    case MusicalScaleMode::MinorHarmonic:
+      os << "Minor harmonic"; break;
   }
   return os;
 }
@@ -71,7 +71,7 @@ struct MusicalScalePitches {
   
   double distance_to(double const relative_translated_pitch) const {
     Assert(relative_translated_pitch >= 0.);
-    Assert(relative_translated_pitch < Midi::num_halftones_per_octave);
+    Assert(relative_translated_pitch < num_halftones_per_octave);
     // scale_pitches starts at 0 and goes upward until (included) Midi::num_halftones_per_octave
     Assert(equidistant_pitches.size() + 1 ==
            pitches.size());
@@ -86,6 +86,34 @@ struct MusicalScalePitches {
     return relative_translated_pitch - pitches[i];
   }
   
+  double closest_pitch (double const root_pitch,
+                        double const pitch) const
+  {
+    // translate pitch to the right octave
+    double const half_tones_dist = pitch - root_pitch;
+    double const octave_dist = half_tones_dist / num_halftones_per_octave;
+    int octaves_translation;
+    // static_cast from floating point to integral rounds towards zero
+    if (octave_dist >= 0.) {
+      octaves_translation = static_cast<int>(octave_dist);
+    } else {
+      octaves_translation = static_cast<int>(octave_dist) - 1;
+    }
+    
+    double const translated_pitch = pitch - octaves_translation * num_halftones_per_octave;
+    
+    Assert(translated_pitch >= root_pitch);
+    Assert(translated_pitch < root_pitch + num_halftones_per_octave);
+    
+    double const relative_translated_pitch = translated_pitch - root_pitch;
+    
+    Assert(relative_translated_pitch >= 0.);
+    Assert(relative_translated_pitch < num_halftones_per_octave);
+    
+    double const offset = distance_to(relative_translated_pitch);
+    return pitch - offset;
+  }
+
 private:
   std::vector<double> pitches; // the first element is the root (0.) and the last is the root at the next octave (12.)
   std::vector<double> equidistant_pitches;
@@ -124,13 +152,13 @@ const MusicalScalePitches minor_harmonic_scale{{
   12.
 }};
 
-MusicalScalePitches const & getMusicalScale(MusicalScaleType const t) {
+MusicalScalePitches const & getMusicalScale(MusicalScaleMode const t) {
   switch(t) {
-    case MusicalScaleType::Major:
+    case MusicalScaleMode::Major:
       return major_scale;
-    case MusicalScaleType::MinorNatural:
+    case MusicalScaleMode::MinorNatural:
       return minor_natural_scale;
-    case MusicalScaleType::MinorHarmonic:
+    case MusicalScaleMode::MinorHarmonic:
       return minor_harmonic_scale;
   }
 }

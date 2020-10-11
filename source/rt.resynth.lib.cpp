@@ -144,6 +144,9 @@ public:
     pitch_changes.reserve(200);
     continue_playing.reserve(200);
     played_notes.resize(200);
+#ifndef NDEBUG
+    testAutotune();
+#endif
   }
   
   ~RtResynth() {
@@ -265,33 +268,11 @@ public:
             };
             break;
           case AutotuneType::MusicalScale:
-            const auto * scale = &getMusicalScale(autotune_musical_scale_type);
+            const auto * scale = &getMusicalScale(autotune_musical_scale_mode);
             autotune = [scale,
-                        root_pitch = Midi::A_pitch + half_tones_distance(Note::La,
-                                                                         autotune_musical_scale_root_note)](double const pitch) {
-              // translate pitch to the right octave
-              double const half_tones_dist = pitch - root_pitch;
-              double const octave_dist = half_tones_dist / Midi::num_halftones_per_octave;
-              int octaves_translation;
-              // static_cast from floating point to integral rounds towards zero
-              if (octave_dist >= 0.) {
-                octaves_translation = static_cast<int>(octave_dist);
-              } else {
-                octaves_translation = static_cast<int>(octave_dist) - 1;
-              }
-
-              double const translated_pitch = pitch - octaves_translation * Midi::num_halftones_per_octave;
-
-              Assert(translated_pitch >= root_pitch);
-              Assert(translated_pitch < root_pitch + Midi::num_halftones_per_octave);
-
-              double const relative_translated_pitch = translated_pitch - root_pitch;
-
-              Assert(relative_translated_pitch >= 0.);
-              Assert(relative_translated_pitch < Midi::num_halftones_per_octave);
-              
-              double const offset = scale->distance_to(relative_translated_pitch);
-              return pitch - offset;
+                        root_pitch = A_pitch + half_tones_distance(Note::La,
+                                                                   autotune_musical_scale_root_note)](double const pitch) {
+              return scale->closest_pitch(root_pitch, pitch);
             };
             break;
         }
@@ -727,11 +708,11 @@ public:
   void setAutotuneType(AutotuneType f) {
     autotune_type = f;
   }
-  MusicalScaleType getAutotuneMusicalScale() const {
-    return autotune_musical_scale_type;
+  MusicalScaleMode getAutotuneMusicalScaleMode() const {
+    return autotune_musical_scale_mode;
   }
-  void setAutotuneMusicalScale(MusicalScaleType f) {
-    autotune_musical_scale_type = f;
+  void setAutotuneMusicalScaleMode(MusicalScaleMode f) {
+    autotune_musical_scale_mode = f;
   }
   Note getAutotuneMusicalScaleRoot() const {
     return autotune_musical_scale_root_note;
@@ -771,9 +752,9 @@ private:
   static_assert(std::atomic<AutotuneType>::is_always_lock_free);
   std::atomic_int autotune_factor = 2;
   static_assert(std::atomic_int::is_always_lock_free);
-  std::atomic<MusicalScaleType> autotune_musical_scale_type = MusicalScaleType::Major;
-  static_assert(std::atomic<MusicalScaleType>::is_always_lock_free);
-  std::atomic<Note> autotune_musical_scale_root_note = Note::La;
+  std::atomic<MusicalScaleMode> autotune_musical_scale_mode = MusicalScaleMode::Major;
+  static_assert(std::atomic<MusicalScaleMode>::is_always_lock_free);
+  std::atomic<Note> autotune_musical_scale_root_note = Note::Do;
   static_assert(std::atomic<Note>::is_always_lock_free);
 
   int64_t n;
