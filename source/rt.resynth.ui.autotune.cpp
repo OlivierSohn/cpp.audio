@@ -3,6 +3,7 @@ namespace imajuscule::audio::rtresynth {
 struct Autotune {
   EnumeratedParamProxy<AutotuneType> type;
   ParamProxy<int> max_pitch;
+  ParamProxy<float> pitch_tolerance;
   EnumeratedParamProxy<AutotuneChordFrequencies> chord_frequencies;
   EnumeratedCombinationParamProxy<Note> chord;
   EnumeratedParamProxy<MusicalScaleMode> scale_type;
@@ -67,7 +68,10 @@ wxSizer * mkAutotuneSizer(wxWindow * parent,
     wxSizer * max_pitch = createIntSlider(parent,
                                           a.max_pitch,
                                           color_slider_label_2);
-    
+    wxSizer * pitch_tolerance = createFloatSlider(parent,
+                                                  a.pitch_tolerance,
+                                                  color_slider_label_2);
+
     Add(chord,
         sizer_chord,
         0,
@@ -107,7 +111,11 @@ wxSizer * mkAutotuneSizer(wxWindow * parent,
         sizer_horiz2,
         0,
         wxALL | wxALIGN_CENTER);
-
+    Add(pitch_tolerance,
+        sizer_horiz2,
+        0,
+        wxALL | wxALIGN_CENTER);
+    
     Add(sizer_horiz2,
         sizer_vert,
         0,

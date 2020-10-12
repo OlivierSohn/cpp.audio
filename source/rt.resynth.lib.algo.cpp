@@ -182,9 +182,11 @@ void reduce_pitches(PitchReductionMethod const pitch_method,
 // - Autotune phase:
 // the reduced frequency will be changed to the closest allowed frequency (in pitch space).
 // the amplitudes of frequencies that fall in the same closest frequency will be added.
-// Pitches above 'max_pitch' will not be autotuned
+// Pitches above 'max_pitch' will be played but not autotuned.
+// Pitches with a distance from closest allowed pitch bigger than 'pitch_tolerance' will not be played.
 template<typename Autotune>
 void autotune_pitches(int const max_pitch,
+                      float const pitch_tolerance,
                       Autotune pitch_transform,
                       // invariant : ordered by pitch
                       std::vector<PitchVolume> const & input,
@@ -207,10 +209,12 @@ void autotune_pitches(int const max_pitch,
       transformedPitch = pv.midipitch;
     }
     if (transformedPitch) {
-      if (!output.empty() && (std::abs(output.back().midipitch - *transformedPitch) < 0.0001)) {
-        output.back().volume += pv.volume;
-      } else {
-        output.push_back({*transformedPitch, pv.volume});
+      if (std::abs(*transformedPitch - pv.midipitch) <= pitch_tolerance) {
+        if (!output.empty() && (std::abs(output.back().midipitch - *transformedPitch) < 0.0001)) {
+          output.back().volume += pv.volume;
+        } else {
+          output.push_back({*transformedPitch, pv.volume});
+        }
       }
     }
   }

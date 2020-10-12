@@ -353,6 +353,7 @@ public:
             break;
         }
         autotune_pitches(autotune_max_pitch.load(),
+                         autotune_tolerance_pitches,
                          autotune,
                          reduced_pitches,
                          autotuned_pitches);
@@ -773,6 +774,12 @@ public:
     return analysis_data;
   }
   
+  float getAutotunePitchTolerance() const {
+    return autotune_tolerance_pitches;
+  }
+  void setAutotunePitchTolerance(float f) {
+    autotune_tolerance_pitches = f;
+  }
   int getAutotuneMaxPitch() const {
     return autotune_max_pitch;
   }
@@ -865,6 +872,7 @@ private:
   std::atomic<float> min_volume = 0.0001;
   std::atomic<float> nearby_distance_tones = 0.4;
   std::atomic<float> max_track_pitches = 1.;
+  std::atomic<float> autotune_tolerance_pitches = 100.;
   static_assert(std::atomic<float>::is_always_lock_free);
 
   std::atomic<AutotuneType> autotune_type = AutotuneType::None;

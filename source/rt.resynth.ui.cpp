@@ -333,6 +333,14 @@ struct MyApp : public wxApp {
       }
     },
     {
+      "Max pitch distance",
+      "",
+      [this](){ return resynth.getAutotunePitchTolerance(); },
+      [this](float v){ resynth.setAutotunePitchTolerance(v); },
+      0.f,
+      150.f
+    },
+    {
       "",
       [this](){ return resynth.getAutotuneChordFrequencies(); },
       [this](AutotuneChordFrequencies v){ resynth.setAutotuneChordFrequencies(v); },
