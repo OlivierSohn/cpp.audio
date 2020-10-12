@@ -15,8 +15,9 @@ enum class MusicalScaleMode {
 };
 
 enum class AutotuneChordFrequencies {
-  OctavePeriodic,
-  Harmonics
+  SingleFreq,
+  Harmonics,
+  OctavePeriodic
 };
 
 } // NS
@@ -32,7 +33,7 @@ struct CountEnumValues<audio::rtresynth::MusicalScaleMode> {
 };
 template<>
 struct CountEnumValues<audio::rtresynth::AutotuneChordFrequencies> {
-  static int constexpr count = 2;
+  static int constexpr count = 3;
 };
 } // NS
 
@@ -42,11 +43,11 @@ inline std::ostream & operator << (std::ostream & os, AutotuneType t) {
     case AutotuneType::None:
       os << "Disabled"; break;
     case AutotuneType::MusicalScale:
-      os << "Scale"; break;
+      os << "Use scale"; break;
     case AutotuneType::FixedSizeIntervals:
-      os << "Intervals"; break;
+      os << "Use intervals"; break;
     case AutotuneType::Chord:
-      os << "Chord"; break;
+      os << "Use chord"; break;
   }
   return os;
 }
@@ -65,10 +66,12 @@ inline std::ostream & operator << (std::ostream & os, MusicalScaleMode t) {
 
 inline std::ostream & operator << (std::ostream & os, AutotuneChordFrequencies t) {
   switch(t) {
+    case AutotuneChordFrequencies::SingleFreq:
+      os << "Single"; break;
     case AutotuneChordFrequencies::OctavePeriodic:
-      os << "Octaves periodicy"; break;
+      os << "Replicate on every octave"; break;
     case AutotuneChordFrequencies::Harmonics:
-      os << "Harmonics"; break;
+      os << "Use harmonics"; break;
   }
   return os;
 }

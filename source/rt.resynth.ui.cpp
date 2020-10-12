@@ -318,12 +318,27 @@ struct MyApp : public wxApp {
       [this](AutotuneType v){ resynth.setAutotuneType(v); },
     },
     {
-      "Chord frequencies",
+      "Ignore pitches above",
+      "",
+      [this](){ return resynth.getAutotuneMaxPitch(); },
+      [this](int pitch){ resynth.setAutotuneMaxPitch(pitch); },
+      0,
+      150,
+      [](int pitch) {
+        auto [noteoctave, deviation] = midi_pitch_to_note_deviation(pitch);
+        Assert(deviation == 0.);
+        std::ostringstream os;
+        os << noteoctave.note << noteoctave.octave;
+        return os.str();        
+      }
+    },
+    {
+      "",
       [this](){ return resynth.getAutotuneChordFrequencies(); },
       [this](AutotuneChordFrequencies v){ resynth.setAutotuneChordFrequencies(v); },
     },
     {
-      "Chord",
+      "",
       [this](Note const & n){ return resynth.autotuneBitChordHasNote(n); },
       [this](Note const & n, bool enabled){ resynth.autotuneBitChordSetNote(n, enabled); }
     },
@@ -333,12 +348,12 @@ struct MyApp : public wxApp {
       [this](MusicalScaleMode v){ resynth.setAutotuneMusicalScaleMode(v); },
     },
     {
-      "Root",
+      "",
       [this](){ return resynth.getAutotuneMusicalScaleRoot(); },
       [this](Note v){ resynth.setAutotuneMusicalScaleRoot(v); },
     },
     {
-      "Root transpose",
+      "Transpose",
       "semitones",
       [this](){ return resynth.getAutotuneRootTranspose(); },
       [this](int v){ resynth.setAutotuneRootTranspose(v); },

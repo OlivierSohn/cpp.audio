@@ -1,17 +1,15 @@
 
 /* Backlog:
 
-sort/unique the vector used in find_closest_pitch, use binary search.
-
 in a unit test, verify the effect of signal phase on peach magnitude (I expect that this has an influence on lower frequencies)
 
  ----------------
  Creative effects
  ----------------
  
- - restrict autotune to a range of frequencies (maybe the speech will have a better intelligibility)
-
- - autotune global mode to say how long it takes to go to the autotuned frequency
+ - autotune global mode to say how long it takes to go to the autotuned frequency, i.e
+ if 0 : on note one, autotune
+ if > 0: on note on, use the original frequency, then if the pitch is detected again the next time, autotune it and issue a note change (do not take into account max pitch tracking distance)
 
  - only active for "autotune chord", when "harmonics" is active:
  . sliders "count sub harmonics" / "count harmonics"
@@ -19,25 +17,19 @@ in a unit test, verify the effect of signal phase on peach magnitude (I expect t
  
  - record some presets
  . save as json
- 
- - an interesting "frequency randomization" effect happens with
- . low frequency voice
- . small analysis window size (so that the frequency is not well found, hence the randomization effect)
- . "major chord + subharmonics" autotune (so that the frequencies are random but still "musically pleasing")
+ . hints to make make_presets:
+ .. max_pitch = 100 makes speec more intelligible, however we need max_pitch = 150 for robotic effects in the high end.
+ .. an interesting "frequency randomization" effect happens with
+ ... low frequency voice
+ ... small analysis window size (so that the frequency is not well found, hence the randomization effect)
+ ... "major chord + subharmonics" autotune (so that the frequencies are random but still "musically pleasing")
 
  - an interesting robotic effect occurs with feedback and varying autotune interval size :
  the fact that the interval size changes breaks the feedback loop so the variation should be fast enough so that the sound will not saturate.
  Hence we need to automate, using oscillators and ranges, meta parameter variation.
 
  - autotune global parameter : "tolerance"
- if a pitch is too far away from allowed pitches it is discarded
- - autotune with single note:
- . mode where all octaves are taken
- . mode where just the note + harmonics (volume scaled) are taken
- - autotune with chord:
- . mode where all octaves are taken
- . mode where just the chord is taken
- . mode where just the chord + harmonics is taken
+ if a pitch is too far away from allowed pitches it is discarded (to have more coherent sound when the set of allowe pitches is narrow)
  
  . radiobox "frequencies"
  .. "dry"
@@ -138,6 +130,8 @@ in a unit test, verify the effect of signal phase on peach magnitude (I expect t
  Others
  ------
  
+ - perf : sort/unique the vector used in find_closest_pitch, use binary search.
+
  - Find a way to that verify notechanges, noteon, noteoff take midi time into account
  (output buffers have a limited size so we can't easily test by using long output buffers)
  

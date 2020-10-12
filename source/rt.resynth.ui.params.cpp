@@ -49,6 +49,7 @@ struct ParamProxy {
   std::function<T()> get;
   std::function<void(T)> set;
   T min, max;
+  std::function<std::string(T)> show = {}; // optional
 };
 
 struct ParamPollProxy {
@@ -347,6 +348,15 @@ wxBoxSizer * createSlider(wxWindow * parent,
                                         wxTE_PROCESS_ENTER);
       value_label->SetForegroundColour(value_unchanged_color);
       
+      wxStaticText * show_label = nullptr;
+      if (param.show) {
+        show_label = new wxStaticText(parent,
+                                      wxWindow::NewControlId(),
+                                      param.show(current_T_value),
+                                      wxDefaultPosition,
+                                      valueSz);
+      }
+      
       auto unit_label = new wxStaticText(parent,
                                          wxWindow::NewControlId(),
                                          param.unit,
@@ -362,6 +372,12 @@ wxBoxSizer * createSlider(wxWindow * parent,
           title_sizer,
           0,
           wxALL | wxALIGN_CENTER);
+      if (show_label) {
+        Add(show_label,
+            title_sizer,
+            0,
+            wxALL | wxALIGN_CENTER);
+      }
       Add(unit_label,
           title_sizer,
           0,
@@ -371,6 +387,7 @@ wxBoxSizer * createSlider(wxWindow * parent,
                         [slider,
                          &param,
                          T_value_to_int_value,
+                         show_label,
                          value_label
                          ](wxCommandEvent & event){
         try {
@@ -384,6 +401,9 @@ wxBoxSizer * createSlider(wxWindow * parent,
             param.set(candidate);
           }
           value_label->SetForegroundColour(value_unchanged_color);
+          if (show_label) {
+            show_label->SetLabel(param.show(candidate));
+          }
         } catch (std::invalid_argument const & e) {
           value_label->SetForegroundColour(value_incorrect_color);
           std::cout << e.what() << std::endl;
@@ -392,6 +412,7 @@ wxBoxSizer * createSlider(wxWindow * parent,
       
       slider->Bind(wxEVT_SCROLL_THUMBTRACK,
                    [&param,
+                    show_label,
                     value_label,
                     position_to_T
                     ](wxScrollEvent & event){
@@ -403,6 +424,9 @@ wxBoxSizer * createSlider(wxWindow * parent,
         value_label->SetLabel(T_to_string(candidate));
         value_label->GetParent()->Layout();
         value_label->SetForegroundColour(value_unchanged_color);
+        if (show_label) {
+          show_label->SetLabel(param.show(candidate));
+        }
       });
     }
     Add(title_sizer,

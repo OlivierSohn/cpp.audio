@@ -275,9 +275,15 @@ public:
             std::bitset<64> const chord{autotune_bit_chord.load()};
             allowed_pitches.clear();
 
+            bool single = false;
             switch(autotune_chord_frequencies) {
+              case AutotuneChordFrequencies::SingleFreq:
+                single = true;
               case AutotuneChordFrequencies::OctavePeriodic:
-                for (int octave = -5; octave <= 5; ++octave) {
+              {
+                int const octaveMin = single ? 0:-5;
+                int const octaveMax = single ? 0:5;
+                for (int octave = octaveMin; octave <= octaveMax; ++octave) {
                   int const add = num_halftones_per_octave * octave;
                   for (int i=0, sz = static_cast<int>(chord.size()); i < sz; ++i) {
                     if (chord[i]) {
@@ -286,6 +292,7 @@ public:
                   }
                 }
                 break;
+              }
               case AutotuneChordFrequencies::Harmonics:
               {
                 constexpr int n_harmo = 36;
@@ -345,7 +352,8 @@ public:
             };
             break;
         }
-        autotune_pitches(autotune,
+        autotune_pitches(autotune_max_pitch.load(),
+                         autotune,
                          reduced_pitches,
                          autotuned_pitches);
         
@@ -765,6 +773,12 @@ public:
     return analysis_data;
   }
   
+  int getAutotuneMaxPitch() const {
+    return autotune_max_pitch;
+  }
+  void setAutotuneMaxPitch(int f) {
+    autotune_max_pitch = f;
+  }
   int getAutotuneFactor() const {
     return autotune_factor;
   }
@@ -855,6 +869,7 @@ private:
 
   std::atomic<AutotuneType> autotune_type = AutotuneType::None;
   static_assert(std::atomic<AutotuneType>::is_always_lock_free);
+  std::atomic_int autotune_max_pitch = 150;
   std::atomic_int autotune_factor = 2;
   static_assert(std::atomic_int::is_always_lock_free);
   std::atomic<MusicalScaleMode> autotune_musical_scale_mode = MusicalScaleMode::Major;
