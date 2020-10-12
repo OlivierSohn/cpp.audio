@@ -37,6 +37,13 @@ struct EnumeratedParamProxy {
 };
 
 template<typename T>
+struct EnumeratedCombinationParamProxy {
+  std::string name;
+  std::function<bool(T)> enabled;
+  std::function<void(T, bool)> enable;
+};
+
+template<typename T>
 struct ParamProxy {
   std::string name, unit;
   std::function<T()> get;
@@ -105,6 +112,12 @@ enum class ChoiceType {
   RadioBoxV,
   ComboBox
 };
+
+enum class CombinationType {
+  CheckBoxH,
+  CheckBoxV
+};
+
 
 /*
  Note that onNewValue is called at the end of the function, with the current value
@@ -223,6 +236,54 @@ wxBoxSizer * createChoice(wxWindow * parent,
   return global_sizer;
 }
 
+template<typename T>
+wxBoxSizer * createCombination(wxWindow * parent,
+                               const EnumeratedCombinationParamProxy<T> & param,
+                               wxColor const & label_color,
+                               CombinationType const combination_type) {
+  std::vector<wxString> values;
+  values.reserve(CountEnumValues<T>::count);
+  for (int i=0; i<CountEnumValues<T>::count; ++i) {
+    T const val = static_cast<T>(i);
+    std::ostringstream os;
+    os << val;
+    values.emplace_back(os.str());
+  }
+  
+  auto inner_sizer = new wxBoxSizer((combination_type == CombinationType::CheckBoxH) ? wxHORIZONTAL : wxVERTICAL);
+  
+  int idx = 0;
+  for (auto const & label : values) {
+    T const enum_value = static_cast<T>(idx);
+    wxCheckBox * checkbox = new wxCheckBox(parent,
+                                           wxWindow::NewControlId(),
+                                           label);
+    checkbox->Bind(wxEVT_CHECKBOX,
+                   [enum_value, &param](wxCommandEvent & e){
+      param.enable(enum_value, static_cast<bool>(e.GetInt()));
+    });
+    checkbox->SetValue(param.enabled(enum_value));
+    Add(checkbox,
+        inner_sizer,
+        0,
+        wxALL);
+    ++idx;
+  }
+  wxStaticBoxSizer * stat_box_sizer = new wxStaticBoxSizer((combination_type == CombinationType::CheckBoxH) ? wxHORIZONTAL: wxVERTICAL,
+                                                           parent,
+                                                           param.name);
+  stat_box_sizer->GetStaticBox()->SetForegroundColour(label_color);
+  Add(inner_sizer,
+      stat_box_sizer,
+      0,
+      0); // no border
+  
+  return stat_box_sizer;
+}
+
+std::string T_to_string(uint64_t v) {
+  return std::to_string(v);
+}
 std::string T_to_string(int v) {
   return std::to_string(v);
 }
@@ -235,6 +296,9 @@ void string_to_T(std::string const & str, float & res) {
 }
 void string_to_T(std::string const & str, int & res) {
   res = std::stoi(str);
+}
+void string_to_T(std::string const & str, uint64_t & res) {
+  res = std::stoull(str);
 }
 
 template<typename T, typename f1, typename f2>
@@ -250,7 +314,7 @@ wxBoxSizer * createSlider(wxWindow * parent,
   Assert(current_T_value >= param.min);
   
   int const current_int_value = std::min(max_int_value,
-                                         T_value_to_int_value(current_T_value));
+                                         static_cast<int>(T_value_to_int_value(current_T_value)));
   auto slider = new wxSlider(parent,
                              wxWindow::NewControlId(),
                              current_int_value,
@@ -420,15 +484,17 @@ wxBoxSizer * createFloatSlider(wxWindow * parent,
                       label_color);
 }
 
+template<typename T>
 wxBoxSizer * createIntSlider(wxWindow * parent,
-                             ParamProxy<int> const & param,
+                             ParamProxy<T> const & param,
                              wxColor const & label_color) {
+  static_assert(std::is_integral_v<T>);
   return createSlider(parent,
                       param,
-                      param.min,
-                      param.max,
-                      [](int v){ return v; },
-                      [](int v){ return v; },
+                      (param.min < std::numeric_limits<int>::min()) ? std::numeric_limits<int>::min() : static_cast<int>(param.min),
+                      (param.max > std::numeric_limits<int>::max()) ? std::numeric_limits<int>::max() : static_cast<int>(param.max),
+                      [](T v){ return v; },
+                      [](T v){ return v; },
                       label_color);
 }
 

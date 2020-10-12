@@ -16,7 +16,7 @@ public:
   : wxFrame(NULL,
             wxID_ANY,
             "Resynth",
-            wxDefaultPosition,
+            wxPoint(100,30),
             wxDefaultSize,
             wxDEFAULT_FRAME_STYLE |
             wxFULL_REPAINT_ON_RESIZE)
@@ -318,14 +318,32 @@ struct MyApp : public wxApp {
       [this](AutotuneType v){ resynth.setAutotuneType(v); },
     },
     {
+      "Chord frequencies",
+      [this](){ return resynth.getAutotuneChordFrequencies(); },
+      [this](AutotuneChordFrequencies v){ resynth.setAutotuneChordFrequencies(v); },
+    },
+    {
+      "Chord",
+      [this](Note const & n){ return resynth.autotuneBitChordHasNote(n); },
+      [this](Note const & n, bool enabled){ resynth.autotuneBitChordSetNote(n, enabled); }
+    },
+    {
       "Scale mode",
       [this](){ return resynth.getAutotuneMusicalScaleMode(); },
       [this](MusicalScaleMode v){ resynth.setAutotuneMusicalScaleMode(v); },
     },
     {
-      "Root note",
+      "Root",
       [this](){ return resynth.getAutotuneMusicalScaleRoot(); },
       [this](Note v){ resynth.setAutotuneMusicalScaleRoot(v); },
+    },
+    {
+      "Root transpose",
+      "semitones",
+      [this](){ return resynth.getAutotuneRootTranspose(); },
+      [this](int v){ resynth.setAutotuneRootTranspose(v); },
+      -50,
+      50
     },
     {
       "Intervals",

@@ -1,5 +1,5 @@
 namespace imajuscule::audio::rtresynth {
-void testAutotune() {
+inline void testAutotune() {
 
   {
     NoteOctave const note{Note::Fad, 4};

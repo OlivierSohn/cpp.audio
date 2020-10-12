@@ -4,6 +4,7 @@ enum class AutotuneType {
   None,
   MusicalScale,
   FixedSizeIntervals,
+  Chord
   // when adding values, please update 'CountEnumValues<AutotuneType>'
 };
 enum class MusicalScaleMode {
@@ -13,21 +14,30 @@ enum class MusicalScaleMode {
   // when adding values, please update 'CountEnumValues<MusicalScaleMode>'
 };
 
+enum class AutotuneChordFrequencies {
+  OctavePeriodic,
+  Harmonics
+};
+
 } // NS
 
 namespace imajuscule {
 template<>
 struct CountEnumValues<audio::rtresynth::AutotuneType> {
-  static int constexpr count = 3;
+  static int constexpr count = 4;
 };
 template<>
 struct CountEnumValues<audio::rtresynth::MusicalScaleMode> {
   static int constexpr count = 3;
 };
+template<>
+struct CountEnumValues<audio::rtresynth::AutotuneChordFrequencies> {
+  static int constexpr count = 2;
+};
 } // NS
 
 namespace imajuscule::audio::rtresynth {
-std::ostream & operator << (std::ostream & os, AutotuneType t) {
+inline std::ostream & operator << (std::ostream & os, AutotuneType t) {
   switch(t) {
     case AutotuneType::None:
       os << "Disabled"; break;
@@ -35,11 +45,13 @@ std::ostream & operator << (std::ostream & os, AutotuneType t) {
       os << "Scale"; break;
     case AutotuneType::FixedSizeIntervals:
       os << "Intervals"; break;
+    case AutotuneType::Chord:
+      os << "Chord"; break;
   }
   return os;
 }
 
-std::ostream & operator << (std::ostream & os, MusicalScaleMode t) {
+inline std::ostream & operator << (std::ostream & os, MusicalScaleMode t) {
   switch(t) {
     case MusicalScaleMode::Major:
       os << "Major"; break;
@@ -47,6 +59,16 @@ std::ostream & operator << (std::ostream & os, MusicalScaleMode t) {
       os << "Minor natural"; break;
     case MusicalScaleMode::MinorHarmonic:
       os << "Minor harmonic"; break;
+  }
+  return os;
+}
+
+inline std::ostream & operator << (std::ostream & os, AutotuneChordFrequencies t) {
+  switch(t) {
+    case AutotuneChordFrequencies::OctavePeriodic:
+      os << "Octaves periodicy"; break;
+    case AutotuneChordFrequencies::Harmonics:
+      os << "Harmonics"; break;
   }
   return os;
 }
@@ -85,13 +107,14 @@ struct MusicalScalePitches {
     }
     return relative_translated_pitch - pitches[i];
   }
-  
-  double closest_pitch (double const root_pitch,
-                        double const pitch) const
+
+  template<typename T>
+  T closest_pitch (T const root_pitch,
+                   T const pitch) const
   {
     // translate pitch to the right octave
-    double const half_tones_dist = pitch - root_pitch;
-    double const octave_dist = half_tones_dist / num_halftones_per_octave;
+    T const half_tones_dist = pitch - root_pitch;
+    T const octave_dist = half_tones_dist / num_halftones_per_octave;
     int octaves_translation;
     // static_cast from floating point to integral rounds towards zero
     if (octave_dist >= 0.) {
@@ -100,17 +123,17 @@ struct MusicalScalePitches {
       octaves_translation = static_cast<int>(octave_dist) - 1;
     }
     
-    double const translated_pitch = pitch - octaves_translation * num_halftones_per_octave;
+    T const translated_pitch = pitch - octaves_translation * num_halftones_per_octave;
     
     Assert(translated_pitch >= root_pitch);
     Assert(translated_pitch < root_pitch + num_halftones_per_octave);
     
-    double const relative_translated_pitch = translated_pitch - root_pitch;
+    T const relative_translated_pitch = translated_pitch - root_pitch;
     
     Assert(relative_translated_pitch >= 0.);
     Assert(relative_translated_pitch < num_halftones_per_octave);
     
-    double const offset = distance_to(relative_translated_pitch);
+    T const offset = distance_to(relative_translated_pitch);
     return pitch - offset;
   }
 
@@ -152,7 +175,7 @@ const MusicalScalePitches minor_harmonic_scale{{
   12.
 }};
 
-MusicalScalePitches const & getMusicalScale(MusicalScaleMode const t) {
+inline MusicalScalePitches const & getMusicalScale(MusicalScaleMode const t) {
   switch(t) {
     case MusicalScaleMode::Major:
       return major_scale;
@@ -161,6 +184,20 @@ MusicalScalePitches const & getMusicalScale(MusicalScaleMode const t) {
     case MusicalScaleMode::MinorHarmonic:
       return minor_harmonic_scale;
   }
+}
+
+template<typename T>
+std::optional<T> find_closest_pitch(T const pitch,
+                                    std::vector<T> const & pitches) {
+  std::optional<T> res, distance;
+  for (auto const & candidate : pitches) {
+    T const candidate_dist = std::abs(candidate - pitch);
+    if (!distance || *distance > candidate_dist) {
+      distance = candidate_dist;
+      res = candidate;
+    }
+  }
+  return res;
 }
 
 } // NS

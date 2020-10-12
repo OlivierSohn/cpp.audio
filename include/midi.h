@@ -74,7 +74,8 @@ operator << (std::ostream & os, Note const & n) {
   return os;
 }
 
-inline int half_tones_distance(Note const & a,
+inline constexpr
+int half_tones_distance(Note const & a,
                                Note const & b) {
   return
   static_cast<int>(to_underlying(b)) -
@@ -86,6 +87,7 @@ constexpr int num_halftones_per_octave = 12;
 constexpr float freq_A = 440.f;
 constexpr int A_pitch = 69;
 constexpr int ref_A_octave = 4;
+constexpr int max_audible_midi_pitch = 151; // 50 kHz
 
 struct NoteOctave {
   Note note;
@@ -198,12 +200,25 @@ struct Midi_ {
     return freq * pow<is_constexpr>(half_tone_ratio_,
                                     static_cast<double>(n));
   }
-  
+  constexpr double midi_pitch_offset_nth_harmonic(int n) const {
+    return (num_halftones_per_octave / tuning_stretch_) * log2<is_constexpr>(static_cast<float>(n));
+  }
 private:
   double const half_tone_ratio_;
   double const tuning_stretch_;
 };
 
+template<int N, Constexpr is_constexpr>
+constexpr std::array<double, N>
+compute_harmonic_pitch_adds(Midi_<is_constexpr> const & midi) {
+  std::array<double, N> res{};
+  for (int i=0; i<N; ++i) {
+    res[i] = static_cast<int>(0.5 + midi.midi_pitch_offset_nth_harmonic(i+1));
+  }
+  return res;
+}
+
 using Midi = Midi_<Constexpr::No>;
 using ConstexprMidi = Midi_<Constexpr::Yes>;
+
 } // NS

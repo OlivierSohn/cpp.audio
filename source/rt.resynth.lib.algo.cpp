@@ -1,11 +1,11 @@
 namespace imajuscule::audio::rtresynth {
 
 struct PitchVolume {
-  double midipitch;
+  float midipitch;
   double volume;
 };
 
-void frequencies_to_pitches(Midi const & midi,
+inline void frequencies_to_pitches(Midi const & midi,
                             std::vector<FreqMag<double>> const & fs,
                             std::vector<PitchVolume> & res) {
   res.clear();
@@ -19,7 +19,7 @@ void frequencies_to_pitches(Midi const & midi,
 #endif
     if (auto pitch = midi.frequency_to_midi_pitch(f.freq)) {
       res.push_back({
-        *pitch,
+        static_cast<float>(*pitch),
         DbToMag<double>()(f.mag_db)
       });
     }
@@ -38,8 +38,8 @@ enum class VolumeReductionMethod{
 };
 
 class PitchInterval {
-  double min_pitch, max_pitch;
-  double maxVolumePitch;
+  float min_pitch, max_pitch;
+  float maxVolumePitch;
   double maxVolume{};
   double sumProductsPitchVolume{};
   double sumVolumes{};
@@ -53,10 +53,10 @@ public:
     aggregate(pv);
   }
   
-  double minPitch() const {
+  float minPitch() const {
     return min_pitch;
   }
-  double maxPitch() const {
+  float maxPitch() const {
     return max_pitch;
   }
   
@@ -68,7 +68,7 @@ public:
     aggregate(pv);
   }
   
-  double getPitch(PitchReductionMethod m) const {
+  float getPitch(PitchReductionMethod m) const {
     switch(m) {
       case PitchReductionMethod::IntervalCenter:
         return 0.5 * (min_pitch + max_pitch);
@@ -129,7 +129,7 @@ void aggregate_pitches(double const nearby_distance_tones,
   
   std::optional<PitchInterval> cur;
 #ifndef NDEBUG
-  double pitch = std::numeric_limits<double>::lowest();
+  float pitch = std::numeric_limits<float>::lowest();
   int idx = -1;
 #endif
   for (auto const & pv : pitch_volumes) {
@@ -191,18 +191,19 @@ void autotune_pitches(Autotune pitch_transform,
   output.clear();
   output.reserve(input.size());
 #ifndef NDEBUG
-  double pitch = std::numeric_limits<double>::lowest();
+  float pitch = std::numeric_limits<float>::lowest();
 #endif
   for (auto const & pv : input) {
 #ifndef NDEBUG
     Assert(pitch < pv.midipitch); // verify invariant
     pitch = pv.midipitch;
 #endif
-    double const transformedPitch = pitch_transform(pv.midipitch);
-    if (!output.empty() && (std::abs(output.back().midipitch - transformedPitch) < 0.0001)) {
-      output.back().volume += pv.volume;
-    } else {
-      output.push_back({transformedPitch, pv.volume});
+    if (std::optional<float> const transformedPitch = pitch_transform(pv.midipitch)) {
+      if (!output.empty() && (std::abs(output.back().midipitch - *transformedPitch) < 0.0001)) {
+        output.back().volume += pv.volume;
+      } else {
+        output.push_back({*transformedPitch, pv.volume});
+      }
     }
   }
 }
@@ -250,12 +251,12 @@ void track_pitches(double const max_track_pitches,
   
   int idx = -1;
 #ifndef NDEBUG
-  double pitch2 = std::numeric_limits<double>::lowest();
+  float pitch2 = std::numeric_limits<float>::lowest();
   for (auto const & p : played_pitches) {
     Assert(pitch2 <= p.midi_pitch);
     pitch2 = p.midi_pitch;
   }
-  double pitch = std::numeric_limits<double>::lowest();
+  float pitch = std::numeric_limits<float>::lowest();
 #endif
   auto const begin = played_pitches.begin();
   auto it = played_pitches.begin();
@@ -296,7 +297,7 @@ order_pitches_by_perceived_loudness(F perceived_loudness,
   autotuned_pitches_perceived_loudness.reserve(new_pitches.size());
   
 #ifndef NDEBUG
-  double pitch = std::numeric_limits<double>::lowest();
+  float pitch = std::numeric_limits<float>::lowest();
 #endif
   
   for (auto const & pv : new_pitches) {
