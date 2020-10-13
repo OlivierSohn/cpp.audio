@@ -2,15 +2,26 @@ namespace imajuscule::audio::audioelement {
 
 constexpr auto n_frames_per_buffer = 16;
 
+namespace buffer {
+
 // AudioComponent<float> has a buffer of size 1 cache line
 // AudioComponent<double> has a buffer of size 2 cache lines
 // each of them have 16 frames worth of data in their buffer
-static constexpr auto buffer_alignment = cache_line_n_bytes; // 64 or 32
+static constexpr auto alignment = cache_line_n_bytes; // 64 or 32
 
 static constexpr auto index_state = 0;
 
+// state values must be distinct from every possible valid value
+template<typename T>
+constexpr T queued_state() { return -std::numeric_limits<T>::infinity(); } // in *** at most *** one queue
+template<typename T>
+constexpr T inactive_state() { return std::numeric_limits<T>::infinity(); }// not active in any queue
+
 template<typename T>
 auto & state(T * buffer) { return buffer[index_state]; }
+
+} // NS
+
 
 // lifecycle :
 // upon creation, state is inactive()
@@ -23,7 +34,7 @@ struct AEBuffer {
     // assert deactivated as it fails on iphone / iphone simulator. I think I need to implement
     // a freelist of blocks of cache line size to get around this issue related to overaligned types.
     //Assert(0 == reinterpret_cast<unsigned long>(buffer) % buffer_alignment);
-    state(buffer) = inactive();
+    buffer::state(buffer) = buffer::inactive_state<T>();
   }
   
   // no copy or move because the lambda returned by fCompute() captures 'this'
@@ -31,21 +42,17 @@ struct AEBuffer {
   AEBuffer & operator=(const AEBuffer&) = delete;
   AEBuffer(AEBuffer &&) = delete;
   AEBuffer& operator = (AEBuffer &&) = delete;
-  
-  // state values must be distinct from every possible valid value
-  static constexpr auto queued() { return -std::numeric_limits<T>::infinity(); } // in *** at most *** one queue
-  static constexpr auto inactive() { return std::numeric_limits<T>::infinity(); }// not active in any queue
-  
+    
   ////// [AEBuffer] beginning of the 1st cache line
   
-  alignas(buffer_alignment)
+  alignas(buffer::alignment)
   T buffer[n_frames_per_buffer];
   
   ////// [AEBuffer<float>] beginning of the 2nd cache line
   ////// [AEBuffer<double>] beginning of the 3rd cache line
   
-  constexpr bool isInactive() const { return getState() == inactive(); }
-  auto getState() const { return state(buffer); }
+  constexpr bool isInactive() const { return getState() == buffer::inactive_state<T>(); }
+  auto getState() const { return buffer::state(buffer); }
 };
 
 template<typename ALGO>
@@ -86,10 +93,10 @@ struct FinalAudioElement {
   
   bool compute(int const nFrames, uint64_t const tNanos) {
     
-    auto * buf = buffer->buffer;
-    auto st = state(buf);
+    FPT * buf = buffer->buffer;
+    auto st = buffer::state(buf);
     
-    if(st == buffer_t::inactive()) {
+    if(st == buffer::inactive_state<FPT>()) {
       // Issue : if the buffer just got marked inactive,
       // but no new AudioElementCompute happens
       // and from the main thread someone acquires this and queues it,
@@ -111,8 +118,8 @@ struct FinalAudioElement {
       algo.step();
       buf[i] = algo.imag();
     }
-    Assert(state(buf) != buffer_t::queued());
-    Assert(state(buf) != buffer_t::inactive());
+    Assert(buffer::state(buf) != buffer::queued_state<FPT>());
+    Assert(buffer::state(buf) != buffer::inactive_state<FPT>());
     if constexpr (hasEnvelope) {
       // it is important that isEnvelopeFinished() returns true only one buffer cycle after
       // the real enveloppe end, to avoid race conditions.
@@ -123,7 +130,9 @@ struct FinalAudioElement {
     return true;
   }
   
-  auto fCompute() {
+  folly::Function<bool(const int  // the number of frames to compute
+                       , const uint64_t // the time of the first frame
+                       )> fCompute() {
     return [this](int const nFrames, uint64_t const tNanos) {
       return compute(nFrames, tNanos);
     };
@@ -2027,7 +2036,7 @@ struct OscillatorAlgo {
   using FPT = T;
   
   constexpr OscillatorAlgo(T angle_increments) { setAngleIncrements(angle_increments); }
-  constexpr OscillatorAlgo() : mult(Tr::one(), Tr::zero()) {}
+  constexpr OscillatorAlgo() : OscillatorAlgo(0) {}
   
   auto const & getOsc() const { return *this; }
   auto       & getOsc()       { return *this; }
@@ -2057,6 +2066,10 @@ struct OscillatorAlgo {
     cur = polar(static_cast<T>(M_PI)*f);
   }
   void setAngleIncrements(T f) {
+    if (angle_increments && *angle_increments == f) {
+      return;
+    }
+    angle_increments = f;
     mult = polar(static_cast<T>(M_PI)*f);
     aliasingMult = freqAliasingMultiplicator(f);
   }
@@ -2075,7 +2088,10 @@ struct OscillatorAlgo {
   T imag() const { return aliasingMult * cur.imag(); }
   
   T angle() const { return arg(cur)/M_PI; }
-  T angleIncrements() const { return arg(mult)/M_PI; }
+  T angleIncrements() const {
+    Assert(angle_increments);
+    return *angle_increments;
+  }
   
   bool isEnvelopeFinished() const {
     Assert(0);
@@ -2086,6 +2102,7 @@ private:
   complex<T> cur = {Tr::one(), Tr::zero()};
   complex<T> mult = {Tr::one(), Tr::zero()};
   T aliasingMult = static_cast<T>(1);
+  std::optional<T> angle_increments;
   
   void approx_normalize() {
     // http://dsp.stackexchange.com/questions/971/how-to-create-a-sine-wave-generator-that-can-smoothly-transition-between-frequen
@@ -2409,6 +2426,9 @@ struct InterpolatedFreq {
   }
   
   T step() {
+    if (f_result && *f_result == to) { // optimization for the "steady state" case
+      return to;
+    }
     if(cur_sample + .5f > duration_in_samples) {
       cur_sample = duration_in_samples;
     }

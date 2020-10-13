@@ -83,7 +83,7 @@ struct Channels {
   }
   
   template<typename F>
-  bool registerCompute(F f) {
+  bool registerCompute(F && f) {
     if(!computes.tryInsert(std::move(f))) {
       ++failed_compute_insertion;
       return false;
@@ -158,7 +158,9 @@ struct Channels {
    * - has grown the capacity of the channel request queue, if needed
    */
   template<typename F>
-  [[nodiscard]] bool playComputableNoLock( Channel & channel, F compute, Request && req) {
+  [[nodiscard]] bool playComputableNoLock(Channel & channel,
+                                          F && compute,
+                                          Request && req) {
     
     // we enqueue first, so that the buffer has the "queued" state
     // because when registering compute lambdas, they can be executed right away

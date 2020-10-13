@@ -9,9 +9,10 @@ class MyFrame : public wxFrame
 {
 public:
 
-  MyFrame(std::vector<std::pair<std::vector<ParamProxy<float>>, wxColor>> const & params,
-          std::vector<std::vector<ParamPollProxy>> const & poll_params,
+  MyFrame(std::vector<std::pair<std::vector<ParamProxy<float>>, wxColor>> const & params_before_autotune,
           Autotune const & autotune,
+          std::vector<std::pair<std::vector<ParamProxy<float>>, wxColor>> const & params_after_autotune,
+          std::vector<std::vector<ParamPollProxy>> const & poll_params,
           PitchWindow::PitchFunction const & pitch_func)
   : wxFrame(NULL,
             wxID_ANY,
@@ -51,7 +52,8 @@ public:
     Bind(wxEVT_MENU, &MyFrame::OnExit, this, wxID_EXIT);
     
     auto sliders_sizer= new wxBoxSizer(wxVERTICAL);
-    {
+    
+    auto make_params_sizer = [this](std::vector<std::pair<std::vector<ParamProxy<float>>, wxColor>> const & params) {
       auto params_sliders_sizer = new wxBoxSizer(wxVERTICAL);
       for (auto const & [params2, label_color] : params) {
         auto sliders_sizer2 = new wxBoxSizer(wxHORIZONTAL);
@@ -65,16 +67,21 @@ public:
         Add(sliders_sizer2,
             params_sliders_sizer);
       }
-      Add(params_sliders_sizer,
-          sliders_sizer);
-    }
-    {
-      auto autotune_sizer = mkAutotuneSizer(this,
-                                            autotune);
-      
-      Add(autotune_sizer,
-          sliders_sizer);
-    }
+      return params_sliders_sizer;
+    };
+    
+    Add(make_params_sizer(params_before_autotune),
+        sliders_sizer);
+    Add(mkAutotuneSizer(this,
+                        autotune),
+        sliders_sizer);
+    Add(make_params_sizer(params_after_autotune),
+        sliders_sizer);
+    Add(pitch_ui,
+        sliders_sizer,
+        0,
+        wxALL | wxEXPAND);
+
     {
       auto poll_params_sizer = new wxBoxSizer(wxVERTICAL);
       {
@@ -103,10 +110,6 @@ public:
         Add(rt_sizer,
             poll_params_sizer);
       }
-      Add(pitch_ui,
-          sliders_sizer,
-          0,
-          wxALL | wxEXPAND);
       Add(poll_params_sizer,
           sliders_sizer);
     }
@@ -174,7 +177,7 @@ struct ReinitializingParameters {
 
 struct MyApp : public wxApp {
   MyApp()
-  : params
+  : params_before_autotune
   {
     {
       {
@@ -196,12 +199,12 @@ struct MyApp : public wxApp {
           1.f
         },
         {
-          "Min volume",
-          "",
-          [this](){ return resynth.getMinVolume(); },
-          [this](float v){ resynth.setMinVolume(v); },
+          "Pitch interval diameter",
+          "semitones",
+          [this](){ return resynth.getNearbyDistanceTones(); },
+          [this](float v){ resynth.setNearbyDistanceTones(v); },
           0.f,
-          0.001f
+          10.f
         },
       },
       color_slider_label_1
@@ -209,23 +212,63 @@ struct MyApp : public wxApp {
     {
       {
         {
-          "Pitch interval diameter",
-          "pitches",
-          [this](){ return resynth.getNearbyDistanceTones(); },
-          [this](float v){ resynth.setNearbyDistanceTones(v); },
+          "Min volume",
+          "",
+          [this](){ return resynth.getMinVolume(); },
+          [this](float v){ resynth.setMinVolume(v); },
           0.f,
-          10.f
+          0.001f
+        },
+        {
+          "Pitch shift before autotune",
+          "semitones",
+          [this](){ return resynth.getPitchShiftPreAutotune(); },
+          [this](float v){ resynth.setPitchShiftPreAutotune(v); },
+          -12.f,
+          12.f
+        },
+        {
+          "Harmonize before autotune",
+          "semitones",
+          [this](){ return resynth.getHarmonizePreAutotune(); },
+          [this](float v){ resynth.setHarmonizePreAutotune(v); },
+          -12.f,
+          12.f
+        }
+      },
+      color_slider_label_2
+    }
+  },
+  params_after_autotune
+  {
+    {
+      {
+        {
+          "Pitch shift after autotune",
+          "semitones",
+          [this](){ return resynth.getPitchShiftPostAutotune(); },
+          [this](float v){ resynth.setPitchShiftPostAutotune(v); },
+          -12.f,
+          12.f
+        },
+        {
+          "Harmonize after autotune",
+          "semitones",
+          [this](){ return resynth.getHarmonizePostAutotune(); },
+          [this](float v){ resynth.setHarmonizePostAutotune(v); },
+          -12.f,
+          12.f
         },
         {
           "Pitch tracking distance",
-          "pitches",
+          "semitones",
           [this](){ return resynth.getMaxTrackPitches(); },
           [this](float v){ resynth.setMaxTrackPitches(v); },
           0.f,
           10.f
         },
       },
-      color_slider_label_2
+      color_slider_label_3
     }
   }
   , poll_params
@@ -311,9 +354,18 @@ struct MyApp : public wxApp {
       },
     }
   },
-  autotune{
+  autotune
+  {
     {
       "Autotune",
+      "",
+      [this](){ return resynth.getUseAutotune(); },
+      [this](bool v){ resynth.setUseAutotune(v); },
+      0,
+      1
+    },
+    {
+      "",
       [this](){ return resynth.getAutotuneType(); },
       [this](AutotuneType v){ resynth.setAutotuneType(v); },
     },
@@ -333,8 +385,8 @@ struct MyApp : public wxApp {
       }
     },
     {
-      "Max pitch distance",
-      "",
+      "Off-key pitches drop distance",
+      "semitones",
       [this](){ return resynth.getAutotunePitchTolerance(); },
       [this](float v){ resynth.setAutotunePitchTolerance(v); },
       0.f,
@@ -382,9 +434,10 @@ struct MyApp : public wxApp {
   bool OnInit() override {
     reinit_params.init(resynth);
 
-    auto frame = new MyFrame(params,
-                             poll_params,
+    auto frame = new MyFrame(params_before_autotune,
                              autotune,
+                             params_after_autotune,
+                             poll_params,
                              [this](std::vector<PlayedNote> & result, std::vector<PlayedNote> & result_dropped, std::optional<int64_t> & frame_id){
       result.clear();
       result_dropped.clear();
@@ -428,7 +481,7 @@ private:
   RtResynth resynth;
   
   ReinitializingParameters reinit_params;
-  std::vector<std::pair<std::vector<ParamProxy<float>>, wxColor>> params;
+  std::vector<std::pair<std::vector<ParamProxy<float>>, wxColor>> params_before_autotune, params_after_autotune;
   std::vector<std::vector<ParamPollProxy>> poll_params;
   Autotune autotune;
 };

@@ -83,16 +83,26 @@ const wxColor color_slider_label_2{
   100,
   200
 };
+const wxColor color_slider_label_3{
+  150,
+  100,
+  150
+};
 
 const wxColor autotune_bg_color1{
-  40,
   30,
-  40
+  30,
+  30
 };
 const wxColor autotune_bg_color2{
-  30,
-  30,
+  40,
+  40,
   40
+};
+const wxColor autotune_bg_color3{
+  35,
+  35,
+  35
 };
 
 inline std::string float_to_string(float v) {
@@ -120,15 +130,12 @@ enum class CombinationType {
 };
 
 
-/*
- Note that onNewValue is called at the end of the function, with the current value
- */
-template<typename T, typename F = std::function<void(T)>>
+template<typename T, typename F = std::function<void(void)>>
 wxBoxSizer * createChoice(wxWindow * parent,
                           const EnumeratedParamProxy<T> & param,
                           wxColor const & label_color,
                           ChoiceType const choice_type,
-                          F const & onNewValue = [](T){}) {
+                          F const & onNewValue = [](){}) {
   std::vector<wxString> values;
   values.reserve(CountEnumValues<T>::count);
   for (int i=0; i<CountEnumValues<T>::count; ++i) {
@@ -146,7 +153,7 @@ wxBoxSizer * createChoice(wxWindow * parent,
     if (candidate != param.get()) {
       // The UI may becomes unresponsive if this is long:
       param.set(candidate);
-      onNewValue(candidate);
+      onNewValue();
     }
   };
   
@@ -172,7 +179,6 @@ wxBoxSizer * createChoice(wxWindow * parent,
                                                   wxDefaultPosition,
                                                   wxDefaultSize,
                                                   first?wxRB_GROUP:0);
-        //radio->SetForegroundColour(value_unchanged_color);
         radio->Bind(wxEVT_RADIOBUTTON,
                     [on_event, idx](wxCommandEvent &){
           on_event(idx);
@@ -233,7 +239,6 @@ wxBoxSizer * createChoice(wxWindow * parent,
     }
   }
   
-  onNewValue(current_value);
   return global_sizer;
 }
 
@@ -302,6 +307,27 @@ void string_to_T(std::string const & str, uint64_t & res) {
   res = std::stoull(str);
 }
 
+
+template<typename F = std::function<void(bool)>>
+wxCheckBox * createCheckBox(wxWindow * parent,
+                            const ParamProxy<bool> & param,
+                            wxColor const & label_color,
+                            F const & onNewValue = [](){}) {
+  auto checkbox = new wxCheckBox(parent,
+                                 wxWindow::NewControlId(),
+                                 param.name);
+  
+  checkbox->Bind(wxEVT_CHECKBOX,
+                 [&param, onNewValue](wxCommandEvent & e){
+    param.set(static_cast<bool>(e.GetInt()));
+    onNewValue();
+  });
+  checkbox->SetValue(param.get());
+  checkbox->SetForegroundColour(label_color);
+
+  return checkbox;
+}
+
 template<typename T, typename f1, typename f2>
 wxBoxSizer * createSlider(wxWindow * parent,
                           const ParamProxy<T> & param,
@@ -340,13 +366,7 @@ wxBoxSizer * createSlider(wxWindow * parent,
       
       wxSize valueSz(70, -1);
       
-      auto value_label = new wxTextCtrl(parent,
-                                        wxWindow::NewControlId(),
-                                        T_to_string(current_T_value),
-                                        wxDefaultPosition,
-                                        valueSz,
-                                        wxTE_PROCESS_ENTER);
-      value_label->SetForegroundColour(value_unchanged_color);
+      wxTextCtrl * value_label = nullptr;
       
       wxStaticText * show_label = nullptr;
       if (param.show) {
@@ -355,6 +375,14 @@ wxBoxSizer * createSlider(wxWindow * parent,
                                       param.show(current_T_value),
                                       wxDefaultPosition,
                                       valueSz);
+      } else {
+        value_label = new wxTextCtrl(parent,
+                                     wxWindow::NewControlId(),
+                                     T_to_string(current_T_value),
+                                     wxDefaultPosition,
+                                     valueSz,
+                                     wxTE_PROCESS_ENTER);
+        value_label->SetForegroundColour(value_unchanged_color);
       }
       
       auto unit_label = new wxStaticText(parent,
@@ -368,10 +396,12 @@ wxBoxSizer * createSlider(wxWindow * parent,
           title_sizer,
           0,
           wxALL | wxALIGN_CENTER);
-      Add(value_label,
-          title_sizer,
-          0,
-          wxALL | wxALIGN_CENTER);
+      if (value_label) {
+        Add(value_label,
+            title_sizer,
+            0,
+            wxALL | wxALIGN_CENTER);
+      }
       if (show_label) {
         Add(show_label,
             title_sizer,
@@ -383,32 +413,34 @@ wxBoxSizer * createSlider(wxWindow * parent,
           0,
           wxALL | wxALIGN_CENTER);
       
-      value_label->Bind(wxEVT_TEXT_ENTER,
-                        [slider,
-                         &param,
-                         T_value_to_int_value,
-                         show_label,
-                         value_label
-                         ](wxCommandEvent & event){
-        try {
-          std::string const str = event.GetString().ToStdString();
-          T candidate;
-          string_to_T(str, candidate);
-          int const i = T_value_to_int_value(candidate);
-          slider->SetValue(i);
-          if (candidate != param.get()) {
-            // This should be fast, else the UI will become unresponsive
-            param.set(candidate);
+      if (value_label) {
+        value_label->Bind(wxEVT_TEXT_ENTER,
+                          [slider,
+                           &param,
+                           T_value_to_int_value,
+                           show_label,
+                           value_label
+                           ](wxCommandEvent & event){
+          try {
+            std::string const str = event.GetString().ToStdString();
+            T candidate;
+            string_to_T(str, candidate);
+            int const i = T_value_to_int_value(candidate);
+            slider->SetValue(i);
+            if (candidate != param.get()) {
+              // This should be fast, else the UI will become unresponsive
+              param.set(candidate);
+            }
+            value_label->SetForegroundColour(value_unchanged_color);
+            if (show_label) {
+              show_label->SetLabel(param.show(candidate));
+            }
+          } catch (std::invalid_argument const & e) {
+            value_label->SetForegroundColour(value_incorrect_color);
+            std::cout << e.what() << std::endl;
           }
-          value_label->SetForegroundColour(value_unchanged_color);
-          if (show_label) {
-            show_label->SetLabel(param.show(candidate));
-          }
-        } catch (std::invalid_argument const & e) {
-          value_label->SetForegroundColour(value_incorrect_color);
-          std::cout << e.what() << std::endl;
-        }
-      });
+        });
+      }
       
       slider->Bind(wxEVT_SCROLL_THUMBTRACK,
                    [&param,
@@ -421,9 +453,11 @@ wxBoxSizer * createSlider(wxWindow * parent,
           // This should be fast, else the UI will become unresponsive
           param.set(candidate);
         }
-        value_label->SetLabel(T_to_string(candidate));
-        value_label->GetParent()->Layout();
-        value_label->SetForegroundColour(value_unchanged_color);
+        if (value_label) {
+          value_label->SetLabel(T_to_string(candidate));
+          value_label->GetParent()->Layout();
+          value_label->SetForegroundColour(value_unchanged_color);
+        }
         if (show_label) {
           show_label->SetLabel(param.show(candidate));
         }
@@ -441,7 +475,7 @@ wxBoxSizer * createSlider(wxWindow * parent,
       
       auto minText = new wxStaticText(parent,
                                       wxWindow::NewControlId(),
-                                      T_to_string(param.min),
+                                      param.show ? param.show(param.min) : T_to_string(param.min),
                                       wxDefaultPosition,
                                       boundsSz,
                                       wxST_NO_AUTORESIZE);
@@ -449,7 +483,7 @@ wxBoxSizer * createSlider(wxWindow * parent,
       
       auto maxText = new wxStaticText(parent,
                                       wxWindow::NewControlId(),
-                                      T_to_string(param.max),
+                                      param.show ? param.show(param.max) : T_to_string(param.max),
                                       wxDefaultPosition,
                                       boundsSz,
                                       wxST_NO_AUTORESIZE);

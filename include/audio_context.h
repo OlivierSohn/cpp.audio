@@ -198,7 +198,8 @@ public:
   }
 
   template<typename Algo>
-  [[nodiscard]] bool playComputable( PackedRequestParams<nAudioOut> params, audioelement::FinalAudioElement<Algo> & e) {
+  [[nodiscard]] bool playComputable(PackedRequestParams<nAudioOut> params,
+                                    audioelement::FinalAudioElement<Algo> & e) {
     if(closing.load(std::memory_order_acquire)) {
       return false;
     }

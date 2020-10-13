@@ -1,10 +1,9 @@
 namespace imajuscule::audio::rtresynth {
 
 enum class AutotuneType {
-  None,
   MusicalScale,
+  Chord,
   FixedSizeIntervals,
-  Chord
   // when adding values, please update 'CountEnumValues<AutotuneType>'
 };
 enum class MusicalScaleMode {
@@ -25,7 +24,7 @@ enum class AutotuneChordFrequencies {
 namespace imajuscule {
 template<>
 struct CountEnumValues<audio::rtresynth::AutotuneType> {
-  static int constexpr count = 4;
+  static int constexpr count = 3;
 };
 template<>
 struct CountEnumValues<audio::rtresynth::MusicalScaleMode> {
@@ -40,14 +39,12 @@ struct CountEnumValues<audio::rtresynth::AutotuneChordFrequencies> {
 namespace imajuscule::audio::rtresynth {
 inline std::ostream & operator << (std::ostream & os, AutotuneType t) {
   switch(t) {
-    case AutotuneType::None:
-      os << "Disabled"; break;
     case AutotuneType::MusicalScale:
-      os << "Use scale"; break;
-    case AutotuneType::FixedSizeIntervals:
-      os << "Use intervals"; break;
+      os << "Scale"; break;
     case AutotuneType::Chord:
-      os << "Use chord"; break;
+      os << "Chord"; break;
+    case AutotuneType::FixedSizeIntervals:
+      os << "Intervals"; break;
   }
   return os;
 }
@@ -189,18 +186,36 @@ inline MusicalScalePitches const & getMusicalScale(MusicalScaleMode const t) {
   }
 }
 
-template<typename T>
-std::optional<T> find_closest_pitch(T const pitch,
-                                    std::vector<T> const & pitches) {
-  std::optional<T> res, distance;
-  for (auto const & candidate : pitches) {
-    T const candidate_dist = std::abs(candidate - pitch);
-    if (!distance || *distance > candidate_dist) {
-      distance = candidate_dist;
-      res = candidate;
+// precondition : pitches are ordered wrt 'get_pitch'
+template<typename T, typename F>
+T* find_closest_pitch(float const pitch,
+                      std::vector<T> & pitches,
+                      F && get_pitch) {
+  auto const begin = pitches.begin();
+  auto const end = pitches.end();
+  if (begin == end) {
+    return nullptr;
+  }
+  auto lb = std::lower_bound(begin,
+                             end,
+                             pitch,
+                             [get_pitch](T const & a, float comp_pitch){
+    return get_pitch(a) < comp_pitch;
+  });
+  if (lb == end) {
+    return &(*(lb-1));
+  } else if (lb == begin) {
+    return &(*lb);
+  } else {
+    float const dist_lb = std::abs(pitch - get_pitch(*lb));
+    float const dist_prev_lb = std::abs(pitch - get_pitch(*(lb-1)));
+    
+    if (dist_lb < dist_prev_lb) {
+      return &(*lb);
+    } else {
+      return &(*(lb-1));
     }
   }
-  return res;
 }
 
 } // NS

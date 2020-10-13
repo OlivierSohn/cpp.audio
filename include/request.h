@@ -1,22 +1,20 @@
 
 namespace imajuscule::audio {
-    namespace audioelement {
-        template<typename T>
-        void onQueued(T * buffer) {
-            using AE = AEBuffer<T>;
-            Assert(state(buffer) == AE::inactive()); // to be sure at most one channel uses it
-            state(buffer) = AE::queued();
-        }
+namespace audioelement {
+template<typename T>
+void onQueued(T * buffer) {
+  Assert(buffer::state(buffer) == buffer::inactive_state<T>()); // to be sure at most one channel uses it
+  buffer::state(buffer) = buffer::queued_state<T>();
+}
 
-        template<typename T>
-        void onUnqueued(T * buffer) {
-            using AE = AEBuffer<T>;
-            Assert(state(buffer) != AE::inactive()); // to be sure at most one channel uses it
-            // note that if state is AE::queued(), it means no computation occured on this buffer
-            // (indicating the channel has been interrupted)
-            state(buffer) = AE::inactive();
-        }
-    }
+template<typename T>
+void onUnqueued(T * buffer) {
+  Assert(buffer::state(buffer) != buffer::inactive_state<T>()); // to be sure at most one channel uses it
+  // note that if state is AE::queued(), it means no computation occured on this buffer
+  // (indicating the channel has been interrupted)
+  buffer::state(buffer) = buffer::inactive_state<T>();
+}
+}
 
     using AE32Buffer = float *;
     using AE64Buffer = double *;

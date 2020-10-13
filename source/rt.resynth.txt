@@ -1,19 +1,58 @@
 
+/*
+
+Definitions:
+-----------
+
+- vocoder:
+apply the amplitudes of frequency bands of the voice to modulate another sound, using the same bands and volumes.
+To do this I would need:
+
+Vocoder<Osc> =
+(Voice (read sample from a queue at each step) -> Bandfilter(s) -> Envelope follower(s))
+Osc -> Bandfilter(s) -> Modulate by voice envelopes -> Sum
+
+for example:
+Vocoder<MultiEnveloped<SineOsc>>
+*/
+
 /* Backlog:
 
-in a unit test, verify the effect of signal phase on peach magnitude (I expect that this has an influence on lower frequencies)
+
+in a unit test, verify the effect of signal phase on peak magnitude (I expect that this has an influence on lower frequencies)
 
  ----------------
  Creative effects
  ----------------
  
+ - spread frequencies in stereo field (low = left, high = right)
+ . "stereo spread" (on note change, the spread should change, at the same rate than frequency, so the spread is a function of oscillator's angleIncrements
+ but volume of channel can only change every 16 samples! so we need something else :
+ candidate A: one audioelement shared by 2 audioelements (left / right)
+ . the problem is this is non standard because step() call logic will become complicated to avoid being called twice per frame
+ candidate B : duplicate audioelement, one for left and one for right.
+ . This is not elegant, it doubles the processing power needed
+ candidate C : make it possible for an audioelement to work with 2 channels:
+ StereoPanner<Osc>
+ . this is elegant
+ candidate D : the notion of channel seems redundant for our use case, why not get rid of it?
+ 
+ FinalAudioElement has a AEBuffer
+ FinalAudioElement could deduce "int nAudioOut" from the Algo
+ and do AEBuffer<int nAudioOut>
+ )
+ - use many harmonizers, pre / post autotune (use midi input to define where the harmonizer is?)
+ 
  - autotune global mode to say how long it takes to go to the autotuned frequency, i.e
  if 0 : on note one, autotune
  if > 0: on note on, use the original frequency, then if the pitch is detected again the next time, autotune it and issue a note change (do not take into account max pitch tracking distance)
 
- - only active for "autotune chord", when "harmonics" is active:
+ - only active for "autotune chord",
+ when "harmonics" is active:
  . sliders "count sub harmonics" / "count harmonics"
  . checkbox to make harmonics match an integer midi pitch
+ when "octave replication" is active:
+ . sliders "count sub octaves" / "count upper octaves"
  
  - record some presets
  . save as json
@@ -28,26 +67,9 @@ in a unit test, verify the effect of signal phase on peach magnitude (I expect t
  the fact that the interval size changes breaks the feedback loop so the variation should be fast enough so that the sound will not saturate.
  Hence we need to automate, using oscillators and ranges, meta parameter variation.
 
- - autotune global parameter : "tolerance"
- if a pitch is too far away from allowed pitches it is discarded (to have more coherent sound when the set of allowe pitches is narrow)
- 
- . radiobox "frequencies"
- .. "dry"
- .. "with upper octaves"
- .. "with lower octaves"
- .. "with all octaves"
- .. "with harmonics"
- .. "with sub-harmonics"
- .. "with harmonics and sub-harmonics"
- 
- . check boxes with every note in an octave
- 
- . harmonics, subharmonics, octaves can be multiplied by constant factors to shape the sound
- 
  - pitch shifter
- . use double fft to detect main pitch, shift pitch according to played notes
+ . use double fft to detect main pitch, shift pitch according to midi played notes
  (if many notes are played a duplication ocurs)
- - harmonization : duplicate frequencies
 
  - implement a "slow down" :
  use 2 windows, drop 2 windows, etc...

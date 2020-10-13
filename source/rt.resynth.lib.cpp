@@ -138,6 +138,7 @@ public:
     pitch_intervals.reserve(200);
     reduced_pitches.reserve(200);
     autotuned_pitches.reserve(200);
+    pitches_tmp.reserve(200);
     autotuned_pitches_perceived_loudness.reserve(200);
     autotuned_pitches_idx_sorted_by_perceived_loudness.reserve(200);
     played_pitches.reserve(200);
@@ -255,109 +256,137 @@ public:
                        pitch_intervals,
                        reduced_pitches);
         
+        shift_pitches(pitch_shift_pre_autotune,
+                      reduced_pitches);
+        
+        harmonize_pitches(pitch_harmonize_pre_autotune,
+                          pitches_tmp,
+                          reduced_pitches);
+        
         std::function<std::optional<float>(float const)> autotune;
-        switch(autotune_type) {
-          case AutotuneType::None :
-            autotune = [](float const v) -> std::optional<float> {return {v};};
-            break;
-          case AutotuneType::Chord:
-          {
-            int offset = half_tones_distance(Note::Do,
-                                             autotune_musical_scale_root_note);
-            if (offset < 0) {
-              offset += num_halftones_per_octave;
-            }
-            offset += autotune_root_note_halftones_transpose;
-            // the lowest bit is C4+offset
-            int constexpr C_pitch = A_pitch + half_tones_distance(Note::La,
-                                                                  Note::Do) + num_halftones_per_octave;
-            int const root_pitch = offset + C_pitch;
-            std::bitset<64> const chord{autotune_bit_chord.load()};
-            allowed_pitches.clear();
-
-            bool single = false;
-            switch(autotune_chord_frequencies) {
-              case AutotuneChordFrequencies::SingleFreq:
-                single = true;
-              case AutotuneChordFrequencies::OctavePeriodic:
-              {
-                int const octaveMin = single ? 0:-5;
-                int const octaveMax = single ? 0:5;
-                for (int octave = octaveMin; octave <= octaveMax; ++octave) {
-                  int const add = num_halftones_per_octave * octave;
-                  for (int i=0, sz = static_cast<int>(chord.size()); i < sz; ++i) {
-                    if (chord[i]) {
-                      allowed_pitches.push_back(root_pitch + i + add);
+        if (!use_autotune) {
+          autotune = [](float const v) -> std::optional<float> {return {v};};
+        } else {
+          switch(autotune_type) {
+            case AutotuneType::Chord:
+            {
+              int offset = half_tones_distance(Note::Do,
+                                               autotune_musical_scale_root_note);
+              if (offset < 0) {
+                offset += num_halftones_per_octave;
+              }
+              offset += autotune_root_note_halftones_transpose;
+              // the lowest bit is C4+offset
+              int constexpr C_pitch = A_pitch + half_tones_distance(Note::La,
+                                                                    Note::Do) + num_halftones_per_octave;
+              int const root_pitch = offset + C_pitch;
+              std::bitset<64> const chord{autotune_bit_chord.load()};
+              allowed_pitches.clear();
+              
+              bool single = false;
+              switch(autotune_chord_frequencies) {
+                case AutotuneChordFrequencies::SingleFreq:
+                  single = true;
+                case AutotuneChordFrequencies::OctavePeriodic:
+                {
+                  int const octaveMin = single ? 0:-5;
+                  int const octaveMax = single ? 0:5;
+                  for (int octave = octaveMin; octave <= octaveMax; ++octave) {
+                    int const add = num_halftones_per_octave * octave;
+                    for (int i=0, sz = static_cast<int>(chord.size()); i < sz; ++i) {
+                      if (chord[i]) {
+                        allowed_pitches.push_back(root_pitch + i + add);
+                      }
                     }
                   }
+                  break;
                 }
-                break;
-              }
-              case AutotuneChordFrequencies::Harmonics:
-              {
-                constexpr int n_harmo = 36;
-                static constexpr std::array<double, n_harmo> harmonic_pitch_add = compute_harmonic_pitch_adds<n_harmo>(ConstexprMidi());
-                for (int harmo = 0; harmo < n_harmo; ++harmo) {
-                  for (int i=0, sz = static_cast<int>(chord.size()); i < sz; ++i) {
-                    if (chord[i]) {
-                      // positive harmonic
-                      allowed_pitches.push_back(harmonic_pitch_add[harmo] + root_pitch + i);
-                      // negative harmonic
-                      allowed_pitches.push_back(-harmonic_pitch_add[harmo] + root_pitch + i);
+                case AutotuneChordFrequencies::Harmonics:
+                {
+                  constexpr int n_harmo = 36;
+                  static constexpr std::array<double, n_harmo> harmonic_pitch_add = compute_harmonic_pitch_adds<n_harmo>(ConstexprMidi());
+                  for (int harmo = 0; harmo < n_harmo; ++harmo) {
+                    for (int i=0, sz = static_cast<int>(chord.size()); i < sz; ++i) {
+                      if (chord[i]) {
+                        // positive harmonic
+                        allowed_pitches.push_back(harmonic_pitch_add[harmo] + root_pitch + i);
+                        // negative harmonic
+                        allowed_pitches.push_back(-harmonic_pitch_add[harmo] + root_pitch + i);
+                      }
                     }
                   }
+                  break;
                 }
-                break;
               }
+              
+              std::sort(allowed_pitches.begin(),
+                        allowed_pitches.end());
+              
+              autotune = [this](float const pitch)-> std::optional<float> {
+                if (float * p = find_closest_pitch(pitch, allowed_pitches, [](float p){ return p; })) {
+                  return *p;
+                }
+                return {};
+              };
+              break;
             }
-
-            autotune = [this](float const pitch)-> std::optional<float> {
-              return find_closest_pitch<float>(pitch, allowed_pitches);
-            };
-            break;
+            case AutotuneType::FixedSizeIntervals:
+            {
+              int offset = half_tones_distance(Note::Do,
+                                               autotune_musical_scale_root_note);
+              if (offset < 0) {
+                offset += num_halftones_per_octave;
+              }
+              offset += autotune_root_note_halftones_transpose;
+              allowed_pitches.clear();
+              allowed_pitches.push_back(offset);
+              int const factor = autotune_factor.load();
+              Assert(factor >= 0);
+              if (factor) {
+                for (int val = offset - factor; val > 0; val -= factor) {
+                  allowed_pitches.push_back(val);
+                }
+                for (int val = offset + factor; val < max_audible_midi_pitch; val += factor) {
+                  allowed_pitches.push_back(val);
+                }
+              }
+              
+              std::sort(allowed_pitches.begin(),
+                        allowed_pitches.end());
+              
+              autotune = [this](double pitch)-> std::optional<float> {
+                if (float * p = find_closest_pitch(pitch, allowed_pitches, [](float p){ return p; })) {
+                  return *p;
+                }
+                return {};
+              };
+              break;
+            }
+            case AutotuneType::MusicalScale:
+              const auto * scale = &getMusicalScale(autotune_musical_scale_mode);
+              autotune = [scale,
+                          root_pitch = A_pitch +
+                          autotune_root_note_halftones_transpose +
+                          half_tones_distance(Note::La,
+                                              autotune_musical_scale_root_note)](float const pitch) {
+                return scale->closest_pitch<float>(root_pitch, pitch);
+              };
+              break;
           }
-          case AutotuneType::FixedSizeIntervals:
-          {
-            int offset = half_tones_distance(Note::Do,
-                                             autotune_musical_scale_root_note);
-            if (offset < 0) {
-              offset += num_halftones_per_octave;
-            }
-            offset += autotune_root_note_halftones_transpose;
-            allowed_pitches.clear();
-            allowed_pitches.push_back(offset);
-            int const factor = autotune_factor.load();
-            Assert(factor >= 0);
-            if (factor) {
-              for (int val = offset - factor; val > 0; val -= factor) {
-                allowed_pitches.push_back(val);
-              }
-              for (int val = offset + factor; val < max_audible_midi_pitch; val += factor) {
-                allowed_pitches.push_back(val);
-              }
-            }
-            autotune = [this](double pitch)-> std::optional<float> {
-              return find_closest_pitch<float>(pitch, allowed_pitches);
-            };
-            break;
-          }
-          case AutotuneType::MusicalScale:
-            const auto * scale = &getMusicalScale(autotune_musical_scale_mode);
-            autotune = [scale,
-                        root_pitch = A_pitch +
-                        autotune_root_note_halftones_transpose +
-                        half_tones_distance(Note::La,
-                                            autotune_musical_scale_root_note)](float const pitch) {
-              return scale->closest_pitch<float>(root_pitch, pitch);
-            };
-            break;
         }
         autotune_pitches(autotune_max_pitch.load(),
                          autotune_tolerance_pitches,
                          autotune,
                          reduced_pitches,
                          autotuned_pitches);
+
+        shift_pitches(pitch_shift_post_autotune,
+                      autotuned_pitches);
         
+        harmonize_pitches(pitch_harmonize_post_autotune,
+                          pitches_tmp,
+                          autotuned_pitches);
+
         track_pitches(max_track_pitches,
                       autotuned_pitches,
                       played_pitches,
@@ -773,6 +802,40 @@ public:
   NonRealtimeAnalysisFrame const & getAnalysisData() const {
     return analysis_data;
   }
+
+  float getHarmonizePreAutotune() const {
+    return pitch_harmonize_pre_autotune;
+  }
+  void setHarmonizePreAutotune(float f) {
+    pitch_harmonize_pre_autotune = f;
+  }
+  float getHarmonizePostAutotune() const {
+    return pitch_harmonize_post_autotune;
+  }
+  void setHarmonizePostAutotune(float f) {
+    pitch_harmonize_post_autotune = f;
+  }
+
+  float getPitchShiftPreAutotune() const {
+    return pitch_shift_pre_autotune;
+  }
+  void setPitchShiftPreAutotune(float f) {
+    pitch_shift_pre_autotune = f;
+  }
+  float getPitchShiftPostAutotune() const {
+    return pitch_shift_post_autotune;
+  }
+  void setPitchShiftPostAutotune(float f) {
+    pitch_shift_post_autotune = f;
+  }
+  
+  
+  bool getUseAutotune() const {
+    return use_autotune;
+  }
+  void setUseAutotune(bool t) {
+    use_autotune = t;
+  }
   
   float getAutotunePitchTolerance() const {
     return autotune_tolerance_pitches;
@@ -873,10 +936,15 @@ private:
   std::atomic<float> nearby_distance_tones = 0.4;
   std::atomic<float> max_track_pitches = 1.;
   std::atomic<float> autotune_tolerance_pitches = 100.;
+  std::atomic<float> pitch_shift_pre_autotune = 0.f;
+  std::atomic<float> pitch_shift_post_autotune = 0.f;
+  std::atomic<float> pitch_harmonize_pre_autotune = 0.f;
+  std::atomic<float> pitch_harmonize_post_autotune = 0.f;
   static_assert(std::atomic<float>::is_always_lock_free);
 
-  std::atomic<AutotuneType> autotune_type = AutotuneType::None;
+  std::atomic<AutotuneType> autotune_type = AutotuneType::MusicalScale;
   static_assert(std::atomic<AutotuneType>::is_always_lock_free);
+  std::atomic_bool use_autotune = false;
   std::atomic_int autotune_max_pitch = 150;
   std::atomic_int autotune_factor = 2;
   static_assert(std::atomic_int::is_always_lock_free);
@@ -904,7 +972,7 @@ private:
   std::vector<FreqMag<double>> freqmags;
   std::vector<PitchVolume> freqmags_data;
   std::vector<PitchInterval> pitch_intervals;
-  std::vector<PitchVolume> reduced_pitches, autotuned_pitches;
+  std::vector<PitchVolume> reduced_pitches, autotuned_pitches, pitches_tmp;
   std::vector<float> autotuned_pitches_perceived_loudness;
   std::vector<int> autotuned_pitches_idx_sorted_by_perceived_loudness;
   std::vector<PlayedNote> played_pitches;

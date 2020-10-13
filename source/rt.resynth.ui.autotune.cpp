@@ -1,6 +1,7 @@
 namespace imajuscule::audio::rtresynth {
 
 struct Autotune {
+  ParamProxy<bool> use;
   EnumeratedParamProxy<AutotuneType> type;
   ParamProxy<int> max_pitch;
   ParamProxy<float> pitch_tolerance;
@@ -14,7 +15,7 @@ struct Autotune {
 
 wxSizer * mkAutotuneSizer(wxWindow * parent,
                           Autotune const & a) {
-  wxStaticBoxSizer * global_sizer = new wxStaticBoxSizer(wxHORIZONTAL,
+  wxStaticBoxSizer * global_sizer = new wxStaticBoxSizer(wxVERTICAL,
                                                          parent,
                                                          "");
   global_sizer->GetStaticBox()->SetBackgroundColour(autotune_bg_color1);
@@ -24,6 +25,7 @@ wxSizer * mkAutotuneSizer(wxWindow * parent,
                                                          parent,
                                                          "");
     
+    wxBoxSizer * sizer_config = new wxBoxSizer(wxHORIZONTAL);
     wxBoxSizer * sizer_horiz = new wxBoxSizer(wxHORIZONTAL);
     wxBoxSizer * sizer_horiz2 = new wxBoxSizer(wxHORIZONTAL);
     wxStaticBoxSizer * sizer_root = new wxStaticBoxSizer(wxVERTICAL,
@@ -32,17 +34,24 @@ wxSizer * mkAutotuneSizer(wxWindow * parent,
     wxStaticBoxSizer * sizer_chord = new wxStaticBoxSizer(wxVERTICAL,
                                                           parent,
                                                           "Chord");
+    auto filtering_sizer = new wxStaticBoxSizer(wxVERTICAL,
+                                                parent,
+                                                "Filtering");
     sizer_vert->GetStaticBox()->SetBackgroundColour(autotune_bg_color2);
     sizer_vert->GetStaticBox()->SetForegroundColour(color_slider_label_2);
     sizer_chord->GetStaticBox()->SetBackgroundColour(autotune_bg_color2);
     sizer_chord->GetStaticBox()->SetForegroundColour(color_slider_label_2);
+    
     sizer_root->GetStaticBox()->SetBackgroundColour(autotune_bg_color2);
     sizer_root->GetStaticBox()->SetForegroundColour(color_slider_label_2);
+    filtering_sizer->GetStaticBox()->SetBackgroundColour(autotune_bg_color3);
+    filtering_sizer->GetStaticBox()->SetForegroundColour(color_slider_label_2);
 
+        
     wxSizer * scale_type = createChoice(parent,
                                         a.scale_type,
                                         color_slider_label_2,
-                                        ChoiceType::RadioBoxH);
+                                        ChoiceType::RadioBoxV);
     wxSizer * chord_freqs = createChoice(parent,
                                          a.chord_frequencies,
                                          color_slider_label_2,
@@ -85,11 +94,11 @@ wxSizer * mkAutotuneSizer(wxWindow * parent,
         sizer_horiz,
         0,
         wxALL | wxALIGN_CENTER);
-    Add(intervals,
+    Add(sizer_chord,
         sizer_horiz,
         0,
         wxALL | wxALIGN_CENTER);
-    Add(sizer_chord,
+    Add(intervals,
         sizer_horiz,
         0,
         wxALL | wxALIGN_CENTER);
@@ -103,50 +112,82 @@ wxSizer * mkAutotuneSizer(wxWindow * parent,
         0,
         wxALL | wxALIGN_CENTER);
 
+    Add(max_pitch,
+        filtering_sizer,
+        0,
+        wxALL | wxALIGN_CENTER);
+    Add(pitch_tolerance,
+        filtering_sizer,
+        0,
+        wxALL | wxALIGN_CENTER);
+    
     Add(sizer_root,
         sizer_horiz2,
         0,
         wxALL | wxALIGN_CENTER);
-    Add(max_pitch,
+    Add(filtering_sizer,
         sizer_horiz2,
         0,
         wxALL | wxALIGN_CENTER);
-    Add(pitch_tolerance,
-        sizer_horiz2,
-        0,
-        wxALL | wxALIGN_CENTER);
-    
-    Add(sizer_horiz2,
-        sizer_vert,
-        0,
-        wxALL | wxALIGN_CENTER);
+
     Add(sizer_horiz,
         sizer_vert,
         0,
         wxALL | wxALIGN_CENTER);
 
+    auto update =
+    [&a, sizer_horiz2, intervals, scale_type, sizer_chord]
+    (wxSizer * type = nullptr) {
+      bool const used = a.use.get();
+      forEachWindow(sizer_horiz2,
+                    [used](wxWindow & w) { w.Enable(used); });
+      
+      AutotuneType const t = a.type.get();
+      forEachWindow(intervals,
+                    [used, t](wxWindow & w) { w.Enable(used && t == AutotuneType::FixedSizeIntervals); });
+      forEachWindow(scale_type,
+                    [used, t](wxWindow & w) { w.Enable(used && t == AutotuneType::MusicalScale); });
+      forEachWindow(sizer_chord,
+                    [used, t](wxWindow & w) { w.Enable(used && t == AutotuneType::Chord); });
+      if (type) {
+        forEachWindow(type,
+                      [used](wxWindow & w) { w.Enable(used); });
+      }
+    };
+    
     wxSizer * type = createChoice(parent,
                                   a.type,
                                   color_slider_label_2,
-                                  ChoiceType::RadioBoxV,
-                                  [intervals, scale_type, sizer_chord, sizer_horiz2](AutotuneType const t){
-      forEachWindow(intervals,
-                    [t](wxWindow & w) { w.Enable(t == AutotuneType::FixedSizeIntervals); });
-      forEachWindow(scale_type,
-                    [t](wxWindow & w) { w.Enable(t == AutotuneType::MusicalScale); });
-      forEachWindow(sizer_chord,
-                    [t](wxWindow & w) { w.Enable(t == AutotuneType::Chord); });
-      forEachWindow(sizer_horiz2,
-                    [t](wxWindow & w) { w.Enable(t != AutotuneType::None); });
-    });
+                                  ChoiceType::RadioBoxH,
+                                  update);
+
+    wxCheckBox * use = createCheckBox(parent,
+                                      a.use,
+                                      color_slider_label_2,
+                                      [update, type](){ update(type); });
+
+    update(type);
     
+    Add(use,
+        sizer_config,
+        0,
+        wxALL | wxALIGN_CENTER);
     Add(type,
+        sizer_config,
+        0,
+        wxALL | wxALIGN_CENTER);
+    
+    Add(sizer_config,
         global_sizer,
         0,
-        wxALL);
+        wxALL | wxALIGN_CENTER);
     Add(sizer_vert,
         global_sizer,
         1,
+        wxALL | wxALIGN_CENTER);
+    Add(sizer_horiz2,
+        global_sizer,
+        0,
         wxALL | wxALIGN_CENTER);
   }
   return global_sizer;

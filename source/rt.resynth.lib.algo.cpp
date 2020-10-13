@@ -1,5 +1,7 @@
 namespace imajuscule::audio::rtresynth {
 
+constexpr float pitch_epsilon = 0.0001f;
+
 struct PitchVolume {
   float midipitch;
   double volume;
@@ -210,7 +212,7 @@ void autotune_pitches(int const max_pitch,
     }
     if (transformedPitch) {
       if (std::abs(*transformedPitch - pv.midipitch) <= pitch_tolerance) {
-        if (!output.empty() && (std::abs(output.back().midipitch - *transformedPitch) < 0.0001)) {
+        if (!output.empty() && (std::abs(output.back().midipitch - *transformedPitch) < pitch_epsilon)) {
           output.back().volume += pv.volume;
         } else {
           output.push_back({*transformedPitch, pv.volume});
@@ -294,6 +296,72 @@ void track_pitches(double const max_track_pitches,
       break;
     }
   }
+}
+
+inline void
+shift_pitches(float const shift_amount,
+              std::vector<PitchVolume> & pitches) {
+  if (!shift_amount) {
+    return;
+  }
+  for (auto & p : pitches) {
+    p.midipitch += shift_amount;
+  }
+}
+
+inline void
+harmonize_pitches(float const harmonize_amount,
+                  std::vector<PitchVolume> & work_vector,
+                  std::vector<PitchVolume> & pitches) {
+#ifndef NDEBUG
+  // verify invariant
+  {
+    float pitch = std::numeric_limits<float>::lowest();
+    for (auto const & pv : pitches) {
+      Assert(pitch < pv.midipitch);
+      pitch = pv.midipitch;
+    }
+  }
+#endif
+  if (!harmonize_amount) {
+    return;
+  }
+  int const sz = static_cast<int>(pitches.size());
+  for (int i=0; i<sz; ++i) {
+    PitchVolume const & p = pitches[i];
+    float const harmonized_pitch = p.midipitch + harmonize_amount;
+    PitchVolume * closest = find_closest_pitch(harmonized_pitch,
+                                               pitches,
+                                               [](PitchVolume const & pv){ return pv.midipitch; });
+    Assert(closest);
+    float const dist = std::abs(closest->midipitch - harmonized_pitch);
+    if (dist <= pitch_epsilon) {
+      closest->volume += p.volume;
+    } else {
+      pitches.push_back({harmonized_pitch, p.volume});
+    }
+  }
+  // pitches is sorted from 0 to sz-1, and from sz to new_sz-1
+  if (work_vector.capacity() < pitches.size()) {
+    work_vector.reserve(2*pitches.size());
+  }
+  merge_sort_step(pitches.begin(),
+                  pitches.begin() + sz,
+                  pitches.begin() + sz,
+                  pitches.end(),
+                  [](PitchVolume const & pv){ return pv.midipitch; },
+                  work_vector);
+  work_vector.swap(pitches);
+#ifndef NDEBUG
+  // verify invariant
+  {
+    float pitch = std::numeric_limits<float>::lowest();
+    for (auto const & pv : pitches) {
+      Assert(pitch < pv.midipitch);
+      pitch = pv.midipitch;
+    }
+  }
+#endif
 }
 
 // we have a limited amount of channels in the synthethizer, so we prioritize
