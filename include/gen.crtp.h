@@ -262,6 +262,15 @@ public:
     }
   }
   
+  bool allEnvelopesFinished() const {
+    for(auto const & c : seconds(channels)) {
+      if(!c.elem.getEnvelope().isEnvelopeFinished()) {
+        return false;
+      }
+    }
+    return true;
+  }
+  
   bool someEnvelopesRTActive() const {
     for(auto const & c : seconds(channels)) {
       if(c.elem.getEnvelope().isEnvelopeRTActive()) {
