@@ -196,8 +196,14 @@ struct Context<AudioPlatform::PortAudio, F, Chans> {
   Chans const & getStepper() const {
     return chans;
   }
+  
+  int getSampleRate() const {
+    Assert(sample_rate_);
+    return *sample_rate_;
+  }
+
 private:
-  int sample_rate_ = 0;
+  std::optional<int> sample_rate_;
   uint64_t nanos_per_audioelement_buffer = 0;
   
 protected:
@@ -268,9 +274,10 @@ private:
     
 #ifndef NDEBUG
 # ifndef IMJ_LOG_AUDIO_TIME // when we have a callback that takes too long to exectute, analyzeTime(...) will detect a problem, so to avoid gaving too much of these logs, when IMJ_LOG_AUDIO_TIME is on, we deactivate analyzeTime
+    Assert(This->sample_rate_);
     analyzeTime(tNanos,
                 numFrames,
-                This->sample_rate_,
+                *This->sample_rate_,
                 This->asyncLogger());
 # endif
 #endif
@@ -361,10 +368,15 @@ public:
                                   this);
       if( unlikely(err != paNoError) )
       {
+        sample_rate_.reset();
         stream = nullptr;
         LG(ERR, "AudioOut::doInit : Pa_OpenStream failed : %s", Pa_GetErrorText(err));
         Assert(0);
         return false;
+      }
+      auto * info = Pa_GetStreamInfo(stream);
+      if (std::abs(info->sampleRate - sample_rate) > 0.0001) {
+        throw std::logic_error("sample rate mismatch");
       }
 
       const PaStreamInfo * si = Pa_GetStreamInfo(stream);
@@ -400,6 +412,7 @@ public:
     {
       PaError err = Pa_CloseStream( stream );
       stream = nullptr;
+      sample_rate_.reset();
       if( unlikely(err != paNoError) ) {
         LG(ERR, "AudioOut::doTearDown : Pa_CloseStream failed : %s", Pa_GetErrorText(err));
         Assert(0);
@@ -483,13 +496,13 @@ struct AudioInput<AudioPlatform::PortAudio> {
       }
 #endif  // IMJ_DEBUG_AUDIO_IN
       
-      /* Record some audio. -------------------------------------------- */
+      sample_rate_ = sample_rate;
       PaError err = Pa_OpenStream(&stream,
                                   &inputParameters,
-                                  nullptr,                  /* &outputParameters, */
+                                  nullptr,
                                   sample_rate,
                                   paFramesPerBufferUnspecified /* to decrease latency*/,
-                                  paClipOff,      /* we won't output out of range samples so don't bother clipping them */
+                                  paClipOff,
                                   recordCallback,
                                   this);
       if( unlikely(err != paNoError) )
@@ -499,7 +512,10 @@ struct AudioInput<AudioPlatform::PortAudio> {
         Assert(0);
         return false;
       }
-      sample_rate_ = sample_rate;
+      auto * info = Pa_GetStreamInfo(stream);
+      if (std::abs(info->sampleRate - sample_rate) > 0.0001) {
+        throw std::logic_error("sample rate mismatch");
+      }
 
       const PaStreamInfo * si = Pa_GetStreamInfo(stream);
 
