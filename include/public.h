@@ -34,7 +34,8 @@
 #include "note.h"
 
 
-#ifndef NO_OUTPUT
+#if NO_OUTPUT
+#else
 # if TARGET_OS_IOS
 #  import <AudioToolbox/AudioToolbox.h>
 #  include "audio_platform_au.h"
@@ -46,6 +47,7 @@
 
 #include "channel.h"
 #include "out.h"
+#include "simple_audio_context.h"
 #include "audio_context.h"
 #include "channels.h"
 #include "channels_aggregate.h"

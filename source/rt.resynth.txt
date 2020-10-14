@@ -18,29 +18,41 @@ Vocoder<MultiEnveloped<SineOsc>>
 
 /* Backlog:
 
-
-in a unit test, verify the effect of signal phase on peak magnitude (I expect that this has an influence on lower frequencies)
-
- ----------------
- Creative effects
- ----------------
- 
  - spread frequencies in stereo field (low = left, high = right)
- . "stereo spread" (on note change, the spread should change, at the same rate than frequency, so the spread is a function of oscillator's angleIncrements
- but volume of channel can only change every 16 samples! so we need something else :
- candidate A: one audioelement shared by 2 audioelements (left / right)
- . the problem is this is non standard because step() call logic will become complicated to avoid being called twice per frame
- candidate B : duplicate audioelement, one for left and one for right.
- . This is not elegant, it doubles the processing power needed
- candidate C : make it possible for an audioelement to work with 2 channels:
+ . on note change, the spread should change, at the same rate than frequency, so the spread is a function of oscillator's angleIncrements
+ but volume of channel can only change every 16 samples! so we need to
+ make it possible for an audioelement to work with 2 channels:
  StereoPanner<Osc>
- . this is elegant
- candidate D : the notion of channel seems redundant for our use case, why not get rid of it?
  
  FinalAudioElement has a AEBuffer
  FinalAudioElement could deduce "int nAudioOut" from the Algo
  and do AEBuffer<int nAudioOut>
- )
+
+ Note that the notion of channel seems redundant for our use case.
+ The notion of channel is usefull:
+ - to have buffering
+ . but we have buffering also in FinalAudioElement so it is not useful
+ - when there are _overlapping_ sound requests with crossfades of same length, and no envelope
+ . but on audioelement we have envelopes so there is no need for it
+ - to apply a volume
+ . but on audioelement we have volumes too so there is no need for it
+ - to easily shutdown audio with a nice fade out
+ . It is overkill to use channel "just for that", we could do the same thing at a higher level
+ 
+ So instead of looking in the channel for frames, we can look directly in the currently active audioelement(s).
+ 
+ This will also simplify the implementation, because the notion of channel was hard to grasp.
+
+ We could even think of a mode where the audioelement directly add its data to the output signal, to skip its own buffers
+ 
+ To maintain compatibility with requests, we can wrap a channel in an audioelement (we will need that until all requests are converted to audioElements)
+
+- in a unit test, verify the effect of signal phase on peak magnitude (I expect that this has an influence on lower frequencies)
+
+ ----------------
+ Creative effects
+ ----------------
+
  - use many harmonizers, pre / post autotune (use midi input to define where the harmonizer is?)
  
  - autotune global mode to say how long it takes to go to the autotuned frequency, i.e

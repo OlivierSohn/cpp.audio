@@ -8,10 +8,13 @@
 #include "soundengine.cpp"
 #include "normalization.cpp"
 #include "audio_platforms.cpp"
-#if TARGET_OS_IOS
-# include "audio_platform_au.cpp"
+#if NO_OUTPUT
 #else
-# include "audio_platform_pa.cpp"
+# if TARGET_OS_IOS
+#  include "audio_platform_au.cpp"
+# else
+#  include "audio_platform_pa.cpp"
+# endif
 #endif
 #include "audio_context.cpp"
 

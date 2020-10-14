@@ -190,6 +190,12 @@ struct Context<AudioPlatform::PortAudio, F, Chans> {
   , bInitialized(false)
   {}
 
+  Chans & getStepper() {
+    return chans;
+  }
+  Chans const & getStepper() const {
+    return chans;
+  }
 private:
   int sample_rate_ = 0;
   uint64_t nanos_per_audioelement_buffer = 0;
@@ -281,7 +287,7 @@ private:
     return paContinue;
   }
 
-protected:
+public:
   // minLatency : latency in seconds
   bool doInit(float minLatency, int sample_rate) {
     LG(INFO, "AudioOut::doInit");
@@ -388,7 +394,6 @@ protected:
     return true;
   }
 
-public:
   void doTearDown() {
     LG(INFO, "AudioOut::doTearDown");
     if(stream)

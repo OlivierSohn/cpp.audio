@@ -55,6 +55,7 @@ struct AEBuffer {
   auto getState() const { return buffer::state(buffer); }
 };
 
+// !! usage of FinalAudioElement is deprecated
 template<typename ALGO>
 struct FinalAudioElement {
   static constexpr auto hasEnvelope = ALGO::hasEnvelope;
@@ -339,9 +340,6 @@ struct EnvelopeStateAcquisition {
   EnvelopeStateAcquisition() {
     stateTraits::write(state, EnvelopeState::EnvelopeDone2, std::memory_order_relaxed);
   }
-  void forget() {
-    relaxedWrite(EnvelopeState::EnvelopeDone2);
-  }
   
   // called from nrt threads and rt thread
   bool tryAcquire() {
@@ -365,9 +363,19 @@ struct EnvelopeStateAcquisition {
     stateTraits::write(state, s, std::memory_order_relaxed);
   }
   
+  bool isEnvelopeSoonKeyPressed() const {
+    return getRelaxedState() == EnvelopeState::SoonKeyPressed;
+  }
   bool isEnvelopeFinished() const {
     return getRelaxedState() == EnvelopeState::EnvelopeDone2;
   }
+  bool isEnvelopeRTActive() const {
+    auto const s = getRelaxedState();
+    return
+    s != EnvelopeState::SoonKeyPressed &&
+    s != EnvelopeState::EnvelopeDone2;
+  }
+  
 private:
   stateType state;
 };
@@ -708,7 +716,7 @@ struct EnvelopeCRT : public Base {
         break;
       case EnvelopeState::EnvelopeDone1:
         if(counter > n_frames_per_buffer) { // to be sure that all non-zero computed signals
-          // were used
+          // were used (this is ony true when using FinalAudioElement buffering.)
           stateAcquisition.relaxedWrite(EnvelopeState::EnvelopeDone2);
           counter = 0;
         }
@@ -738,7 +746,7 @@ struct EnvelopeCRT : public Base {
     }
     if(counter + delay <= 0) {
       // the key was pressed, but immediately released, so we skip the note.
-      stateAcquisition.relaxedWrite(EnvelopeState::EnvelopeDone2);
+      stateAcquisition.relaxedWrite(EnvelopeState::EnvelopeDone1);
     }
     else {
       currentReleaseDelay = delay;
@@ -749,9 +757,16 @@ struct EnvelopeCRT : public Base {
     return currentReleaseDelay;
   }
   
+  bool isEnvelopeRTActive() const {
+    return stateAcquisition.isEnvelopeRTActive();
+  }
   bool isEnvelopeFinished() const {
     return stateAcquisition.isEnvelopeFinished();
   }
+  bool isEnvelopeSoonKeyPressed() const {
+    return stateAcquisition.isEnvelopeSoonKeyPressed();
+  }
+  
   
   bool afterAttackBeforeSustain() const {
     return isAfterAttackBeforeSustain(counter);

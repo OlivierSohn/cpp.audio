@@ -885,7 +885,7 @@ namespace imajuscule::audio::voice {
                            int const sample_rate,
                            Volumes<nAudioOut> & vol)
     {
-      auto & engine = e.algo.getOsc();
+      auto & engine = e.getOsc();
       {
         auto interp = static_cast<itp::interpolation>(itp::interpolation_traversal().realValues()[static_cast<int>(.5f + value<INTERPOLATION>())]);
 
@@ -1098,9 +1098,9 @@ namespace imajuscule::audio::voice {
       outPolicy,
       nAudioOut,
       XfadePolicy::SkipXfade,
-      audioelement::FinalAudioElement< audioelement::VolumeAdjusted<
+      audioelement::VolumeAdjusted<
         audioelement::SoundEngine<MODE, nAudioOut, getAtomicity<outPolicy>(), Logger>
-      >>,
+      >,
       SynchronizePhase::No, // TODO Yes when MODE uses no sweep?
       DefaultStartPhase::Zero, // TODO Randomize when MODE uses no sweep?
       withNoteOff,
@@ -1123,14 +1123,10 @@ namespace imajuscule::audio::voice {
     using Parent::onEvent;
     using Parent::channels;
 
-    using MonoNoteChannel = typename Parent::MonoNoteChannel;
     static constexpr auto n_channels = Parent::n_channels;
     static constexpr auto xfade_policy = Parent::xfade_policy;
 
   public:
-
-    template <class... Args>
-    Impl_(Args&&... args) : Parent (std::forward<Args>(args)...) {}
 
     template<typename Out, typename Chans>
     void doProcessing (int sample_rate, ProcessData& data, Out & out, Chans & chans)

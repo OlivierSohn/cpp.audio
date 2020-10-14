@@ -1,32 +1,5 @@
-#define WITH_DELAY 0
 
 namespace imajuscule {
-
-  template<int nAudioOut>
-  struct DelayLine {
-    DelayLine(int size, double attenuation): delay(size,{{}}), it(0), end(size), attenuation(attenuation) {}
-
-    void step(double *outputBuffer, int nFrames) {
-      for( int i=0; i < nFrames; i++ ) {
-        auto & d = delay[it];
-        for(auto j=0; j<nAudioOut; ++j) {
-          auto delayed = d[j];
-          d[j] = *outputBuffer;
-          *outputBuffer += attenuation * delayed;
-          ++outputBuffer;
-        }
-        ++it;
-        if( unlikely(it == end) ) {
-          it = 0;
-        }
-      }
-    }
-
-    std::vector<std::array<double, nAudioOut>> delay;
-    int32_t it, end;
-    double attenuation;
-  };
-
 
   template<typename T, typename Init, size_t... Inds>
   std::array<T, sizeof...(Inds)> makeArrayImpl(Init val, std::integer_sequence<size_t, Inds...>)
@@ -273,9 +246,6 @@ namespace imajuscule {
 
     AudioPostPolicyImpl(LockPolicy &l) :
     _lock(l)
-#if WITH_DELAY
-    , delays{{1000, 0.6f},{4000, 0.2f}, {4300, 0.3f}, {5000, 0.1f}},
-#endif
     {
       readyTraits::write(ready, false, std::memory_order_relaxed);
     }
@@ -293,13 +263,6 @@ namespace imajuscule {
       if(disable) {
         return;
       }
-
-#if WITH_DELAY
-      for( auto & delay : delays ) {
-        // todo low pass filter for more realism
-        delay.step(outputBuffer, nFrames);
-      }
-#endif
 
       if (reverbs.isActive()) {
         Assert(nFrames <= audio::audioelement::n_frames_per_buffer);
@@ -417,9 +380,6 @@ namespace imajuscule {
         }
       }}};
 
-#if WITH_DELAY
-    std::vector< DelayLine > delays;
-#endif
     Conversion<double, nAudioIn, nAudioOut, audio::audioelement::n_frames_per_buffer> conversion;
     audio::ConvReverbsByBlockSize<audio::Reverbs<nAudioOut, ReverbT, audio::PolicyOnWorkerTooSlow::PermanentlySwitchToDry>> reverbs;
     audio::Compressor<double> compressor;
@@ -464,6 +424,7 @@ namespace imajuscule {
     };
   }
 
+  // !! This is deprecated in favor of SimpleAudioContext, because we try to avoid channels, and replace them by audioelement
   template< typename ChannelsType, audio::ReverbType ReverbT>
   struct outputDataBase {
     using T = SAMPLE;
@@ -478,6 +439,9 @@ namespace imajuscule {
     using LockCtrlFromNRT = LockCtrlIf<AudioLockPolicyImpl<policy>::useLock, ThreadType::NonRealTime>;
 
   private:
+    using SimpleComputeFunc = folly::Function<bool(double *, // buffer
+                                                   const int  // the number of frames to compute
+                                                   )>;
     /*
      * The function is executed once, and then removed from the queue.
      */
@@ -495,19 +459,24 @@ namespace imajuscule {
     ChannelsT channelsT;
     PostImpl post;
     lockfree::scmp::fifo<OneShotFunc> oneShots{nMaxOneshotsPerCb};
+    // We use the 'Synchronization::SingleThread' synchronization because
+    // these vectors are accessed from a single thread only (the audio real-time thread).
+    static_vector<Synchronization::SingleThread, SimpleComputeFunc> simple_computes;
 
   public:
 
     template<typename ...Args>
-    outputDataBase(AudioLockPolicyImpl<policy>&l, Args ... args):
-    channelsT(l, args ...)
+    outputDataBase(AudioLockPolicyImpl<policy>&l, Args ... args)
+    : channelsT(l, args ...)
     , post(l)
     , _lock(l)
+    , simple_computes(500)
     {}
 
-    outputDataBase(AudioLockPolicyImpl<policy>&l):
-    post(l)
+    outputDataBase(AudioLockPolicyImpl<policy>&l)
+    : post(l)
     , _lock(l)
+    , simple_computes(500)
     {}
 
     ChannelsT & getChannels() { return channelsT; }
@@ -528,8 +497,16 @@ namespace imajuscule {
         }
       }
       else {
-        f(*this);
+        f(*this, 0); // TODO pass an accurate time
       }
+    }
+    
+    bool registerSimpleCompute(SimpleComputeFunc && f) {
+      if(!simple_computes.tryInsert(std::move(f))) {
+        Assert(0);
+        return false;
+      }
+      return true;
     }
 
     // called from audio callback
@@ -565,11 +542,12 @@ namespace imajuscule {
       while(nFrames > 0) {
         auto const nLocalFrames = std::min(nFrames, audio::audioelement::n_frames_per_buffer);
 
-        channelsT.run_computes(nLocalFrames, t);
+        channelsT.run_computes(nLocalFrames, t); // this is when the note on, notechange, noteoff callbacks are called, and when the registered computes are called
 
         const int nSamples = nLocalFrames * nOuts;
 
         memset(precisionBuffer, 0, nSamples * sizeof(double));
+        
         consume_buffers(precisionBuffer, nLocalFrames, t);
         for(int i=0;
             i != nSamples;
@@ -584,6 +562,20 @@ namespace imajuscule {
   private:
 
     void consume_buffers(double * outputBuffer, int const nFrames, uint64_t const tNanos) {
+      
+      struct ComputeFunctor {
+        double * buffer;
+        int n_frames;
+        bool operator()(SimpleComputeFunc & compute) {
+          if (compute.heapAllocatedMemory()) {
+            throw std::runtime_error("no allocation is allowed in functors");
+          }
+          return compute(buffer, n_frames);
+        }
+      };
+      
+      simple_computes.forEach(ComputeFunctor{outputBuffer, nFrames});
+      
       Assert(nFrames <= audio::audioelement::n_frames_per_buffer); // by design
 
       channelsT.forEach(detail::Compute{outputBuffer, nFrames, tNanos});

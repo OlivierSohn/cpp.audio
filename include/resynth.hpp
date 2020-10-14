@@ -19,7 +19,7 @@ void resynth(std::vector<DeducedNote<T>> const & notes,
 
   auto getAvailableOscillator = [&pool] () {
     for (auto & p : pool) {
-      if (p->isEnvelopeFinished()) {
+      if (!p->getEnvelope().isEnvelopeRTActive()) {
         return p.get();
       }
     }
@@ -41,7 +41,7 @@ void resynth(std::vector<DeducedNote<T>> const & notes,
     bool empty = true;
     for (auto const & p : pool) {
       Assert(p);
-      if (p->getEnvelope().isEnvelopeFinished()) {
+      if (!p->getEnvelope().isEnvelopeRTActive()) {
         continue;
       }
       empty = false;

@@ -45,7 +45,6 @@ onEventResult playOneThing(int const sample_rate,
                            Midi const & midi,
                            Voice & v,
                            OutputData & out,
-                           Chans & chans,
                            Voicing const & b) {
 
   v.initializeSlow(); // does something only the 1st time
@@ -64,7 +63,7 @@ onEventResult playOneThing(int const sample_rate,
                             midi.midi_pitch_to_freq(b.midiPitch),
                             1.0),
                    out,
-                   chans,
+                   out,
                    {});
 }
 
@@ -72,12 +71,11 @@ template<typename Voice, typename OutputData, typename Chans>
 onEventResult stopPlaying(int const sample_rate,
                           Voice & v,
                           OutputData & out,
-                          Chans & chans,
                           int16_t midiPitch) {
   return v.onEvent(sample_rate,
                    mkNoteOff(NoteId{midiPitch}),
                    out,
-                   chans,
+                   out,
                    {});
 }
 } // NS

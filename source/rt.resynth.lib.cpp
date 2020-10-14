@@ -5,17 +5,16 @@ namespace audioelement {
 
 template <typename T>
 using ResynthFinalElement =
-FinalAudioElement<
- VolumeAdjusted<
-  Enveloped<
+VolumeAdjusted<
+ Enveloped<
    FreqCtrl_<
     OscillatorAlgo<T, eNormalizePolicy::FAST>,
     InterpolatedFreq<T>
    >,
    AHDSREnvelope<Atomicity::Yes, T, EnvelopeRelease::WaitForKeyRelease>
-  >
  >
->;
+>
+;
 
 } // NS audioelement
 
@@ -35,7 +34,7 @@ struct ResynthElementInitializer {
     // TODO try the following effect via volume tracking only (not evelope):
     // make the volume decrease slower than in reality (notion of meta envelope)
     
-    e.algo.editEnvelope().setAHDSR(audioelement::AHDSR{
+    e.editEnvelope().setAHDSR(audioelement::AHDSR{
       0, itp::LINEAR,
       0,
       0, itp::LINEAR,
@@ -45,12 +44,12 @@ struct ResynthElementInitializer {
     
     // limit the speed of volume adjustment:
     
-    e.algo.setMaxFilterIncrement(2. / static_cast<double>(stride));
+    e.setMaxFilterIncrement(2. / static_cast<double>(stride));
     
     // frequency control
     
-    e.algo.getOsc().getAlgo().getCtrl().setup(stride,
-                                              itp::LINEAR);
+    e.getOsc().getAlgo().getCtrl().setup(stride,
+                                         itp::LINEAR);
   }
   
 private:
@@ -58,10 +57,10 @@ private:
   int stride;
 };
 
-template <typename Ctxt, typename T>
+template <int nOuts, AudioOutPolicy Policy, typename T>
 using synthOf = sine::Synth < // the name of the namespace is misleading : it can handle all kinds of oscillators
-Ctxt::policy
-, Ctxt::nAudioOut
+Policy
+, nOuts
 , XfadePolicy::SkipXfade
 , audioelement::ResynthFinalElement<T>
 , SynchronizePhase::Yes
@@ -72,21 +71,19 @@ Ctxt::policy
 , ResynthElementInitializer<T>
 >;
 
+
 struct RtResynth {
 private:
+  static constexpr int nAudioOut = 2;
   static constexpr auto audioEnginePolicy = AudioOutPolicy::MasterLockFree;
-
-  using AllChans = ChannelsVecAggregate< 2, audioEnginePolicy >;
   
-  using NoXFadeChans = typename AllChans::NoXFadeChans;
-  using XFadeChans = typename AllChans::XFadeChans;
-  
-  using ChannelHandler = outputDataBase< AllChans, ReverbType::Realtime_Synchronous >;
-  
-  using Ctxt = AudioOutContext<
-  ChannelHandler,
-  Features::JustOut,
-  AudioPlatform::PortAudio
+  using Ctxt = Context<
+  AudioPlatform::PortAudio,
+  Features::InAndOut,
+  SimpleAudioOutContext<
+  nAudioOut,
+  audioEnginePolicy
+  >
   >;
   
   static double constexpr minInLatency  = 0.000001;
@@ -99,11 +96,8 @@ private:
   static VolumeReductionMethod constexpr volume_method =
   VolumeReductionMethod::SumVolumes;
     
-  using Synth = synthOf<Ctxt, double>;
-  
-  static constexpr auto n_mnc = Synth::n_channels;
-  using mnc_buffer = typename Synth::MonoNoteChannel::buffer_t;
-  
+  using Synth = synthOf<nAudioOut, audioEnginePolicy, double>;
+    
   // producer : Audio input callback
   // consumer : analysis thread
   struct InputSample {
@@ -123,15 +117,11 @@ private:
   
 public:
   
-  
   RtResynth()
-  : synth(buffers)
-  , channel_handler(ctxt.getChannelHandler()) {
-    auto [channels_,remover] = channel_handler.getChannels().getChannelsNoXFade().emplace_front(channel_handler.get_lock_policy(),
-                                                                                                std::min(n_mnc,
-                                                                                                         static_cast<int>(std::numeric_limits<uint8_t>::max())));
-    channels = &channels_;
-    
+  : synth()
+  , ctxt(GlobalAudioLock<audioEnginePolicy>::get(),
+         Synth::n_channels * 4 /* one shot */,
+         1 /* a single compute is needed (global for the synth)*/) {
     frequencies_sqmag.frequencies_sqmag.reserve(200);
     freqmags.reserve(200);
     freqmags_data.reserve(200);
@@ -165,14 +155,14 @@ public:
     teardown();
     Assert(!thread_resynth_active);
     
-    if (!synth.initialize(*channels)) {
-      throw std::logic_error("failed to initialize synth");
-    }
-    
-    if (!ctxt.Init(sample_rate, minOutLatency)) {
+    if (!ctxt.doInit(minOutLatency, sample_rate)) {
       throw std::runtime_error("ctxt init failed");
     }
-    
+
+    if (!synth.initialize(ctxt.getStepper())) {
+      throw std::logic_error("failed to initialize synth");
+    }
+
     std::this_thread::sleep_for(std::chrono::milliseconds(1000));
     
     input_queue = std::make_unique<Queue>(sample_rate); // one second of input can fit in the queue
@@ -417,12 +407,14 @@ public:
           synth.setSynchronousElementInitializer(initializer);
           
           // This will apply the new params for currently played notes
-          channels->enqueueOneShot([this,
-                                    initializer](auto & chans, auto){
-            synth.forEachActiveElem([initializer](auto & e) {
+          ctxt.getStepper().enqueueOneShot([this,
+                                            initializer](auto &, auto){
+            synth.forEachRTActiveElem([initializer](auto & e) {
               initializer(e);
             });
           });
+          
+          // If we are unlucky, we missed the notes that are in "SoonKeyPressed" state.
         }
         
         bool changed = false;
@@ -435,8 +427,8 @@ public:
             if (!play) {
               auto res = synth.onEvent(sample_rate,
                                        mkNoteOff(played_pitches[idx].noteid),
-                                       channel_handler,
-                                       *channels,
+                                       ctxt.getStepper(),
+                                       ctxt.getStepper(),
                                        miditime);
               if (logs) std::cout << n << ": XXX pitch " << played_pitches[idx].midi_pitch << " " << res << std::endl;
               if (res != onEventResult::OK) {
@@ -466,8 +458,8 @@ public:
                                      mkNoteChange(played.noteid,
                                                   volume,
                                                   new_freq),
-                                     channel_handler,
-                                     *channels,
+                                     ctxt.getStepper(),
+                                     ctxt.getStepper(),
                                      miditime);
             if (res != onEventResult::OK) {
               throw std::logic_error("dropped note change");
@@ -487,8 +479,8 @@ public:
                                            mkNoteOn(note_id,
                                                     new_freq,
                                                     volume),
-                                           channel_handler,
-                                           *channels,
+                                           ctxt.getStepper(),
+                                           ctxt.getStepper(),
                                            miditime);
             if (logs) std::cout << n << ": pitch " << new_pitch << " vol " << volume << " " << res << std::endl;
             
@@ -674,11 +666,10 @@ public:
     }
     input_queue.reset();
     
-    ctxt.onApplicationShouldClose();
+    synth.finalize(ctxt.getStepper());
+
     std::this_thread::sleep_for(std::chrono::milliseconds(1000));
-    ctxt.TearDown();
-    
-    synth.finalize(*channels);
+    ctxt.doTearDown();
   }
   
   // These methods can be used with no need to reinitialize
@@ -771,10 +762,10 @@ public:
   }
   
   int countFailedComputeInsertions() const {
-    return channels->countFailedComputeInsertions();
+    return ctxt.getStepper().countFailedComputeInsertions();
   }
   int countRetriedOneshotInsertions() const {
-    return channels->countRetriedOneshotInsertions();
+    return ctxt.getStepper().countRetriedOneshotInsertions();
   }
   
   std::optional<float> getDurationProcess() {
@@ -911,9 +902,6 @@ public:
   }
 private:
   Ctxt ctxt;
-  ChannelHandler & channel_handler;
-  NoXFadeChans * channels;
-  std::array<mnc_buffer,n_mnc> buffers;
   Synth synth;
   Midi midi;
   

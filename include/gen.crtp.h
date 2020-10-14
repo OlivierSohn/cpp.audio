@@ -124,25 +124,25 @@ std::unordered_map<uint64_t, std::optional<uint64_t>> & midiDelays();
 
 uint64_t & maxMIDIJitter();
 
-template<SynchronizePhase Sync, DefaultStartPhase Phase, typename MonoNoteChannel, typename CS>
-void setPhase(MonoNoteChannel & c, CS & cs)
+template<SynchronizePhase Sync, DefaultStartPhase Phase, typename ElementMidi, typename CS>
+void setPhase(ElementMidi & e, CS & cs)
 {
-  auto & thisAlgo = c.elem.algo;
+  auto & thisAlgo = e.elem;
   if constexpr (Sync == SynchronizePhase::Yes) {
-    auto & tp = cs.corresponding(c);
+    auto & tp = cs.corresponding(e);
     for(auto &p : firsts(cs)) {
       if((&p == &tp) || (p != tp)) {
         // same channel, or different frequency.
         continue;
       }
       auto & otherChannel = cs.corresponding(p);
-      Assert(&otherChannel != &c);
+      Assert(&otherChannel != &e);
       // To prevent phase cancellation, the phase of the new note will be
       // coherent with the phase of any active channel that plays a note at the same frequency.
-      if(otherChannel.elem.getEnvelope().isEnvelopeFinished()) {
+      if(!otherChannel.elem.getEnvelope().isEnvelopeRTActive()) {
         continue;
       }
-      thisAlgo.getOsc().synchronizeAngles(otherChannel.elem.algo.getOsc());
+      thisAlgo.getOsc().synchronizeAngles(otherChannel.elem.getOsc());
       return;
     }
   }
@@ -159,6 +159,12 @@ struct NoopElementInitializer {
   template<typename Element>
   void operator()(Element const &) {
   }
+};
+
+enum class SynthState {
+  ComputeNotRegistered,
+  ComputeRegistered,
+  WaitingForComputeUnregistration
 };
 
 template<
@@ -181,7 +187,10 @@ struct ImplCRTP : public Base {
   static constexpr Atomicity atomicity = getAtomicity<outPolicy>();
   
   using Element = AE;
-  using MonoNoteChannel = MonoNoteChannel<Element, Channel<atomicity, nOuts, xfade_policy_, MaxQueueSize::One>>;
+  struct ElemMidiDelay {
+    Element elem;
+    Optional<MIDITimestampAndSource> midiDelay;
+  };
   
   using Base::get_xfade_length;
   using Base::get_gain;
@@ -201,11 +210,12 @@ protected:
   // We use this datastructure because we generally iterate on the indexes,
   // and once we find out match, we go to the corresponding channel. But instead we could simply use:
   //std::array<std::optional<NoteId>, n_channels> index_to_noteid;
-  //std::array<MonoNoteChannel, n_channels> channels;
+  //std::array<ElemMidiDelay, n_channels> channels;
 
-  LocalPairArray<std::optional<NoteId>, MonoNoteChannel, n_channels> channels;
+  LocalPairArray<std::optional<NoteId>, ElemMidiDelay, n_channels> channels;
   
 private:
+  std::atomic<SynthState> state = SynthState::ComputeNotRegistered;
   std::optional<ElementInitializer> synchronous_element_initializer;
   std::atomic_int count_acquire_race_errors{0};
   static_assert(decltype(count_acquire_race_errors)::is_always_lock_free);
@@ -222,46 +232,43 @@ public:
     return res;
   }
   
-  template <typename A>
-  ImplCRTP(std::array<A, n_channels> & as)
-  : channels(std::optional<NoteId>{}, as)
+  ImplCRTP()
+  : channels()
   {}
   
   template<typename ChannelsT>
   bool initialize(ChannelsT & chans) {
     midiDelays(); // to allocate the memory for the container
-    
-    for(auto & c : seconds(channels)) {
-      // using WithLock::No : since we own these channels and they are not playing,
-      // we don't need to take the audio lock.
-      if(!c.template open<WithLock::No>(chans, 0.f)) {
-        return false;
+    Assert(state == SynthState::ComputeNotRegistered);
+    chans.enqueueOneShot([this, &chans](auto &, auto){
+      if (!chans.registerSimpleCompute([this](double * buf, int frames){
+        return compute(buf, frames);
+      })) {
+        throw std::runtime_error("failed to register compute");
       }
-    }
+    });
+    state = SynthState::ComputeRegistered;
     return true;
   }
   
   template<typename ChannelsT>
   void finalize(ChannelsT & chans) {
-    for(auto & c : seconds(channels)) {
-      if(c.channel == nullptr) {
-        continue;
-      }
-      // using WithLock::No : since we own these channels and they are not playing anymore,
-      // we don't need to take the audio lock.
-      c.template close<WithLock::No>(chans);
-      c.channel = nullptr;
+    Assert(state == SynthState::ComputeRegistered);
+    allNotesOff(chans);
+    state = SynthState::WaitingForComputeUnregistration;
+    // block until the registered compute function returned false (to be removed from the context queue)
+    while(state == SynthState::WaitingForComputeUnregistration) {
+      std::this_thread::sleep_for(std::chrono::microseconds(100));
     }
   }
   
-  // returns true if at least one channel has an active enveloppe.
-  bool areEnvelopesFinished() const {
+  bool someEnvelopesRTActive() const {
     for(auto const & c : seconds(channels)) {
-      if(!c.elem.getEnvelope().isEnvelopeFinished()) {
-        return false;
+      if(c.elem.getEnvelope().isEnvelopeRTActive()) {
+        return true;
       }
     }
-    return true;
+    return false;
   }
   
   // Note: Logic Audio Express 9 calls this when two projects are opened and
@@ -287,9 +294,9 @@ public:
   }
   
   template <typename F>
-  void forEachActiveElem(F f) {
+  void forEachRTActiveElem(F f) {
     for(auto &c : seconds(channels)) {
-      if (!c.elem.getEnvelope().isEnvelopeFinished()) {
+      if (c.elem.getEnvelope().isEnvelopeRTActive()) {
         f(c.elem);
       }
     }
@@ -301,6 +308,35 @@ public:
     }
   }
   
+private:
+  bool compute(double * buffer,
+               int n_frames) {
+    bool silence = true;
+    for(auto &c : seconds(channels)) {
+      if (!c.elem.getEnvelope().isEnvelopeRTActive()) {
+        continue;
+      }
+      silence = false;
+      for (int i=0; i!=n_frames; ++i) {
+        c.elem.step();
+        // the call above can make the element become "not RT active", but the transition "not RT active" -> "RT active" happens in this thread (the RT thread) so it is safe.
+        if (!c.elem.getEnvelope().isEnvelopeRTActive()) {
+          break;
+        }
+        // this assumes we have mono audioelement, TODO : support panning audioelement Panned<Algo>
+        for (int j = 0; j<nAudioOut; ++j) {
+          buffer[nAudioOut * i + j] += c.elem.imag();
+        }
+      }
+    }
+    if (!silence || state != SynthState::WaitingForComputeUnregistration) {
+      return true;
+    }
+    state = SynthState::ComputeNotRegistered;
+    return false;
+  }
+
+public:
   template<typename Out, typename Chans>
   onEventResult onEvent(int const sample_rate,
                         Event const & e,
@@ -308,14 +344,13 @@ public:
                         Chans & chans,
                         std::optional<MIDITimestampAndSource> const & maybeMidiTimeAndSource)
   {
-    using Request = typename Chans::Request;
     static_assert(Out::policy == outPolicy);
     switch(e.type) {
       case EventType::NoteOn:
       {
         Assert(e.noteOn.velocity > 0.f ); // this case is handled by the wrapper... else we need to do a noteOff
         MIDI_LG(INFO, "on  %d", e.noteOn.pitch);
-        MonoNoteChannel * channel = nullptr;
+        ElemMidiDelay * channel = nullptr;
         
         // 1. [with maybe-lock]
         //      reserve a channel by maybe-CAS the envelope State Finished2 -> SoonKeyPressed
@@ -328,6 +363,7 @@ public:
               continue;
             }
             Assert(!c.elem.getEnvelope().isEnvelopeFinished()); // because we just acquired it.
+            Assert(c.elem.getEnvelope().isEnvelopeSoonKeyPressed()); // because we just acquired it.
             channel = &c;
             break;
           }
@@ -337,7 +373,6 @@ public:
           return onDroppedNote(e);
         }
         auto & c = *channel;
-        int32_t channel_index = channels.index(c);
         
         // 2. [without maybe-lock]
         //      set the noteid
@@ -346,9 +381,8 @@ public:
         channels.corresponding(*channel) = e.noteid;
         
         c.elem.forgetPastSignals(); // this does _not_ touch the envelope
-        c.elem.algo.set_sample_rate(sample_rate);
-        c.elem.algo.setVolumeTarget(e.noteOn.velocity);
-        int const xfade_frames_length = static_cast<int>(0.5f + (get_xfade_length() * sample_rate));
+        c.elem.set_sample_rate(sample_rate);
+        c.elem.setVolumeTarget(e.noteOn.velocity);
         
         if (synchronous_element_initializer) {
           (*synchronous_element_initializer)(c.elem);
@@ -364,7 +398,8 @@ public:
         }
         
         Assert(!c.elem.getEnvelope().isEnvelopeFinished());
-        
+        Assert(c.elem.getEnvelope().isEnvelopeSoonKeyPressed());
+
         // 3. [with maybe-lock]
         //      register the maybe-oneshot that does
         //        - maybe phase cancellation avoidance (in setPhase)
@@ -374,18 +409,13 @@ public:
           typename Out::LockFromNRT L(out.get_lock());
           
           chans.enqueueOneShot([this,
-                                channel_index,
-                                pannedVol,
-                                xfade_frames_length]
-                               (Chans & chans, uint64_t){
-            // unqueue the (potential) previous request, else an assert fails
-            // when we enqueue the next request, because it's already queued.
-            auto & c = channels.seconds()[channel_index];
-            c.reset();
-            c.channel->setVolume(get_gain());
-            if constexpr (xfade_policy == XfadePolicy::UseXfade) {
-              c.channel->set_xfade((xfade_frames_length%2) + 1); // make it odd
-            }
+                                &c,
+                                sample_rate,
+                                maybeMidiTimeAndSource
+                                // pannedVol, // TODO how to handle panning? systematic use of Panner<>?
+                                ]
+                               (Chans &, uint64_t curTimeNanos){
+            // TODO take get_gain() into account globally, when writing the out audio buffer for this synth
             
             // we issue this call to make sure that the 'tryAcquire' effect will be visible in this thread.
             if(unlikely(!c.elem.editEnvelope().acquireStates())) {
@@ -393,27 +423,11 @@ public:
               ++count_acquire_race_errors;
               return;
             }
-            
-            // The caller is responsible for growing the channel request queue if needed
-            if(!chans.playComputableNoLock(*c.channel,
-                                           c.elem.fCompute(),
-                                           Request{
-              &c.elem.buffer->buffer[0],
-              pannedVol,
-              // e.noteOn.length is always 0, so we wait for noteOff event to know the duration
-              std::numeric_limits<decltype(std::declval<Request>().duration_in_frames)>::max()
-            }))
-            {
-              // there is currently no error reporting from the realtime thread.
-              return;
-            }
+
             setPhase<Sync, Phase>(c, channels);
-          });
-          
-          chans.enqueueOneShot([&c,
-                                sample_rate,
-                                maybeMidiTimeAndSource](Chans & chans, uint64_t curTimeNanos){
+
             if(maybeMidiTimeAndSource) {
+              Assert(curTimeNanos);
               auto srcKey = maybeMidiTimeAndSource->getSourceKey();
               uint64_t midiTimeNanos = maybeMidiTimeAndSource->getNanosTime();
               
@@ -482,6 +496,7 @@ public:
             auto & c = channels.corresponding(i);
             
             if(maybeMidiTimeAndSource) {
+              Assert(curTimeNanos);
               Assert(c.midiDelay);
               
               auto d = *c.midiDelay;
@@ -523,8 +538,8 @@ public:
                 continue;
               }
               auto & c = channels.corresponding(i);
-              c.elem.algo.setVolumeTarget(volume);
-              c.elem.algo.setAngleIncrements(increments);
+              c.elem.setVolumeTarget(volume);
+              c.elem.setAngleIncrements(increments);
             }
           });
         }
@@ -548,14 +563,13 @@ struct Wrapper {
   
   using ProcessData = typename T::ProcessData;
   
-  using OutputData = outputDataBase<
-  Channels<T::nAudioOut, T::xfade_policy, T::max_queue_size, AudioOutPolicy::Slave>,
-  ReverbT
+  using OutputData = SimpleAudioOutContext<
+  T::nAudioOut,
+  AudioOutPolicy::Slave
   >;
   
-  template <class... Args>
-  Wrapper(int sampleRate, int nOrchestratorsMax, Args&&... args)
-  : plugin(std::forward<Args>(args)...)
+  Wrapper(int nOrchestratorsMax, int sampleRate)
+  : plugin()
   , out{
     GlobalAudioLock<AudioOutPolicy::Slave>::get(),
     n_channels,
@@ -563,20 +577,19 @@ struct Wrapper {
   }
   , sample_rate(sampleRate)
   {
-    dontUseConvolutionReverbs(out, sample_rate);
-    plugin.template initialize(out.getChannels());
+    plugin.template initialize(out);
   }
   
   void doProcessing (ProcessData& data) {
-    return plugin.doProcessing(sample_rate, data, out, out.getChannels());
+    return plugin.doProcessing(sample_rate, data, out, out);
   }
   
   void allNotesOff() {
-    return plugin.template allNotesOff(out.getChannels());
+    return plugin.template allNotesOff(out);
   }
   
   void allSoundsOff() {
-    return plugin.template allSoundsOff(out.getChannels());
+    return plugin.template allSoundsOff(out);
   }
   
   OutputData out;

@@ -259,6 +259,7 @@ namespace imajuscule::audio::audioelement {
 
       SoundEngine()
       : xfade_freq(FreqXfade::No)
+      , rt_active(false) // TODO we should refactor this : oddOn should have 3 states : SoonKeyPressed, RTActive, Finished
       {
         oddOnTraits::write(oddOn, 0, std::memory_order_relaxed);
       }
@@ -314,16 +315,25 @@ namespace imajuscule::audio::audioelement {
         remaining_silence_steps = 0;
         start_angle = 0;
       }
+      bool isEnvelopeRTActive() const {
+        return rt_active && !isEnvelopeFinished();
+      }
+      bool isEnvelopeSoonKeyPressed() const {
+        return !rt_active && !isEnvelopeFinished_internal(getOddOn());
+      }
       bool isEnvelopeFinished() const {
         return isEnvelopeFinished_internal(getOddOn());
       }
       void onKeyPressed(int32_t delay) { // TODO use delay
         // we don't increment 'oddOn' here, or 'engine.set_active(true)' : it has been done in 'tryAcquire'.
+        Assert(!rt_active);
+        rt_active = true;
       }
       bool canHandleExplicitKeyReleaseNow(int32_t delay) const { // TODO use delay
         return goOn();
       }
       void onKeyReleased(int32_t delay) {
+        rt_active = false; // TODO we should delay this
         if(auto i = goOn()) {
           stop(i); // TODO we should delay the stop
           for(auto & r: ramps) {
@@ -350,16 +360,7 @@ namespace imajuscule::audio::audioelement {
           r.getOsc().getOsc().setFiltersOrder(order);
         }
       }
-      
-      bool isInactive() const {
-        for(auto const & r: ramps) {
-          if(!r.isInactive()) {
-            return false;
-          }
-        }
-        return true;
-      }
-      
+
       void setAngle(FPT a) {
         start_angle = a;
       }
@@ -437,7 +438,7 @@ namespace imajuscule::audio::audioelement {
           return false;
         }
         for(auto & r: ramps) {
-          if(!r.getEnvelope().isEnvelopeFinished()) {
+          if(r.getEnvelope().isEnvelopeRTActive()) {
             return false;
           }
         }
@@ -973,6 +974,7 @@ namespace imajuscule::audio::audioelement {
     private:
       Midi midi;
       oddOnType oddOn; // even values mean off, odd values mean on.
+      bool rt_active;
 
       itp::interpolation interpolation : 5;
       itp::interpolation freq_interpolation : 5;
