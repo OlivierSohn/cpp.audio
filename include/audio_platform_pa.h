@@ -32,13 +32,13 @@ struct AudioCbTimeStats {
     dt = 0;
     maxDt = 0;
   }
-  
+
   // number of callback iterations measured
   uint64_t n;
-  
+
   // sum of execution times of every iterations
   uint64_t dt;
-  
+
   // max execution time, , over all iterations
   uint64_t maxDt;
 };
@@ -196,16 +196,19 @@ struct Context<AudioPlatform::PortAudio, F, Chans> {
   Chans const & getStepper() const {
     return chans;
   }
-  
+
   int getSampleRate() const {
     Assert(sample_rate_);
     return *sample_rate_;
   }
 
+  bool isInitialized() const {
+    return bInitialized;
+  }
 private:
   std::optional<int> sample_rate_;
   uint64_t nanos_per_audioelement_buffer = 0;
-  
+
 protected:
   Chans chans;
   bool bInitialized : 1;
@@ -219,7 +222,7 @@ private:
 #endif
 #if IMJ_AUDIO_NEEDS_ASYNC_LOGGING
   std::unique_ptr<PortaudioAsyncLogger> async_logger;
-  
+
   // called from realtime trhead
   PortaudioAsyncLogger & asyncLogger() {
     Assert(async_logger);
@@ -271,7 +274,7 @@ private:
       }
       return noTime; // then, MIDI synchronizatin will not work.
     }();
-    
+
 #ifndef NDEBUG
 # ifndef IMJ_LOG_AUDIO_TIME // when we have a callback that takes too long to exectute, analyzeTime(...) will detect a problem, so to avoid gaving too much of these logs, when IMJ_LOG_AUDIO_TIME is on, we deactivate analyzeTime
     Assert(This->sample_rate_);
@@ -309,7 +312,7 @@ public:
       LG(INFO,"AudioOut::doInit : %d host apis", Pa_GetHostApiCount());
 
       printDevices();
-      
+
       PaStreamParameters p;
       p.device = Pa_GetDefaultOutputDevice();
       if (unlikely(p.device == paNoDevice)) {
@@ -330,7 +333,7 @@ public:
       LG(INFO, "AudioOut::doInit : audio device : def. sr    %f", pi->defaultSampleRate);
       LG(INFO, "AudioOut::doInit : audio device : def. lolat %f", pi->defaultLowOutputLatency);
       LG(INFO, "AudioOut::doInit : audio device : def. holat %f", pi->defaultHighOutputLatency);
-      
+
       LG(INFO, "AudioOut::doInit : audio device : min user lat %f", minLatency);
 
 
@@ -495,7 +498,7 @@ struct AudioInput<AudioPlatform::PortAudio> {
         ++writer_idx;
       }
 #endif  // IMJ_DEBUG_AUDIO_IN
-      
+
       sample_rate_ = sample_rate;
       PaError err = Pa_OpenStream(&stream,
                                   &inputParameters,

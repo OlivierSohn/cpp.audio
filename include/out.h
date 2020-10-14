@@ -247,7 +247,8 @@ namespace imajuscule {
     AudioPostPolicyImpl(LockPolicy &l) :
     _lock(l)
     {
-      readyTraits::write(ready, false, std::memory_order_relaxed);
+      // we start in the "ready" state
+      readyTraits::write(ready, true, std::memory_order_relaxed);
     }
 
     LockPolicy & _lock;
@@ -500,7 +501,7 @@ namespace imajuscule {
         f(*this, 0); // TODO pass an accurate time
       }
     }
-    
+
     bool registerSimpleCompute(SimpleComputeFunc && f) {
       if(!simple_computes.tryInsert(std::move(f))) {
         Assert(0);
@@ -547,7 +548,7 @@ namespace imajuscule {
         const int nSamples = nLocalFrames * nOuts;
 
         memset(precisionBuffer, 0, nSamples * sizeof(double));
-        
+
         consume_buffers(precisionBuffer, nLocalFrames, t);
         for(int i=0;
             i != nSamples;
@@ -562,7 +563,7 @@ namespace imajuscule {
   private:
 
     void consume_buffers(double * outputBuffer, int const nFrames, uint64_t const tNanos) {
-      
+
       struct ComputeFunctor {
         double * buffer;
         int n_frames;
@@ -573,9 +574,9 @@ namespace imajuscule {
           return compute(buffer, n_frames);
         }
       };
-      
+
       simple_computes.forEach(ComputeFunctor{outputBuffer, nFrames});
-      
+
       Assert(nFrames <= audio::audioelement::n_frames_per_buffer); // by design
 
       channelsT.forEach(detail::Compute{outputBuffer, nFrames, tNanos});

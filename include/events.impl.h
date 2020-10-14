@@ -40,7 +40,7 @@ struct Voicing {
   float pan;
 };
 
-template<typename Voice, typename OutputData, typename Chans>
+template<typename Voice, typename OutputData>
 onEventResult playOneThing(int const sample_rate,
                            Midi const & midi,
                            Voice & v,
@@ -67,7 +67,7 @@ onEventResult playOneThing(int const sample_rate,
                    {});
 }
 
-template<typename Voice, typename OutputData, typename Chans>
+template<typename Voice, typename OutputData>
 onEventResult stopPlaying(int const sample_rate,
                           Voice & v,
                           OutputData & out,
