@@ -227,7 +227,7 @@ struct Channels {
         else {
           // take the lock in the loop so that at the end of each iteration
           // the audio thread has a chance to run
-          LockFromNRT l(get_lock());  // TODO lockfree
+          LockFromNRT l(get_lock());
           if(channels[id].isPlaying()) {
             id = AUDIO_CHANNEL_NONE;
             continue;
@@ -284,7 +284,7 @@ struct Channels {
   
   void closeChannel(uint8_t channel_id, CloseMode mode, int nStepsForXfadeToZeroMode = -1)
   {
-    LockFromNRT l(get_lock());  // TODO lockfree
+    LockFromNRT l(get_lock());
     closeChannelNoLock(channel_id, mode, nStepsForXfadeToZeroMode);
   }
   
