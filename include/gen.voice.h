@@ -989,7 +989,7 @@ namespace imajuscule::audio::voice {
             pan = denorm<PAN>();
           }
         }
-        vol = MakeVolume::run<nAudioOut>(Element::baseVolume, pan);
+        vol = MakeVolume::run<nAudioOut>(1., pan);
       }
 
       using audioelement::SoundEngineInitPolicy;

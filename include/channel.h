@@ -25,7 +25,7 @@ namespace imajuscule::audio {
         static
         typename std::enable_if<J == 2, Volumes<J>>::type
         run(double volume, StereoGain const & gain) {
-          return {std::array<double,2>{gain.left*volume, gain.right*volume}};
+          return {std::array<double,2>{gain.left()*volume, gain.right()*volume}};
         }
 
         template<int J>

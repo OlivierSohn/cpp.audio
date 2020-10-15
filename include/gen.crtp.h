@@ -332,9 +332,12 @@ private:
         if (!c.elem.getEnvelope().isEnvelopeRTActive()) {
           break;
         }
-        // this assumes we have mono audioelement, TODO : support panning audioelement Panned<Algo>
         for (int j = 0; j<nAudioOut; ++j) {
-          buffer[nAudioOut * i + j] += c.elem.imag();
+          if constexpr (nAudioOut > 1 && Element::count_channels == nAudioOut) {
+            buffer[nAudioOut * i + j] += c.elem.imag(j);
+          } else {
+            buffer[nAudioOut * i + j] += c.elem.imag();
+          }
         }
       }
     }
@@ -391,7 +394,7 @@ public:
 
         c.elem.forgetPastSignals(); // this does _not_ touch the envelope
         c.elem.set_sample_rate(sample_rate);
-        c.elem.setVolumeTarget(e.noteOn.velocity);
+        c.elem.getVolumeAdjustment().setVolumeTarget(Element::baseVolume * e.noteOn.velocity);
 
         if (synchronous_element_initializer) {
           (*synchronous_element_initializer)(c.elem);
@@ -538,7 +541,7 @@ public:
         {
           typename Out::LockFromNRT L(out.get_lock());
           chans.enqueueOneShot([this,
-                                volume = e.noteChange.changed_velocity,
+                                volume = Element::baseVolume * e.noteChange.changed_velocity,
                                 noteid = e.noteid,
                                 increments = freq_to_angle_increment(e.noteChange.changed_frequency, sample_rate)](auto &,
                                                                                                                    uint64_t){
@@ -547,7 +550,7 @@ public:
                 continue;
               }
               auto & c = channels.corresponding(i);
-              c.elem.setVolumeTarget(volume);
+              c.elem.getVolumeAdjustment().setVolumeTarget(volume);
               c.elem.setAngleIncrements(increments);
             }
           });

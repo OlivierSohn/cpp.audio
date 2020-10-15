@@ -182,6 +182,7 @@ struct Enveloped {
   static constexpr auto hasEnvelope = true;
   static constexpr auto baseVolume = ALGO::baseVolume;
   static constexpr auto isMonoHarmonic = ALGO::isMonoHarmonic;
+  static constexpr int count_channels = ALGO::count_channels;
 
   using FPT = typename ALGO::FPT;
   static_assert(std::is_same<typename ALGO::FPT, typename Envelope::FPT>::value);
@@ -471,6 +472,7 @@ struct MultiEnveloped {
   static constexpr bool hasEnvelope = true;
   static constexpr auto baseVolume = ALGO::baseVolume;
   static constexpr auto isMonoHarmonic = ALGO::isMonoHarmonic;
+  static constexpr int count_channels = ALGO::count_channels;
 
   static constexpr auto atomicity = Envelope::atomicity;
 
@@ -1076,6 +1078,7 @@ struct BaseVolumeAdjusted {
   static constexpr auto hasEnvelope = ALGO::hasEnvelope;
   static constexpr auto baseVolume = ALGO::baseVolume / reduceUnadjustedVolumes;
   static constexpr auto isMonoHarmonic = ALGO::isMonoHarmonic;
+  static constexpr int count_channels = ALGO::count_channels;
 
   using T = typename ALGO::FPT;
   using FPT = T;
@@ -1089,7 +1092,7 @@ struct BaseVolumeAdjusted {
 
   auto       & getOsc()       { return osc; }
   auto const & getOsc() const { return osc; }
-
+  
   template <class U=ALGO,typename=std::enable_if_t<U::hasEnvelope>>
   auto & getEnvelope() const {
     return osc.getEnvelope();
@@ -1136,10 +1139,6 @@ struct BaseVolumeAdjusted {
 
   void synchronizeAngles(MeT const & other) {
     osc.synchronizeAngles(other.osc);
-  }
-
-  void setLoudnessParams(int sample_rate, int low_index, float log_ratio, float loudness_level) {
-    osc.setLoudnessParams(sample_rate, low_index, log_ratio, loudness_level);
   }
 
   void step() {
@@ -1193,12 +1192,19 @@ template<typename ALGO>
 struct VolumeAdjusted : BaseVolumeAdjusted<ALGO> {
   using T = typename ALGO::FPT;
 
+  auto & getVolumeAdjustment() { return *this; }
+  auto const & getVolumeAdjustment() const { return *this; }
+
   void setVolumeTarget(T vol) {
     this->setVolumeTargetInternal(vol);
   }
 
   void setAngleIncrements(T ai) {
     this->setAngleIncrementsInternal(ai);
+  }
+  
+  void setLoudnessParams(int sample_rate, int low_index, float log_ratio, float loudness_level) {
+    this->getOsc().setLoudnessParams(sample_rate, low_index, log_ratio, loudness_level);
   }
 };
 
@@ -1244,6 +1250,64 @@ private:
   float log_ratio_;
   int sample_rate_;
 };
+
+
+template<typename ALGO>
+struct StereoPanned {
+  
+  static constexpr auto hasEnvelope = ALGO::hasEnvelope;
+  static constexpr auto baseVolume = ALGO::baseVolume;
+  static constexpr auto isMonoHarmonic = ALGO::isMonoHarmonic;
+  static_assert(ALGO::count_channels == 1);
+  static constexpr int count_channels = 2;
+  
+  using FPT = typename ALGO::FPT;
+  
+  auto & editEnvelope() { return algo.editEnvelope(); }
+  auto const & getEnvelope() const { return algo.getEnvelope(); }
+  
+  auto       & getOsc()       { return algo; }
+  auto const & getOsc() const { return algo; }
+  
+  auto & getVolumeAdjustment() { return algo.getVolumeAdjustment(); }
+  auto const & getVolumeAdjustment() const { return algo.getVolumeAdjustment(); }
+  
+  
+  void set_sample_rate(int s) {
+    algo.set_sample_rate(s);
+  }
+  
+  void setup(StereoGain const & g) {
+    gain_ = g;
+  }
+  
+  void forgetPastSignals() {
+    algo.forgetPastSignals();
+  }
+  
+  void setAngleIncrements(FPT ai) {
+    algo.setAngleIncrements(ai);
+  }
+  
+  void setLoudnessParams(int sample_rate, int low_index, float log_ratio, float loudness_level) {
+    algo.setLoudnessParams(sample_rate, low_index, log_ratio, loudness_level);
+  }
+  
+  void step() {
+    algo.step();
+  }
+  
+  FPT imag(int i) const {
+    return gain_.gains[i] * algo.imag();
+  }
+  
+  auto angleIncrements() const { return algo.angleIncrements(); }
+  
+private:
+  ALGO algo;
+  StereoGain gain_;
+};
+
 
 
 // the unit of angle and angle increments is "radian / pi"
@@ -1317,6 +1381,7 @@ struct PCOscillatorAlgo : public Phased<T> {
   static constexpr auto hasEnvelope = false;
   static constexpr auto isMonoHarmonic = true;
   static constexpr auto baseVolume = reduceUnadjustedVolumes * soundBaseVolume(Sound::SINE);
+  static constexpr int count_channels = 1;
 
   using Phased<T>::angle_;
   using Phased<T>::aliasingMult;
@@ -1349,6 +1414,7 @@ struct soundBufferWrapperAlgo {
   static constexpr auto hasEnvelope = false;
   static constexpr auto baseVolume = reduceUnadjustedVolumes * soundBaseVolume(SOUND);
   static constexpr auto isMonoHarmonic = false;
+  static constexpr int count_channels = 1;
 
   using F_GET_BUFFER = FGetBuffer<SOUND>;
   using T = double;
@@ -1429,6 +1495,7 @@ struct ConstOne {
   static constexpr auto hasEnvelope = false;
   static constexpr auto baseVolume = 1.f;
   static constexpr auto isMonoHarmonic = true;
+  static constexpr int count_channels = 1;
 
   using FPT = T;
 
@@ -1489,6 +1556,8 @@ struct FOscillatorAlgo : public Phased<T> {
   static constexpr auto hasEnvelope = false;
   static constexpr auto isMonoHarmonic = monoHarmonic(O);
   static constexpr auto baseVolume = reduceUnadjustedVolumes * refVolume<O>();
+  static constexpr int count_channels = 1;
+
   using Phased<T>::angle_;
   using Phased<T>::aliasingMult;
 
@@ -1530,6 +1599,7 @@ struct PulseTrainAlgo : public Phased<T> {
   static constexpr auto hasEnvelope = false;
   static constexpr auto baseVolume = reduceUnadjustedVolumes * soundBaseVolume(Sound::SQUARE);
   static constexpr auto isMonoHarmonic = true;
+  static constexpr int count_channels = 1;
 
   using Tr = NumTraits<T>;
   using Phased<T>::angle_;
@@ -1597,6 +1667,7 @@ struct Mix {
   static constexpr auto hasEnvelope = AllHaveEnvelope<AEs...>();
   static constexpr auto baseVolume = minBaseVolume<AEs...>(); // be conservative.
   static constexpr bool isMonoHarmonic = AllMonoHarmonic<AEs...>();
+  static constexpr int count_channels = 1; // we could do better
 
   bool isEnvelopeFinished() const {
     Assert(0);
@@ -1716,6 +1787,7 @@ struct FilterAlgo {
   static constexpr auto hasEnvelope = AEAlgo::hasEnvelope;
   static constexpr auto baseVolume = AEAlgo::baseVolume;
   static constexpr auto isMonoHarmonic = AEAlgo::isMonoHarmonic;
+  static constexpr int count_channels = 1;
 
   using T = typename AEAlgo::FPT;
   using FPT = T;
@@ -1944,6 +2016,7 @@ struct BandAlgo_ : public Base {
 
   static constexpr auto baseVolume = Algo::baseVolume;
   static constexpr auto isMonoHarmonic = Algo::isMonoHarmonic;
+  static constexpr int count_channels = 1;
 
   void set_sample_rate(int s) {
     width.set_sample_rate(s);
@@ -2054,6 +2127,7 @@ struct OscillatorAlgo {
   static constexpr auto hasEnvelope = false;
   static constexpr auto isMonoHarmonic = true;
   static constexpr auto baseVolume = reduceUnadjustedVolumes * soundBaseVolume(Sound::SINE);
+  static constexpr int count_channels = 1;
 
   using Tr = NumTraits<T>;
   using FPT = T;
@@ -2746,6 +2820,8 @@ struct FreqCtrl_ {
   static constexpr auto hasEnvelope = ALGO::hasEnvelope;
   static constexpr auto baseVolume = ALGO::baseVolume;
   static constexpr auto isMonoHarmonic = ALGO::isMonoHarmonic;
+  static constexpr int count_channels = 1;
+
   using Ctrl = std::tuple<CTRLS...>;
   using T = typename ALGO::FPT;
   using FPT = T;
@@ -2862,6 +2938,8 @@ struct RingModulationAlgo {
   static constexpr auto hasEnvelope = A1::hasEnvelope || A2::hasEnvelope;
   static constexpr auto baseVolume = minBaseVolume<A1, A2>(); // TODO adjust with real use case
   static constexpr auto isMonoHarmonic = false;
+  static constexpr int count_channels = 1;
+
   using T = typename A1::FPT;
   using FPT = T;
 

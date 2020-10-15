@@ -250,6 +250,7 @@ namespace imajuscule::audio::audioelement {
       static constexpr auto hasEnvelope = true;
       static constexpr auto baseVolume = audioElt::baseVolume;
       static constexpr auto isMonoHarmonic = audioElt::isMonoHarmonic; // this is an approximation : during a xfade we may have 2 different harmonics
+      static constexpr int count_channels = audioElt::count_channels;
 
       static constexpr auto atomicity = A;
       using oddOnTraits = maybeAtomic<atomicity,unsigned int>;

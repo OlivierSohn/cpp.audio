@@ -18,7 +18,7 @@ namespace imajuscule::audio::sine {
                                0.8f, // 1.f = full compensation, 0.f = no compensation
                                30.f);
       e.setAngleIncrements(freq_to_angle_increment(freq, sample_rate));
-      vol = Volumes<nAudioOut>(Element::baseVolume);
+      vol = Volumes<nAudioOut>(1.);
       return true;
     }
   };

@@ -84,7 +84,7 @@ void resynth(std::vector<DeducedNote<T>> const & notes,
     EnvelopedAE * ae = getAvailableOscillator();
     ae->forgetPastSignals();
     ae->setAngleIncrements(freq_to_angle_increment(note.frequency, sampling_rate));
-    ae->getAlgo().setVolumeTarget(DbToMag<double>()(note.amplitude));
+    ae->getAlgo().getVolumeAdjustment().setVolumeTarget(DbToMag<double>()(note.amplitude));
     ae->editEnvelope().setAHDSR(AHDSR{
       1000, itp::LINEAR,
       0,

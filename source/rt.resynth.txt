@@ -52,7 +52,12 @@ Vocoder<MultiEnveloped<SineOsc>>
  ----------------
  Creative effects
  ----------------
+ 
+ - adjust stereo spread in real time.
+ Note we could have in StereoPanned = setup to change abruptly the pan, move_to to change the pan with an interpolation
 
+ - via volume tracking only (not envelope), make the volume decrease slower than in reality (notion of meta envelope)
+    
  - use many harmonizers, pre / post autotune (use midi input to define where the harmonizer is?)
  
  - autotune global mode to say how long it takes to go to the autotuned frequency, i.e

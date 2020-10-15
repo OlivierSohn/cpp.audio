@@ -3,15 +3,18 @@ namespace imajuscule::audio {
 
 namespace audioelement {
 
+
 template <typename T>
-using ResynthFinalElement =
-VolumeAdjusted<
- Enveloped<
+using ResynthElement =
+StereoPanned<
+ VolumeAdjusted<
+  Enveloped<
    FreqCtrl_<
     OscillatorAlgo<T, eNormalizePolicy::FAST>,
     InterpolatedFreq<T>
    >,
    AHDSREnvelope<Atomicity::Yes, T, EnvelopeRelease::WaitForKeyRelease>
+  >
  >
 >
 ;
@@ -19,6 +22,11 @@ VolumeAdjusted<
 } // NS audioelement
 
 namespace rtresynth {
+
+enum class InitializationType {
+  NewNote,
+  ExistingNote
+};
 
 template<typename T>
 struct ResynthElementInitializer {
@@ -28,11 +36,8 @@ struct ResynthElementInitializer {
   , stride(stride)
   {}
 
-  void operator()(audioelement::ResynthFinalElement<T> & e) const {
+  void operator()(audioelement::ResynthElement<T> & e, InitializationType t = InitializationType::NewNote) const {
     // envelope (now that we track the volume, we only need a minimal envelope)
-    
-    // TODO try the following effect via volume tracking only (not evelope):
-    // make the volume decrease slower than in reality (notion of meta envelope)
     
     e.editEnvelope().setAHDSR(audioelement::AHDSR{
       0, itp::LINEAR,
@@ -44,17 +49,24 @@ struct ResynthElementInitializer {
     
     // limit the speed of volume adjustment:
     
-    e.setMaxFilterIncrement(2. / static_cast<double>(stride));
+    e.getVolumeAdjustment().setMaxFilterIncrement(2. / static_cast<double>(stride));
     
     // frequency control
     
-    e.getOsc().getAlgo().getCtrl().setup(stride,
-                                         itp::LINEAR);
+    e.getVolumeAdjustment().getOsc().getAlgo().getCtrl().setup(stride,
+                                                               itp::LINEAR);
+    
+    // panning (except for note changes)
+    
+    if (t==InitializationType::NewNote) {
+      e.setup(stereo(std::uniform_real_distribution<float>{-1.f,1.f}(mersenne<SEEDED::No>())));
+    }
   }
   
 private:
   int sample_rate;
   int stride;
+  
 };
 
 template <int nOuts, AudioOutPolicy Policy, typename T>
@@ -62,7 +74,7 @@ using synthOf = sine::Synth < // the name of the namespace is misleading : it ca
 Policy
 , nOuts
 , XfadePolicy::SkipXfade
-, audioelement::ResynthFinalElement<T>
+, audioelement::ResynthElement<T>
 , SynchronizePhase::Yes
 , DefaultStartPhase::Random
 , true
@@ -410,7 +422,7 @@ public:
           ctxt.getStepper().enqueueOneShot([this,
                                             initializer](auto &, auto){
             synth.forEachRTActiveElem([initializer](auto & e) {
-              initializer(e);
+              initializer(e, InitializationType::ExistingNote);
             });
           });
           
