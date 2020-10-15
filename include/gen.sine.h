@@ -6,11 +6,10 @@ namespace imajuscule::audio::sine {
     static constexpr float get_xfade_length() { return 0.009f; }
     static constexpr float get_gain() { return 1.f; };
 
-    template<typename Element, int nAudioOut>
+    template<typename Element>
     bool setupAudioElement(float freq,
                            Element & e,
-                           int const sample_rate,
-                           Volumes<nAudioOut> & vol)
+                           int const sample_rate)
     {
       e.setLoudnessParams(sample_rate,
                                5, // corresponds to 63 Hz
@@ -18,7 +17,6 @@ namespace imajuscule::audio::sine {
                                0.8f, // 1.f = full compensation, 0.f = no compensation
                                30.f);
       e.setAngleIncrements(freq_to_angle_increment(freq, sample_rate));
-      vol = Volumes<nAudioOut>(1.);
       return true;
     }
   };

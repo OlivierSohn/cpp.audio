@@ -37,8 +37,8 @@ void birds(int const sample_rate) {
   >;
 
   constexpr audioelement::SoundEngineMode mode =
-  //audioelement::SoundEngineMode::ROBOTS;
-  audioelement::SoundEngineMode::WIND;
+  audioelement::SoundEngineMode::ROBOTS;
+  //audioelement::SoundEngineMode::WIND;
   //audioelement::SoundEngineMode::BIRDS;
 
   using Synth = audioelement::Voice<nAudioOut, audioEnginePolicy, mode>;
@@ -62,7 +62,7 @@ void birds(int const sample_rate) {
 
   std::optional<NoteId> noteid;
 
-  const int program_index = std::min(5,
+  const int program_index = std::min(6,
                                      v.countPrograms()-1);
   // for 7 (Light rain in a car) we use 1 ms per cb (filter order is 89 !!!).
   // for 6 (Light rain) we use 0.2 ms
@@ -133,7 +133,7 @@ void birds(int const sample_rate) {
     v.set_loudness_compensation(.2f); // birds do not naturally emit loudness compensated frequencies!
 
     noteid = mk_note_id();
-    float volume = 0.1f;
+    float volume = 1.f;
     float frequency = 200.f;
 
     auto const res  = synth.onEvent(sample_rate,

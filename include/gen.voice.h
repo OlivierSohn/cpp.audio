@@ -879,11 +879,10 @@ namespace imajuscule::audio::voice {
     }
   protected:
 
-    template<typename Element, int nAudioOut>
+    template<typename Element>
     bool setupAudioElement(float freq,
                            Element & e,
-                           int const sample_rate,
-                           Volumes<nAudioOut> & vol)
+                           int const sample_rate)
     {
       auto & engine = e.getOsc();
       {
@@ -946,7 +945,7 @@ namespace imajuscule::audio::voice {
         auto width_factor_range = range<float>(std::min(m,M),
                                                std::max(m,M));
         for(auto & r : engine.getRamps()) {
-          SetFilterWidths<MODE>::set(r.getOsc().getOsc(), width_factor_range);
+          SetFilterWidths<MODE>::set(r.getVolumeAdjustment().getOsc().getOsc(), width_factor_range);
         }
       }
       SetGains<MODE>::set(engine, std::array<float,4>{{
@@ -966,7 +965,7 @@ namespace imajuscule::audio::voice {
         float n_slow_steps_short = sample_rate * std::pow(max_seconds_slow_iter, denorm<SECONDS_SLOW_ITER_SHORT_TERM>());
 
         for(auto & r : engine.getRamps()) {
-          auto & mix = r.getOsc().getOsc();
+          auto & mix = r.getVolumeAdjustment().getOsc().getOsc();
           ConfigureFilters<MODE>::configure(mix, n_slow_steps, ra);
         }
         auto ratio = denorm<CENTER_SHORT_TERM_RATIO>();
@@ -989,7 +988,10 @@ namespace imajuscule::audio::voice {
             pan = denorm<PAN>();
           }
         }
-        vol = MakeVolume::run<nAudioOut>(1., pan);
+        auto gains = stereo(pan);
+        for(auto & r : engine.getRamps()) {
+          r.setup(gains);
+        }
       }
 
       using audioelement::SoundEngineInitPolicy;

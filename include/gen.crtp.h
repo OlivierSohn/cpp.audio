@@ -402,8 +402,7 @@ public:
 
         // setupAudioElement is allowed to be slow, allocate / deallocate memory, etc...
         // because it's not running in the audio realtime thread.
-        Volumes<nAudioOut> pannedVol;
-        if(!setupAudioElement(e.noteOn.frequency, c.elem, sample_rate, pannedVol)) {
+        if(!setupAudioElement(e.noteOn.frequency, c.elem, sample_rate)) {
           MIDI_LG(ERR,"setupAudioElement failed");
           // we let the noteoff reset the envelope state.
           return onDroppedNote(e);

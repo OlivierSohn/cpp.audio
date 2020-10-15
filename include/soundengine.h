@@ -205,7 +205,7 @@ namespace imajuscule::audio::audioelement {
       using type =
       audioelement::Mix
       <
-      audioelement::LoudnessAdjustableVolumeOscillatorAlgo<audioelement::LoudnessVolumeAdjust::Yes, float>
+      audioelement::LoudnessAdjustableVolumeOscillatorAlgo<audioelement::LoudnessVolumeAdjust::Yes, double>
       >;
     };
 
@@ -215,7 +215,7 @@ namespace imajuscule::audio::audioelement {
       audioelement::LowPassAlgo<PinkNoiseAlgo, Order>,
       AsymBandPassAlgo<PinkNoiseAlgo, Order, audioelement::SlowIter<audioelement::AbsIter<PinkNoiseIter>>>,
       AsymBandRejectAlgo<PinkNoiseAlgo, Order, audioelement::SlowIter<audioelement::AbsIter<PinkNoiseIter>>>,
-      audioelement::LoudnessAdjustableVolumeOscillatorAlgo<audioelement::LoudnessVolumeAdjust::Yes, float>
+      audioelement::LoudnessAdjustableVolumeOscillatorAlgo<audioelement::LoudnessVolumeAdjust::Yes, double>
       >;
     };
 
@@ -240,11 +240,13 @@ namespace imajuscule::audio::audioelement {
 
       using FPT = typename Algo::FPT;
       using audioElt =
-      audioelement::VolumeAdjusted<
+      audioelement::StereoPanned<
+       audioelement::VolumeAdjusted<
         audioelement::Enveloped <
-          Algo,
-          audioelement::AHDSREnvelope<A, FPT, audioelement::EnvelopeRelease::WaitForKeyRelease>
+         Algo,
+         audioelement::AHDSREnvelope<A, FPT, audioelement::EnvelopeRelease::WaitForKeyRelease>
         >
+       >
       >;
 
       static constexpr auto hasEnvelope = true;
@@ -352,13 +354,13 @@ namespace imajuscule::audio::audioelement {
       template<typename T>
       void setGains(T&& gains) {
         for(auto & r : ramps) {
-          r.getOsc().getOsc().setGains(std::forward<T>(gains));
+          r.getVolumeAdjustment().getOsc().getOsc().setGains(std::forward<T>(gains));
         }
       }
       
       void setFiltersOrder(int order) {
         for(auto & r : ramps) {
-          r.getOsc().getOsc().setFiltersOrder(order);
+          r.getVolumeAdjustment().getOsc().getOsc().setFiltersOrder(order);
         }
       }
 
@@ -413,13 +415,13 @@ namespace imajuscule::audio::audioelement {
         }
       }
 
-      FPT imag() const {
+      FPT imag(int i) const {
         FPT v{};
         for (auto & r : ramps) {
           switch (r.getEnvelope().getRelaxedState()) {
             case EnvelopeState::KeyReleased:
             case EnvelopeState::KeyPressed:
-              v += r.imag();
+              v += r.imag(i);
               break;
             case EnvelopeState::SoonKeyPressed:
             case EnvelopeState::EnvelopeDone1:
@@ -751,18 +753,18 @@ namespace imajuscule::audio::audioelement {
         if(!new_spec) {
           return;
         }
-        new_ramp->getOsc().getAlgo().getCtrl() = new_spec->get();
+        new_ramp->getVolumeAdjustment().getOsc().getAlgo().getCtrl() = new_spec->get();
         new_ramp->forgetPastSignals();
         new_ramp->set_sample_rate(sample_rate);
         new_ramp->setAngle(start_angle);
-        new_ramp->setVolumeTarget(new_spec->volume());
+        new_ramp->getVolumeAdjustment().setVolumeTarget(new_spec->volume());
         new_ramp->editEnvelope().setAHDSR(AHDSR{xfade_len, itp::LINEAR,0,0, itp::LINEAR,xfade_len,itp::LINEAR,1.}, sample_rate);
         if(!new_ramp->editEnvelope().tryAcquire()) {
           Assert(0);
         }
 
         int const time_to_release =
-          static_cast<int>(.5f + new_ramp->getOsc().getAlgo().getCtrl().get_duration_in_samples()) - xfade_len;
+          static_cast<int>(.5f + new_ramp->getVolumeAdjustment().getOsc().getAlgo().getCtrl().get_duration_in_samples()) - xfade_len;
         Assert(time_to_release >= 0);
 
         new_ramp->editEnvelope().onKeyPressed(0);

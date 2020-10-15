@@ -1079,7 +1079,20 @@ struct BaseVolumeAdjusted {
   static_assert(std::is_floating_point<FPT>::value);
 
   T real() const { Assert(volume); return *volume * osc.real(); }
-  T imag() const { Assert(volume); return *volume * osc.imag(); }
+
+  template<int C = count_channels>
+  std::enable_if_t<C == 1, T>
+  imag() const {
+    Assert(volume);
+    return *volume * osc.imag();
+  }
+
+  template<int C = count_channels>
+  std::enable_if_t<(C > 1), T>
+  imag(int i) const {
+    Assert(volume);
+    return *volume * osc.imag(i);
+  }
 
   T angleIncrements() const { return osc.angleIncrements(); }
   T angle() const { return osc.angle(); }
@@ -1290,6 +1303,10 @@ struct StereoPanned {
   
   void setAngleIncrements(FPT ai) {
     algo.setAngleIncrements(ai);
+  }
+  
+  void setAngle(FPT a) {
+    algo.setAngle(a);
   }
   
   void setLoudnessParams(int sample_rate, int low_index, float log_ratio, float loudness_level) {
