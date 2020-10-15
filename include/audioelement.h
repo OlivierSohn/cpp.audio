@@ -1060,11 +1060,6 @@ private:
 template <Atomicity A, typename T, EnvelopeRelease Rel>
 using AHDSREnvelope = EnvelopeCRT < A, AHDSREnvelopeBase <T, Rel> >;
 
-// This value makes non-volume adjusted aoscillators be usable
-// with adjusted oscillators, at approximately the same volumes
-// for medium frequencies.
-constexpr float reduceUnadjustedVolumes = 0.1f;
-
 /** Adjusts the volume of a mono-frequency algo.
  *
  * To avoid audible cracks when the volume has a non differentiable shape,
@@ -1076,7 +1071,6 @@ struct BaseVolumeAdjusted {
   using MeT = BaseVolumeAdjusted<ALGO>;
 
   static constexpr auto hasEnvelope = ALGO::hasEnvelope;
-  static constexpr auto baseVolume = ALGO::baseVolume / reduceUnadjustedVolumes;
   static constexpr auto isMonoHarmonic = ALGO::isMonoHarmonic;
   static constexpr int count_channels = ALGO::count_channels;
 
@@ -1192,6 +1186,8 @@ template<typename ALGO>
 struct VolumeAdjusted : BaseVolumeAdjusted<ALGO> {
   using T = typename ALGO::FPT;
 
+  static constexpr auto baseVolume = ALGO::baseVolume;
+
   auto & getVolumeAdjustment() { return *this; }
   auto const & getVolumeAdjustment() const { return *this; }
 
@@ -1208,11 +1204,18 @@ struct VolumeAdjusted : BaseVolumeAdjusted<ALGO> {
   }
 };
 
+// This value makes non-volume adjusted aoscillators be usable
+// with adjusted oscillators, at approximately the same volumes
+// for medium frequencies.
+constexpr float reduceUnadjustedVolumes = 0.1f;
+
 /** Adjusts the volume of a mono-frequency algorithm to reach equal-loudness across all frequencies.
  */
 template<typename ALGO>
 struct LoudnessVolumeAdjusted : BaseVolumeAdjusted<ALGO> {
   using T = typename ALGO::FPT;
+
+  static constexpr auto baseVolume = ALGO::baseVolume / reduceUnadjustedVolumes;
 
   // if the underlying algo has more than one frequency
   // then we can't use this volume adjustment algorithm
