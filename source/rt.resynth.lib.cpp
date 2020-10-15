@@ -7,15 +7,15 @@ namespace audioelement {
 template <typename T>
 using ResynthElement =
 StereoPanned<
- VolumeAdjusted<
-  Enveloped<
-   FreqCtrl_<
-    OscillatorAlgo<T, eNormalizePolicy::FAST>,
-    InterpolatedFreq<T>
-   >,
-   AHDSREnvelope<Atomicity::Yes, T, EnvelopeRelease::WaitForKeyRelease>
-  >
- >
+VolumeAdjusted<
+Enveloped<
+FreqCtrl_<
+OscillatorAlgo<T, eNormalizePolicy::FAST>,
+InterpolatedFreq<T>
+>,
+AHDSREnvelope<Atomicity::Yes, T, EnvelopeRelease::WaitForKeyRelease>
+>
+>
 >
 ;
 
@@ -31,11 +31,13 @@ enum class InitializationType {
 template<typename T>
 struct ResynthElementInitializer {
   ResynthElementInitializer(int const sample_rate,
-                            int const stride)
+                            int const stride,
+                            float const stereo_spread)
   : sample_rate(sample_rate)
   , stride(stride)
+  , stereo_spread_(stereo_spread)
   {}
-
+  
   void operator()(audioelement::ResynthElement<T> & e, InitializationType t = InitializationType::NewNote) const {
     // envelope (now that we track the volume, we only need a minimal envelope)
     
@@ -59,14 +61,25 @@ struct ResynthElementInitializer {
     // panning (except for note changes)
     
     if (t==InitializationType::NewNote) {
-      e.setup(stereo(std::uniform_real_distribution<float>{-1.f,1.f}(mersenne<SEEDED::No>())));
+      e.setup(stereo(stereo_spread_ * std::uniform_real_distribution<float>{-1.f,1.f}(mersenne<SEEDED::No>())));
     }
+  }
+  
+  bool operator ==(ResynthElementInitializer const& o) const {
+    return
+    std::make_tuple(sample_rate, stride, stereo_spread_) ==
+    std::make_tuple(o.sample_rate, o.stride, o.stereo_spread_);
+  }
+  bool operator !=(ResynthElementInitializer const& o) const {
+    return
+    std::make_tuple(sample_rate, stride, stereo_spread_) !=
+    std::make_tuple(o.sample_rate, o.stride, o.stereo_spread_);
   }
   
 private:
   int sample_rate;
   int stride;
-  
+  float stereo_spread_;
 };
 
 template <int nOuts, AudioOutPolicy Policy, typename T>
@@ -83,33 +96,153 @@ Policy
 , ResynthElementInitializer<T>
 >;
 
+constexpr int nAudioOut = 2;
+constexpr auto audioEnginePolicy = AudioOutPolicy::MasterLockFree;
+
+using Ctxt = Context<
+AudioPlatform::PortAudio,
+Features::InAndOut,
+SimpleAudioOutContext<
+nAudioOut,
+audioEnginePolicy
+>
+>;
+
+using Synth = synthOf<nAudioOut, audioEnginePolicy, double>;
+
+bool constexpr logs = false;
+
+inline
+void synthesize_sounds(Midi const & midi,
+                       int64_t const analysis_frame_idx,
+                       int const sample_rate,
+                       MIDITimestampAndSource const & miditime,
+                       int const future_stride,
+                       float const stereo_spread,
+                       std::vector<PitchVolume> const & autotuned_pitches,
+                       std::vector<int> const & autotuned_pitches_idx_sorted_by_perceived_loudness,
+                       std::vector<std::optional<int>> const & pitch_changes,
+                       std::vector<bool> const & continue_playing,
+                       Synth & synth,
+                       Ctxt & ctxt,
+                       int64_t & next_noteid,
+                       std::vector<PlayedNote> & played_pitches,
+                       NonRealtimeAnalysisFrame & analysis_data,
+                       std::atomic_int & dropped_note_on) {
+  {
+    ResynthElementInitializer<double> initializer{sample_rate, future_stride, stereo_spread};
+    if (!synth.getSynchronousElementInitializer() || *synth.getSynchronousElementInitializer() != initializer) {
+      // This will apply the new params for new notes:
+      synth.setSynchronousElementInitializer(initializer);
+      
+      // This will apply the new params for currently played notes
+      ctxt.getStepper().enqueueOneShot([&synth,
+                                        initializer](auto &, auto){
+        synth.forEachRTActiveElem([initializer](auto & e) {
+          initializer(e, InitializationType::ExistingNote);
+        });
+      });
+      
+      // If we are unlucky, we missed the notes that are in "SoonKeyPressed" state.
+    }
+  }
+  
+  // issue "note off" events
+  {
+    int idx = -1;
+    for (auto play : continue_playing) {
+      ++idx;
+      if (!play) {
+        auto res = synth.onEvent(sample_rate,
+                                 mkNoteOff(played_pitches[idx].noteid),
+                                 ctxt.getStepper(),
+                                 ctxt.getStepper(),
+                                 miditime);
+        if (logs) std::cout << analysis_frame_idx << ": XXX pitch " << played_pitches[idx].midi_pitch << " " << res << std::endl;
+        if (res != onEventResult::OK) {
+          throw std::logic_error("dropped note off");
+        }
+        analysis_data.try_push_note_off(played_pitches[idx]);
+      }
+    }
+  }
+  
+  // issue "note change" and "note on" events
+  for (int idx : autotuned_pitches_idx_sorted_by_perceived_loudness) {
+    std::optional<int> const & pitch_change = pitch_changes[idx];
+    
+    double const new_pitch = autotuned_pitches[idx].midipitch;
+    float const new_freq = midi.midi_pitch_to_freq(new_pitch);
+    
+    // divide by reduceUnadjustedVolumes because in our case eventhough the oscillator is not adjusted wrt loudness, its volume comes from a real sound so the loudness is correct
+    float const volume = autotuned_pitches[idx].volume / audioelement::reduceUnadjustedVolumes;
+    
+    if (pitch_change) {
+      PlayedNote & played = played_pitches[*pitch_change];
+      
+      auto res = synth.onEvent(sample_rate,
+                               mkNoteChange(played.noteid,
+                                            volume,
+                                            new_freq),
+                               ctxt.getStepper(),
+                               ctxt.getStepper(),
+                               miditime);
+      if (res != onEventResult::OK) {
+        throw std::logic_error("dropped note change");
+      }
+      if (logs) std::cout << analysis_frame_idx << ": pitch " << played.midi_pitch << " newpitch " << new_pitch << " Vol " << volume << " " << res << std::endl;
+      
+      played.cur_freq = new_freq;
+      played.midi_pitch = new_pitch;
+      played.cur_velocity = volume;
+      
+      analysis_data.try_push_note_change(played);
+    } else {
+      ++next_noteid;
+      NoteId const note_id{next_noteid};
+      auto const res = synth.onEvent(sample_rate,
+                                     mkNoteOn(note_id,
+                                              new_freq,
+                                              volume),
+                                     ctxt.getStepper(),
+                                     ctxt.getStepper(),
+                                     miditime);
+      if (logs) std::cout << analysis_frame_idx << ": pitch " << new_pitch << " vol " << volume << " " << res << std::endl;
+      
+      PlayedNote new_note{
+        analysis_frame_idx,
+        note_id,
+        new_pitch,
+        new_freq,
+        volume
+      };
+      if (res == onEventResult::OK) {
+        played_pitches.push_back(new_note);
+        analysis_data.try_push_note_on(played_pitches.back());
+      } else {
+        ++dropped_note_on;
+        analysis_data.try_push_note_on_dropped(new_note);
+      }
+    }
+  }
+  
+  analysis_data.try_push(NonRealtimeAnalysisFrame::EndOfFrame{
+    analysis_frame_idx,
+    std::chrono::microseconds(static_cast<int>(1000000. * static_cast<double>(future_stride)/sample_rate))
+  }, played_pitches);
+}
 
 struct RtResynth {
 private:
-  static constexpr int nAudioOut = 2;
-  static constexpr auto audioEnginePolicy = AudioOutPolicy::MasterLockFree;
-  
-  using Ctxt = Context<
-  AudioPlatform::PortAudio,
-  Features::InAndOut,
-  SimpleAudioOutContext<
-  nAudioOut,
-  audioEnginePolicy
-  >
-  >;
   
   static double constexpr minInLatency  = 0.000001;
   static double constexpr minOutLatency = 0.000001;
-  static bool constexpr logs = false;
-  static bool constexpr print_changes = false;
-    
+  
   static PitchReductionMethod constexpr pitch_method =
   PitchReductionMethod::PonderateByVolume;
   static VolumeReductionMethod constexpr volume_method =
   VolumeReductionMethod::SumVolumes;
-    
-  using Synth = synthOf<nAudioOut, audioEnginePolicy, double>;
-    
+  
   // producer : Audio input callback
   // consumer : analysis thread
   struct InputSample {
@@ -146,7 +279,6 @@ public:
     played_pitches.reserve(200);
     pitch_changes.reserve(200);
     continue_playing.reserve(200);
-    played_notes.resize(200);
     
     allowed_pitches.reserve(2*max_audible_midi_pitch);
     
@@ -156,7 +288,7 @@ public:
   }
   
   ~RtResynth() {
-    teardown();    
+    teardown();
   }
   
   void init(int const sample_rate = 88200) {
@@ -170,11 +302,11 @@ public:
     if (!ctxt.doInit(minOutLatency, sample_rate)) {
       throw std::runtime_error("ctxt init failed");
     }
-
+    
     if (!synth.initialize(ctxt.getStepper())) {
       throw std::logic_error("failed to initialize synth");
     }
-
+    
     std::this_thread::sleep_for(std::chrono::milliseconds(1000));
     
     input_queue = std::make_unique<Queue>(sample_rate); // one second of input can fit in the queue
@@ -234,298 +366,6 @@ public:
       };
       
       int end = 0;
-      
-      n = 0;
-      
-      std::optional<int> stride_for_synth_config;
-      auto step = [sample_rate,
-                   &stride_for_synth_config,
-                   this
-                   ](std::vector<FreqMag<double>> const & fs, MIDITimestampAndSource const & miditime, int const future_stride) {
-        ++n;
-        
-        frequencies_to_pitches(midi,
-                               fs,
-                               freqmags_data);
-        
-        aggregate_pitches(nearby_distance_tones,
-                          freqmags_data,
-                          pitch_intervals);
-        
-        reduce_pitches(pitch_method,
-                       volume_method,
-                       min_volume,
-                       pitch_intervals,
-                       reduced_pitches);
-        
-        shift_pitches(pitch_shift_pre_autotune,
-                      reduced_pitches);
-        
-        harmonize_pitches(pitch_harmonize_pre_autotune,
-                          pitches_tmp,
-                          reduced_pitches);
-        
-        std::function<std::optional<float>(float const)> autotune;
-        if (!use_autotune) {
-          autotune = [](float const v) -> std::optional<float> {return {v};};
-        } else {
-          switch(autotune_type) {
-            case AutotuneType::Chord:
-            {
-              int offset = half_tones_distance(Note::Do,
-                                               autotune_musical_scale_root_note);
-              if (offset < 0) {
-                offset += num_halftones_per_octave;
-              }
-              offset += autotune_root_note_halftones_transpose;
-              // the lowest bit is C4+offset
-              int constexpr C_pitch = A_pitch + half_tones_distance(Note::La,
-                                                                    Note::Do) + num_halftones_per_octave;
-              int const root_pitch = offset + C_pitch;
-              std::bitset<64> const chord{autotune_bit_chord.load()};
-              allowed_pitches.clear();
-              
-              bool single = false;
-              switch(autotune_chord_frequencies) {
-                case AutotuneChordFrequencies::SingleFreq:
-                  single = true;
-                case AutotuneChordFrequencies::OctavePeriodic:
-                {
-                  int const octaveMin = single ? 0:-5;
-                  int const octaveMax = single ? 0:5;
-                  for (int octave = octaveMin; octave <= octaveMax; ++octave) {
-                    int const add = num_halftones_per_octave * octave;
-                    for (int i=0, sz = static_cast<int>(chord.size()); i < sz; ++i) {
-                      if (chord[i]) {
-                        allowed_pitches.push_back(root_pitch + i + add);
-                      }
-                    }
-                  }
-                  break;
-                }
-                case AutotuneChordFrequencies::Harmonics:
-                {
-                  constexpr int n_harmo = 36;
-                  static constexpr std::array<double, n_harmo> harmonic_pitch_add = compute_harmonic_pitch_adds<n_harmo>(ConstexprMidi());
-                  for (int harmo = 0; harmo < n_harmo; ++harmo) {
-                    for (int i=0, sz = static_cast<int>(chord.size()); i < sz; ++i) {
-                      if (chord[i]) {
-                        // positive harmonic
-                        allowed_pitches.push_back(harmonic_pitch_add[harmo] + root_pitch + i);
-                        // negative harmonic
-                        allowed_pitches.push_back(-harmonic_pitch_add[harmo] + root_pitch + i);
-                      }
-                    }
-                  }
-                  break;
-                }
-              }
-              
-              std::sort(allowed_pitches.begin(),
-                        allowed_pitches.end());
-              
-              autotune = [this](float const pitch)-> std::optional<float> {
-                if (float * p = find_closest_pitch(pitch, allowed_pitches, [](float p){ return p; })) {
-                  return *p;
-                }
-                return {};
-              };
-              break;
-            }
-            case AutotuneType::FixedSizeIntervals:
-            {
-              int offset = half_tones_distance(Note::Do,
-                                               autotune_musical_scale_root_note);
-              if (offset < 0) {
-                offset += num_halftones_per_octave;
-              }
-              offset += autotune_root_note_halftones_transpose;
-              allowed_pitches.clear();
-              allowed_pitches.push_back(offset);
-              int const factor = autotune_factor.load();
-              Assert(factor >= 0);
-              if (factor) {
-                for (int val = offset - factor; val > 0; val -= factor) {
-                  allowed_pitches.push_back(val);
-                }
-                for (int val = offset + factor; val < max_audible_midi_pitch; val += factor) {
-                  allowed_pitches.push_back(val);
-                }
-              }
-              
-              std::sort(allowed_pitches.begin(),
-                        allowed_pitches.end());
-              
-              autotune = [this](double pitch)-> std::optional<float> {
-                if (float * p = find_closest_pitch(pitch, allowed_pitches, [](float p){ return p; })) {
-                  return *p;
-                }
-                return {};
-              };
-              break;
-            }
-            case AutotuneType::MusicalScale:
-              const auto * scale = &getMusicalScale(autotune_musical_scale_mode);
-              autotune = [scale,
-                          root_pitch = A_pitch +
-                          autotune_root_note_halftones_transpose +
-                          half_tones_distance(Note::La,
-                                              autotune_musical_scale_root_note)](float const pitch) {
-                return scale->closest_pitch<float>(root_pitch, pitch);
-              };
-              break;
-          }
-        }
-        autotune_pitches(autotune_max_pitch.load(),
-                         autotune_tolerance_pitches,
-                         autotune,
-                         reduced_pitches,
-                         autotuned_pitches);
-
-        shift_pitches(pitch_shift_post_autotune,
-                      autotuned_pitches);
-        
-        harmonize_pitches(pitch_harmonize_post_autotune,
-                          pitches_tmp,
-                          autotuned_pitches);
-
-        track_pitches(max_track_pitches,
-                      autotuned_pitches,
-                      played_pitches,
-                      pitch_changes,
-                      continue_playing);
-        
-        // 60 dB SPL is a normal conversation, see https://en.wikipedia.org/wiki/Sound_pressure#Sound_pressure_level
-        int constexpr loudness_idx = loudness::phons_to_index(60.f);
-        order_pitches_by_perceived_loudness([loudness_idx](PitchVolume const & pv) {
-          return
-          pv.volume /
-          loudness::equal_loudness_volume_db(loudness::pitches,
-                                             pv.midipitch,
-                                             loudness_idx);
-        },
-                                            autotuned_pitches,
-                                            autotuned_pitches_perceived_loudness,
-                                            autotuned_pitches_idx_sorted_by_perceived_loudness);
-        
-        // reconfigure synth if needed
-        
-        if (!stride_for_synth_config || *stride_for_synth_config != future_stride) {
-          stride_for_synth_config = future_stride;
-
-          ResynthElementInitializer<double> initializer{sample_rate, future_stride};
-          
-          // This will apply the new params for new notes:
-          synth.setSynchronousElementInitializer(initializer);
-          
-          // This will apply the new params for currently played notes
-          ctxt.getStepper().enqueueOneShot([this,
-                                            initializer](auto &, auto){
-            synth.forEachRTActiveElem([initializer](auto & e) {
-              initializer(e, InitializationType::ExistingNote);
-            });
-          });
-          
-          // If we are unlucky, we missed the notes that are in "SoonKeyPressed" state.
-        }
-        
-        bool changed = false;
-        
-        // issue "note off" events
-        {
-          int idx = -1;
-          for (auto play : continue_playing) {
-            ++idx;
-            if (!play) {
-              auto res = synth.onEvent(sample_rate,
-                                       mkNoteOff(played_pitches[idx].noteid),
-                                       ctxt.getStepper(),
-                                       ctxt.getStepper(),
-                                       miditime);
-              if (logs) std::cout << n << ": XXX pitch " << played_pitches[idx].midi_pitch << " " << res << std::endl;
-              if (res != onEventResult::OK) {
-                throw std::logic_error("dropped note off");
-              }
-              analysis_data.try_push_note_off(played_pitches[idx]);
-              changed = true;
-            }
-          }
-        }
-        
-        // issue "note change" and "note on" events
-        for (int idx : autotuned_pitches_idx_sorted_by_perceived_loudness) {
-          std::optional<int> const & pitch_change = pitch_changes[idx];
-          
-          changed = true;
-          
-          double const new_pitch = autotuned_pitches[idx].midipitch;
-          float const new_freq = midi.midi_pitch_to_freq(new_pitch);
-          
-          float const volume = autotuned_pitches[idx].volume;
-          
-          if (pitch_change) {
-            PlayedNote & played = played_pitches[*pitch_change];
-            
-            auto res = synth.onEvent(sample_rate,
-                                     mkNoteChange(played.noteid,
-                                                  volume,
-                                                  new_freq),
-                                     ctxt.getStepper(),
-                                     ctxt.getStepper(),
-                                     miditime);
-            if (res != onEventResult::OK) {
-              throw std::logic_error("dropped note change");
-            }
-            if (logs) std::cout << n << ": pitch " << played.midi_pitch << " newpitch " << new_pitch << " Vol " << volume << " " << res << std::endl;
-            
-            played.cur_freq = new_freq;
-            played.midi_pitch = new_pitch;
-            played.cur_velocity = volume;
-            
-            analysis_data.try_push_note_change(played);
-          } else {
-            static int noteid = 0;
-            ++noteid;
-            NoteId const note_id{noteid};
-            auto const res = synth.onEvent(sample_rate,
-                                           mkNoteOn(note_id,
-                                                    new_freq,
-                                                    volume),
-                                           ctxt.getStepper(),
-                                           ctxt.getStepper(),
-                                           miditime);
-            if (logs) std::cout << n << ": pitch " << new_pitch << " vol " << volume << " " << res << std::endl;
-            
-            PlayedNote new_note{
-              n,
-              note_id,
-              new_pitch,
-              new_freq,
-              volume
-            };
-            if (res == onEventResult::OK) {
-              played_pitches.push_back(new_note);
-              analysis_data.try_push_note_on(played_pitches.back());
-            } else {
-              ++dropped_note_on;
-              analysis_data.try_push_note_on_dropped(new_note);
-            }
-          }
-        }
-        
-        remove_dead_notes(continue_playing, played_pitches);
-        
-        sort_by_current_pitch(played_pitches);
-        
-        analysis_data.try_push(NonRealtimeAnalysisFrame::EndOfFrame{
-          n,
-          std::chrono::microseconds(static_cast<int>(1000000. * static_cast<double>(future_stride)/sample_rate))
-        }, played_pitches);
-        
-        if (changed && print_changes) {
-          print(played_pitches);
-        }
-      };
       
       auto init_data = [this,
                         sample_rate
@@ -626,7 +466,8 @@ public:
               std::optional<profiling::CpuDuration> dt;
               {
                 profiling::ThreadCPUTimer timer(dt);
-                step(freqmags,
+                step(sample_rate,
+                     freqmags,
                      MIDITimestampAndSource((count_queued_frames + local_count_dropped_input_frames) * nanos_pre_frame,
                                             midi_src_id),
                      window_center_stride); // we pass the future stride, on purpose
@@ -679,7 +520,7 @@ public:
     input_queue.reset();
     
     synth.finalize(ctxt.getStepper());
-
+    
     std::this_thread::sleep_for(std::chrono::milliseconds(1000));
     ctxt.doTearDown();
   }
@@ -805,7 +646,7 @@ public:
   NonRealtimeAnalysisFrame const & getAnalysisData() const {
     return analysis_data;
   }
-
+  
   float getHarmonizePreAutotune() const {
     return pitch_harmonize_pre_autotune;
   }
@@ -818,7 +659,7 @@ public:
   void setHarmonizePostAutotune(float f) {
     pitch_harmonize_post_autotune = f;
   }
-
+  
   float getPitchShiftPreAutotune() const {
     return pitch_shift_pre_autotune;
   }
@@ -882,7 +723,7 @@ public:
   void setAutotuneChordFrequencies(AutotuneChordFrequencies f) {
     autotune_chord_frequencies = f;
   }
-
+  
   int getAutotuneRootTranspose() const {
     return autotune_root_note_halftones_transpose;
   }
@@ -912,6 +753,12 @@ public:
       autotune_bit_chord &= ~mask;
     }
   }
+  float getStereoSpread() const {
+    return stereo_spread;
+  }
+  void setStereoSpread(float f) {
+    stereo_spread = f;
+  }
 private:
   Ctxt ctxt;
   Synth synth;
@@ -927,6 +774,7 @@ private:
   static_assert(decltype(count_dropped_input_frames)::is_always_lock_free);
   
   NonRealtimeAnalysisFrame analysis_data;
+  int64_t analysis_frame_idx = 0;
   
   cyclic<float> delayed_input;
   std::atomic<float> input_delay_seconds = 0.f;
@@ -940,8 +788,9 @@ private:
   std::atomic<float> pitch_shift_post_autotune = 0.f;
   std::atomic<float> pitch_harmonize_pre_autotune = 0.f;
   std::atomic<float> pitch_harmonize_post_autotune = 0.f;
+  std::atomic<float> stereo_spread = 1.f;
   static_assert(std::atomic<float>::is_always_lock_free);
-
+  
   std::atomic<AutotuneType> autotune_type = AutotuneType::MusicalScale;
   static_assert(std::atomic<AutotuneType>::is_always_lock_free);
   std::atomic_bool use_autotune = false;
@@ -955,10 +804,10 @@ private:
   std::atomic_int autotune_root_note_halftones_transpose = 0;
   std::atomic<AutotuneChordFrequencies> autotune_chord_frequencies = AutotuneChordFrequencies::Harmonics;
   std::atomic<uint64_t> autotune_bit_chord = 0b10010001; // least significant beat = lower pitch
-
+  
   std::vector<float> allowed_pitches;
-
-  int64_t n;
+  
+  int64_t next_noteid = 0;
   
   using Sample = double;
   using SampleVector = std::vector<Sample>;
@@ -978,7 +827,6 @@ private:
   std::vector<PlayedNote> played_pitches;
   std::vector<std::optional<int>> pitch_changes;
   std::vector<bool> continue_playing; // indexed like 'played_pitches'
-  std::vector<PlayedNote> played_notes;
   
   std::atomic<float> dt_process_seconds = -1.f;
   std::atomic<float> dt_step_seconds = -1.f;
@@ -1001,6 +849,199 @@ private:
     set(duration_copy_seconds, dt_copy_seconds);
   }
   
+  void step (int const sample_rate,
+             std::vector<FreqMag<double>> const & fs,
+             MIDITimestampAndSource const & miditime,
+             int const future_stride) {
+    ++analysis_frame_idx;
+
+    frequencies_to_pitches(midi,
+                           fs,
+                           freqmags_data);
+    
+    aggregate_pitches(nearby_distance_tones,
+                      freqmags_data,
+                      pitch_intervals);
+    
+    reduce_pitches(pitch_method,
+                   volume_method,
+                   min_volume,
+                   pitch_intervals,
+                   reduced_pitches);
+    
+    shift_pitches(pitch_shift_pre_autotune,
+                  reduced_pitches);
+    
+    harmonize_pitches(pitch_harmonize_pre_autotune,
+                      pitches_tmp,
+                      reduced_pitches);
+    
+    autotune_pitches(autotune_max_pitch.load(),
+                     autotune_tolerance_pitches,
+                     mkAutotuneFunction(),
+                     reduced_pitches,
+                     autotuned_pitches);
+    
+    shift_pitches(pitch_shift_post_autotune,
+                  autotuned_pitches);
+    
+    harmonize_pitches(pitch_harmonize_post_autotune,
+                      pitches_tmp,
+                      autotuned_pitches);
+    
+    track_pitches(max_track_pitches,
+                  autotuned_pitches,
+                  played_pitches,
+                  pitch_changes,
+                  continue_playing);
+    
+    // 60 dB SPL is a normal conversation, see https://en.wikipedia.org/wiki/Sound_pressure#Sound_pressure_level
+    int constexpr loudness_idx = loudness::phons_to_index(60.f);
+    order_pitches_by_perceived_loudness([loudness_idx](PitchVolume const & pv) {
+      return
+      pv.volume /
+      loudness::equal_loudness_volume_db(loudness::pitches,
+                                         pv.midipitch,
+                                         loudness_idx);
+    },
+                                        autotuned_pitches,
+                                        autotuned_pitches_perceived_loudness,
+                                        autotuned_pitches_idx_sorted_by_perceived_loudness);
+    
+    synthesize_sounds(// constant args:
+                      midi,
+                      analysis_frame_idx,
+                      sample_rate,
+                      miditime,
+                      future_stride,
+                      stereo_spread,
+                      autotuned_pitches,
+                      autotuned_pitches_idx_sorted_by_perceived_loudness,
+                      pitch_changes,
+                      continue_playing,
+                      // mutable args:
+                      synth,
+                      ctxt,
+                      next_noteid,
+                      played_pitches,
+                      analysis_data,
+                      dropped_note_on);
+    
+    remove_dead_notes(continue_playing,
+                      played_pitches);
+    
+    sort_by_current_pitch(played_pitches);
+  }
+  
+  std::function<std::optional<float>(float const)>
+  mkAutotuneFunction() {
+    if (!use_autotune) {
+      return [](float const v) -> std::optional<float> {return {v};};
+    }
+    switch(autotune_type) {
+      case AutotuneType::Chord:
+      {
+        int offset = half_tones_distance(Note::Do,
+                                         autotune_musical_scale_root_note);
+        if (offset < 0) {
+          offset += num_halftones_per_octave;
+        }
+        offset += autotune_root_note_halftones_transpose;
+        // the lowest bit is C4+offset
+        int constexpr C_pitch = A_pitch + half_tones_distance(Note::La,
+                                                              Note::Do) + num_halftones_per_octave;
+        int const root_pitch = offset + C_pitch;
+        std::bitset<64> const chord{autotune_bit_chord.load()};
+        allowed_pitches.clear();
+        
+        bool single = false;
+        switch(autotune_chord_frequencies) {
+          case AutotuneChordFrequencies::SingleFreq:
+            single = true;
+          case AutotuneChordFrequencies::OctavePeriodic:
+          {
+            int const octaveMin = single ? 0:-5;
+            int const octaveMax = single ? 0:5;
+            for (int octave = octaveMin; octave <= octaveMax; ++octave) {
+              int const add = num_halftones_per_octave * octave;
+              for (int i=0, sz = static_cast<int>(chord.size()); i < sz; ++i) {
+                if (chord[i]) {
+                  allowed_pitches.push_back(root_pitch + i + add);
+                }
+              }
+            }
+            break;
+          }
+          case AutotuneChordFrequencies::Harmonics:
+          {
+            constexpr int n_harmo = 36;
+            static constexpr std::array<double, n_harmo> harmonic_pitch_add = compute_harmonic_pitch_adds<n_harmo>(ConstexprMidi());
+            for (int harmo = 0; harmo < n_harmo; ++harmo) {
+              for (int i=0, sz = static_cast<int>(chord.size()); i < sz; ++i) {
+                if (chord[i]) {
+                  // positive harmonic
+                  allowed_pitches.push_back(harmonic_pitch_add[harmo] + root_pitch + i);
+                  // negative harmonic
+                  allowed_pitches.push_back(-harmonic_pitch_add[harmo] + root_pitch + i);
+                }
+              }
+            }
+            break;
+          }
+        }
+        
+        std::sort(allowed_pitches.begin(),
+                  allowed_pitches.end());
+        
+        return [this](float const pitch)-> std::optional<float> {
+          if (float * p = find_closest_pitch(pitch, allowed_pitches, [](float p){ return p; })) {
+            return *p;
+          }
+          return {};
+        };
+      }
+      case AutotuneType::FixedSizeIntervals:
+      {
+        int offset = half_tones_distance(Note::Do,
+                                         autotune_musical_scale_root_note);
+        if (offset < 0) {
+          offset += num_halftones_per_octave;
+        }
+        offset += autotune_root_note_halftones_transpose;
+        allowed_pitches.clear();
+        allowed_pitches.push_back(offset);
+        int const factor = autotune_factor.load();
+        Assert(factor >= 0);
+        if (factor) {
+          for (int val = offset - factor; val > 0; val -= factor) {
+            allowed_pitches.push_back(val);
+          }
+          for (int val = offset + factor; val < max_audible_midi_pitch; val += factor) {
+            allowed_pitches.push_back(val);
+          }
+        }
+        
+        std::sort(allowed_pitches.begin(),
+                  allowed_pitches.end());
+        
+        return [this](double pitch)-> std::optional<float> {
+          if (float * p = find_closest_pitch(pitch, allowed_pitches, [](float p){ return p; })) {
+            return *p;
+          }
+          return {};
+        };
+      }
+      case AutotuneType::MusicalScale:
+        const auto * scale = &getMusicalScale(autotune_musical_scale_mode);
+        return [scale,
+                root_pitch = A_pitch +
+                autotune_root_note_halftones_transpose +
+                half_tones_distance(Note::La,
+                                    autotune_musical_scale_root_note)](float const pitch) {
+          return scale->closest_pitch<float>(root_pitch, pitch);
+        };
+    }
+  }
 };
 
 } // NS resynth

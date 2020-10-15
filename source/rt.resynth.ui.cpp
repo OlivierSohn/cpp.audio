@@ -267,6 +267,14 @@ struct MyApp : public wxApp {
           0.f,
           10.f
         },
+        {
+          "Stereo spread",
+          "",
+          [this](){ return resynth.getStereoSpread(); },
+          [this](float v){ resynth.setStereoSpread(v); },
+          0.f,
+          1.f
+        },
       },
       color_slider_label_3
     }

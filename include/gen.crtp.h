@@ -225,6 +225,9 @@ public:
   void setSynchronousElementInitializer(ElementInitializer const & i) {
     synchronous_element_initializer = i;
   }
+  std::optional<ElementInitializer> const & getSynchronousElementInitializer() const {
+    return synchronous_element_initializer;
+  }
 
   int getAndResetAcquireRaceErrors() {
     int res = count_acquire_race_errors;
