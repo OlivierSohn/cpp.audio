@@ -162,6 +162,16 @@ constexpr auto pow(T a, T b) -> T {
   }
 }
 
+template<Constexpr is_constexpr, typename T>
+constexpr
+std::optional<T> frequency_to_midi_pitch(T const tuning_stretch,
+                                         T const freq) {
+  if (freq <= 0) {
+    return {};
+  }
+  return A_pitch + (num_halftones_per_octave / tuning_stretch) * log2<is_constexpr>(freq/freq_A);
+}
+
 template<Constexpr is_constexpr>
 struct Midi_ {
   static constexpr double unity_tuning_stretch = 1.;
@@ -182,10 +192,8 @@ struct Midi_ {
   }
 
   constexpr std::optional<double> frequency_to_midi_pitch(double const freq) const {
-    if (freq <= 0) {
-      return {};
-    }
-    return A_pitch + (num_halftones_per_octave / tuning_stretch_) * log2<is_constexpr>(freq/freq_A);
+    return imajuscule::audio::frequency_to_midi_pitch<is_constexpr>(tuning_stretch_,
+                                                                    freq);
   }
   
   constexpr double Ainterval_to_freq(double const interval_from_A) const {

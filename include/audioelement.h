@@ -1242,7 +1242,8 @@ struct LoudnessVolumeAdjusted : BaseVolumeAdjusted<ALGO> {
   {}
 
   void setAngleIncrements(T ai) {
-    this->setVolumeTargetInternal(loudness::equal_loudness_volume_from_freq(angle_increment_to_freq<T>(ai, sample_rate_),
+    this->setVolumeTargetInternal(loudness::equal_loudness_volume_from_freq(angle_increment_to_freq<T>(ai,
+                                                                                                       sample_rate_),
                                                                             low_index_,
                                                                             log_ratio_,
                                                                             loudness_level));
@@ -1305,6 +1306,10 @@ struct StereoPanned {
     algo.setAngleIncrements(ai);
   }
   
+  FPT angleIncrements() const {
+    return algo.angleIncrements();
+  }
+  
   void setAngle(FPT a) {
     algo.setAngle(a);
   }
@@ -1320,8 +1325,6 @@ struct StereoPanned {
   FPT imag(int i) const {
     return gain_.gains[i] * algo.imag();
   }
-  
-  auto angleIncrements() const { return algo.angleIncrements(); }
   
 private:
   ALGO algo;

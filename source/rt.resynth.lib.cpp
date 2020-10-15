@@ -28,26 +28,46 @@ enum class InitializationType {
   ExistingNote
 };
 
+inline
+audioelement::AHDSR
+mkAHDSR(int sample_rate,
+        float attack_seconds,
+        float hold_seconds,
+        float decay_seconds,
+        float release_seconds,
+        float sustain_level) {
+  auto seconds_to_frames = [sample_rate](float secs){
+    return ms_to_frames(1000.f * secs,
+                        sample_rate);
+  };
+  return audioelement::AHDSR{
+    seconds_to_frames(attack_seconds), itp::LINEAR,
+    seconds_to_frames(hold_seconds),
+    seconds_to_frames(decay_seconds), itp::LINEAR,
+    seconds_to_frames(release_seconds), itp::LINEAR,
+    sustain_level
+  };
+}
+
 template<typename T>
 struct ResynthElementInitializer {
   ResynthElementInitializer(int const sample_rate,
                             int const stride,
-                            float const stereo_spread)
+                            float const stereo_spread,
+                            audioelement::AHDSR const & a)
   : sample_rate(sample_rate)
   , stride(stride)
   , stereo_spread_(stereo_spread)
+  , ahdsr(a)
   {}
   
-  void operator()(audioelement::ResynthElement<T> & e, InitializationType t = InitializationType::NewNote) const {
+  void operator()(audioelement::ResynthElement<T> & e,
+                  InitializationType t = InitializationType::NewNote) const {
     // envelope (now that we track the volume, we only need a minimal envelope)
     
-    e.editEnvelope().setAHDSR(audioelement::AHDSR{
-      0, itp::LINEAR,
-      0,
-      0, itp::LINEAR,
-      0, itp::LINEAR,
-      1.f
-    }, sample_rate);
+    e.editEnvelope().setAHDSR(ahdsr,
+                              sample_rate);
+    
     
     // limit the speed of volume adjustment:
     
@@ -67,19 +87,20 @@ struct ResynthElementInitializer {
   
   bool operator ==(ResynthElementInitializer const& o) const {
     return
-    std::make_tuple(sample_rate, stride, stereo_spread_) ==
-    std::make_tuple(o.sample_rate, o.stride, o.stereo_spread_);
+    std::make_tuple(sample_rate, stride, stereo_spread_, ahdsr) ==
+    std::make_tuple(o.sample_rate, o.stride, o.stereo_spread_, o.ahdsr);
   }
   bool operator !=(ResynthElementInitializer const& o) const {
     return
-    std::make_tuple(sample_rate, stride, stereo_spread_) !=
-    std::make_tuple(o.sample_rate, o.stride, o.stereo_spread_);
+    std::make_tuple(sample_rate, stride, stereo_spread_, ahdsr) !=
+    std::make_tuple(o.sample_rate, o.stride, o.stereo_spread_, o.ahdsr);
   }
   
 private:
   int sample_rate;
   int stride;
   float stereo_spread_;
+  audioelement::AHDSR ahdsr;
 };
 
 template <int nOuts, AudioOutPolicy Policy, typename T>
@@ -119,6 +140,7 @@ void synthesize_sounds(Midi const & midi,
                        MIDITimestampAndSource const & miditime,
                        int const future_stride,
                        float const stereo_spread,
+                       audioelement::AHDSR const & ahdsr,
                        std::vector<PitchVolume> const & autotuned_pitches,
                        std::vector<int> const & autotuned_pitches_idx_sorted_by_perceived_loudness,
                        std::vector<std::optional<int>> const & pitch_changes,
@@ -130,7 +152,7 @@ void synthesize_sounds(Midi const & midi,
                        NonRealtimeAnalysisFrame & analysis_data,
                        std::atomic_int & dropped_note_on) {
   {
-    ResynthElementInitializer<double> initializer{sample_rate, future_stride, stereo_spread};
+    ResynthElementInitializer<double> initializer{sample_rate, future_stride, stereo_spread, ahdsr};
     if (!synth.getSynchronousElementInitializer() || *synth.getSynchronousElementInitializer() != initializer) {
       // This will apply the new params for new notes:
       synth.setSynchronousElementInitializer(initializer);
@@ -759,6 +781,38 @@ public:
   void setStereoSpread(float f) {
     stereo_spread = f;
   }
+
+  float getEnvAttackSeconds() const {
+    return env_attack_seconds;
+  }
+  void setEnvAttackSeconds(float f) {
+    env_attack_seconds = f;
+  }
+  float getEnvHoldSeconds() const {
+    return env_hold_seconds;
+  }
+  void setEnvHoldSeconds(float f) {
+    env_hold_seconds = f;
+  }
+  float getEnvDecaySeconds() const {
+    return env_decay_seconds;
+  }
+  void setEnvDecaySeconds(float f) {
+    env_decay_seconds = f;
+  }
+  float getEnvReleaseSeconds() const {
+    return env_release_seconds;
+  }
+  void setEnvReleaseSeconds(float f) {
+    env_release_seconds = f;
+  }
+  float getEnvSustainLevel() const {
+    return env_sustain_level;
+  }
+  void setEnvSustainLevel(float f) {
+    env_sustain_level = f;
+  }
+
 private:
   Ctxt ctxt;
   Synth synth;
@@ -789,6 +843,11 @@ private:
   std::atomic<float> pitch_harmonize_pre_autotune = 0.f;
   std::atomic<float> pitch_harmonize_post_autotune = 0.f;
   std::atomic<float> stereo_spread = 1.f;
+  std::atomic<float> env_attack_seconds = 0.f;
+  std::atomic<float> env_hold_seconds = 0.f;
+  std::atomic<float> env_decay_seconds = 0.f;
+  std::atomic<float> env_release_seconds = 0.f;
+  std::atomic<float> env_sustain_level = 1.f;
   static_assert(std::atomic<float>::is_always_lock_free);
   
   std::atomic<AutotuneType> autotune_type = AutotuneType::MusicalScale;
@@ -915,6 +974,12 @@ private:
                       miditime,
                       future_stride,
                       stereo_spread,
+                      mkAHDSR(sample_rate,
+                              env_attack_seconds,
+                              env_hold_seconds,
+                              env_decay_seconds,
+                              env_release_seconds,
+                              env_sustain_level),
                       autotuned_pitches,
                       autotuned_pitches_idx_sorted_by_perceived_loudness,
                       pitch_changes,

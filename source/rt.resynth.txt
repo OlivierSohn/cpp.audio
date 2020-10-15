@@ -20,51 +20,24 @@ Vocoder<MultiEnveloped<SineOsc>>
 
 /* Backlog:
 
- - spread frequencies in stereo field (low = left, high = right)
- . on note change, the spread should change, at the same rate than frequency, so the spread is a function of oscillator's angleIncrements
- but volume of channel can only change every 16 samples! so we need to
- make it possible for an audioelement to work with 2 channels:
- StereoPanner<Osc>
- 
- FinalAudioElement has a AEBuffer
- FinalAudioElement could deduce "int nAudioOut" from the Algo
- and do AEBuffer<int nAudioOut>
-
- Note that the notion of channel seems redundant for our use case.
- The notion of channel is usefull:
- - to have buffering
- . but we have buffering also in FinalAudioElement so it is not useful
- - when there are _overlapping_ sound requests with crossfades of same length, and no envelope
- . but on audioelement we have envelopes so there is no need for it
- - to apply a volume
- . but on audioelement we have volumes too so there is no need for it
- - to easily shutdown audio with a nice fade out
- . It is overkill to use channel "just for that", we could do the same thing at a higher level
- 
- So instead of looking in the channel for frames, we can look directly in the currently active audioelement(s).
- 
- This will also simplify the implementation, because the notion of channel was hard to grasp.
-
- We could even think of a mode where the audioelement directly add its data to the output signal, to skip its own buffers
- 
- To maintain compatibility with requests, we can wrap a channel in an audioelement (we will need that until all requests are converted to audioElements)
-
 - in a unit test, verify the effect of signal phase on peak magnitude (I expect that this has an influence on lower frequencies)
 
  ----------------
  Creative effects
  ----------------
  
- - adjust stereo spread in real time.
- Note we could have in StereoPanned = setup to change abruptly the pan, move_to to change the pan with an interpolation
+ - randomly change stereo spread of currently played notes at the beginning of every analysis frame (randomize whether the pan changes or not, and by how much).
+ . in StereoPanned, setup changes abruptly the pan, we could have a "move_to" method to change the pan with an interpolation (we need to maintain equal power during the interpolation)
 
  - via volume tracking only (not envelope), make the volume decrease slower than in reality (notion of meta envelope)
     
  - use many harmonizers, pre / post autotune (use midi input to define where the harmonizer is?)
  
  - autotune global mode to say how long it takes to go to the autotuned frequency, i.e
- if 0 : on note one, autotune
- if > 0: on note on, use the original frequency, then if the pitch is detected again the next time, autotune it and issue a note change (do not take into account max pitch tracking distance)
+ if 0 : on note on, autotune
+ if > 0:
+ .on note on, use the original frequency, then if the pitch is detected again the next time, autotune it and issue a note change (do not take into account max pitch tracking distance)
+ .or issue both a noteon and a notechange with a delay in the midi timestamp (we know what is the future stride so it is easy to make this delay smaller)
 
  - only active for "autotune chord",
  when "harmonics" is active:

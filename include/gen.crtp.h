@@ -399,6 +399,7 @@ public:
         c.elem.set_sample_rate(sample_rate);
         c.elem.getVolumeAdjustment().setVolumeTarget(Element::baseVolume * e.noteOn.velocity);
 
+        // called before setupAudioElement so that we can setup before setting the angle increment in setupAudioElement
         if (synchronous_element_initializer) {
           (*synchronous_element_initializer)(c.elem);
         }

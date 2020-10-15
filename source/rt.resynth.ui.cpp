@@ -12,6 +12,7 @@ public:
   MyFrame(std::vector<std::pair<std::vector<ParamProxy<float>>, wxColor>> const & params_before_autotune,
           Autotune const & autotune,
           std::vector<std::pair<std::vector<ParamProxy<float>>, wxColor>> const & params_after_autotune,
+          std::vector<std::pair<std::vector<ParamProxy<float>>, wxColor>> const & params_envelope,
           std::vector<std::vector<ParamPollProxy>> const & poll_params,
           PitchWindow::PitchFunction const & pitch_func)
   : wxFrame(NULL,
@@ -51,70 +52,77 @@ public:
     Bind(wxEVT_MENU, &MyFrame::OnAbout, this, wxID_ABOUT);
     Bind(wxEVT_MENU, &MyFrame::OnExit, this, wxID_EXIT);
     
-    auto sliders_sizer= new wxBoxSizer(wxVERTICAL);
-    
-    auto make_params_sizer = [this](std::vector<std::pair<std::vector<ParamProxy<float>>, wxColor>> const & params) {
-      auto params_sliders_sizer = new wxBoxSizer(wxVERTICAL);
+    auto make_params_sizer = [this](std::vector<std::pair<std::vector<ParamProxy<float>>, wxColor>> const & params, wxOrientation orient, wxBoxSizer * sizer) {
       for (auto const & [params2, label_color] : params) {
-        auto sliders_sizer2 = new wxBoxSizer(wxHORIZONTAL);
+        auto sliders_sizer2 = new wxBoxSizer(orient);
         
         for (auto const & param : params2) {
           Add(createFloatSlider(this,
                                 param,
                                 label_color),
-              sliders_sizer2);
+              sliders_sizer2,
+              0,
+              wxALL | wxALIGN_CENTER);
         }
         Add(sliders_sizer2,
-            params_sliders_sizer);
+            sizer,
+            0,
+            wxALL | wxALIGN_CENTER);
       }
-      return params_sliders_sizer;
     };
-    
-    Add(make_params_sizer(params_before_autotune),
-        sliders_sizer);
+
+    auto global_sizer = new wxBoxSizer(wxHORIZONTAL);
+    auto sliders_sizer = new wxBoxSizer(wxVERTICAL);
+    auto post_sizer = new wxBoxSizer(wxVERTICAL);
+
+    make_params_sizer(params_envelope,
+                      wxVERTICAL,
+                      post_sizer);
+
+    make_params_sizer(params_before_autotune,
+                      wxHORIZONTAL,
+                      sliders_sizer);
     Add(mkAutotuneSizer(this,
                         autotune),
         sliders_sizer);
-    Add(make_params_sizer(params_after_autotune),
-        sliders_sizer);
+    make_params_sizer(params_after_autotune,
+                      wxHORIZONTAL,
+                      sliders_sizer);
     Add(pitch_ui,
         sliders_sizer,
         0,
         wxALL | wxEXPAND);
 
+    auto poll_params_sizer = new wxBoxSizer(wxVERTICAL);
     {
-      auto poll_params_sizer = new wxBoxSizer(wxVERTICAL);
-      {
-        auto rt_sizer = new wxBoxSizer(wxVERTICAL);
-        wxColor label_color(100,
-                            100,
-                            250);
-        
-        for (auto const & params: poll_params) {
-          auto rt2_sizer = new wxBoxSizer(wxHORIZONTAL);
-          for (auto const & param:params) {
-            auto [sizer, value] = createPollParamUI(this,
-                                                    param,
-                                                    label_color);
-            poll_params_ui.emplace_back(param, value);
-            Add(sizer,
-                rt2_sizer,
-                0,
-                wxALL | wxALIGN_CENTER);
-          }
-          Add(rt2_sizer,
-              rt_sizer,
+      for (auto const & params: poll_params) {
+        for (auto const & param:params) {
+          auto [sizer, value] = createPollParamUI(this,
+                                                  param,
+                                                  poll_label_color);
+          poll_params_ui.emplace_back(param, value);
+          Add(sizer,
+              poll_params_sizer,
               0,
-              wxALL);
+              wxALL | wxALIGN_CENTER);
         }
-        Add(rt_sizer,
-            poll_params_sizer);
       }
-      Add(poll_params_sizer,
-          sliders_sizer);
     }
+    
+    Add(sliders_sizer,
+        global_sizer,
+        0,
+        wxALL | wxALIGN_CENTER);
+    Add(post_sizer,
+        global_sizer,
+        0,
+        wxALL | wxALIGN_CENTER);
+    Add(poll_params_sizer,
+        global_sizer,
+        0,
+        wxALL | wxALIGN_CENTER);
 
-    SetSizerAndFit(sliders_sizer);
+    SetSizerAndFit(global_sizer);
 
     uiTimer.Start(100);
   }
@@ -241,6 +249,9 @@ struct MyApp : public wxApp {
   },
   params_after_autotune
   {
+  }
+  , params_envelope
+  {
     {
       {
         {
@@ -277,7 +288,52 @@ struct MyApp : public wxApp {
         },
       },
       color_slider_label_3
-    }
+    },
+    {
+      {
+        {
+          "Attack",
+          "seconds",
+          [this](){ return resynth.getEnvAttackSeconds(); },
+          [this](float v){ resynth.setEnvAttackSeconds(v); },
+          0.f,
+          1.f
+        },
+        {
+          "Hold",
+          "seconds",
+          [this](){ return resynth.getEnvHoldSeconds(); },
+          [this](float v){ resynth.setEnvHoldSeconds(v); },
+          0.f,
+          1.f
+        },
+        {
+          "Decay",
+          "seconds",
+          [this](){ return resynth.getEnvDecaySeconds(); },
+          [this](float v){ resynth.setEnvDecaySeconds(v); },
+          0.f,
+          1.f
+        },
+        {
+          "Sustain",
+          "",
+          [this](){ return resynth.getEnvSustainLevel(); },
+          [this](float v){ resynth.setEnvSustainLevel(v); },
+          0.f,
+          1.f
+        },
+        {
+          "Release",
+          "seconds",
+          [this](){ return resynth.getEnvReleaseSeconds(); },
+          [this](float v){ resynth.setEnvReleaseSeconds(v); },
+          0.f,
+          1.f
+        },
+      },
+      color_slider_label_4
+    },
   }
   , poll_params
   {
@@ -445,6 +501,7 @@ struct MyApp : public wxApp {
     auto frame = new MyFrame(params_before_autotune,
                              autotune,
                              params_after_autotune,
+                             params_envelope,
                              poll_params,
                              [this](std::vector<PlayedNote> & result, std::vector<PlayedNote> & result_dropped, std::optional<int64_t> & frame_id){
       result.clear();
@@ -489,7 +546,7 @@ private:
   RtResynth resynth;
   
   ReinitializingParameters reinit_params;
-  std::vector<std::pair<std::vector<ParamProxy<float>>, wxColor>> params_before_autotune, params_after_autotune;
+  std::vector<std::pair<std::vector<ParamProxy<float>>, wxColor>> params_before_autotune, params_after_autotune, params_envelope;
   std::vector<std::vector<ParamPollProxy>> poll_params;
   Autotune autotune;
 };

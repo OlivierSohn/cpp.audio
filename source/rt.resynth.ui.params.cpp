@@ -17,7 +17,7 @@ void Add(T * widget,
 template<typename F>
 void forEachWindow(wxSizer * sizer,
                    F const & f) {
-  for (int i= 0, sz = sizer->GetItemCount();
+  for (int i= 0, sz = static_cast<int>(sizer->GetItemCount());
        i < sz;
        ++i) {
     wxSizerItem * item = sizer->GetItem(i);
@@ -87,6 +87,16 @@ const wxColor color_slider_label_3{
   150,
   100,
   150
+};
+const wxColor color_slider_label_4{
+  150,
+  150,
+  150
+};
+const wxColor poll_label_color{
+  100,
+  100,
+  250
 };
 
 const wxColor autotune_bg_color1{
@@ -213,7 +223,7 @@ wxBoxSizer * createChoice(wxWindow * parent,
                                               values[to_underlying(current_value)],
                                               wxDefaultPosition,
                                               wxDefaultSize,
-                                              values.size(),
+                                              static_cast<int>(values.size()),
                                               values.data(),
                                               wxCB_READONLY);
       combo_box->Bind(wxEVT_COMBOBOX,
