@@ -336,6 +336,9 @@
 		092412A01E56F04500A848A8 /* samples.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = samples.cpp; path = source/samples.cpp; sourceTree = "<group>"; };
 		092AF0462536FB9D0022EA59 /* simple_audio_context.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = simple_audio_context.h; path = include/simple_audio_context.h; sourceTree = "<group>"; };
 		093268CF1EAB7031001BAA8E /* Accelerate.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Accelerate.framework; path = System/Library/Frameworks/Accelerate.framework; sourceTree = SDKROOT; };
+		093315D82539D4A20033E23A /* rt.resynth.lib.metaqueue.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = rt.resynth.lib.metaqueue.cpp; path = source/rt.resynth.lib.metaqueue.cpp; sourceTree = "<group>"; };
+		093315E42539D5F70033E23A /* rt.resynth.lib.input.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = rt.resynth.lib.input.cpp; path = source/rt.resynth.lib.input.cpp; sourceTree = "<group>"; };
+		093315F02539D66F0033E23A /* rt.resynth.lib.vocoder.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = rt.resynth.lib.vocoder.cpp; path = source/rt.resynth.lib.vocoder.cpp; sourceTree = "<group>"; };
 		093671B22514B7B600620289 /* unity.build.resynth.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = unity.build.resynth.cpp; path = source/unity.build.resynth.cpp; sourceTree = "<group>"; };
 		093671C02514B7E400620289 /* main.resynth.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = main.resynth.cpp; path = source/main.resynth.cpp; sourceTree = "<group>"; };
 		093671D02514B84200620289 /* resynth */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = resynth; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -682,6 +685,7 @@
 				097DBDDB2531DA7800AFFD0E /* rt.resynth.lib.autotune.cpp */,
 				09B01D4A25152EE10068FCFD /* rt.resynth.lib.cpp */,
 				097DBE0C2531DFB300AFFD0E /* rt.resynth.lib.locked.data.cpp */,
+				093315D82539D4A20033E23A /* rt.resynth.lib.metaqueue.cpp */,
 				09112FE02533221A00DA5248 /* rt.resynth.lib.test.cpp */,
 				097DBE002531DCBA00AFFD0E /* rt.resynth.txt */,
 				097DBD332531D8A400AFFD0E /* rt.resynth.ui.autotune.cpp */,
@@ -699,6 +703,8 @@
 				09B01D4025152EE10068FCFD /* unity.build.rt.resynth.cpp */,
 				093A24E31E9B8D73009874DF /* unity.build.testfft.cpp */,
 				096C6D641E9F860300389746 /* unity.build.wir_2_wav.cpp */,
+				093315E42539D5F70033E23A /* rt.resynth.lib.input.cpp */,
+				093315F02539D66F0033E23A /* rt.resynth.lib.vocoder.cpp */,
 			);
 			name = source;
 			sourceTree = "<group>";
