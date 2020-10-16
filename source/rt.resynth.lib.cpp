@@ -288,7 +288,11 @@ public:
   : synth()
   , ctxt(GlobalAudioLock<audioEnginePolicy>::get(),
          Synth::n_channels * 4 /* one shot */,
-         1 /* a single compute is needed (global for the synth)*/) {
+         1 /* a single compute is needed (global for the synth)*/)
+  , input_oneshots(4)
+  {
+    input_queues.reserve(4);
+
     frequencies_sqmag.frequencies_sqmag.reserve(200);
     freqmags.reserve(200);
     freqmags_data.reserve(200);
@@ -331,28 +335,34 @@ public:
     
     std::this_thread::sleep_for(std::chrono::milliseconds(1000));
     
-    input_queue = std::make_unique<Queue>(sample_rate); // one second of input can fit in the queue
+    std::unique_ptr<MetaQueue> iq = std::make_unique<MetaQueue>(sample_rate); // one second of input can fit in the queue
+    this->input_queue = iq.get();
+    // we might need a mutex to protect this vector in the future in case we can, from the UI thread,
+    // activate / deactivate the vocoder, i.e add / remove an additional queue
+    queues.push_back(std::move(iq));
+    
+    if (!input_oneshots.tryEnqueue([this](){
+      if (input_queues.capacity() == input_queues.size()) {
+        throw std::runtime_error("input_queues too small");
+      }
+      input_queues.push_back(this->input_queue);
+    })) {
+      throw std::runtime_error("input_oneshots too small");
+    }
     
     if (!input.Init([this](const float * buf, int nFrames){
+      input_oneshots.dequeueAll([](auto & f) {
+        if (f.heapAllocatedMemory()) {
+          throw std::runtime_error("no allocation is allowed in functors");
+        }
+        f(); // this will add / remove queues
+      });
       if (!thread_resynth_active) {
         return;
       }
-      if (pending_dropped_frames.count) {
-        if (unlikely(!input_queue->try_push(pending_dropped_frames))) {
-          int const nLocalDroppedFrames = nFrames;
-          pending_dropped_frames.count += nLocalDroppedFrames;
-          count_dropped_input_frames += nLocalDroppedFrames;
-          return;
-        }
-        pending_dropped_frames.count = 0;
-      }
-      for (int i=0; i<nFrames; ++i) {
-        if (unlikely(!input_queue->try_push(InputSample{buf[i]}))) {
-          int const nLocalDroppedFrames = nFrames-i;
-          pending_dropped_frames.count += nLocalDroppedFrames;
-          count_dropped_input_frames += nLocalDroppedFrames;
-          return;
-        }
+      for (auto * q : input_queues) {
+        q->try_push_buffer(buf,
+                           nFrames);
       }
     },
                     sample_rate,
@@ -431,7 +441,7 @@ public:
       
       while (thread_resynth_active) {
         QueueItem var;
-        while (input_queue->try_pop(var)) {
+        while (input_queue->queue.try_pop(var)) {
           if (std::holds_alternative<CountDroppedFrames>(var)) {
             auto count = std::get<CountDroppedFrames>(var).count;
             local_count_dropped_input_frames += count;
@@ -521,7 +531,7 @@ public:
                          duration_step_seconds,
                          duration_copy_seconds);
             
-            storeAudioInputQueueFillRatio(input_queue->was_size() / static_cast<float>(input_queue->capacity()));
+            storeAudioInputQueueFillRatio(input_queue->queue.was_size() / static_cast<float>(input_queue->queue.capacity()));
           }
         }
         std::this_thread::yield(); // should we sleep?
@@ -539,12 +549,13 @@ public:
     if (!input.Teardown()) {
       throw std::runtime_error("input teardown failed");
     }
-    input_queue.reset();
-    
     synth.finalize(ctxt.getStepper());
     
     std::this_thread::sleep_for(std::chrono::milliseconds(1000));
     ctxt.doTearDown();
+
+    input_queue = nullptr;
+    input_queues.clear(); // we might want to be more selective in the future, i.e remove just one queue from this vector
   }
   
   // These methods can be used with no need to reinitialize
@@ -629,7 +640,10 @@ public:
     return input_queue_fill_ratio;
   }
   int countDroppedInputFrames() const {
-    return count_dropped_input_frames;
+    if (input_queue) {
+      return input_queue->countDroppedInputFrames();
+    }
+    return 0;
   }
   
   int countDroppedNoteOns() const {
@@ -822,11 +836,52 @@ private:
   
   std::atomic_bool thread_resynth_active{false};
   std::unique_ptr<std::thread> thread_resynth;
-  std::unique_ptr<Queue> input_queue;
-  CountDroppedFrames pending_dropped_frames;
-  std::atomic_int count_dropped_input_frames = 0;
-  static_assert(decltype(count_dropped_input_frames)::is_always_lock_free);
   
+  struct MetaQueue {
+    template <typename... Args>
+    MetaQueue(Args&&... args)
+    : queue(std::forward<Args...>(args...)){
+    }
+    
+    bool try_push_buffer(const float * buf,
+                         int const nFrames) {
+      if (pending_dropped_frames.count) {
+        if (unlikely(!queue.try_push(pending_dropped_frames))) {
+          int const nLocalDroppedFrames = nFrames;
+          pending_dropped_frames.count += nLocalDroppedFrames;
+          count_dropped_input_frames += nLocalDroppedFrames;
+          return false;
+        }
+        pending_dropped_frames.count = 0;
+      }
+      for (int i=0; i<nFrames; ++i) {
+        if (unlikely(!queue.try_push(InputSample{buf[i]}))) {
+          int const nLocalDroppedFrames = nFrames-i;
+          pending_dropped_frames.count += nLocalDroppedFrames;
+          count_dropped_input_frames += nLocalDroppedFrames;
+          return false;
+        }
+      }
+      return true;
+    }
+    
+    int countDroppedInputFrames() const {
+      return count_dropped_input_frames;
+    }
+
+    Queue queue;
+
+  private:
+    CountDroppedFrames pending_dropped_frames;
+    std::atomic_int count_dropped_input_frames = 0;
+    static_assert(decltype(count_dropped_input_frames)::is_always_lock_free);
+  };
+  MetaQueue * input_queue = nullptr;
+  std::vector<std::unique_ptr<MetaQueue>> queues;
+  std::vector<MetaQueue*> input_queues; // managed by rt input thread
+  using OneShotFunc = folly::Function<void(void)>;
+  lockfree::scmp::fifo<OneShotFunc> input_oneshots;
+
   NonRealtimeAnalysisFrame analysis_data;
   int64_t analysis_frame_idx = 0;
   

@@ -10,15 +10,46 @@ Definitions:
 apply the amplitudes of frequency bands of the voice to modulate another sound, using the same bands and volumes.
 To do this I would need:
 
-Vocoder<Osc> =
-(Voice (read sample from a queue at each step) -> Bandfilter(s) -> Envelope follower(s))
-Osc -> Bandfilter(s) -> Modulate by voice envelopes -> Sum
+Vocoder =
+(Audio Input or other synth) -> Bandfilter(s) -> Envelope follower(s))
+Synth sound -> Bandfilter(s) -> Modulate by envelopes -> Sum
 
-for example:
-Vocoder<MultiEnveloped<SineOsc>>
+the vocoding process will happen in a compute lambda:
+computeVocoder(
+
+function<std::optional<std::array<sample, n_channels_modulator>>(void)> && get_modulator
+// When empty is received, do not feed the bandpass / envelope followers, reuse previous amplitudes
+// Can be implemented by:
+// - computing one frame of a synth
+// - consuming a queue for audio input:
+// to avoid starvation at the consumer side, the consumer should start using the queue when size >= 2*max(delayIn, delayOut)
+// and queue capacity >= 4*max(delayIn, delayOut)
+// ... also, we can compute a reasonable fixed delay for processing based on input and output delays. Then, using the input / output buffer times as references the consumer will know exactly
+// how to sync the input audio (not only based on the size of the queue for the first frame)
+
+               vector<pair<BandFilter, EnvelopeFollower>> & modulator_amplitude,
+               
+// the modulator signal will be fed to each bandpassfilter, and the envelope followers will run
+
+               function<std::optional<std::array<sample, n_channels_modulator>>(void)>> && get_carrier,
+
+// empty should never be received
+// Can be implemented by :
+// (same as for modulator)
+
+               vector<BandFilter> & carrier_filters) // the envelope followers amplitudes are used to ponderate the sum of these to produce the output signal
+               
+                      
+https://ccrma.stanford.edu/~jos/sasp/Computing_Vocoder_Parameters.html#fig:envelope
+rectify signal, then low pass (or understand / use notion of instantaneous amplitude)
+
+https://www.soundonsound.com/techniques/introduction-esps-vocoders
+in one band, use white noise to make speech more intelligible
 */
 
 /* Backlog:
+
+- make input thread more modular : we should be able to "plug" queues at will, ie have a "oneshot" vector that we execute at the beginning and that might add / remove queues.
 
 - in a unit test, verify the effect of signal phase on peak magnitude (I expect that this has an influence on lower frequencies)
 
