@@ -349,18 +349,26 @@ struct MyApp : public wxApp {
     {
       {
         {
-          "Dry voice volume",
+          "Vocoder env follower cutoff ratio",
           "",
-          [this](){ return resynth.getDirectVoiceVolume(); },
-          [this](float v){ resynth.setDirectVoiceVolume(v); },
+          [this](){ return resynth.getVocoderEnvFollowerCutoffRatio(); },
+          [this](float v){ resynth.setVocoderEnvFollowerCutoffRatio(v); },
           0.f,
-          1.f
+          2.f
         },
         {
           "Vocoder volume",
           "",
           [this](){ return resynth.getVocoderVolume(); },
           [this](float v){ resynth.setVocoderVolume(v); },
+          0.f,
+          1.f
+        },
+        {
+          "Dry voice volume",
+          "",
+          [this](){ return resynth.getDirectVoiceVolume(); },
+          [this](float v){ resynth.setDirectVoiceVolume(v); },
           0.f,
           1.f
         },

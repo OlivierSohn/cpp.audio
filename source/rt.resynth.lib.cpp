@@ -23,6 +23,7 @@ using VocoderCarrierElement =
 VolumeAdjusted<
 Enveloped<
 FreqCtrl_<
+//soundBufferWrapperAlgo<Sound::NOISE>,
 FOscillatorAlgo<T, FOscillator::SAW, OscillatorUsage::FilteredByLoudnessAdaptedSound>, // Use a saw as carrier to have a wide spectrum
 InterpolatedFreq<T>
 >,
@@ -318,7 +319,12 @@ void synthesize_sounds(Midi const & midi,
 
 struct RtResynth {
 private:
-  
+  // each midi time source needs to have a distinct identity:
+  enum class MidiSource {
+    Analysis,
+    MidiInput
+  };
+
   static double constexpr minInLatency  = 0.000001;
   static double constexpr minOutLatency = 0.000001;
   
@@ -620,6 +626,13 @@ public:
   void setEnvSustainLevel(float f) {
     env_sustain_level = f;
   }
+  
+  float getVocoderEnvFollowerCutoffRatio() const {
+    return vocoder_env_follower_cutoff_ratio;
+  }
+  void setVocoderEnvFollowerCutoffRatio(float f) {
+    vocoder_env_follower_cutoff_ratio = f;
+  }
 
   float getDirectVoiceVolume() const {
     return voice_volume;
@@ -707,6 +720,9 @@ private:
   std::atomic_int autotune_root_note_halftones_transpose = 0;
   std::atomic<AutotuneChordFrequencies> autotune_chord_frequencies = AutotuneChordFrequencies::Harmonics;
   std::atomic<uint64_t> autotune_bit_chord = 0b10010001; // least significant beat = lower pitch
+  
+  std::atomic<float> vocoder_env_follower_cutoff_ratio = 1.f/20.f;
+  
   std::atomic<float> voice_volume = 1.f;
   std::atomic<float> vocoder_volume = 0.f;
   std::atomic<float> analysis_volume = 1.f;
@@ -740,6 +756,9 @@ private:
   std::atomic<float> input_queue_fill_ratio = 0.f;
   std::atomic_int dropped_note_on = 0;
   
+  std::atomic_bool midi_thread_active = true;
+  std::unique_ptr<std::thread> midi_thread;
+  
   void analysis_thread(int const sample_rate);
   
   void setDurations(std::optional<float> duration_process_seconds,
@@ -753,6 +772,9 @@ private:
   
   std::function<std::optional<float>(float const)>
   mkAutotuneFunction();
+  
+  void onInputMidiEvent(int sample_rate, uint64_t time_ms, midi::Event const & e);
+  void onLostInputMidiEvents();
 };
 
 
@@ -843,7 +865,9 @@ RtResynth::init(int const sample_rate) {
   },
                      ctxt,
                      voice_volume,
-                     vocoder_volume);
+                     vocoder_volume,
+                     vocoder_env_follower_cutoff_ratio);
+
   vocoder_carrier.setSynchronousElementInitializer(VocoderCarrierElementInitializer<double>(
     sample_rate,
     mkAHDSR(sample_rate,
@@ -854,14 +878,17 @@ RtResynth::init(int const sample_rate) {
             env_sustain_level)
   ));
 
-  vocoder_carrier.onEvent(sample_rate,
-                          mkNoteOn(NoteId{1},
-                                   100.,
-                                   0.9),
-                          ctxt.getStepper(),
-                          ctxt.getStepper(),
-                          {});
-  
+  midi_thread_active = true;
+  midi_thread = std::make_unique<std::thread>([this, sample_rate](){
+    midi::listen_to_midi_input(midi_thread_active,
+                               [this,
+                                sample_rate](midi::Event const & midievent, uint64_t time_ms){ onInputMidiEvent(sample_rate,
+                                                                                                               time_ms,
+                                                                                                               midievent); },
+                               [this](){ onLostInputMidiEvents(); }
+                               );
+  });
+
   thread_resynth_active = true;
   thread_resynth = std::make_unique<std::thread>([this,
                                                   sample_rate](){
@@ -878,6 +905,10 @@ RtResynth::teardown() {
   thread_resynth_active = false;
   thread_resynth->join();
   thread_resynth.reset();
+  
+  midi_thread_active = false;
+  midi_thread->join();
+  midi_thread.reset();
   
   vocoder.finalize(ctxt.getStepper());
   
@@ -897,6 +928,41 @@ RtResynth::teardown() {
   ctxt.doTearDown();
 }
 
+void RtResynth::onInputMidiEvent(int const sample_rate,
+                                 uint64_t time_ms,
+                                 midi::Event const & e) {
+  // Portmidi time is in milliseconds, we convert it to nanoseconds.
+  uint64_t const time_nanos = 1000000 * time_ms;
+  if (std::holds_alternative<midi::NoteOn>(e)) {
+    midi::NoteOn const & on = std::get<midi::NoteOn>(e);
+    Assert(on.velocity);
+    vocoder_carrier.onEvent(sample_rate,
+                            mkNoteOn(NoteId{on.key},
+                                     midi.midi_pitch_to_freq(on.key),
+                                     on.velocity / 127.f),
+                            ctxt.getStepper(),
+                            ctxt.getStepper(),
+                            MIDITimestampAndSource{time_nanos, to_underlying(MidiSource::MidiInput)});
+  } else if (std::holds_alternative<midi::NoteOff>(e)) {
+    midi::NoteOff const & off = std::get<midi::NoteOff>(e);
+    vocoder_carrier.onEvent(sample_rate,
+                            mkNoteOff(NoteId{off.key}),
+                            ctxt.getStepper(),
+                            ctxt.getStepper(),
+                            MIDITimestampAndSource{time_nanos, to_underlying(MidiSource::MidiInput)});
+  } else if (std::holds_alternative<midi::KeyPressure>(e)) {
+    std::cout << "todo use keypressure" << std::endl;
+  } else if (std::holds_alternative<midi::ChannelPressure>(e)) {
+    std::cout << "todo use channelpressure" << std::endl;
+  } else if (std::holds_alternative<midi::PitchWheel>(e)) {
+    std::cout << "todo use pitchwheel" << std::endl;
+  }
+}
+
+void RtResynth::onLostInputMidiEvents() {
+  // stop all notes because maybe one note off was dropped
+  vocoder_carrier.allNotesOff(ctxt.getStepper());
+}
 
 void
 RtResynth::analysis_thread(int const sample_rate) {
@@ -957,9 +1023,7 @@ RtResynth::analysis_thread(int const sample_rate) {
   
   // force reinitialization
   auto [input_delay_frames, window_size] = init_data(true);
-  
-  constexpr uint64_t midi_src_id = 0;
-  
+
   double const nanos_pre_frame = 1. / static_cast<double>(sample_rate);
   uint64_t count_queued_frames = 0;
   uint64_t local_count_dropped_input_frames = 0;
@@ -1028,7 +1092,7 @@ RtResynth::analysis_thread(int const sample_rate) {
             step(sample_rate,
                  freqmags,
                  MIDITimestampAndSource((count_queued_frames + local_count_dropped_input_frames) * nanos_pre_frame,
-                                        midi_src_id),
+                                        to_underlying(MidiSource::Analysis)),
                  window_center_stride); // we pass the future stride, on purpose
           }
           if (dt) duration_step_seconds = dt->count() / 1000000.;

@@ -221,6 +221,15 @@ soundBuffer<double> const & getGreyNoise(int sample_rate);
 float getGreyNoiseAbsMean(int sample_rate);
 
 template<>
+struct FGetBuffer<Sound::NOISE> {
+  soundBuffer<double> const & operator()(int sample_rate) const {
+    return getWhiteNoise(sample_rate);
+  }
+  float getAbsMean(int sample_rate) const {
+    return getWhiteNoiseAbsMean(sample_rate);
+  }
+};
+template<>
 struct FGetBuffer<Sound::PINK_NOISE> {
   soundBuffer<double> const & operator()(int sample_rate) const {
     return getPinkNoise(sample_rate);

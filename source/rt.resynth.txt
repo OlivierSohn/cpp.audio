@@ -1,13 +1,6 @@
 
 /*
 
-- vocoder volume is very low :
-. baseVolume should be 1:
-.. we filter the carrier with a sound that we assume is loudness-adapted, so do not adapt for loudness unadapted noises
-.. also, do not use the sound::baseVolume for saw?
-. envelope follower is average(abs(signal)) so the peaks are smaller than the sinusoidal peaks.
-however it's tough to find the right factor, it could lead to overflows so let's leave that as is for now.
-
 - make vocoder parameters modifyable in realtime:
 
 bandpass order (modulator)

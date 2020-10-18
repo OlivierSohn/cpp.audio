@@ -23,7 +23,7 @@ private:
 template<int ORDER, typename T>
 struct EnvelopeFollower {
   void setup(int sample_rate, T freq) {
-    lp_.initWithFreq(sample_rate, freq); // TODO tune. The idea is that we don't want sinusoidal variations to be audible
+    lp_.initWithFreq(sample_rate, freq);
   }
   
   T feed(T sample) {
@@ -37,23 +37,22 @@ private:
 
 template<int ORDER, typename T>
 struct Modulator {
-  void setup(int sample_rate,
-             std::vector<T> const & freqs) {
+
+  // This dynamically allocates memory
+  void setup_bands(int sample_rate,
+                   std::vector<T> const & freqs) {
     sz = static_cast<int>(freqs.size()) - 1;
     Assert(sz);
+    band_pass.clear();
     band_pass.resize(sz);
+    env_follower.clear();
     env_follower.resize(sz);
     for (int i=0; i<sz; ++i) {
       band_pass[i].setup(sample_rate,
                          freqs[i],
                          freqs[i+1]);
-      env_follower[i].setup(sample_rate,
-                            //1. // https://www.ncbi.nlm.nih.gov/pmc/articles/PMC2730710/
-                            freqs[i] / 20.
-                            );
     }
-    
-    
+
 #if IMJ_DEBUG_VOCODER
     wav_writer_modulator_input = std::make_unique<AsyncWavWriter>(1,
                                                                   sample_rate,
@@ -68,6 +67,23 @@ struct Modulator {
     }
 #endif
   }
+
+  // This does not allocate memory
+  //
+  // @param factor : low-pass cutoff = factor * band start freq
+  void setup_env_followers(int sample_rate,
+                           std::vector<T> const & freqs,
+                           T const factor) {
+    Assert(sz == static_cast<int>(freqs.size()) - 1);
+    Assert(env_follower.size() == (freqs.size() - 1));
+    for (int i=0; i<sz; ++i) {
+      env_follower[i].setup(sample_rate,
+                            //1. // https://www.ncbi.nlm.nih.gov/pmc/articles/PMC2730710/
+                            freqs[i] * factor
+                            );
+    }
+  }
+
   void feed(T sample,
             std::vector<T> & res) {
     Assert(res.size() == band_pass.size());
@@ -109,6 +125,7 @@ struct Carrier {
              std::vector<T> const & freqs) {
     sz = static_cast<int>(freqs.size()) - 1;
     Assert(sz);
+    band_pass.clear();
     band_pass.resize(sz);
     for (int i=0; i<sz; ++i) {
       band_pass[i].setup(sample_rate,
@@ -162,12 +179,13 @@ private:
 
 
 struct Vocoder {
-  static constexpr int count_bands = 40;
+  static constexpr int count_bands = 20;
   
   static constexpr float min_freq = 100.f;
-  static constexpr float max_freq = 5000.f;
-  static constexpr int order = 2;
-  
+  static constexpr float max_freq = 10000.f;
+  static constexpr int order_filters_carrier = 1;
+  static constexpr int order_filters_modulator = 1;
+
   Vocoder()
   : amplitudes(count_bands) {
   }
@@ -176,17 +194,21 @@ struct Vocoder {
   void initialize(C && get_modulator_carrier_sample,
                   Out & ctxt,
                   std::atomic<float> & voice_volume,
-                  std::atomic<float> & vocoded_volume) {
-    setup(ctxt.getSampleRate());
+                  std::atomic<float> & vocoded_volume,
+                  std::atomic<float> & env_follower_cutoff_ratio) {
+    sample_rate = ctxt.getSampleRate();
+    setup();
 
     Assert(state == SynthState::ComputeNotRegistered);
     ctxt.getStepper().enqueueOneShot([this,
                                       &voice_volume,
                                       &vocoded_volume,
+                                      &env_follower_cutoff_ratio,
                                       get_modulator_carrier_sample](auto & out, auto){
       if (!out.registerSimpleCompute([this,
                                       &voice_volume,
                                       &vocoded_volume,
+                                      &env_follower_cutoff_ratio,
                                       get_modulator_carrier_sample
                                       ](double * buf, int frames) mutable {
         if (state == SynthState::WaitingForComputeUnregistration) {
@@ -194,6 +216,16 @@ struct Vocoder {
           return false;
         }
 
+        {
+          float const tmp = env_follower_cutoff_ratio;
+          if (!last_env_follower_cutoff_ratio || *last_env_follower_cutoff_ratio != tmp) {
+            last_env_follower_cutoff_ratio = tmp;
+            modulator.setup_env_followers(*sample_rate,
+                                          freqs,
+                                          tmp);
+          }
+        }
+        
         float const the_voice_volume = voice_volume;
         float const the_vocoded_volume = vocoded_volume;
         
@@ -209,7 +241,8 @@ struct Vocoder {
           modulator.feed(modulator_sample,
                          amplitudes);
           
-          double const vocoded = carrier.feed(carrier_sample, amplitudes);
+          double const vocoded = carrier.feed(carrier_sample,
+                                              amplitudes);
           double const mixed =
           the_voice_volume * modulator_sample +
           the_vocoded_volume * vocoded;
@@ -237,12 +270,17 @@ struct Vocoder {
   }
 private:
   std::atomic<SynthState> state = SynthState::ComputeNotRegistered;
-  Modulator<order, double> modulator;
+  
+  Modulator<order_filters_modulator, double> modulator;
   std::vector<double> amplitudes;
-  Carrier<order, double> carrier;
+  Carrier<order_filters_carrier, double> carrier;
+  std::vector<double> freqs;
+  
+  std::optional<int> sample_rate;
+  std::optional<float> last_env_follower_cutoff_ratio;
 
-  void setup(int sample_rate) {
-    std::vector<double> freqs;
+  void setup() {
+    freqs.clear();
     freqs.reserve(count_bands + 1);
     
     auto log_min = std::log(min_freq);
@@ -252,15 +290,16 @@ private:
       double const ratio = static_cast<double>(i) / count_bands;
       freqs.push_back(std::exp(log_min + ratio * (log_max-log_min)));
     }
-
+/*
     std::cout << "Vocoder freqs :";
     for (auto const & f : freqs) {
       std::cout << f << " ";
     }
     std::cout << std::endl;
-    modulator.setup(sample_rate,
-                    freqs);
-    carrier.setup(sample_rate,
+ */
+    modulator.setup_bands(*sample_rate,
+                          freqs);
+    carrier.setup(*sample_rate,
                   freqs);
   }
 };
