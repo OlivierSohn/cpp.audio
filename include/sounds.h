@@ -33,7 +33,7 @@ namespace imajuscule::audio {
           audioelement::Enveloped<
             audioelement::RingModulationAlgo<
               audioelement::LowPassAlgo<audioelement::PulseTrainAlgo<float>, 1>,
-              audioelement::OscillatorAlgo<float>
+              audioelement::SineOscillatorAlgo<float>
             >,
             audioelement::AHDSREnvelope<A, float, EnvelopeRelease::WaitForKeyRelease>
           >

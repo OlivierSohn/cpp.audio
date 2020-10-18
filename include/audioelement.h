@@ -1397,7 +1397,7 @@ protected:
  * Phase controlled oscillator
  *
  * Mostly for test purposes, as it uses 'sin' and 'cos' functions
- * which are less performant than 'OscillatorAlgo'.
+ * which are less performant than 'SineOscillatorAlgo'.
  */
 template<typename T>
 struct PCOscillatorAlgo : public Phased<T> {
@@ -2143,10 +2143,9 @@ enum class eNormalizePolicy : unsigned char {
   ACCURATE
 };
 
-// TODO rename : SineOscillatorAlgo
 template<typename T, eNormalizePolicy NormPolicy = eNormalizePolicy::FAST>
-struct OscillatorAlgo {
-  using MeT = OscillatorAlgo<T,NormPolicy>;
+struct SineOscillatorAlgo {
+  using MeT = SineOscillatorAlgo<T,NormPolicy>;
   static constexpr auto hasEnvelope = false;
   static constexpr auto isMonoHarmonic = true;
   static constexpr auto baseVolume = reduceUnadjustedVolumes * soundBaseVolume(Sound::SINE);
@@ -2155,8 +2154,8 @@ struct OscillatorAlgo {
   using Tr = NumTraits<T>;
   using FPT = T;
 
-  constexpr OscillatorAlgo(T angle_increments) { setAngleIncrements(angle_increments); }
-  constexpr OscillatorAlgo() : OscillatorAlgo(0) {}
+  constexpr SineOscillatorAlgo(T angle_increments) { setAngleIncrements(angle_increments); }
+  constexpr SineOscillatorAlgo() : SineOscillatorAlgo(0) {}
 
   auto const & getOsc() const { return *this; }
   auto       & getOsc()       { return *this; }
@@ -2236,10 +2235,10 @@ private:
 };
 
 template<typename Envel, eNormalizePolicy NormPolicy = eNormalizePolicy::FAST>
-using Oscillator = FinalAudioElement<Enveloped<OscillatorAlgo<typename Envel::FPT, NormPolicy>, Envel>>;
+using Oscillator = FinalAudioElement<Enveloped<SineOscillatorAlgo<typename Envel::FPT, NormPolicy>, Envel>>;
 
 template<typename Envel, eNormalizePolicy NormPolicy = eNormalizePolicy::FAST>
-using MultiOscillator = FinalAudioElement<MultiEnveloped<OscillatorAlgo<typename Envel::FPT, NormPolicy>, Envel>>;
+using MultiOscillator = FinalAudioElement<MultiEnveloped<SineOscillatorAlgo<typename Envel::FPT, NormPolicy>, Envel>>;
 
 /**
  Periodic ramp
@@ -2800,12 +2799,12 @@ struct OscillatorAlgo_;
 
 template<typename T>
 struct OscillatorAlgo_<LoudnessVolumeAdjust::No, T> {
-  using type = OscillatorAlgo<T>;
+  using type = SineOscillatorAlgo<T>;
 };
 
 template<typename T>
 struct OscillatorAlgo_<LoudnessVolumeAdjust::Yes, T> {
-  using type = LoudnessVolumeAdjusted<OscillatorAlgo<T>>;
+  using type = LoudnessVolumeAdjusted<SineOscillatorAlgo<T>>;
 };
 
 template<LoudnessVolumeAdjust V, typename T>

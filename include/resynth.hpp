@@ -11,7 +11,7 @@ void resynth(std::vector<DeducedNote<T>> const & notes,
 
   using namespace audioelement;
 
-  using AE = VolumeAdjusted<OscillatorAlgo<double>>; // no loudness volume adjustment
+  using AE = VolumeAdjusted<SineOscillatorAlgo<double>>; // no loudness volume adjustment
   using Envelope = AHDSREnvelope<Atomicity::No, double, EnvelopeRelease::WaitForKeyRelease>;
   using EnvelopedAE = Enveloped<AE, Envelope>;
 

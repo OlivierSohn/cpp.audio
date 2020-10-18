@@ -1,8 +1,53 @@
 
 /*
 
- post processing : using templates, make it possible to use limiting without reverbs
- 
+- make vocoder parameters modifyable in realtime:
+
+bandpass order (modulator)
+bandpass order (carrier)
+bandpass order (envelope follower)
+
+lp freq (envelope follower) :
+. fixed
+. multiplicative factor (with lower bound of freq range)
+
+number of bands
+band range (min, max)
+
+- When possible, use a stream in full duplex mode to
+achieve better global latency
+because we don't need the vocoder queue anymore,
+we read the input and compute the output in the same thread.
+
+If we put analysis in the same thread, too, it may be costly cpu-wise.
+Else, we could keep analysis in another thread and the "AudioFullDuplex"
+should have the "registerSimpleCompute" capability.
+
+Currently observed latencies streams
+(by clapping in my hands and using natural feedback to measure delay):
+1024 frames out
+256 frames in
+
+vocoder queue size : 4096 = 4*max(1024, 256)
+start reading when queue size = 2*max(1024, 256)
+
+lead to feedback delay : 4000 frames
+= 45 ms
+
+- When full duplex is not an option, to synchronize audio input with output, and have a latency that is consistent across different program runs,
+we should use the input / output buffer times as reference to delay output by exactly
+2 * max(delayIn, delayOut) * sample_rate samples.
+Currently, we just "start using the queue when it is more than half full for the first time",
+this is not precise enough to lead to reproducible delays
+
+- post processing : using templates, make it possible to use limiting without reverbs:
+PostImpl<Limit>
+PostImpl<Limit, AssertSignalValid> // for debug
+PostImpl<Reverb<ReverbType>, Limit>
+PostImpl<Reverb<ReverbType>>
+
+all output processors should work on the full buffer at once
+
 Definitions:
 -----------
 
@@ -21,11 +66,7 @@ function<std::optional<std::array<sample, n_channels_modulator>>(void)> && get_m
 // When empty is received, do not feed the bandpass / envelope followers, reuse previous amplitudes
 // Can be implemented by:
 // - computing one frame of a synth
-// - consuming a queue for audio input:
-// to avoid starvation at the consumer side, the consumer should start using the queue when size >= 2*max(delayIn, delayOut)
-// and queue capacity >= 4*max(delayIn, delayOut)
-// ... also, we can compute a reasonable fixed delay for processing based on input and output delays. Then, using the input / output buffer times as references the consumer will know exactly
-// how to sync the input audio (not only based on the size of the queue for the first frame)
+// - consuming a queue for audio input
 
                vector<pair<BandFilter, EnvelopeFollower>> & modulator_amplitude,
                

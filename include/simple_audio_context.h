@@ -54,6 +54,7 @@ public:
   }
 
   PostImpl & getPost() { return post; }
+  PostImpl const & getPost() const { return post; }
 
   // this method should not be called from the real-time thread
   // because it yields() and retries.

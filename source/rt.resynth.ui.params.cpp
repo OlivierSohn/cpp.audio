@@ -1,6 +1,6 @@
 namespace imajuscule::audio::rtresynth {
 
-constexpr int default_border = 5;
+constexpr int default_border = 2;
 
 template<typename T, typename U>
 void Add(T * widget,
@@ -92,6 +92,11 @@ const wxColor color_slider_label_4{
   150,
   150,
   150
+};
+const wxColor color_slider_label_5{
+  100,
+  100,
+  100
 };
 const wxColor poll_label_color{
   100,

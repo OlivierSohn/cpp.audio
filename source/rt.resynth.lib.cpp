@@ -3,18 +3,30 @@ namespace imajuscule::audio {
 
 namespace audioelement {
 
-
 template <typename T>
 using ResynthElement =
 StereoPanned<
 VolumeAdjusted<
 Enveloped<
 FreqCtrl_<
-OscillatorAlgo<T, eNormalizePolicy::FAST>,
+SineOscillatorAlgo<T, eNormalizePolicy::FAST>,
 InterpolatedFreq<T>
 >,
 AHDSREnvelope<Atomicity::Yes, T, EnvelopeRelease::WaitForKeyRelease>
 >
+>
+>
+;
+
+template <typename T>
+using VocoderCarrierElement =
+VolumeAdjusted<
+Enveloped<
+FreqCtrl_<
+FOscillatorAlgo<T, FOscillator::SAW>, // Use a saw as carrier to have a wide spectrum
+InterpolatedFreq<T>
+>,
+AHDSREnvelope<Atomicity::Yes, T, EnvelopeRelease::WaitForKeyRelease>
 >
 >
 ;
@@ -91,9 +103,7 @@ struct ResynthElementInitializer {
     std::make_tuple(o.sample_rate, o.stride, o.stereo_spread_, o.ahdsr);
   }
   bool operator !=(ResynthElementInitializer const& o) const {
-    return
-    std::make_tuple(sample_rate, stride, stereo_spread_, ahdsr) !=
-    std::make_tuple(o.sample_rate, o.stride, o.stereo_spread_, o.ahdsr);
+    return !this->operator ==(o);
   }
   
 private:
@@ -103,33 +113,80 @@ private:
   audioelement::AHDSR ahdsr;
 };
 
-template <int nOuts, AudioOutPolicy Policy, typename T>
-using synthOf = sine::Synth < // the name of the namespace is misleading : it can handle all kinds of oscillators
-Policy
-, nOuts
+
+template<typename T>
+struct VocoderCarrierElementInitializer {
+  VocoderCarrierElementInitializer(int const sample_rate,
+                                   audioelement::AHDSR const & a)
+  : sample_rate(sample_rate)
+  , ahdsr(a)
+  {}
+  
+  void operator()(audioelement::VocoderCarrierElement<T> & e,
+                  InitializationType t = InitializationType::NewNote) const {
+    e.editEnvelope().setAHDSR(ahdsr,
+                              sample_rate);
+    e.getVolumeAdjustment().getOsc().getAlgo().getCtrl().setup(100,
+                                                               itp::LINEAR);
+  }
+  
+  bool operator ==(VocoderCarrierElementInitializer const& o) const {
+    return
+    std::make_tuple(sample_rate, ahdsr) ==
+    std::make_tuple(o.sample_rate, o.ahdsr);
+  }
+  bool operator !=(VocoderCarrierElementInitializer const& o) const {
+    return !this->operator ==(o);
+  }
+  
+private:
+  int sample_rate;
+  audioelement::AHDSR ahdsr;
+};
+
+
+constexpr int nAudioOut = 2;
+constexpr auto audioEnginePolicy = AudioOutPolicy::MasterLockFree;
+
+using Synth = sine::Synth <
+audioEnginePolicy
+, nAudioOut
 , XfadePolicy::SkipXfade
-, audioelement::ResynthElement<T>
+, audioelement::ResynthElement<double>
 , SynchronizePhase::Yes
 , DefaultStartPhase::Random
 , true
 , EventIterator
 , 127  // lots of voices
-, ResynthElementInitializer<T>
+, ResynthElementInitializer<double>
 >;
 
-constexpr int nAudioOut = 2;
-constexpr auto audioEnginePolicy = AudioOutPolicy::MasterLockFree;
+using SynthVocoderCarier = sine::Synth <
+audioEnginePolicy
+, 1 // mono
+, XfadePolicy::SkipXfade
+, audioelement::VocoderCarrierElement<double>
+, SynchronizePhase::Yes
+, DefaultStartPhase::Random
+, true
+, EventIterator
+, 127  // lots of voices
+, VocoderCarrierElementInitializer<double>
+>;
+
+
+using PostImpl = AudioPostPolicyImpl<nAudioOut, ReverbType::Realtime_Synchronous, audioEnginePolicy>;
 
 using Ctxt = Context<
 AudioPlatform::PortAudio,
 Features::InAndOut,
 SimpleAudioOutContext<
 nAudioOut,
-audioEnginePolicy
+audioEnginePolicy,
+PostImpl
 >
 >;
 
-using Synth = synthOf<nAudioOut, audioEnginePolicy, double>;
 
 bool constexpr logs = false;
 
@@ -139,6 +196,7 @@ void synthesize_sounds(Midi const & midi,
                        int const sample_rate,
                        MIDITimestampAndSource const & miditime,
                        int const future_stride,
+                       float const gain_analysis,
                        float const stereo_spread,
                        audioelement::AHDSR const & ahdsr,
                        std::vector<PitchVolume> const & autotuned_pitches,
@@ -196,8 +254,9 @@ void synthesize_sounds(Midi const & midi,
     double const new_pitch = autotuned_pitches[idx].midipitch;
     float const new_freq = midi.midi_pitch_to_freq(new_pitch);
     
-    // divide by reduceUnadjustedVolumes because in our case eventhough the oscillator is not adjusted wrt loudness, its volume comes from a real sound so the loudness is correct
-    float const volume = autotuned_pitches[idx].volume / audioelement::reduceUnadjustedVolumes;
+    // Divide by reduceUnadjustedVolumes because in our case eventhough the oscillator is not adjusted wrt loudness,
+    // its volume comes from a real sound so the loudness is correct
+    float const volume = gain_analysis * autotuned_pitches[idx].volume / audioelement::reduceUnadjustedVolumes;
     
     if (pitch_change) {
       PlayedNote & played = played_pitches[*pitch_change];
@@ -267,12 +326,6 @@ private:
   
   // producer : Audio input callback
   // consumer : analysis thread
-  struct InputSample {
-    float value;
-  };
-  struct CountDroppedFrames {
-    int count = 0;
-  };
   using QueueItem = std::variant<InputSample,CountDroppedFrames>;
   using Queue = atomic_queue::AtomicQueueB2<
   /* T = */ QueueItem,
@@ -284,279 +337,13 @@ private:
   
 public:
   
-  RtResynth()
-  : synth()
-  , ctxt(GlobalAudioLock<audioEnginePolicy>::get(),
-         Synth::n_channels * 4 /* one shot */,
-         1 /* a single compute is needed (global for the synth)*/)
-  , input_oneshots(4)
-  {
-    input_queues.reserve(4);
+  RtResynth();
+  
+  ~RtResynth();
 
-    frequencies_sqmag.frequencies_sqmag.reserve(200);
-    freqmags.reserve(200);
-    freqmags_data.reserve(200);
-    pitch_intervals.reserve(200);
-    reduced_pitches.reserve(200);
-    autotuned_pitches.reserve(200);
-    pitches_tmp.reserve(200);
-    autotuned_pitches_perceived_loudness.reserve(200);
-    autotuned_pitches_idx_sorted_by_perceived_loudness.reserve(200);
-    played_pitches.reserve(200);
-    pitch_changes.reserve(200);
-    continue_playing.reserve(200);
-    
-    allowed_pitches.reserve(2*max_audible_midi_pitch);
-    
-#ifndef NDEBUG
-    testAutotune();
-#endif
-  }
+  void init(int const sample_rate);
   
-  ~RtResynth() {
-    teardown();
-  }
-  
-  void init(int const sample_rate = 88200) {
-    if (sample_rate <= 0) {
-      throw std::invalid_argument("sample_rate is too small");
-    }
-    
-    teardown();
-    Assert(!thread_resynth_active);
-    
-    if (!ctxt.doInit(minOutLatency, sample_rate)) {
-      throw std::runtime_error("ctxt init failed");
-    }
-    
-    if (!synth.initialize(ctxt.getStepper())) {
-      throw std::logic_error("failed to initialize synth");
-    }
-    
-    std::this_thread::sleep_for(std::chrono::milliseconds(1000));
-    
-    std::unique_ptr<MetaQueue> iq = std::make_unique<MetaQueue>(sample_rate); // one second of input can fit in the queue
-    this->input_queue = iq.get();
-    // we might need a mutex to protect this vector in the future in case we can, from the UI thread,
-    // activate / deactivate the vocoder, i.e add / remove an additional queue
-    queues.push_back(std::move(iq));
-    
-    if (!input_oneshots.tryEnqueue([this](){
-      if (input_queues.capacity() == input_queues.size()) {
-        throw std::runtime_error("input_queues too small");
-      }
-      input_queues.push_back(this->input_queue);
-    })) {
-      throw std::runtime_error("input_oneshots too small");
-    }
-    
-    if (!input.Init([this](const float * buf, int nFrames){
-      input_oneshots.dequeueAll([](auto & f) {
-        if (f.heapAllocatedMemory()) {
-          throw std::runtime_error("no allocation is allowed in functors");
-        }
-        f(); // this will add / remove queues
-      });
-      if (!thread_resynth_active) {
-        return;
-      }
-      for (auto * q : input_queues) {
-        q->try_push_buffer(buf,
-                           nFrames);
-      }
-    },
-                    sample_rate,
-                    minInLatency)) {
-      throw std::runtime_error("input init failed");
-    }
-    
-    thread_resynth_active = true;
-    thread_resynth = std::make_unique<std::thread>([this,
-                                                    sample_rate](){
-      auto process = [this](int const sample_rate,
-                            SampleVectorConstIterator from,
-                            SampleVectorConstIterator to,
-                            std::vector<double> const & half_window,
-                            FrequenciesSqMag<double> & frequencies_sqmag,
-                            std::vector<FreqMag<double>> & freqmags) {
-        int constexpr zero_padding_factor = 1;
-        int constexpr windowed_signal_stride = 1;
-        
-        findFrequenciesSqMag<fft::Fastest>(from,
-                                           to,
-                                           windowed_signal_stride,
-                                           half_window,
-                                           zero_padding_factor,
-                                           work_vector_signal,
-                                           work_vector_freqs,
-                                           frequencies_sqmag);
-        
-        extractLocalMaxFreqsMags(sample_rate / windowed_signal_stride,
-                                 frequencies_sqmag,
-                                 SqMagToDb<double>(),
-                                 freqmags);
-      };
-      
-      int end = 0;
-      
-      auto init_data = [this,
-                        sample_rate
-                        ](bool const force){
-        int const input_delay_frames = input_delay_seconds * sample_rate;
-        
-        // we need an even window size
-        int const window_size = 2 * std::max(1,
-                                             static_cast<int>(0.5 * window_size_seconds * sample_rate));
-        bool reinit_samples = force;
-        if (force || static_cast<int>(delayed_input.size()) != input_delay_frames + 1) {
-          delayed_input.resize(input_delay_frames + 1); // this also resets the elements to zero
-          reinit_samples = true;
-        }
-        {
-          Assert(0 == window_size%2);
-          if (static_cast<int>(half_window.size()) != window_size/2) {
-            half_gaussian_window<double>(4, window_size/2, half_window);
-            normalize_window(half_window);
-            Assert(half_window.size() == window_size/2);
-            reinit_samples = true;
-          }
-        }
-        if (reinit_samples) {
-          samples.clear();
-          samples.resize(window_size, {});
-        }
-        return std::make_pair(input_delay_frames, window_size);
-      };
-      
-      // force reinitialization
-      auto [input_delay_frames, window_size] = init_data(true);
-      
-      constexpr uint64_t midi_src_id = 0;
-      
-      double const nanos_pre_frame = 1. / static_cast<double>(sample_rate);
-      uint64_t count_queued_frames = 0;
-      uint64_t local_count_dropped_input_frames = 0;
-      
-      int ignore_frames = 0;
-      
-      while (thread_resynth_active) {
-        QueueItem var;
-        while (input_queue->queue.try_pop(var)) {
-          if (std::holds_alternative<CountDroppedFrames>(var)) {
-            auto count = std::get<CountDroppedFrames>(var).count;
-            local_count_dropped_input_frames += count;
-            ignore_frames -= count;
-            if (!thread_resynth_active) {
-              return;
-            }
-            continue;
-          }
-          Assert(std::holds_alternative<InputSample>(var));
-          ++count_queued_frames;
-          if (input_delay_frames > 1) {
-            delayed_input.feed(std::get<InputSample>(var).value);
-          }
-          if (ignore_frames > 0) {
-            --ignore_frames;
-            continue;
-          }
-          if (input_delay_frames > 1) {
-            samples[end] = *delayed_input.cycleEnd();
-          } else {
-            samples[end] = std::get<InputSample>(var).value;
-          }
-          ++ end;
-          if (end == window_size) {
-            end = 0;
-            if (!thread_resynth_active) {
-              return;
-            }
-            
-            std::optional<float>
-            duration_process_seconds,
-            duration_step_seconds,
-            duration_copy_seconds;
-            
-            {
-              std::optional<profiling::CpuDuration> dt;
-              {
-                profiling::ThreadCPUTimer timer(dt);
-                
-                process(sample_rate,
-                        samples.begin(),
-                        samples.begin() + window_size,
-                        half_window,
-                        frequencies_sqmag,
-                        freqmags);
-              }
-              if (dt) duration_process_seconds = dt->count() / 1000000.;
-            }
-            
-            int const window_center_stride = std::max(1,
-                                                      static_cast<int>(0.5f + window_center_stride_seconds * sample_rate));
-            {
-              std::optional<profiling::CpuDuration> dt;
-              {
-                profiling::ThreadCPUTimer timer(dt);
-                step(sample_rate,
-                     freqmags,
-                     MIDITimestampAndSource((count_queued_frames + local_count_dropped_input_frames) * nanos_pre_frame,
-                                            midi_src_id),
-                     window_center_stride); // we pass the future stride, on purpose
-              }
-              if (dt) duration_step_seconds = dt->count() / 1000000.;
-            }
-            
-            std::tie(input_delay_frames, window_size) = init_data(false);
-            
-            {
-              std::optional<profiling::CpuDuration> dt;
-              {
-                profiling::ThreadCPUTimer timer(dt);
-                int const windowoverlapp = window_size - window_center_stride;
-                if (windowoverlapp >= 0) {
-                  const int offset = window_size-windowoverlapp;
-                  for (; end<windowoverlapp; ++end) {
-                    samples[end] = samples[end + offset];
-                  }
-                  ignore_frames = 0;
-                } else {
-                  ignore_frames = -windowoverlapp;
-                }
-              }
-              if (dt) duration_copy_seconds = dt->count() / 1000000.;
-            }
-            
-            setDurations(duration_process_seconds,
-                         duration_step_seconds,
-                         duration_copy_seconds);
-            
-            storeAudioInputQueueFillRatio(input_queue->queue.was_size() / static_cast<float>(input_queue->queue.capacity()));
-          }
-        }
-        std::this_thread::yield(); // should we sleep?
-      }
-    });
-  }
-  
-  void teardown() {
-    if (!thread_resynth_active) {
-      return;
-    }
-    thread_resynth_active = false;
-    thread_resynth->join();
-    thread_resynth.reset();
-    if (!input.Teardown()) {
-      throw std::runtime_error("input teardown failed");
-    }
-    synth.finalize(ctxt.getStepper());
-    
-    std::this_thread::sleep_for(std::chrono::milliseconds(1000));
-    ctxt.doTearDown();
-
-    input_queue = nullptr;
-    input_queues.clear(); // we might want to be more selective in the future, i.e remove just one queue from this vector
-  }
+  void teardown();
   
   // These methods can be used with no need to reinitialize
   
@@ -640,8 +427,12 @@ public:
     return input_queue_fill_ratio;
   }
   int countDroppedInputFrames() const {
-    if (input_queue) {
-      return input_queue->countDroppedInputFrames();
+    int count = 0;
+    if (input_2_analysis_queue) {
+      count += input_2_analysis_queue->countDroppedInputFrames();
+    }
+    if (input_2_vocoder_queue) {
+      count += input_2_vocoder_queue->countDroppedInputFrames();
     }
     return 0;
   }
@@ -827,61 +618,54 @@ public:
     env_sustain_level = f;
   }
 
+  float getDirectVoiceVolume() const {
+    return voice_volume;
+  }
+  void setDirectVoiceVolume(float f) {
+    voice_volume = f;
+  }
+  
+  float getVocoderVolume() const {
+    return vocoder_volume;
+  }
+  void setVocoderVolume(float f) {
+    vocoder_volume = f;
+  }
+  
+  float getAnalysisVolume() const {
+    return analysis_volume;
+  }
+  void setAnalysisVolume(float f) {
+    analysis_volume = f;
+  }
+  
+  float getInputStreamCpuLoad() const {
+    return input.getStreamCpuLoad();
+  }
+  float getOutputStreamCpuLoad() const {
+    return ctxt.getStreamCpuLoad();
+  }
+
+  float getCompressionFactor() const {
+    return ctxt.getStepper().getPost().getLimiter().getTargetCompressionLevel();
+  }
+  
 private:
   Ctxt ctxt;
   Synth synth;
+  SynthVocoderCarier vocoder_carrier;
   Midi midi;
-  
-  AudioInput<AudioPlatform::PortAudio> input;
   
   std::atomic_bool thread_resynth_active{false};
   std::unique_ptr<std::thread> thread_resynth;
   
-  struct MetaQueue {
-    template <typename... Args>
-    MetaQueue(Args&&... args)
-    : queue(std::forward<Args...>(args...)){
-    }
-    
-    bool try_push_buffer(const float * buf,
-                         int const nFrames) {
-      if (pending_dropped_frames.count) {
-        if (unlikely(!queue.try_push(pending_dropped_frames))) {
-          int const nLocalDroppedFrames = nFrames;
-          pending_dropped_frames.count += nLocalDroppedFrames;
-          count_dropped_input_frames += nLocalDroppedFrames;
-          return false;
-        }
-        pending_dropped_frames.count = 0;
-      }
-      for (int i=0; i<nFrames; ++i) {
-        if (unlikely(!queue.try_push(InputSample{buf[i]}))) {
-          int const nLocalDroppedFrames = nFrames-i;
-          pending_dropped_frames.count += nLocalDroppedFrames;
-          count_dropped_input_frames += nLocalDroppedFrames;
-          return false;
-        }
-      }
-      return true;
-    }
-    
-    int countDroppedInputFrames() const {
-      return count_dropped_input_frames;
-    }
-
-    Queue queue;
-
-  private:
-    CountDroppedFrames pending_dropped_frames;
-    std::atomic_int count_dropped_input_frames = 0;
-    static_assert(decltype(count_dropped_input_frames)::is_always_lock_free);
-  };
-  MetaQueue * input_queue = nullptr;
-  std::vector<std::unique_ptr<MetaQueue>> queues;
-  std::vector<MetaQueue*> input_queues; // managed by rt input thread
-  using OneShotFunc = folly::Function<void(void)>;
-  lockfree::scmp::fifo<OneShotFunc> input_oneshots;
-
+  MetaQueue<Queue> * input_2_analysis_queue = nullptr;
+  MetaQueue<Queue> * input_2_vocoder_queue = nullptr;
+  
+  Vocoder vocoder;
+  
+  Input<AudioPlatform::PortAudio, Queue> input;
+  
   NonRealtimeAnalysisFrame analysis_data;
   int64_t analysis_frame_idx = 0;
   
@@ -918,6 +702,9 @@ private:
   std::atomic_int autotune_root_note_halftones_transpose = 0;
   std::atomic<AutotuneChordFrequencies> autotune_chord_frequencies = AutotuneChordFrequencies::Harmonics;
   std::atomic<uint64_t> autotune_bit_chord = 0b10010001; // least significant beat = lower pitch
+  std::atomic<float> voice_volume = 1.f;
+  std::atomic<float> vocoder_volume = 0.f;
+  std::atomic<float> analysis_volume = 1.f;
   
   std::vector<float> allowed_pitches;
   
@@ -948,221 +735,536 @@ private:
   std::atomic<float> input_queue_fill_ratio = 0.f;
   std::atomic_int dropped_note_on = 0;
   
+  void analysis_thread(int const sample_rate);
+  
   void setDurations(std::optional<float> duration_process_seconds,
                     std::optional<float> duration_step_seconds,
-                    std::optional<float> duration_copy_seconds) {
-    auto set = [](std::optional<float> const & secs, std::atomic<float> & atom) {
-      if (secs) {
-        atom = *secs;
-      } else {
-        atom = -1.f;
-      }
-    };
-    set(duration_process_seconds, dt_process_seconds);
-    set(duration_step_seconds, dt_step_seconds);
-    set(duration_copy_seconds, dt_copy_seconds);
-  }
+                    std::optional<float> duration_copy_seconds);
   
   void step (int const sample_rate,
              std::vector<FreqMag<double>> const & fs,
              MIDITimestampAndSource const & miditime,
-             int const future_stride) {
-    ++analysis_frame_idx;
-
-    frequencies_to_pitches(midi,
-                           fs,
-                           freqmags_data);
-    
-    aggregate_pitches(nearby_distance_tones,
-                      freqmags_data,
-                      pitch_intervals);
-    
-    reduce_pitches(pitch_method,
-                   volume_method,
-                   min_volume,
-                   pitch_intervals,
-                   reduced_pitches);
-    
-    shift_pitches(pitch_shift_pre_autotune,
-                  reduced_pitches);
-    
-    harmonize_pitches(pitch_harmonize_pre_autotune,
-                      pitches_tmp,
-                      reduced_pitches);
-    
-    autotune_pitches(autotune_max_pitch.load(),
-                     autotune_tolerance_pitches,
-                     mkAutotuneFunction(),
-                     reduced_pitches,
-                     autotuned_pitches);
-    
-    shift_pitches(pitch_shift_post_autotune,
-                  autotuned_pitches);
-    
-    harmonize_pitches(pitch_harmonize_post_autotune,
-                      pitches_tmp,
-                      autotuned_pitches);
-    
-    track_pitches(max_track_pitches,
-                  autotuned_pitches,
-                  played_pitches,
-                  pitch_changes,
-                  continue_playing);
-    
-    // 60 dB SPL is a normal conversation, see https://en.wikipedia.org/wiki/Sound_pressure#Sound_pressure_level
-    int constexpr loudness_idx = loudness::phons_to_index(60.f);
-    order_pitches_by_perceived_loudness([loudness_idx](PitchVolume const & pv) {
-      return
-      pv.volume /
-      loudness::equal_loudness_volume_db(loudness::pitches,
-                                         pv.midipitch,
-                                         loudness_idx);
-    },
-                                        autotuned_pitches,
-                                        autotuned_pitches_perceived_loudness,
-                                        autotuned_pitches_idx_sorted_by_perceived_loudness);
-    
-    synthesize_sounds(// constant args:
-                      midi,
-                      analysis_frame_idx,
-                      sample_rate,
-                      miditime,
-                      future_stride,
-                      stereo_spread,
-                      mkAHDSR(sample_rate,
-                              env_attack_seconds,
-                              env_hold_seconds,
-                              env_decay_seconds,
-                              env_release_seconds,
-                              env_sustain_level),
-                      autotuned_pitches,
-                      autotuned_pitches_idx_sorted_by_perceived_loudness,
-                      pitch_changes,
-                      continue_playing,
-                      // mutable args:
-                      synth,
-                      ctxt,
-                      next_noteid,
-                      played_pitches,
-                      analysis_data,
-                      dropped_note_on);
-    
-    remove_dead_notes(continue_playing,
-                      played_pitches);
-    
-    sort_by_current_pitch(played_pitches);
-  }
+             int const future_stride);
   
   std::function<std::optional<float>(float const)>
-  mkAutotuneFunction() {
-    if (!use_autotune) {
-      return [](float const v) -> std::optional<float> {return {v};};
-    }
-    switch(autotune_type) {
-      case AutotuneType::Chord:
-      {
-        int offset = half_tones_distance(Note::Do,
-                                         autotune_musical_scale_root_note);
-        if (offset < 0) {
-          offset += num_halftones_per_octave;
-        }
-        offset += autotune_root_note_halftones_transpose;
-        // the lowest bit is C4+offset
-        int constexpr C_pitch = A_pitch + half_tones_distance(Note::La,
-                                                              Note::Do) + num_halftones_per_octave;
-        int const root_pitch = offset + C_pitch;
-        std::bitset<64> const chord{autotune_bit_chord.load()};
-        allowed_pitches.clear();
-        
-        bool single = false;
-        switch(autotune_chord_frequencies) {
-          case AutotuneChordFrequencies::SingleFreq:
-            single = true;
-          case AutotuneChordFrequencies::OctavePeriodic:
-          {
-            int const octaveMin = single ? 0:-5;
-            int const octaveMax = single ? 0:5;
-            for (int octave = octaveMin; octave <= octaveMax; ++octave) {
-              int const add = num_halftones_per_octave * octave;
-              for (int i=0, sz = static_cast<int>(chord.size()); i < sz; ++i) {
-                if (chord[i]) {
-                  allowed_pitches.push_back(root_pitch + i + add);
-                }
-              }
-            }
-            break;
-          }
-          case AutotuneChordFrequencies::Harmonics:
-          {
-            constexpr int n_harmo = 36;
-            static constexpr std::array<double, n_harmo> harmonic_pitch_add = compute_harmonic_pitch_adds<n_harmo>(ConstexprMidi());
-            for (int harmo = 0; harmo < n_harmo; ++harmo) {
-              for (int i=0, sz = static_cast<int>(chord.size()); i < sz; ++i) {
-                if (chord[i]) {
-                  // positive harmonic
-                  allowed_pitches.push_back(harmonic_pitch_add[harmo] + root_pitch + i);
-                  // negative harmonic
-                  allowed_pitches.push_back(-harmonic_pitch_add[harmo] + root_pitch + i);
-                }
-              }
-            }
-            break;
-          }
-        }
-        
-        std::sort(allowed_pitches.begin(),
-                  allowed_pitches.end());
-        
-        return [this](float const pitch)-> std::optional<float> {
-          if (float * p = find_closest_pitch(pitch, allowed_pitches, [](float p){ return p; })) {
-            return *p;
-          }
-          return {};
-        };
-      }
-      case AutotuneType::FixedSizeIntervals:
-      {
-        int offset = half_tones_distance(Note::Do,
-                                         autotune_musical_scale_root_note);
-        if (offset < 0) {
-          offset += num_halftones_per_octave;
-        }
-        offset += autotune_root_note_halftones_transpose;
-        allowed_pitches.clear();
-        allowed_pitches.push_back(offset);
-        int const factor = autotune_factor.load();
-        Assert(factor >= 0);
-        if (factor) {
-          for (int val = offset - factor; val > 0; val -= factor) {
-            allowed_pitches.push_back(val);
-          }
-          for (int val = offset + factor; val < max_audible_midi_pitch; val += factor) {
-            allowed_pitches.push_back(val);
-          }
-        }
-        
-        std::sort(allowed_pitches.begin(),
-                  allowed_pitches.end());
-        
-        return [this](double pitch)-> std::optional<float> {
-          if (float * p = find_closest_pitch(pitch, allowed_pitches, [](float p){ return p; })) {
-            return *p;
-          }
-          return {};
-        };
-      }
-      case AutotuneType::MusicalScale:
-        const auto * scale = &getMusicalScale(autotune_musical_scale_mode);
-        return [scale,
-                root_pitch = A_pitch +
-                autotune_root_note_halftones_transpose +
-                half_tones_distance(Note::La,
-                                    autotune_musical_scale_root_note)](float const pitch) {
-          return scale->closest_pitch<float>(root_pitch, pitch);
-        };
-    }
-  }
+  mkAutotuneFunction();
 };
+
+
+RtResynth::RtResynth()
+: synth()
+, ctxt(GlobalAudioLock<audioEnginePolicy>::get(),
+       Synth::n_channels * 4 /* one shot */,
+       1 // fft-based synth
+       + 1    //vocoder
+       )
+, input(4,
+        4)
+{
+  frequencies_sqmag.frequencies_sqmag.reserve(200);
+  freqmags.reserve(200);
+  freqmags_data.reserve(200);
+  pitch_intervals.reserve(200);
+  reduced_pitches.reserve(200);
+  autotuned_pitches.reserve(200);
+  pitches_tmp.reserve(200);
+  autotuned_pitches_perceived_loudness.reserve(200);
+  autotuned_pitches_idx_sorted_by_perceived_loudness.reserve(200);
+  played_pitches.reserve(200);
+  pitch_changes.reserve(200);
+  continue_playing.reserve(200);
+  
+  allowed_pitches.reserve(2*max_audible_midi_pitch);
+  
+#ifndef NDEBUG
+  testAutotune();
+#endif
+}
+
+RtResynth::~RtResynth() {
+  teardown();
+}
+
+void
+RtResynth::init(int const sample_rate) {
+  if (sample_rate <= 0) {
+    throw std::invalid_argument("sample_rate is too small");
+  }
+  
+  teardown();
+  Assert(!thread_resynth_active);
+  
+  if (!ctxt.doInit(minOutLatency, sample_rate)) {
+    throw std::runtime_error("ctxt init failed");
+  }
+  
+  if (!synth.initialize(ctxt.getStepper())) {
+    throw std::logic_error("failed to initialize synth");
+  }
+  
+  std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+  
+  input.Init(sample_rate,
+             minInLatency);
+  
+  input_2_analysis_queue = input.add_queue(sample_rate); // one second of input can fit in the queue
+  if (input.getSampleRate() != ctxt.getSampleRate()) {
+    throw std::runtime_error("in and out sample rates mismatch");
+  }
+  {
+    int const size = sample_rate * 4. * std::max(input.getInputLatencySeconds(),
+                                                 ctxt.getOutputLatencySeconds());
+    std::cout << "Vocoder queue size = " << size << std::endl;
+    input_2_vocoder_queue = input.add_queue(size);
+  }
+  vocoder.initialize(*input_2_vocoder_queue,
+                     [this](){
+    double val{};
+    vocoder_carrier.compute(&val,
+                            1);
+    return val;
+  },
+                     ctxt,
+                     voice_volume,
+                     vocoder_volume);
+  vocoder_carrier.setSynchronousElementInitializer(VocoderCarrierElementInitializer<double>(
+    sample_rate,
+    mkAHDSR(sample_rate,
+            env_attack_seconds,
+            env_hold_seconds,
+            env_decay_seconds,
+            env_release_seconds,
+            env_sustain_level)
+  ));
+
+  vocoder_carrier.onEvent(sample_rate,
+                          mkNoteOn(NoteId{1},
+                                   100.,
+                                   0.9),
+                          ctxt.getStepper(),
+                          ctxt.getStepper(),
+                          {});
+  
+  thread_resynth_active = true;
+  thread_resynth = std::make_unique<std::thread>([this,
+                                                  sample_rate](){
+    analysis_thread(sample_rate);
+  });
+}
+
+void
+RtResynth::teardown() {
+  if (!thread_resynth_active) {
+    return;
+  }
+  // stop queue consumers
+  thread_resynth_active = false;
+  thread_resynth->join();
+  thread_resynth.reset();
+  
+  vocoder.finalize(ctxt.getStepper());
+  
+  // finalize synth
+  synth.finalize(ctxt.getStepper());
+  
+  Assert(input_2_analysis_queue);
+  input.remove_queue(input_2_analysis_queue);
+  input_2_analysis_queue = nullptr;
+  
+  Assert(input_2_vocoder_queue);
+  input.remove_queue(input_2_vocoder_queue);
+  input_2_vocoder_queue = nullptr;
+  
+  input.Teardown();
+  
+  ctxt.doTearDown();
+}
+
+
+void
+RtResynth::analysis_thread(int const sample_rate) {
+  auto process = [this](int const sample_rate,
+                        SampleVectorConstIterator from,
+                        SampleVectorConstIterator to,
+                        std::vector<double> const & half_window,
+                        FrequenciesSqMag<double> & frequencies_sqmag,
+                        std::vector<FreqMag<double>> & freqmags) {
+    int constexpr zero_padding_factor = 1;
+    int constexpr windowed_signal_stride = 1;
+    
+    findFrequenciesSqMag<fft::Fastest>(from,
+                                       to,
+                                       windowed_signal_stride,
+                                       half_window,
+                                       zero_padding_factor,
+                                       work_vector_signal,
+                                       work_vector_freqs,
+                                       frequencies_sqmag);
+    
+    extractLocalMaxFreqsMags(sample_rate / windowed_signal_stride,
+                             frequencies_sqmag,
+                             SqMagToDb<double>(),
+                             freqmags);
+  };
+  
+  int end = 0;
+  
+  auto init_data = [this,
+                    sample_rate
+                    ](bool const force){
+    int const input_delay_frames = input_delay_seconds * sample_rate;
+    
+    // we need an even window size
+    int const window_size = 2 * std::max(1,
+                                         static_cast<int>(0.5 * window_size_seconds * sample_rate));
+    bool reinit_samples = force;
+    if (force || static_cast<int>(delayed_input.size()) != input_delay_frames + 1) {
+      delayed_input.resize(input_delay_frames + 1); // this also resets the elements to zero
+      reinit_samples = true;
+    }
+    {
+      Assert(0 == window_size%2);
+      if (static_cast<int>(half_window.size()) != window_size/2) {
+        half_gaussian_window<double>(4, window_size/2, half_window);
+        normalize_window(half_window);
+        Assert(static_cast<int>(half_window.size()) == window_size/2);
+        reinit_samples = true;
+      }
+    }
+    if (reinit_samples) {
+      samples.clear();
+      samples.resize(window_size, {});
+    }
+    return std::make_pair(input_delay_frames, window_size);
+  };
+  
+  // force reinitialization
+  auto [input_delay_frames, window_size] = init_data(true);
+  
+  constexpr uint64_t midi_src_id = 0;
+  
+  double const nanos_pre_frame = 1. / static_cast<double>(sample_rate);
+  uint64_t count_queued_frames = 0;
+  uint64_t local_count_dropped_input_frames = 0;
+  
+  int ignore_frames = 0;
+  
+  while (thread_resynth_active) {
+    QueueItem var;
+    while (input_2_analysis_queue->queue.try_pop(var)) {
+      if (std::holds_alternative<CountDroppedFrames>(var)) {
+        auto count = std::get<CountDroppedFrames>(var).count;
+        local_count_dropped_input_frames += count;
+        ignore_frames -= count;
+        if (!thread_resynth_active) {
+          return;
+        }
+        continue;
+      }
+      Assert(std::holds_alternative<InputSample>(var));
+      ++count_queued_frames;
+      if (input_delay_frames > 1) {
+        delayed_input.feed(std::get<InputSample>(var).value);
+      }
+      if (ignore_frames > 0) {
+        --ignore_frames;
+        continue;
+      }
+      if (input_delay_frames > 1) {
+        samples[end] = *delayed_input.cycleEnd();
+      } else {
+        samples[end] = std::get<InputSample>(var).value;
+      }
+      ++ end;
+      if (end == window_size) {
+        end = 0;
+        if (!thread_resynth_active) {
+          return;
+        }
+        
+        std::optional<float>
+        duration_process_seconds,
+        duration_step_seconds,
+        duration_copy_seconds;
+        
+        {
+          std::optional<profiling::CpuDuration> dt;
+          {
+            profiling::ThreadCPUTimer timer(dt);
+            
+            process(sample_rate,
+                    samples.begin(),
+                    samples.begin() + window_size,
+                    half_window,
+                    frequencies_sqmag,
+                    freqmags);
+          }
+          if (dt) duration_process_seconds = dt->count() / 1000000.;
+        }
+        
+        int const window_center_stride = std::max(1,
+                                                  static_cast<int>(0.5f + window_center_stride_seconds * sample_rate));
+        {
+          std::optional<profiling::CpuDuration> dt;
+          {
+            profiling::ThreadCPUTimer timer(dt);
+            step(sample_rate,
+                 freqmags,
+                 MIDITimestampAndSource((count_queued_frames + local_count_dropped_input_frames) * nanos_pre_frame,
+                                        midi_src_id),
+                 window_center_stride); // we pass the future stride, on purpose
+          }
+          if (dt) duration_step_seconds = dt->count() / 1000000.;
+        }
+        
+        std::tie(input_delay_frames, window_size) = init_data(false);
+        
+        {
+          std::optional<profiling::CpuDuration> dt;
+          {
+            profiling::ThreadCPUTimer timer(dt);
+            int const windowoverlapp = window_size - window_center_stride;
+            if (windowoverlapp >= 0) {
+              const int offset = window_size-windowoverlapp;
+              for (; end<windowoverlapp; ++end) {
+                samples[end] = samples[end + offset];
+              }
+              ignore_frames = 0;
+            } else {
+              ignore_frames = -windowoverlapp;
+            }
+          }
+          if (dt) duration_copy_seconds = dt->count() / 1000000.;
+        }
+        
+        setDurations(duration_process_seconds,
+                     duration_step_seconds,
+                     duration_copy_seconds);
+        
+        storeAudioInputQueueFillRatio(input_2_analysis_queue->queue.was_size() / static_cast<float>(input_2_analysis_queue->queue.capacity()));
+      }
+    }
+    std::this_thread::yield(); // should we sleep?
+  }
+}
+
+void
+RtResynth::setDurations(std::optional<float> duration_process_seconds,
+                        std::optional<float> duration_step_seconds,
+                        std::optional<float> duration_copy_seconds) {
+  auto set = [](std::optional<float> const & secs, std::atomic<float> & atom) {
+    if (secs) {
+      atom = *secs;
+    } else {
+      atom = -1.f;
+    }
+  };
+  set(duration_process_seconds, dt_process_seconds);
+  set(duration_step_seconds, dt_step_seconds);
+  set(duration_copy_seconds, dt_copy_seconds);
+}
+
+void
+RtResynth::step (int const sample_rate,
+                 std::vector<FreqMag<double>> const & fs,
+                 MIDITimestampAndSource const & miditime,
+                 int const future_stride) {
+  ++analysis_frame_idx;
+  
+  frequencies_to_pitches(midi,
+                         fs,
+                         freqmags_data);
+  
+  aggregate_pitches(nearby_distance_tones,
+                    freqmags_data,
+                    pitch_intervals);
+  
+  reduce_pitches(pitch_method,
+                 volume_method,
+                 min_volume,
+                 pitch_intervals,
+                 reduced_pitches);
+  
+  shift_pitches(pitch_shift_pre_autotune,
+                reduced_pitches);
+  
+  harmonize_pitches(pitch_harmonize_pre_autotune,
+                    pitches_tmp,
+                    reduced_pitches);
+  
+  autotune_pitches(autotune_max_pitch.load(),
+                   autotune_tolerance_pitches,
+                   mkAutotuneFunction(),
+                   reduced_pitches,
+                   autotuned_pitches);
+  
+  shift_pitches(pitch_shift_post_autotune,
+                autotuned_pitches);
+  
+  harmonize_pitches(pitch_harmonize_post_autotune,
+                    pitches_tmp,
+                    autotuned_pitches);
+  
+  track_pitches(max_track_pitches,
+                autotuned_pitches,
+                played_pitches,
+                pitch_changes,
+                continue_playing);
+  
+  // 60 dB SPL is a normal conversation, see https://en.wikipedia.org/wiki/Sound_pressure#Sound_pressure_level
+  int constexpr loudness_idx = loudness::phons_to_index(60.f);
+  order_pitches_by_perceived_loudness([loudness_idx](PitchVolume const & pv) {
+    return
+    pv.volume /
+    loudness::equal_loudness_volume_db(loudness::pitches,
+                                       pv.midipitch,
+                                       loudness_idx);
+  },
+                                      autotuned_pitches,
+                                      autotuned_pitches_perceived_loudness,
+                                      autotuned_pitches_idx_sorted_by_perceived_loudness);
+  
+  synthesize_sounds(// constant args:
+                    midi,
+                    analysis_frame_idx,
+                    sample_rate,
+                    miditime,
+                    future_stride,
+                    analysis_volume,
+                    stereo_spread,
+                    mkAHDSR(sample_rate,
+                            env_attack_seconds,
+                            env_hold_seconds,
+                            env_decay_seconds,
+                            env_release_seconds,
+                            env_sustain_level),
+                    autotuned_pitches,
+                    autotuned_pitches_idx_sorted_by_perceived_loudness,
+                    pitch_changes,
+                    continue_playing,
+                    // mutable args:
+                    synth,
+                    ctxt,
+                    next_noteid,
+                    played_pitches,
+                    analysis_data,
+                    dropped_note_on);
+  
+  remove_dead_notes(continue_playing,
+                    played_pitches);
+  
+  sort_by_current_pitch(played_pitches);
+}
+
+std::function<std::optional<float>(float const)>
+RtResynth::mkAutotuneFunction() {
+  if (!use_autotune) {
+    return [](float const v) -> std::optional<float> {return {v};};
+  }
+  switch(autotune_type) {
+    case AutotuneType::Chord:
+    {
+      int offset = half_tones_distance(Note::Do,
+                                       autotune_musical_scale_root_note);
+      if (offset < 0) {
+        offset += num_halftones_per_octave;
+      }
+      offset += autotune_root_note_halftones_transpose;
+      // the lowest bit is C4+offset
+      int constexpr C_pitch = A_pitch + half_tones_distance(Note::La,
+                                                            Note::Do) + num_halftones_per_octave;
+      int const root_pitch = offset + C_pitch;
+      std::bitset<64> const chord{autotune_bit_chord.load()};
+      allowed_pitches.clear();
+      
+      bool single = false;
+      switch(autotune_chord_frequencies) {
+        case AutotuneChordFrequencies::SingleFreq:
+          single = true;
+        case AutotuneChordFrequencies::OctavePeriodic:
+        {
+          int const octaveMin = single ? 0:-5;
+          int const octaveMax = single ? 0:5;
+          for (int octave = octaveMin; octave <= octaveMax; ++octave) {
+            int const add = num_halftones_per_octave * octave;
+            for (int i=0, sz = static_cast<int>(chord.size()); i < sz; ++i) {
+              if (chord[i]) {
+                allowed_pitches.push_back(root_pitch + i + add);
+              }
+            }
+          }
+          break;
+        }
+        case AutotuneChordFrequencies::Harmonics:
+        {
+          constexpr int n_harmo = 36;
+          static constexpr std::array<double, n_harmo> harmonic_pitch_add = compute_harmonic_pitch_adds<n_harmo>(ConstexprMidi());
+          for (int harmo = 0; harmo < n_harmo; ++harmo) {
+            for (int i=0, sz = static_cast<int>(chord.size()); i < sz; ++i) {
+              if (chord[i]) {
+                // positive harmonic
+                allowed_pitches.push_back(harmonic_pitch_add[harmo] + root_pitch + i);
+                // negative harmonic
+                allowed_pitches.push_back(-harmonic_pitch_add[harmo] + root_pitch + i);
+              }
+            }
+          }
+          break;
+        }
+      }
+      
+      std::sort(allowed_pitches.begin(),
+                allowed_pitches.end());
+      
+      return [this](float const pitch)-> std::optional<float> {
+        if (float * p = find_closest_pitch(pitch, allowed_pitches, [](float p){ return p; })) {
+          return *p;
+        }
+        return {};
+      };
+    }
+    case AutotuneType::FixedSizeIntervals:
+    {
+      int offset = half_tones_distance(Note::Do,
+                                       autotune_musical_scale_root_note);
+      if (offset < 0) {
+        offset += num_halftones_per_octave;
+      }
+      offset += autotune_root_note_halftones_transpose;
+      allowed_pitches.clear();
+      allowed_pitches.push_back(offset);
+      int const factor = autotune_factor.load();
+      Assert(factor >= 0);
+      if (factor) {
+        for (int val = offset - factor; val > 0; val -= factor) {
+          allowed_pitches.push_back(val);
+        }
+        for (int val = offset + factor; val < max_audible_midi_pitch; val += factor) {
+          allowed_pitches.push_back(val);
+        }
+      }
+      
+      std::sort(allowed_pitches.begin(),
+                allowed_pitches.end());
+      
+      return [this](double pitch)-> std::optional<float> {
+        if (float * p = find_closest_pitch(pitch, allowed_pitches, [](float p){ return p; })) {
+          return *p;
+        }
+        return {};
+      };
+    }
+    case AutotuneType::MusicalScale:
+      const auto * scale = &getMusicalScale(autotune_musical_scale_mode);
+      return [scale,
+              root_pitch = A_pitch +
+              autotune_root_note_halftones_transpose +
+              half_tones_distance(Note::La,
+                                  autotune_musical_scale_root_note)](float const pitch) {
+        return scale->closest_pitch<float>(root_pitch, pitch);
+      };
+  }
+}
 
 } // NS resynth
 } // NS imajuscule::audio

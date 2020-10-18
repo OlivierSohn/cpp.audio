@@ -98,12 +98,16 @@ struct AsyncWavWriter {
   
 
   template<typename T>
-  void sync_feed(T * buf, int numFrames) {
+  void sync_feed_frames(T * buf, int numFrames) {
     for (int i=0; i<numFrames; ++i) {
-      for (int j=0; j<n_audio_chans; ++j) {
-        if (!queue.try_push(buf[n_audio_chans*i + j])) {
-          LG(ERR, "Audio debug : dropped sample");
-        }
+      sync_feed_frame(&buf[n_audio_chans*i]);
+    }
+  }
+  template<typename T>
+  void sync_feed_frame(T * buf) {
+    for (int j=0; j<n_audio_chans; ++j) {
+      if (!queue.try_push(buf[j])) {
+        LG(ERR, "Audio debug : dropped sample");
       }
     }
   }

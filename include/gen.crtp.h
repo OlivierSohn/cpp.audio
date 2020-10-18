@@ -320,7 +320,6 @@ public:
     }
   }
 
-private:
   bool compute(double * buffer,
                int n_frames) {
     bool silence = true;

@@ -251,6 +251,10 @@ namespace imajuscule {
       readyTraits::write(ready, true, std::memory_order_relaxed);
     }
 
+    audio::Limiter<double> const & getLimiter() const {
+      return limiter;
+    }
+    
     LockPolicy & _lock;
 
     /////////////////////////////// postprocess
@@ -353,7 +357,7 @@ namespace imajuscule {
     std::vector<postProcessFunc> post_process = {
       { [this](double v[nAudioOut]) {
         CArray<nAudioOut, double> a{v};
-        compressor.feed(a);
+        limiter.feed(a);
         // by now, the signal is compressed and limited...
       }},
       { [](double v[nAudioOut]) {
@@ -383,7 +387,7 @@ namespace imajuscule {
 
     Conversion<double, nAudioIn, nAudioOut, audio::audioelement::n_frames_per_buffer> conversion;
     audio::ConvReverbsByBlockSize<audio::Reverbs<nAudioOut, ReverbT, audio::PolicyOnWorkerTooSlow::PermanentlySwitchToDry>> reverbs;
-    audio::Compressor<double> compressor;
+    audio::Limiter<double> limiter;
     bool has_spatializer = false;
 
     void muteAudio(int sample_rate) {
@@ -484,6 +488,7 @@ namespace imajuscule {
     ChannelsT const & getConstChannels() const { return channelsT; }
 
     PostImpl & getPost() { return post; }
+    PostImpl const & getPost() const { return post; }
 
     AudioLockPolicyImpl<policy> & get_lock_policy() { return _lock; }
     decltype(std::declval<AudioLockPolicyImpl<policy>>().lock()) get_lock() { return _lock.lock(); }

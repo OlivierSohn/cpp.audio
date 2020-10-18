@@ -189,7 +189,6 @@ struct MyApp : public wxApp {
   {
     {
       {
-        // no need to control sample rate for now
         {
           "Analysis period",
           "seconds",
@@ -220,7 +219,7 @@ struct MyApp : public wxApp {
     {
       {
         {
-          "Min volume",
+          "Min partial volume",
           "",
           [this](){ return resynth.getMinVolume(); },
           [this](float v){ resynth.setMinVolume(v); },
@@ -249,9 +248,6 @@ struct MyApp : public wxApp {
   },
   params_after_autotune
   {
-  }
-  , params_envelope
-  {
     {
       {
         {
@@ -278,6 +274,11 @@ struct MyApp : public wxApp {
           0.f,
           10.f
         },
+      },
+      color_slider_label_3
+    },
+    {
+      {
         {
           "Stereo spread",
           "",
@@ -286,9 +287,20 @@ struct MyApp : public wxApp {
           0.f,
           1.f
         },
+        {
+          "Volume",
+          "",
+          [this](){ return resynth.getAnalysisVolume(); },
+          [this](float v){ resynth.setAnalysisVolume(v); },
+          0.f,
+          1.f
+        },
       },
-      color_slider_label_3
-    },
+      color_slider_label_5
+    }
+  }
+  , params_envelope
+  {
     {
       {
         {
@@ -334,12 +346,51 @@ struct MyApp : public wxApp {
       },
       color_slider_label_4
     },
+    {
+      {
+        {
+          "Dry voice volume",
+          "",
+          [this](){ return resynth.getDirectVoiceVolume(); },
+          [this](float v){ resynth.setDirectVoiceVolume(v); },
+          0.f,
+          1.f
+        },
+        {
+          "Vocoder volume",
+          "",
+          [this](){ return resynth.getVocoderVolume(); },
+          [this](float v){ resynth.setVocoderVolume(v); },
+          0.f,
+          1.f
+        },
+      },
+      color_slider_label_5
+    }
   }
   , poll_params
   {
     {
       {
-        "Total Load",
+        "Input stream load",
+        [this]() -> ParamPollProxy::OptionalVariant {
+          return resynth.getInputStreamCpuLoad();
+        }
+      },
+      {
+        "Output stream load",
+        [this]() -> ParamPollProxy::OptionalVariant {
+          return resynth.getOutputStreamCpuLoad();
+        }
+      },
+      {
+        "Output limitting factor",
+        [this]() -> ParamPollProxy::OptionalVariant {
+          return resynth.getCompressionFactor();
+        }
+      },
+      {
+        "Analysis Load",
         [this]() -> ParamPollProxy::OptionalVariant {
           std::optional<float> a = resynth.getDurationProcess();
           std::optional<float> b = resynth.getDurationStep();
@@ -355,7 +406,7 @@ struct MyApp : public wxApp {
         }
       },
       {
-        "Process Load",
+        "Analysis/process Load",
         [this]() -> ParamPollProxy::OptionalVariant {
           if (std::optional<float> secs = resynth.getDurationProcess()) {
             float analysis_stride_secs = resynth.getEffectiveWindowCenterStrideSeconds(reinit_params.sample_rate);
@@ -367,7 +418,7 @@ struct MyApp : public wxApp {
         }
       },
       {
-        "Step Load",
+        "Analysis/step Load",
         [this]() -> ParamPollProxy::OptionalVariant {
           if (std::optional<float> secs = resynth.getDurationStep()) {
             float analysis_stride_secs = resynth.getEffectiveWindowCenterStrideSeconds(reinit_params.sample_rate);
@@ -379,7 +430,7 @@ struct MyApp : public wxApp {
         }
       },
       {
-        "Copy Load",
+        "Analysis/copy Load",
         [this]() -> ParamPollProxy::OptionalVariant {
           if (std::optional<float> secs = resynth.getDurationCopy()) {
             float analysis_stride_secs = resynth.getEffectiveWindowCenterStrideSeconds(reinit_params.sample_rate);

@@ -71,6 +71,17 @@ inline std::ostream & operator << (std::ostream& os, AudioOverflow const & a) {
   return os;
 }
 
+struct AudioQueueDroppedFrames {
+  const char * name;
+  int64_t count;
+};
+
+inline std::ostream & operator << (std::ostream& os, AudioQueueDroppedFrames const & a) {
+  os << "AudioQueueDroppedFrames("<< a.name << " : " << a.count << ")";
+  return os;
+}
+
+
 struct SignificantTimeDeviation {
   uint64_t diff;
   float nSamples;
@@ -83,11 +94,24 @@ inline std::ostream & operator << (std::ostream& os, SignificantTimeDeviation co
 }
 
 
+struct AnException {
+  // we do not put the string here, to keep the variant size small.
+  // if you need to know which exception was thrown, put a breakpoint where this is pushed to the queue
+};
+
+inline std::ostream & operator << (std::ostream& os, AnException const & ) {
+  os << "AnException()";
+  return os;
+}
+
+
 using PortaudioAsyncLogger = AsyncLogger<std::variant<
 AudioCbTimeStats,
 PartialCallback,
 AudioOverflow,
-SignificantTimeDeviation
+SignificantTimeDeviation,
+AudioQueueDroppedFrames,
+AnException
 >>;
 
 #endif
@@ -201,12 +225,25 @@ struct Context<AudioPlatform::PortAudio, F, Chans> {
     Assert(sample_rate_);
     return *sample_rate_;
   }
+  
+  double getOutputLatencySeconds() const {
+    Assert(output_latency_seconds);
+    return *output_latency_seconds;
+  }
 
+  
+  float getStreamCpuLoad() const {
+    if( stream) {
+      return Pa_GetStreamCpuLoad(stream);
+    }
+    return -1.f;
+ }
   bool isInitialized() const {
     return bInitialized;
   }
 private:
   std::optional<int> sample_rate_;
+  std::optional<double> output_latency_seconds;
   uint64_t nanos_per_audioelement_buffer = 0;
 
 protected:
@@ -223,11 +260,13 @@ private:
 #if IMJ_AUDIO_NEEDS_ASYNC_LOGGING
   std::unique_ptr<PortaudioAsyncLogger> async_logger;
 
-  // called from realtime trhead
+public:
+  // called from realtime thread
   PortaudioAsyncLogger & asyncLogger() {
     Assert(async_logger);
     return *async_logger;
   }
+private:
 #endif
 
   static int playCallback(const void *inputBuffer,
@@ -285,13 +324,25 @@ private:
 # endif
 #endif
 
+#ifndef NDEBUG
+    try {
+#endif
     This->chans.step(static_cast<SAMPLE*>(outputBuffer),
                      static_cast<int>(numFrames),
                      tNanos,
                      This->nanos_per_audioelement_buffer);
+#ifndef NDEBUG
+    } catch(std::exception const & e) {
+      // exception should never be thrown in a real time thread because when they are thrown, they need dynamic memory allocation.
+      std::cout << e.what() << std::endl;
+      This->asyncLogger().sync_feed(AnException{});
+      throw;
+    }
+#endif
+    
 #if IMJ_DEBUG_AUDIO_OUT
-    This->async_wav_writer->sync_feed(static_cast<SAMPLE*>(outputBuffer),
-                                      static_cast<int>(numFrames));
+    This->async_wav_writer->sync_feed_frames(static_cast<SAMPLE*>(outputBuffer),
+                                             static_cast<int>(numFrames));
 #endif
 
     return paContinue;
@@ -372,17 +423,19 @@ public:
       if( unlikely(err != paNoError) )
       {
         sample_rate_.reset();
+        output_latency_seconds.reset();
         stream = nullptr;
         LG(ERR, "AudioOut::doInit : Pa_OpenStream failed : %s", Pa_GetErrorText(err));
         Assert(0);
         return false;
       }
-      auto * info = Pa_GetStreamInfo(stream);
-      if (std::abs(info->sampleRate - sample_rate) > 0.0001) {
-        throw std::logic_error("sample rate mismatch");
-      }
 
       const PaStreamInfo * si = Pa_GetStreamInfo(stream);
+      if (std::abs(si->sampleRate - sample_rate) > 0.0001) {
+        throw std::logic_error("sample rate mismatch");
+      }
+      
+      output_latency_seconds = si->outputLatency;
 
       LG(INFO, "AudioOut::doInit : stream : sample rate %f",
          si->sampleRate);
@@ -416,6 +469,7 @@ public:
       PaError err = Pa_CloseStream( stream );
       stream = nullptr;
       sample_rate_.reset();
+      output_latency_seconds.reset();
       if( unlikely(err != paNoError) ) {
         LG(ERR, "AudioOut::doTearDown : Pa_CloseStream failed : %s", Pa_GetErrorText(err));
         Assert(0);
@@ -445,8 +499,11 @@ public:
 
 template<>
 struct AudioInput<AudioPlatform::PortAudio> {
-  AudioInput()
-  {}
+
+  double getInputLatencySeconds() const {
+    Assert(input_latency_seconds);
+    return *input_latency_seconds;
+  }
 
   bool Init(RecordF f, int const sample_rate, double const minLatency) {
     LG(INFO, "AudioIn::do_wakeup : initializing %s", Pa_GetVersionText());
@@ -511,20 +568,24 @@ struct AudioInput<AudioPlatform::PortAudio> {
       if( unlikely(err != paNoError) )
       {
         stream = nullptr;
+        input_latency_seconds.reset();
+        sample_rate_.reset();
         LG(ERR, "AudioIn::do_wakeup : Pa_OpenStream failed : %s", Pa_GetErrorText(err));
         Assert(0);
         return false;
       }
-      auto * info = Pa_GetStreamInfo(stream);
-      if (std::abs(info->sampleRate - sample_rate) > 0.0001) {
-        throw std::logic_error("sample rate mismatch");
-      }
 
       const PaStreamInfo * si = Pa_GetStreamInfo(stream);
 
-      LG(INFO, "AudioIn::do_wakeup : stream : output lat  %f", si->outputLatency);
-      LG(INFO, "AudioIn::do_wakeup : stream : input lat   %f", si->inputLatency);
+      if (std::abs(si->sampleRate - sample_rate) > 0.0001) {
+        throw std::logic_error("sample rate mismatch");
+      }
+      
+      input_latency_seconds = si->inputLatency;
+
       LG(INFO, "AudioIn::do_wakeup : stream : sample rate %f", si->sampleRate);
+      LG(INFO, "AudioIn::do_wakeup : stream : output lat  %f (%f frames)", si->outputLatency, si->outputLatency * si->sampleRate);
+      LG(INFO, "AudioIn::do_wakeup : stream : input lat   %f (%f frames)", si->inputLatency, si->inputLatency  * si->sampleRate);
 
       err = Pa_StartStream( stream );
       if( unlikely(err != paNoError) )
@@ -547,6 +608,8 @@ struct AudioInput<AudioPlatform::PortAudio> {
     if(stream) {
       PaError err = Pa_CloseStream( stream );
       stream = nullptr;
+      input_latency_seconds.reset();
+      sample_rate_.reset();
       if( unlikely(err != paNoError) ) {
         LG(ERR, "AudioIn::do_sleep : Pa_CloseStream failed : %s", Pa_GetErrorText(err));
         Assert(0);
@@ -573,13 +636,22 @@ struct AudioInput<AudioPlatform::PortAudio> {
   }
 
   int getSampleRate() const {
-    return sample_rate_;
+    Assert(sample_rate_);
+    return *sample_rate_;
+  }
+  
+  float getStreamCpuLoad() const {
+    if( stream) {
+      return Pa_GetStreamCpuLoad(stream);
+    }
+    return -1.f;
   }
 
 private:
   PaStream *stream = nullptr;
   bool bInitialized = false;
-  int sample_rate_ = 0;
+  std::optional<int> sample_rate_;
+  std::optional<float> input_latency_seconds;
   RecordF recordF;
 #if IMJ_DEBUG_AUDIO_IN
   std::unique_ptr<AsyncWavWriter> async_wav_writer;
@@ -601,7 +673,8 @@ private:
 
     This->recordF(static_cast<const SAMPLE*>(inputBuffer), (int)nFrames);
 #if IMJ_DEBUG_AUDIO_IN
-    This->async_wav_writer->sync_feed(static_cast<const SAMPLE*>(inputBuffer), (int)nFrames);
+    This->async_wav_writer->sync_feed_frames(static_cast<const SAMPLE*>(inputBuffer),
+                                             (int)nFrames);
 #endif
 
     return paContinue;
