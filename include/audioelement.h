@@ -1574,11 +1574,15 @@ constexpr double refVolume() {
   }
 }
 
-template<typename T, FOscillator O>
+enum class OscillatorUsage {
+  Raw,
+  FilteredByLoudnessAdaptedSound
+};
+template<typename T, FOscillator O, OscillatorUsage usage>
 struct FOscillatorAlgo : public Phased<T> {
   static constexpr auto hasEnvelope = false;
   static constexpr auto isMonoHarmonic = monoHarmonic(O);
-  static constexpr auto baseVolume = reduceUnadjustedVolumes * refVolume<O>();
+  static constexpr T baseVolume = (usage == OscillatorUsage::FilteredByLoudnessAdaptedSound) ? 1 : (reduceUnadjustedVolumes * refVolume<O>());
   static constexpr int count_channels = 1;
 
   using Phased<T>::angle_;
@@ -1612,7 +1616,7 @@ struct FOscillatorAlgo : public Phased<T> {
 };
 
 template<typename Envel>
-using Square = FinalAudioElement<Enveloped<FOscillatorAlgo<typename Envel :: FPT, FOscillator::SQUARE>,Envel>>;
+using Square = FinalAudioElement<Enveloped<FOscillatorAlgo<typename Envel :: FPT, FOscillator::SQUARE, OscillatorUsage::Raw>,Envel>>;
 
 /*
  * first pulse happens at angle = 0

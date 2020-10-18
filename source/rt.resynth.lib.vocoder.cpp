@@ -2,21 +2,6 @@
 
 namespace imajuscule::audio {
 
-template<typename Q>
-void drain_queue_until_size_smaller(Q & q,
-                                    int const target_size) {
-  while(true) {
-    int const drop = static_cast<int>(q.was_size()) - target_size;
-    if (drop <= 0) {
-      return;
-    }
-    for (int i=0; i<drop; ++i) {
-      typename Q::value_type var;
-      q.try_pop(var);
-    }
-  }
-}
-
 template<int ORDER, typename T>
 struct BandPass {
   void setup(int sample_rate, T freq_from, T freq_to) {
@@ -175,6 +160,7 @@ private:
 #endif
 };
 
+
 struct Vocoder {
   static constexpr int count_bands = 40;
   
@@ -186,9 +172,8 @@ struct Vocoder {
   : amplitudes(count_bands) {
   }
 
-  template<typename Out, typename MetaQ, typename C>
-  void initialize(MetaQ & q_modulator,
-                  C && get_carrier_sample,
+  template<typename Out, typename C>
+  void initialize(C && get_modulator_carrier_sample,
                   Out & ctxt,
                   std::atomic<float> & voice_volume,
                   std::atomic<float> & vocoded_volume) {
@@ -196,78 +181,38 @@ struct Vocoder {
 
     Assert(state == SynthState::ComputeNotRegistered);
     ctxt.getStepper().enqueueOneShot([this,
-                                      &ctxt,
                                       &voice_volume,
                                       &vocoded_volume,
-                                      &q_modulator,
-                                      get_carrier_sample](auto & out, auto){
+                                      get_modulator_carrier_sample](auto & out, auto){
       if (!out.registerSimpleCompute([this,
-                                      &ctxt,
                                       &voice_volume,
                                       &vocoded_volume,
-                                      &q_modulator,
-                                      get_carrier_sample
-                                      ](double * buf, int frames){
+                                      get_modulator_carrier_sample
+                                      ](double * buf, int frames) mutable {
         if (state == SynthState::WaitingForComputeUnregistration) {
           state = SynthState::ComputeNotRegistered;
-          initialization = true;
           return false;
         }
-        auto min_size_queue = [&q_modulator]{
-          return q_modulator.queue.capacity() / 2;
-        };
-        // we synchronize here so as to:
-        // - minimize audio latency, and
-        // - avoid queue starvation (which would lead to audio cracks)
-        //
-        // To minimize audio latency, we should start consuming elements as soon as possible.
-        // But to avoid starvation, we should start consuming elements only once the queue has a "big enough" size.
-        // Taking into account jitter in both input and output, waiting for the queue to be of size
-        //   '2 * max(delayIn, delayOut) * sample_rate' seems reasonnable.
-        //
-        // Note that queue capacity is
-        //   '4 * max(delayIn, delayOut) * sample_rate'
-        if (initialization) {
-          if (q_modulator.queue.was_size() < min_size_queue()) {
-            return true;
-          }
-          drain_queue_until_size_smaller(q_modulator.queue,
-                                         min_size_queue());
-          initialization = false;
-        }
-        //std::cout << "vocoder queue producer : size=" << q.queue.was_size() << std::endl;
+
         float const the_voice_volume = voice_volume;
         float const the_vocoded_volume = vocoded_volume;
         
         for (int i=0; i<frames; ++i) {
-          typename MetaQ::QueueItem var_modulator;
-          while(true) {
-            if (unlikely(!q_modulator.queue.try_pop(var_modulator))) {
-              // should never happen
-              throw std::runtime_error("vocoder : the queue is empty");
-            }
-            if (unlikely(std::holds_alternative<CountDroppedFrames>(var_modulator))) {
-              // happens when the cpu load of the callback is big, so some frames are dropped
-#ifndef NDEBUG
-              ctxt.asyncLogger().sync_feed(AudioQueueDroppedFrames{
-                "vocoder",
-                std::get<CountDroppedFrames>(var_modulator).count
-              });
-#endif
-              // some frames have been dropped, so the queue is probably quite full now, we will
-              // re-establish balance by dropping some items:
-              drain_queue_until_size_smaller(q_modulator.queue, min_size_queue());
-              continue;
-            }
-            break;
+          std::optional<std::pair<double, double>> const s = get_modulator_carrier_sample();
+          if (!s) {
+            // happens during initialization phase (if we use a queue)
+            Assert(i == 0);
+            return true;
           }
-          Assert(std::holds_alternative<InputSample>(var_modulator));
-          auto const sample_modulator = std::get<InputSample>(var_modulator).value;
-          modulator.feed(sample_modulator,
+          auto [modulator_sample, carrier_sample] = *s;
+          
+          modulator.feed(modulator_sample,
                          amplitudes);
           
-          double const vocoded = carrier.feed(get_carrier_sample(), amplitudes);
-          double const mixed = the_voice_volume * sample_modulator + the_vocoded_volume * vocoded;
+          double const vocoded = carrier.feed(carrier_sample, amplitudes);
+          double const mixed =
+          the_voice_volume * modulator_sample +
+          the_vocoded_volume * vocoded;
           for (int j=0; j<Out::nAudioOut; ++j) {
             buf[Out::nAudioOut * i + j] += mixed;
           }
@@ -292,7 +237,6 @@ struct Vocoder {
   }
 private:
   std::atomic<SynthState> state = SynthState::ComputeNotRegistered;
-  bool initialization = true;
   Modulator<order, double> modulator;
   std::vector<double> amplitudes;
   Carrier<order, double> carrier;

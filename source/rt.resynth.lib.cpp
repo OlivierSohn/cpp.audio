@@ -23,7 +23,7 @@ using VocoderCarrierElement =
 VolumeAdjusted<
 Enveloped<
 FreqCtrl_<
-FOscillatorAlgo<T, FOscillator::SAW>, // Use a saw as carrier to have a wide spectrum
+FOscillatorAlgo<T, FOscillator::SAW, OscillatorUsage::FilteredByLoudnessAdaptedSound>, // Use a saw as carrier to have a wide spectrum
 InterpolatedFreq<T>
 >,
 AHDSREnvelope<Atomicity::Yes, T, EnvelopeRelease::WaitForKeyRelease>
@@ -279,6 +279,9 @@ void synthesize_sounds(Midi const & midi,
       
       analysis_data.try_push_note_change(played);
     } else {
+      if (volume <= 0) {
+        continue;
+      }
       ++next_noteid;
       NoteId const note_id{next_noteid};
       auto const res = synth.onEvent(sample_rate,
@@ -662,6 +665,8 @@ private:
   MetaQueue<Queue> * input_2_analysis_queue = nullptr;
   MetaQueue<Queue> * input_2_vocoder_queue = nullptr;
   
+  ReadQueuedSampleSource<Queue, Ctxt> read_queued_input;
+  
   Vocoder vocoder;
   
   Input<AudioPlatform::PortAudio, Queue> input;
@@ -808,21 +813,33 @@ RtResynth::init(int const sample_rate) {
              minInLatency);
   
   input_2_analysis_queue = input.add_queue(sample_rate); // one second of input can fit in the queue
+
   if (input.getSampleRate() != ctxt.getSampleRate()) {
     throw std::runtime_error("in and out sample rates mismatch");
   }
+
   {
     int const size = sample_rate * 4. * std::max(input.getInputLatencySeconds(),
                                                  ctxt.getOutputLatencySeconds());
     std::cout << "Vocoder queue size = " << size << std::endl;
     input_2_vocoder_queue = input.add_queue(size);
   }
-  vocoder.initialize(*input_2_vocoder_queue,
-                     [this](){
-    double val{};
-    vocoder_carrier.compute(&val,
+
+  read_queued_input.set(input_2_vocoder_queue->queue
+#ifndef NDEBUG
+                        , ctxt
+#endif
+                        );
+  
+  vocoder.initialize([this]() -> std::optional<std::pair<double, double>> {
+    std::optional<double> mod = read_queued_input();
+    if (!mod) {
+      return {};
+    }
+    double carrier_val{};
+    vocoder_carrier.compute(&carrier_val,
                             1);
-    return val;
+    return std::make_pair(*mod, carrier_val);
   },
                      ctxt,
                      voice_volume,
