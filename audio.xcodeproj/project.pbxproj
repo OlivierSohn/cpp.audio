@@ -7,7 +7,6 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		090B14C11E75CC2C005A47C5 /* loudness_enum_limits.h in Headers */ = {isa = PBXBuildFile; fileRef = 090B14C01E75CC2C005A47C5 /* loudness_enum_limits.h */; };
 		09121CB31EABADB500BBC64B /* Accelerate.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 093268CF1EAB7031001BAA8E /* Accelerate.framework */; };
 		09121CB41EABADB500BBC64B /* AppKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 097D56D01E86DCC900018F14 /* AppKit.framework */; };
 		09121CB51EABADB500BBC64B /* CoreGraphics.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 097D56CE1E86DCB600018F14 /* CoreGraphics.framework */; };
@@ -75,6 +74,8 @@
 		098432A92523B03300F0DF48 /* Info.plist in CopyFiles */ = {isa = PBXBuildFile; fileRef = 09B01D9C25168CB40068FCFD /* Info.plist */; };
 		098474081E8058EE0014465E /* unity.build.genheaders.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 098474071E8058EE0014465E /* unity.build.genheaders.cpp */; };
 		098474281E8059920014465E /* libaudio.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 09FF3F231E36EBBB00C81351 /* libaudio.a */; };
+		099B6D23253CC419003E4929 /* libportmidi.dylib in Frameworks */ = {isa = PBXBuildFile; fileRef = 099B6D22253CC419003E4929 /* libportmidi.dylib */; };
+		099B6D24253CC419003E4929 /* libportmidi.dylib in Embed Libraries */ = {isa = PBXBuildFile; fileRef = 099B6D22253CC419003E4929 /* libportmidi.dylib */; settings = {ATTRIBUTES = (CodeSignOnCopy, ); }; };
 		099E06E11E36EC720012348E /* unity.build.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 099E06E01E36EC6D0012348E /* unity.build.cpp */; };
 		09B01D5125152F0A0068FCFD /* libalgorithms.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 0967E511208E539D004B488E /* libalgorithms.a */; };
 		09B01D5225152F0A0068FCFD /* Accelerate.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 093268CF1EAB7031001BAA8E /* Accelerate.framework */; };
@@ -297,6 +298,17 @@
 			);
 			runOnlyForDeploymentPostprocessing = 1;
 		};
+		099B6D25253CC419003E4929 /* Embed Libraries */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 10;
+			files = (
+				099B6D24253CC419003E4929 /* libportmidi.dylib in Embed Libraries */,
+			);
+			name = "Embed Libraries";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		09B01D5725152F0A0068FCFD /* CopyFiles */ = {
 			isa = PBXCopyFilesBuildPhase;
 			buildActionMask = 12;
@@ -412,6 +424,8 @@
 		0984742B1E809F650014465E /* loudness_filter_coefficients.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = loudness_filter_coefficients.h; path = include/loudness_filter_coefficients.h; sourceTree = "<group>"; };
 		098EFCC21E677FBD000ADD0D /* sounds.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = sounds.h; path = include/sounds.h; sourceTree = "<group>"; };
 		098EFCCA1E6C5E50000ADD0D /* noise.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; lineEnding = 0; name = noise.h; path = include/noise.h; sourceTree = "<group>"; xcLanguageSpecificationIdentifier = xcode.lang.objcpp; };
+		099B6CF6253CBF12003E4929 /* rt.resynth.lib.midi.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = rt.resynth.lib.midi.cpp; path = source/rt.resynth.lib.midi.cpp; sourceTree = "<group>"; };
+		099B6D22253CC419003E4929 /* libportmidi.dylib */ = {isa = PBXFileReference; lastKnownFileType = "compiled.mach-o.dylib"; name = libportmidi.dylib; path = ../../../../usr/local/Cellar/portmidi/217_2/lib/libportmidi.dylib; sourceTree = "<group>"; };
 		099E06DC1E36EC6D0012348E /* parse.music.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = parse.music.cpp; path = source/parse.music.cpp; sourceTree = "<group>"; };
 		099E06DD1E36EC6D0012348E /* private.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = private.h; path = source/private.h; sourceTree = "<group>"; };
 		099E06DF1E36EC6D0012348E /* sound.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = sound.cpp; path = source/sound.cpp; sourceTree = "<group>"; };
@@ -573,6 +587,7 @@
 				09432280252A2A1500C8B64E /* IOKit.framework in Frameworks */,
 				0943206A252A0EA000C8B64E /* libportaudio.a in Frameworks */,
 				09B01D5125152F0A0068FCFD /* libalgorithms.a in Frameworks */,
+				099B6D23253CC419003E4929 /* libportmidi.dylib in Frameworks */,
 				09B01D5225152F0A0068FCFD /* Accelerate.framework in Frameworks */,
 				09B01D5325152F0A0068FCFD /* AppKit.framework in Frameworks */,
 				09B01D5425152F0A0068FCFD /* CoreGraphics.framework in Frameworks */,
@@ -625,6 +640,7 @@
 		097D56CB1E86DCA000018F14 /* Frameworks */ = {
 			isa = PBXGroup;
 			children = (
+				099B6D22253CC419003E4929 /* libportmidi.dylib */,
 				0943228D252A2B0000C8B64E /* libwx_baseu_net-3.1.4.0.0.dylib */,
 				0943228F252A2B0000C8B64E /* libwx_baseu_xml-3.1.4.0.0.dylib */,
 				09432290252A2B0000C8B64E /* libwx_baseu-3.1.4.0.0.dylib */,
@@ -684,9 +700,12 @@
 				097DBDE82531DBA500AFFD0E /* rt.resynth.lib.algo.cpp */,
 				097DBDDB2531DA7800AFFD0E /* rt.resynth.lib.autotune.cpp */,
 				09B01D4A25152EE10068FCFD /* rt.resynth.lib.cpp */,
+				093315E42539D5F70033E23A /* rt.resynth.lib.input.cpp */,
 				097DBE0C2531DFB300AFFD0E /* rt.resynth.lib.locked.data.cpp */,
 				093315D82539D4A20033E23A /* rt.resynth.lib.metaqueue.cpp */,
+				099B6CF6253CBF12003E4929 /* rt.resynth.lib.midi.cpp */,
 				09112FE02533221A00DA5248 /* rt.resynth.lib.test.cpp */,
+				093315F02539D66F0033E23A /* rt.resynth.lib.vocoder.cpp */,
 				097DBE002531DCBA00AFFD0E /* rt.resynth.txt */,
 				097DBD332531D8A400AFFD0E /* rt.resynth.ui.autotune.cpp */,
 				09432204252A268800C8B64E /* rt.resynth.ui.cpp */,
@@ -703,8 +722,6 @@
 				09B01D4025152EE10068FCFD /* unity.build.rt.resynth.cpp */,
 				093A24E31E9B8D73009874DF /* unity.build.testfft.cpp */,
 				096C6D641E9F860300389746 /* unity.build.wir_2_wav.cpp */,
-				093315E42539D5F70033E23A /* rt.resynth.lib.input.cpp */,
-				093315F02539D66F0033E23A /* rt.resynth.lib.vocoder.cpp */,
 			);
 			name = source;
 			sourceTree = "<group>";
@@ -815,7 +832,6 @@
 			isa = PBXHeadersBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				090B14C11E75CC2C005A47C5 /* loudness_enum_limits.h in Headers */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -973,6 +989,7 @@
 				09B01D4E25152F0A0068FCFD /* Sources */,
 				09B01D5025152F0A0068FCFD /* Frameworks */,
 				09B01D5725152F0A0068FCFD /* CopyFiles */,
+				099B6D25253CC419003E4929 /* Embed Libraries */,
 			);
 			buildRules = (
 			);
@@ -1005,9 +1022,9 @@
 			isa = PBXNativeTarget;
 			buildConfigurationList = 09FF3F2E1E36EBBB00C81351 /* Build configuration list for PBXNativeTarget "audio" */;
 			buildPhases = (
+				09FF3F211E36EBBB00C81351 /* Headers */,
 				09FF3F1F1E36EBBB00C81351 /* Sources */,
 				09FF3F201E36EBBB00C81351 /* Frameworks */,
-				09FF3F211E36EBBB00C81351 /* Headers */,
 			);
 			buildRules = (
 			);
@@ -1442,6 +1459,7 @@
 				LIBRARY_SEARCH_PATHS = (
 					/usr/local/lib,
 					"/Users/Olivier/dev/wxWidgets-3.1.4/build-cocoa-debug/lib",
+					/usr/local/Cellar/portmidi/217_2/lib,
 				);
 				OTHER_CFLAGS = (
 					"-D_FILE_OFFSET_BITS=64",
@@ -1468,6 +1486,7 @@
 				LIBRARY_SEARCH_PATHS = (
 					/usr/local/lib,
 					"/Users/Olivier/dev/wxWidgets-3.1.4/build-cocoa-debug/lib",
+					/usr/local/Cellar/portmidi/217_2/lib,
 				);
 				OTHER_CFLAGS = (
 					"-D_FILE_OFFSET_BITS=64",
