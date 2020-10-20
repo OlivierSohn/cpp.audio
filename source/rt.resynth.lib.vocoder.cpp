@@ -186,29 +186,34 @@ struct Vocoder {
   static constexpr int order_filters_carrier = 1;
   static constexpr int order_filters_modulator = 1;
 
+  struct Volumes {
+    float modulator;
+    float carrier;
+    float vocoder;
+  };
+  
+  struct Params {
+    Volumes vol;
+    float env_follower_cutoff_ratio;
+  };
+  
   Vocoder()
   : amplitudes(count_bands) {
   }
 
-  template<typename Out, typename C>
-  void initialize(C && get_modulator_carrier_sample,
-                  Out & ctxt,
-                  std::atomic<float> & voice_volume,
-                  std::atomic<float> & vocoded_volume,
-                  std::atomic<float> & env_follower_cutoff_ratio) {
+  template<typename Out, typename P, typename S>
+  void initialize(Out & ctxt,
+                  P && get_params,
+                  S && get_modulator_carrier_sample) {
     sample_rate = ctxt.getSampleRate();
     setup();
 
     Assert(state == SynthState::ComputeNotRegistered);
     ctxt.getStepper().enqueueOneShot([this,
-                                      &voice_volume,
-                                      &vocoded_volume,
-                                      &env_follower_cutoff_ratio,
+                                      get_params,
                                       get_modulator_carrier_sample](auto & out, auto){
       if (!out.registerSimpleCompute([this,
-                                      &voice_volume,
-                                      &vocoded_volume,
-                                      &env_follower_cutoff_ratio,
+                                      get_params,
                                       get_modulator_carrier_sample
                                       ](double * buf, int frames) mutable {
         if (state == SynthState::WaitingForComputeUnregistration) {
@@ -216,18 +221,15 @@ struct Vocoder {
           return false;
         }
 
-        {
-          float const tmp = env_follower_cutoff_ratio;
-          if (!last_env_follower_cutoff_ratio || *last_env_follower_cutoff_ratio != tmp) {
-            last_env_follower_cutoff_ratio = tmp;
-            modulator.setup_env_followers(*sample_rate,
-                                          freqs,
-                                          tmp);
-          }
+        Params const params = get_params();
+        if (!last_env_follower_cutoff_ratio || *last_env_follower_cutoff_ratio != params.env_follower_cutoff_ratio) {
+          last_env_follower_cutoff_ratio = params.env_follower_cutoff_ratio;
+          modulator.setup_env_followers(*sample_rate,
+                                        freqs,
+                                        params.env_follower_cutoff_ratio);
         }
-        
-        float const the_voice_volume = voice_volume;
-        float const the_vocoded_volume = vocoded_volume;
+      
+        Volumes const & volume = params.vol;
         
         for (int i=0; i<frames; ++i) {
           std::optional<std::pair<double, double>> const s = get_modulator_carrier_sample();
@@ -244,8 +246,9 @@ struct Vocoder {
           double const vocoded = carrier.feed(carrier_sample,
                                               amplitudes);
           double const mixed =
-          the_voice_volume * modulator_sample +
-          the_vocoded_volume * vocoded;
+          volume.modulator * modulator_sample +
+          volume.carrier * carrier_sample +
+          volume.vocoder * vocoded;
           for (int j=0; j<Out::nAudioOut; ++j) {
             buf[Out::nAudioOut * i + j] += mixed;
           }

@@ -640,7 +640,12 @@ public:
   void setDirectVoiceVolume(float f) {
     voice_volume = f;
   }
-  
+  float getCarrierVolume() const {
+    return carrier_volume;
+  }
+  void setCarrierVolume(float f) {
+    carrier_volume = f;
+  }
   float getVocoderVolume() const {
     return vocoder_volume;
   }
@@ -724,6 +729,7 @@ private:
   std::atomic<float> vocoder_env_follower_cutoff_ratio = 1.f/20.f;
   
   std::atomic<float> voice_volume = 1.f;
+  std::atomic<float> carrier_volume = 0.f;
   std::atomic<float> vocoder_volume = 0.f;
   std::atomic<float> analysis_volume = 1.f;
   
@@ -853,7 +859,19 @@ RtResynth::init(int const sample_rate) {
 #endif
                         );
   
-  vocoder.initialize([this]() -> std::optional<std::pair<double, double>> {
+  vocoder.initialize(ctxt,
+                     [this] () -> Vocoder::Params{
+    return
+    {
+      {
+        voice_volume.load(),
+        carrier_volume.load(),
+        vocoder_volume.load()
+      },
+      vocoder_env_follower_cutoff_ratio.load()
+    };
+  },
+                     [this] () -> std::optional<std::pair<double, double>> {
     std::optional<double> mod = read_queued_input();
     if (!mod) {
       return {};
@@ -862,11 +880,7 @@ RtResynth::init(int const sample_rate) {
     vocoder_carrier.compute(&carrier_val,
                             1);
     return std::make_pair(*mod, carrier_val);
-  },
-                     ctxt,
-                     voice_volume,
-                     vocoder_volume,
-                     vocoder_env_follower_cutoff_ratio);
+  });
 
   vocoder_carrier.setSynchronousElementInitializer(VocoderCarrierElementInitializer<double>(
     sample_rate,

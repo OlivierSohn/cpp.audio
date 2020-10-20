@@ -365,6 +365,14 @@ struct MyApp : public wxApp {
           1.f
         },
         {
+          "Carrier volume",
+          "",
+          [this](){ return resynth.getCarrierVolume(); },
+          [this](float v){ resynth.setCarrierVolume(v); },
+          0.f,
+          0.4f // not 1.f, because the carrier is a very powerful signal
+        },
+        {
           "Dry voice volume",
           "",
           [this](){ return resynth.getDirectVoiceVolume(); },

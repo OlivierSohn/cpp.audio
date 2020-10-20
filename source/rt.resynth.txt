@@ -1,6 +1,11 @@
 
 /*
 
+- The voice characteristics are lost through the vocoder.
+What is wrong?
+Try to change the number of bands, the filter order.
+- use ffts to have better resolution (reduced leakage between bands)
+
 - make vocoder parameters modifyable in realtime:
 
 bandpass order (modulator)
