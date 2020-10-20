@@ -48,15 +48,11 @@ struct NonRealtimeAnalysisFrame {
   void try_push(EndOfFrame const &end,
                 std::vector<PlayedNote> const & played_pitches);
   
-  std::mutex & getMutex() const { return mutex; }
-  
-  // you must lock the mutex for this call
-  std::optional<EndOfFrame> const & getFrameStatus() const { return frame_status; }
-  // you must lock the mutex while you read the vector
-  std::vector<PlayedNote> const & getPlayingNotes() const { return vec; }
-  // you must lock the mutex while you read the vector
-  std::vector<PlayedNote> const & getDroppedNotes() const { return vec_dropped; }
-  
+  // Thread-safe
+  void fetch_last_frame(std::vector<PlayedNote> & result,
+                        std::vector<PlayedNote> & result_dropped,
+                        std::optional<int64_t> & frame_id) const;
+
 private:
   struct NoteOn { PlayedNote note; };
   struct NoteOnDropped { PlayedNote note; };
@@ -147,12 +143,11 @@ NonRealtimeAnalysisFrame::NonRealtimeAnalysisFrame() {
         // hence we don't want to sleep
         continue;
       }
-      auto const & status = getFrameStatus();
-      if (!status) {
+      if (!frame_status) {
         // no frame has been received yet so we don't know what the periodicity of the producer is
         continue;
       }
-      std::chrono::microseconds const period = status->periodicity;
+      std::chrono::microseconds const period = frame_status->periodicity;
       if (period > std::chrono::microseconds(1000)) {
         std::this_thread::sleep_for(period/30);
       }
@@ -244,4 +239,38 @@ void NonRealtimeAnalysisFrame::onNoteChange(NoteChange const & n) {
   *it = n.note;
 }
 
+
+void NonRealtimeAnalysisFrame::fetch_last_frame(std::vector<PlayedNote> & result,
+                                                std::vector<PlayedNote> & result_dropped,
+                                                std::optional<int64_t> & frame_id) const {
+  result.clear();
+  result_dropped.clear();
+  
+  while(true)
+  {
+    std::size_t sz, sz_dropped;
+    {
+      std::lock_guard g(mutex);
+      sz = vec.size();
+      sz_dropped = vec_dropped.size();
+      if ((result.capacity() >= sz) &&
+          (result_dropped.capacity() >= sz_dropped)) {
+        std::copy(vec.begin(),
+                  vec.end(),
+                  std::back_inserter(result));
+        std::copy(vec_dropped.begin(),
+                  vec_dropped.end(),
+                  std::back_inserter(result_dropped));
+        frame_id.reset();
+        if (frame_status) {
+          frame_id = frame_status->frame_id;
+        }
+        return;
+      }
+    }
+    // allocate when we don't own the mutex
+    result.reserve(3*sz);
+    result_dropped.reserve(3*sz_dropped);
+  }
+}
 } // NS

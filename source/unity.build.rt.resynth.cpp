@@ -23,6 +23,7 @@
 #include "rt.resynth.lib.cpp"
 
 #include "rt.resynth.ui.params.cpp"
-#include "rt.resynth.ui.pitch.cpp"
+#include "rt.resynth.ui.analysis.cpp"
+#include "rt.resynth.ui.vocoder.cpp"
 #include "rt.resynth.ui.autotune.cpp"
 #include "rt.resynth.ui.cpp"

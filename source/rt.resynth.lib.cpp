@@ -483,6 +483,8 @@ public:
     return analysis_data;
   }
   
+  Vocoder const & getVocoder() const { return vocoder; }
+
   float getHarmonizePreAutotune() const {
     return pitch_harmonize_pre_autotune;
   }

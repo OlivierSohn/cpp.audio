@@ -182,7 +182,7 @@ struct Vocoder {
   static constexpr int count_bands = 20;
   
   static constexpr float min_freq = 100.f;
-  static constexpr float max_freq = 10000.f;
+  static constexpr float max_freq = 20000.f;
   static constexpr int order_filters_carrier = 1;
   static constexpr int order_filters_modulator = 1;
 
@@ -271,6 +271,14 @@ struct Vocoder {
       std::this_thread::sleep_for(std::chrono::microseconds(100));
     }
   }
+  
+  void fetch_last_data(std::vector<double> & envelopes, std::vector<double> & band_freqs) const {
+    std::lock_guard l(mutex);
+
+    envelopes = amplitudes;
+    band_freqs = freqs;
+  }
+
 private:
   std::atomic<SynthState> state = SynthState::ComputeNotRegistered;
   
@@ -281,8 +289,12 @@ private:
   
   std::optional<int> sample_rate;
   std::optional<float> last_env_follower_cutoff_ratio;
+  
+  mutable std::mutex mutex; // protects amplitudes and freq allocation
 
   void setup() {
+    std::lock_guard l(mutex);
+    
     freqs.clear();
     freqs.reserve(count_bands + 1);
     

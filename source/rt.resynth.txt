@@ -5,6 +5,7 @@
 What is wrong?
 Try to change the number of bands, the filter order.
 - use ffts to have better resolution (reduced leakage between bands)
+. first, use windowed fft on modulator
 
 - make vocoder parameters modifyable in realtime:
 

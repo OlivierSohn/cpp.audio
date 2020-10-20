@@ -8,13 +8,13 @@ enum class TimerId {
 class MyFrame : public wxFrame
 {
 public:
-
   MyFrame(std::vector<std::pair<std::vector<ParamProxy<float>>, wxColor>> const & params_before_autotune,
           Autotune const & autotune,
           std::vector<std::pair<std::vector<ParamProxy<float>>, wxColor>> const & params_after_autotune,
           std::vector<std::pair<std::vector<ParamProxy<float>>, wxColor>> const & params_envelope,
           std::vector<std::vector<ParamPollProxy>> const & poll_params,
-          PitchWindow::PitchFunction const & pitch_func)
+          PitchWindow::PitchFunction const & pitch_func,
+          VocoderWindow::VocoderFunc const & vocoder_func)
   : wxFrame(NULL,
             wxID_ANY,
             "Resynth",
@@ -26,7 +26,8 @@ public:
             static_cast<int>(TimerId::RefreshUI))
   {
     pitch_ui = new PitchWindow(this, Orientation::Horizontal, pitch_func);
-
+    vocoder_ui = new VocoderWindow(this, Orientation::Horizontal, vocoder_func);
+    
     this->Connect( wxEVT_TIMER, wxTimerEventHandler( MyFrame::OnUITimer ), NULL, this );
     
     auto menuFile = new wxMenu();
@@ -92,6 +93,10 @@ public:
         sliders_sizer,
         0,
         wxALL | wxEXPAND);
+    Add(vocoder_ui,
+        sliders_sizer,
+        0,
+        wxALL | wxEXPAND);
 
     auto poll_params_sizer = new wxBoxSizer(wxVERTICAL);
     {
@@ -137,6 +142,7 @@ private:
   wxTimer uiTimer;
   std::vector<std::pair<ParamPollProxy, wxStaticText*>> poll_params_ui;
   PitchWindow * pitch_ui;
+  VocoderWindow * vocoder_ui;
   
   void OnExit(wxCommandEvent& event)
   {
@@ -155,7 +161,11 @@ private:
     if (pitch_ui->TryFetchNewFrame()) {
       pitch_ui->Refresh();
     }
-    
+
+    if (vocoder_ui->TryFetchNewFrame()) {
+      vocoder_ui->Refresh();
+    }
+
     for (auto & [param, ui] : poll_params_ui) {
       std::optional<std::variant<int, float>> const value = param.get();
       std::string label;
@@ -571,40 +581,12 @@ struct MyApp : public wxApp {
                              params_envelope,
                              poll_params,
                              [this](std::vector<PlayedNote> & result, std::vector<PlayedNote> & result_dropped, std::optional<int64_t> & frame_id){
-      result.clear();
-      result_dropped.clear();
-
-      NonRealtimeAnalysisFrame const & analysis_data = resynth.getAnalysisData();
-
-      auto & vec = analysis_data.getPlayingNotes();
-      auto & vec_dropped = analysis_data.getDroppedNotes();
-
-      while(true)
-      {
-        std::size_t sz, sz_dropped;
-        {
-          std::lock_guard g(analysis_data.getMutex());
-          sz = vec.size();
-          sz_dropped = vec_dropped.size();
-          if ((result.capacity() >= sz) &&
-              (result_dropped.capacity() >= sz_dropped)) {
-            std::copy(vec.begin(),
-                      vec.end(),
-                      std::back_inserter(result));
-            std::copy(vec_dropped.begin(),
-                      vec_dropped.end(),
-                      std::back_inserter(result_dropped));
-            frame_id.reset();
-            if (auto status = analysis_data.getFrameStatus()) {
-              frame_id = status->frame_id;
-            }
-            return;
-          }
-        }
-        // allocate when we don't own the mutex
-        result.reserve(3*sz);
-        result_dropped.reserve(3*sz_dropped);
-      }
+      resynth.getAnalysisData().fetch_last_frame(result,
+                                                 result_dropped,
+                                                 frame_id);
+    },
+                             [this](std::vector<double> & envelopes, std::vector<double> & band_freqs) {
+      resynth.getVocoder().fetch_last_data(envelopes, band_freqs);
     });
     frame->Show(true);
     return true;

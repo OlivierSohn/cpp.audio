@@ -126,7 +126,8 @@ private:
                         width_pitches]
     (float const velocity, int const y) {
       double logVelocity = (log_vol_min - std::log(velocity)) * inv_log_vol_min;
-      wxCoord const w = static_cast<int>(std::max(1., logVelocity * width_pitches));
+      wxCoord const w = static_cast<int>(std::max(1.,
+                                                  logVelocity * (width_pitches-1)));
       if(orientation == Orientation::Vertical) {
         dc.DrawLine(x_start_pitches,
                     y,
@@ -134,9 +135,9 @@ private:
                     y);
       } else {
         dc.DrawLine(y,
-                    width_pitches - x_start_pitches,
+                    width_pitches,
                     y,
-                    width_pitches - (x_start_pitches + w));
+                    width_pitches - w);
       }
     };
     
