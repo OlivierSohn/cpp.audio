@@ -35,6 +35,67 @@ private:
   Filter<T, 1, FilterType::LOW_PASS, ORDER> lp_;
 };
 
+template<typename T>
+struct FFTModulator {
+  
+  // This dynamically allocates memory
+  void setup_bands(int sample_rate,
+                   std::vector<T> const & freqs) {
+    sz = static_cast<int>(freqs.size()) - 1;
+    Assert(sz);
+    
+#if IMJ_DEBUG_VOCODER
+    wav_writer_modulator_input = std::make_unique<AsyncWavWriter>(1,
+                                                                  sample_rate,
+                                                                  "debug_modulator_input");
+    for (int i=0; i<sz; ++i) {
+      wav_writer_modulator_envelopes.push_back(std::make_unique<AsyncWavWriter>(1,
+                                                                                sample_rate,
+                                                                                "debug_modulator_envelope_" + std::to_string(i)));
+    }
+#endif
+  }
+  
+  void setup_env_followers(int sample_rate,
+                           std::vector<T> const & freqs,
+                           T const factor) {
+  }
+  
+  void feed(T sample,
+            std::vector<T> & res) {
+    Assert(res.size() == sz);
+    
+#if IMJ_DEBUG_VOCODER
+    wav_writer_modulator_input->sync_feed_frame(&sample);
+#endif
+    
+    // when we have enough samples, do the ftt
+    
+    // use hanning window (no need for "very fine" frequency peak measurement here)
+    
+    // once we have a new spectrum, compute new bands coefficients
+    
+    // interpolate linearily from the old to the new coefficients
+
+    // TODO use different sizes of ftts to have a better latency on higher freqs or overlapp the ffts (more computationaly intensive, though?)
+    
+    {
+      int i=0; // TODO replace
+#if IMJ_DEBUG_VOCODER
+      wav_writer_modulator_envelopes[i]->sync_feed_frame(&res[i]);
+#endif
+    }
+  }
+  
+private:
+  int sz;
+  
+#if IMJ_DEBUG_VOCODER
+  std::unique_ptr<AsyncWavWriter> wav_writer_modulator_input;
+  std::vector<std::unique_ptr<AsyncWavWriter>> wav_writer_modulator_envelopes;
+#endif
+};
+
 template<int ORDER, typename T>
 struct Modulator {
 
@@ -183,8 +244,10 @@ struct Vocoder {
   
   static constexpr float min_freq = 100.f;
   static constexpr float max_freq = 20000.f;
-  static constexpr int order_filters_carrier = 1;
-  static constexpr int order_filters_modulator = 1;
+  
+  // we need at least order 4 to have a good separation between bands, but then
+  static constexpr int order_filters_carrier = 4;
+  static constexpr int order_filters_modulator = 4;
 
   struct Volumes {
     float modulator;
@@ -283,6 +346,7 @@ private:
   std::atomic<SynthState> state = SynthState::ComputeNotRegistered;
   
   Modulator<order_filters_modulator, double> modulator;
+  //FFTModulator<double> modulator;
   std::vector<double> amplitudes;
   Carrier<order_filters_carrier, double> carrier;
   std::vector<double> freqs;

@@ -58,12 +58,15 @@ struct VocoderWindow
                  new_frequencies);
     bool changed = false;
     if (new_envelopes != envelopes) {
-      envelopes.swap(new_envelopes);
       changed = true;
     }
     if (new_frequencies != frequencies) {
-      frequencies.swap(new_frequencies);
       changed = true;
+    }
+    changed = changed && (new_frequencies.size() == (new_envelopes.size() + 1));
+    if (changed) {
+      envelopes.swap(new_envelopes);
+      frequencies.swap(new_frequencies);
     }
     return changed;
   }
@@ -103,6 +106,10 @@ private:
     wxSize const sz = GetClientSize();
     dc.SetBrush(*wxBLACK_BRUSH);
     dc.DrawRectangle(sz);
+    
+    if(frequencies.size() != (envelopes.size() + 1)) {
+      return;
+    }
 
     int const count_bands = static_cast<int>(envelopes.size());
     int const height_bands = (orientation == Orientation::Vertical) ? sz.y : sz.x;
@@ -154,8 +161,6 @@ private:
       }
     };
     
-    Assert(frequencies.size() == (envelopes.size() + 1));
-
     auto write_freq = [&dc,
                        this,
                        width_envelopes]

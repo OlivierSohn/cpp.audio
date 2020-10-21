@@ -354,15 +354,6 @@ public:
   
   void teardown();
   
-  // These methods can be used with no need to reinitialize
-  
-  void setInputDelaySeconds(float f) {
-    if (f < 0) {
-      throw std::invalid_argument("input_delay_seconds is too small");
-    }
-    input_delay_seconds = f;
-  }
-  
   void setWindowCenterStrideSeconds(float f) {
     if (f < 0) {
       throw std::invalid_argument("window_center_stride_seconds is too small");
@@ -398,13 +389,15 @@ public:
     max_track_pitches = f;
   }
   
-  float getInputDelaySeconds() const {
-    return input_delay_seconds;
+  // we need an even window size because we use 2 half windows to represent a full window
+  int getEvenWindowSizeFrames(int const sample_rate) const {
+    return 2 * std::max(1,
+                        static_cast<int>(0.5 * window_size_seconds * sample_rate));
   }
   float getWindowSizeSeconds() const {
     return window_size_seconds;
   }
-  float getEffectiveWindowSizeSeconds(int sample_rate) const {
+  float getEffectiveWindowSizeSeconds(int const sample_rate) const {
     return std::max(getWindowSizeSeconds(),
                     2.f/sample_rate);
   }
@@ -457,8 +450,14 @@ public:
     return ctxt.getStepper().countRetriedOneshotInsertions();
   }
   
-  std::optional<float> getDurationProcess() {
-    float const f = dt_process_seconds;
+  std::optional<float> getDurationFft() {
+    return periodic_fft.getDurationFft();
+  }
+  std::optional<float> getDurationCopy() {
+    return periodic_fft.getDurationCopy();
+  }
+  std::optional<float> getDurationExtract() {
+    float const f = dt_extract_seconds;
     if (f < 0) {
       return {};
     }
@@ -466,13 +465,6 @@ public:
   }
   std::optional<float> getDurationStep() {
     float const f = dt_step_seconds;
-    if (f < 0) {
-      return {};
-    }
-    return f;
-  }
-  std::optional<float> getDurationCopy() {
-    float const f = dt_copy_seconds;
     if (f < 0) {
       return {};
     }
@@ -694,8 +686,6 @@ private:
   NonRealtimeAnalysisFrame analysis_data;
   int64_t analysis_frame_idx = 0;
   
-  cyclic<float> delayed_input;
-  std::atomic<float> input_delay_seconds = 0.f;
   std::atomic<float> window_size_seconds = 0.1814f;
   std::atomic<float> window_center_stride_seconds = 0.09f;
   std::atomic<float> min_volume = 0.0001;
@@ -739,15 +729,8 @@ private:
   
   int64_t next_noteid = 0;
   
-  using Sample = double;
-  using SampleVector = std::vector<Sample>;
-  using SampleVectorConstIterator = SampleVector::const_iterator;
-  SampleVector samples;
-  std::vector<double> half_window;
-  a64::vector<double> work_vector_signal;
-  typename fft::RealFBins_<fft::Fastest, double, a64::Alloc>::type work_vector_freqs;
-  
-  FrequenciesSqMag<double> frequencies_sqmag;
+  PeriodicFft periodic_fft;
+    
   std::vector<FreqMag<double>> freqmags;
   std::vector<PitchVolume> freqmags_data;
   std::vector<PitchInterval> pitch_intervals;
@@ -758,9 +741,8 @@ private:
   std::vector<std::optional<int>> pitch_changes;
   std::vector<bool> continue_playing; // indexed like 'played_pitches'
   
-  std::atomic<float> dt_process_seconds = -1.f;
+  std::atomic<float> dt_extract_seconds = -1.f;
   std::atomic<float> dt_step_seconds = -1.f;
-  std::atomic<float> dt_copy_seconds = -1.f;
   std::atomic<float> input_queue_fill_ratio = 0.f;
   std::atomic_int dropped_note_on = 0;
   
@@ -768,10 +750,6 @@ private:
   std::unique_ptr<std::thread> midi_thread;
   
   void analysis_thread(int const sample_rate);
-  
-  void setDurations(std::optional<float> duration_process_seconds,
-                    std::optional<float> duration_step_seconds,
-                    std::optional<float> duration_copy_seconds);
   
   void step (int const sample_rate,
              std::vector<FreqMag<double>> const & fs,
@@ -796,7 +774,6 @@ RtResynth::RtResynth()
 , input(4,
         4)
 {
-  frequencies_sqmag.frequencies_sqmag.reserve(200);
   freqmags.reserve(200);
   freqmags_data.reserve(200);
   pitch_intervals.reserve(200);
@@ -982,69 +959,53 @@ void RtResynth::onLostInputMidiEvents() {
 
 void
 RtResynth::analysis_thread(int const sample_rate) {
-  auto process = [this](int const sample_rate,
-                        SampleVectorConstIterator from,
-                        SampleVectorConstIterator to,
-                        std::vector<double> const & half_window,
-                        FrequenciesSqMag<double> & frequencies_sqmag,
-                        std::vector<FreqMag<double>> & freqmags) {
-    int constexpr zero_padding_factor = 1;
-    int constexpr windowed_signal_stride = 1;
-    
-    findFrequenciesSqMag<fft::Fastest>(from,
-                                       to,
-                                       windowed_signal_stride,
-                                       half_window,
-                                       zero_padding_factor,
-                                       work_vector_signal,
-                                       work_vector_freqs,
-                                       frequencies_sqmag);
-    
-    extractLocalMaxFreqsMags(sample_rate / windowed_signal_stride,
-                             frequencies_sqmag,
-                             SqMagToDb<double>(),
-                             freqmags);
-  };
-  
-  int end = 0;
-  
-  auto init_data = [this,
-                    sample_rate
-                    ](bool const force){
-    int const input_delay_frames = input_delay_seconds * sample_rate;
-    
-    // we need an even window size
-    int const window_size = 2 * std::max(1,
-                                         static_cast<int>(0.5 * window_size_seconds * sample_rate));
-    bool reinit_samples = force;
-    if (force || static_cast<int>(delayed_input.size()) != input_delay_frames + 1) {
-      delayed_input.resize(input_delay_frames + 1); // this also resets the elements to zero
-      reinit_samples = true;
-    }
-    {
-      Assert(0 == window_size%2);
-      if (static_cast<int>(half_window.size()) != window_size/2) {
-        half_gaussian_window<double>(4, window_size/2, half_window);
-        normalize_window(half_window);
-        Assert(static_cast<int>(half_window.size()) == window_size/2);
-        reinit_samples = true;
-      }
-    }
-    if (reinit_samples) {
-      samples.clear();
-      samples.resize(window_size, {});
-    }
-    return std::make_pair(input_delay_frames, window_size);
-  };
-  
-  // force reinitialization
-  auto [input_delay_frames, window_size] = init_data(true);
-
   double const nanos_pre_frame = 1. / static_cast<double>(sample_rate);
   uint64_t count_queued_frames = 0;
   uint64_t local_count_dropped_input_frames = 0;
-  
-  int ignore_frames = 0;
+
+  periodic_fft.setLambdas([this, sample_rate]() {return getEvenWindowSizeFrames(sample_rate); },
+                          [this, sample_rate]() {return std::max(1,
+                                                                 static_cast<int>(0.5f + getWindowCenterStrideSeconds() * sample_rate)); },
+                          [this, sample_rate, nanos_pre_frame, &count_queued_frames, &local_count_dropped_input_frames]
+                          (int const window_center_stride,
+                           FrequenciesSqMag<double> const & frequencies_sqmag) {
+    if (!thread_resynth_active) {
+      return;
+    }
+    
+    {
+      std::optional<float> duration_extract_seconds;
+      std::optional<profiling::CpuDuration> dt;
+      {
+        profiling::ThreadCPUTimer timer(dt);
+        
+        extractLocalMaxFreqsMags(sample_rate / PeriodicFft::windowed_signal_stride,
+                                 frequencies_sqmag,
+                                 SqMagToDb<double>(),
+                                 freqmags);
+      }
+      if (dt) duration_extract_seconds = dt->count() / 1000000.;
+      setDuration(duration_extract_seconds, dt_extract_seconds);
+    }
+    
+    {
+      std::optional<float> duration_step_seconds;
+      std::optional<profiling::CpuDuration> dt;
+      {
+        profiling::ThreadCPUTimer timer(dt);
+        
+        step(sample_rate,
+             freqmags,
+             MIDITimestampAndSource((count_queued_frames + local_count_dropped_input_frames) * nanos_pre_frame,
+                                    to_underlying(MidiSource::Analysis)),
+             window_center_stride); // we pass the future stride, on purpose
+      }
+      if (dt) duration_step_seconds = dt->count() / 1000000.;
+      setDuration(duration_step_seconds, dt_step_seconds);
+    }
+    
+    storeAudioInputQueueFillRatio(input_2_analysis_queue->queue.was_size() / static_cast<float>(input_2_analysis_queue->queue.capacity()));
+  });
   
   while (thread_resynth_active) {
     QueueItem var;
@@ -1052,7 +1013,7 @@ RtResynth::analysis_thread(int const sample_rate) {
       if (std::holds_alternative<CountDroppedFrames>(var)) {
         auto count = std::get<CountDroppedFrames>(var).count;
         local_count_dropped_input_frames += count;
-        ignore_frames -= count;
+        periodic_fft.on_dropped_frames(count);
         if (!thread_resynth_active) {
           return;
         }
@@ -1060,105 +1021,10 @@ RtResynth::analysis_thread(int const sample_rate) {
       }
       Assert(std::holds_alternative<InputSample>(var));
       ++count_queued_frames;
-      if (input_delay_frames > 1) {
-        delayed_input.feed(std::get<InputSample>(var).value);
-      }
-      if (ignore_frames > 0) {
-        --ignore_frames;
-        continue;
-      }
-      if (input_delay_frames > 1) {
-        samples[end] = *delayed_input.cycleEnd();
-      } else {
-        samples[end] = std::get<InputSample>(var).value;
-      }
-      ++ end;
-      if (end == window_size) {
-        end = 0;
-        if (!thread_resynth_active) {
-          return;
-        }
-        
-        std::optional<float>
-        duration_process_seconds,
-        duration_step_seconds,
-        duration_copy_seconds;
-        
-        {
-          std::optional<profiling::CpuDuration> dt;
-          {
-            profiling::ThreadCPUTimer timer(dt);
-            
-            process(sample_rate,
-                    samples.begin(),
-                    samples.begin() + window_size,
-                    half_window,
-                    frequencies_sqmag,
-                    freqmags);
-          }
-          if (dt) duration_process_seconds = dt->count() / 1000000.;
-        }
-        
-        int const window_center_stride = std::max(1,
-                                                  static_cast<int>(0.5f + window_center_stride_seconds * sample_rate));
-        {
-          std::optional<profiling::CpuDuration> dt;
-          {
-            profiling::ThreadCPUTimer timer(dt);
-            step(sample_rate,
-                 freqmags,
-                 MIDITimestampAndSource((count_queued_frames + local_count_dropped_input_frames) * nanos_pre_frame,
-                                        to_underlying(MidiSource::Analysis)),
-                 window_center_stride); // we pass the future stride, on purpose
-          }
-          if (dt) duration_step_seconds = dt->count() / 1000000.;
-        }
-        
-        std::tie(input_delay_frames, window_size) = init_data(false);
-        
-        {
-          std::optional<profiling::CpuDuration> dt;
-          {
-            profiling::ThreadCPUTimer timer(dt);
-            int const windowoverlapp = window_size - window_center_stride;
-            if (windowoverlapp >= 0) {
-              const int offset = window_size-windowoverlapp;
-              for (; end<windowoverlapp; ++end) {
-                samples[end] = samples[end + offset];
-              }
-              ignore_frames = 0;
-            } else {
-              ignore_frames = -windowoverlapp;
-            }
-          }
-          if (dt) duration_copy_seconds = dt->count() / 1000000.;
-        }
-        
-        setDurations(duration_process_seconds,
-                     duration_step_seconds,
-                     duration_copy_seconds);
-        
-        storeAudioInputQueueFillRatio(input_2_analysis_queue->queue.was_size() / static_cast<float>(input_2_analysis_queue->queue.capacity()));
-      }
+      periodic_fft.feed(std::get<InputSample>(var).value);
     }
     std::this_thread::yield(); // should we sleep?
   }
-}
-
-void
-RtResynth::setDurations(std::optional<float> duration_process_seconds,
-                        std::optional<float> duration_step_seconds,
-                        std::optional<float> duration_copy_seconds) {
-  auto set = [](std::optional<float> const & secs, std::atomic<float> & atom) {
-    if (secs) {
-      atom = *secs;
-    } else {
-      atom = -1.f;
-    }
-  };
-  set(duration_process_seconds, dt_process_seconds);
-  set(duration_step_seconds, dt_step_seconds);
-  set(duration_copy_seconds, dt_copy_seconds);
 }
 
 void

@@ -418,11 +418,12 @@ struct MyApp : public wxApp {
       {
         "Analysis Load",
         [this]() -> ParamPollProxy::OptionalVariant {
-          std::optional<float> a = resynth.getDurationProcess();
-          std::optional<float> b = resynth.getDurationStep();
-          std::optional<float> c = resynth.getDurationCopy();
-          if (a && b && c) {
-            float const secs = *a + *b + *c;
+          std::optional<float> a = resynth.getDurationFft();
+          std::optional<float> b = resynth.getDurationExtract();
+          std::optional<float> c = resynth.getDurationStep();
+          std::optional<float> d = resynth.getDurationCopy();
+          if (a && b && c && d) {
+            float const secs = *a + *b + *c + *d;
             float analysis_stride_secs = resynth.getEffectiveWindowCenterStrideSeconds(reinit_params.sample_rate);
             if (analysis_stride_secs) {
               return secs / analysis_stride_secs;
@@ -432,9 +433,21 @@ struct MyApp : public wxApp {
         }
       },
       {
-        "Analysis/process Load",
+        "Analysis/fft Load",
         [this]() -> ParamPollProxy::OptionalVariant {
-          if (std::optional<float> secs = resynth.getDurationProcess()) {
+          if (std::optional<float> secs = resynth.getDurationFft()) {
+            float analysis_stride_secs = resynth.getEffectiveWindowCenterStrideSeconds(reinit_params.sample_rate);
+            if (analysis_stride_secs) {
+              return *secs / analysis_stride_secs;
+            }
+          }
+          return {};
+        }
+      },
+      {
+        "Analysis/extract Load",
+        [this]() -> ParamPollProxy::OptionalVariant {
+          if (std::optional<float> secs = resynth.getDurationExtract()) {
             float analysis_stride_secs = resynth.getEffectiveWindowCenterStrideSeconds(reinit_params.sample_rate);
             if (analysis_stride_secs) {
               return *secs / analysis_stride_secs;
