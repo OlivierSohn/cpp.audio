@@ -212,6 +212,10 @@ private:
                    height_bounds.second);
       }
     }
+    
+    dc.DrawText(std::to_string(max_velocity),
+                20,
+                20);
   }
 };
 

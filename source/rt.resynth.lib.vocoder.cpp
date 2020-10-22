@@ -1,6 +1,6 @@
 #define IMJ_DEBUG_VOCODER 1
 
-namespace imajuscule::audio {
+namespace imajuscule::audio::rtresynth {
 
 template<int ORDER, typename T>
 struct BandPass {
@@ -40,9 +40,74 @@ struct FFTModulator {
   
   // This dynamically allocates memory
   void setup_bands(int sample_rate,
-                   std::vector<T> const & freqs) {
-    sz = static_cast<int>(freqs.size()) - 1;
-    Assert(sz);
+                   std::vector<T> const & band_freqs) {
+    sz = static_cast<int>(band_freqs.size()) - 1;
+    Assert(sz > 0);
+
+    freqs = band_freqs;
+    
+    new_bands_amplitudes.clear();
+    new_bands_amplitudes.resize(sz);
+    old_bands_amplitudes.clear();
+    old_bands_amplitudes.resize(sz);
+   
+    double constexpr window_size_seconds = 0.05;
+    double constexpr window_center_stride_seconds = 0.005;
+    
+    // TODO use hanning window (no need for "very fine" frequency peak measurement here)
+    
+    // TODO use different sizes of ftts to have a better latency on higher freqs or overlapp the ffts (more computationaly intensive, though?)
+
+    periodic_fft.setLambdas([sample_rate]() { return sample_rate * window_size_seconds; },
+                            [sample_rate]() { return std::max(1,
+                                                              static_cast<int>(0.5f + window_center_stride_seconds * sample_rate)); },
+                            [this, sample_rate](int const window_center_stride,
+                                   FrequenciesSqMag<double> const & frequencies_sqmag) {
+      itp_length = window_center_stride + 1;
+      itp_index = 1;
+      
+      old_bands_amplitudes.swap(new_bands_amplitudes);
+      
+      std::fill(new_bands_amplitudes.begin(),
+                new_bands_amplitudes.end(),
+                static_cast<T>(0));
+
+      double const bin_to_Hz = frequencies_sqmag.bin_index_to_Hz(sample_rate);
+
+      auto itLow = freqs.begin();
+      auto end = freqs.end();
+      Assert (itLow != end);
+      auto itHigh = itLow + 1;
+      Assert (itHigh != end);
+      int band_idx = 0;
+
+      for (int i=0, sz = static_cast<int>(frequencies_sqmag.frequencies_sqmag.size()); i < sz; ++i) {
+        double const Hz = bin_to_Hz * i;
+        if (Hz <= *itLow) {
+          continue;
+        }
+        while (Hz > *itHigh) {
+          ++band_idx;
+          ++itHigh;
+          ++itLow;
+          if (itHigh == end) {
+            break;
+          }
+        }
+        if (itHigh == end) {
+          break;
+        }
+        Assert(Hz <= *itHigh);
+        Assert(Hz > *itLow);
+        new_bands_amplitudes[band_idx] += frequencies_sqmag.frequencies_sqmag[i];
+        //new_bands_amplitudes[band_idx] = std::max(new_bands_amplitudes[band_idx],
+          //                                        frequencies_sqmag.frequencies_sqmag[i]);
+      }
+      for (auto & a : new_bands_amplitudes) {
+        a = std::sqrt(a);
+      }
+    }
+                            );
     
 #if IMJ_DEBUG_VOCODER
     wav_writer_modulator_input = std::make_unique<AsyncWavWriter>(1,
@@ -59,37 +124,51 @@ struct FFTModulator {
   void setup_env_followers(int sample_rate,
                            std::vector<T> const & freqs,
                            T const factor) {
+    // Not applicable
   }
   
-  void feed(T sample,
+  void on_dropped_frame() {
+    periodic_fft.reset_samples();
+  }
+  
+  void feed(std::pair<T, SampleContinuity> const & sample,
             std::vector<T> & res) {
-    Assert(res.size() == sz);
-    
 #if IMJ_DEBUG_VOCODER
-    wav_writer_modulator_input->sync_feed_frame(&sample);
+    wav_writer_modulator_input->sync_feed_frame(&sample.first);
 #endif
     
-    // when we have enough samples, do the ftt
-    
-    // use hanning window (no need for "very fine" frequency peak measurement here)
-    
-    // once we have a new spectrum, compute new bands coefficients
+    if (unlikely(sample.second == SampleContinuity::No)) {
+      periodic_fft.reset_samples();
+    }
+    periodic_fft.feed(sample.first);
     
     // interpolate linearily from the old to the new coefficients
-
-    // TODO use different sizes of ftts to have a better latency on higher freqs or overlapp the ffts (more computationaly intensive, though?)
+    float const progress = static_cast<float>(itp_index) / itp_length;
+    float const one_minus_progress = 1.f - progress;
     
-    {
-      int i=0; // TODO replace
+    Assert(static_cast<int>(res.size()) == sz);
+    for (int i=0; i<sz; ++i) {
+      res[i] = progress * new_bands_amplitudes[i] + one_minus_progress * old_bands_amplitudes[i];
 #if IMJ_DEBUG_VOCODER
       wav_writer_modulator_envelopes[i]->sync_feed_frame(&res[i]);
 #endif
     }
+
+    if (itp_index < itp_length) {
+      ++ itp_index;
+    }
   }
   
 private:
-  int sz;
+  int sz; // number of bands
+  int itp_length = 2; // includes start and end values
+  int itp_index = 1;
+  std::vector<T> freqs;
+  PeriodicFFT periodic_fft{pow2(13)};
   
+  std::vector<T> old_bands_amplitudes;
+  std::vector<T> new_bands_amplitudes;
+
 #if IMJ_DEBUG_VOCODER
   std::unique_ptr<AsyncWavWriter> wav_writer_modulator_input;
   std::vector<std::unique_ptr<AsyncWavWriter>> wav_writer_modulator_envelopes;
@@ -145,12 +224,12 @@ struct Modulator {
     }
   }
 
-  void feed(T sample,
+  void feed(std::pair<T, SampleContinuity> const & sample,
             std::vector<T> & res) {
     Assert(res.size() == band_pass.size());
 
 #if IMJ_DEBUG_VOCODER
-    wav_writer_modulator_input->sync_feed_frame(&sample);
+    wav_writer_modulator_input->sync_feed_frame(&sample.first);
 #endif
 
     for (int i=0; i<sz; ++i) {
@@ -209,15 +288,22 @@ struct Carrier {
 #endif
   }
 
-  T feed(T sample,
+  void on_dropped_frame() {
+    // TODO : ? (will not happen in today's use cases, though)
+  }
+
+  T feed(std::pair<T, SampleContinuity> const & sample,
          std::vector<T> const & ponderation) {
+    // TODO : handle the case where sample.first == SampledDiscontinuity::Yes
+    // (will not happen in real life use cases today, though)
+    
     Assert(ponderation.size() == band_pass.size());
 #if IMJ_DEBUG_VOCODER
-    wav_writer_carrier_input->sync_feed_frame(&sample);
+    wav_writer_carrier_input->sync_feed_frame(&sample.first);
 #endif
     T res{};
     for (int i=0; i<sz; ++i) {
-      T const filtered = band_pass[i].feed(sample);
+      T const filtered = band_pass[i].feed(sample.first);
 #if IMJ_DEBUG_VOCODER
       wav_writer_carrier_bands[i]->sync_feed_frame(&filtered);
 #endif
@@ -240,14 +326,14 @@ private:
 
 
 struct Vocoder {
-  static constexpr int count_bands = 20;
+  static constexpr int count_bands = 5;
   
   static constexpr float min_freq = 100.f;
   static constexpr float max_freq = 20000.f;
   
-  // we need at least order 4 to have a good separation between bands, but then
-  static constexpr int order_filters_carrier = 4;
-  static constexpr int order_filters_modulator = 4;
+  // we need at least order 4 to have a good separation between bands, but then the bands are not flat anymore, and the output is very low
+  static constexpr int order_filters_carrier = 1;
+  static constexpr int order_filters_modulator = 1;
 
   struct Volumes {
     float modulator;
@@ -295,25 +381,35 @@ struct Vocoder {
         Volumes const & volume = params.vol;
         
         for (int i=0; i<frames; ++i) {
-          std::optional<std::pair<double, double>> const s = get_modulator_carrier_sample();
-          if (!s) {
+          std::pair<
+          std::optional<std::pair<double, SampleContinuity>>,
+          std::optional<std::pair<double, SampleContinuity>>
+          > const s = get_modulator_carrier_sample();
+          
+          auto const & res_modulator = s.first;
+          auto const & res_carrier = s.second;
+          if (unlikely(!res_modulator)) {
             // happens during initialization phase (if we use a queue)
-            Assert(i == 0);
-            return true;
+            modulator.on_dropped_frame();
+          } else {
+            modulator.feed(*res_modulator,
+                           amplitudes);
           }
-          auto [modulator_sample, carrier_sample] = *s;
-          
-          modulator.feed(modulator_sample,
-                         amplitudes);
-          
-          double const vocoded = carrier.feed(carrier_sample,
-                                              amplitudes);
-          double const mixed =
-          volume.modulator * modulator_sample +
-          volume.carrier * carrier_sample +
-          volume.vocoder * vocoded;
-          for (int j=0; j<Out::nAudioOut; ++j) {
-            buf[Out::nAudioOut * i + j] += mixed;
+          if (unlikely(!res_carrier)) {
+            // happens during initialization phase (if we use a queue)
+            carrier.on_dropped_frame();
+          } else {
+            double const vocoded = carrier.feed(*res_carrier,
+                                                amplitudes);
+            if (res_modulator) {
+              double const mixed =
+              volume.modulator * res_modulator->first +
+              volume.carrier * res_carrier->first +
+              volume.vocoder * vocoded;
+              for (int j=0; j<Out::nAudioOut; ++j) {
+                buf[Out::nAudioOut * i + j] += mixed;
+              }
+            }
           }
         }
         return true;
@@ -345,8 +441,8 @@ struct Vocoder {
 private:
   std::atomic<SynthState> state = SynthState::ComputeNotRegistered;
   
-  Modulator<order_filters_modulator, double> modulator;
-  //FFTModulator<double> modulator;
+  //Modulator<order_filters_modulator, double> modulator;
+  FFTModulator<double> modulator;
   std::vector<double> amplitudes;
   Carrier<order_filters_carrier, double> carrier;
   std::vector<double> freqs;

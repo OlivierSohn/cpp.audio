@@ -15,12 +15,12 @@
 #include "rt.resynth.lib.midi.cpp"
 #include "rt.resynth.lib.metaqueue.cpp"
 #include "rt.resynth.lib.input.cpp"
+#include "rt.resynth.lib.periodicfft.cpp"
 #include "rt.resynth.lib.vocoder.cpp"
 #include "rt.resynth.lib.autotune.cpp"
 #include "rt.resynth.lib.algo.cpp"
 #include "rt.resynth.lib.locked.data.cpp"
 #include "rt.resynth.lib.test.cpp"
-#include "rt.resynth.lib.periodicfft.cpp"
 #include "rt.resynth.lib.cpp"
 
 #include "rt.resynth.ui.params.cpp"

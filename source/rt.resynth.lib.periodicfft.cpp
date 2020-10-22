@@ -10,12 +10,16 @@ void setDuration(std::optional<float> secs,
   }
 }
 
-struct PeriodicFft {
+struct PeriodicFFT {
   static int constexpr zero_padding_factor = 1;
   static int constexpr windowed_signal_stride = 1;
 
-  PeriodicFft() {
-    frequencies_sqmag.frequencies_sqmag.reserve(200);
+  using fftTag = fft::Fastest;
+  
+  PeriodicFFT(int reserve_for_max_fft_size) {
+    std::size_t const reserve = fft::capacity_for_unwrap_frequencies_sqmag<fftTag>(frequencies_sqmag.frequencies_sqmag,
+                                                                                   reserve_for_max_fft_size);
+    frequencies_sqmag.frequencies_sqmag.reserve(reserve);
   }
   
   using OnFftResult = folly::Function<void(int const, FrequenciesSqMag<double> const &)>;
@@ -59,7 +63,16 @@ struct PeriodicFft {
   }
   
   void on_dropped_frames(int count) {
-    ignore_frames -= count;
+    if (ignore_frames > 0) {
+      ignore_frames -= count;
+    } else {
+      reset_samples();
+    }
+  }
+  
+  void reset_samples() {
+    samples.clear();
+    samples.resize(window_size_, {});
   }
   
   std::optional<float> getDurationFft() {
@@ -118,8 +131,7 @@ private:
       }
     }
     if (reinit_samples) {
-      samples.clear();
-      samples.resize(window_size_, {});
+      reset_samples();
     }
   }
   
@@ -133,7 +145,7 @@ private:
       {
         profiling::ThreadCPUTimer timer(dt);
         
-        findFrequenciesSqMag<fft::Fastest>(samples.begin(),
+        findFrequenciesSqMag<fftTag>(samples.begin(),
                                            samples.begin() + window_size_,
                                            windowed_signal_stride,
                                            half_window,

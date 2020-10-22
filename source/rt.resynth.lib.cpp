@@ -729,7 +729,7 @@ private:
   
   int64_t next_noteid = 0;
   
-  PeriodicFft periodic_fft;
+  PeriodicFFT periodic_fft;
     
   std::vector<FreqMag<double>> freqmags;
   std::vector<PitchVolume> freqmags_data;
@@ -773,6 +773,7 @@ RtResynth::RtResynth()
        )
 , input(4,
         4)
+, periodic_fft(pow2(14))
 {
   freqmags.reserve(200);
   freqmags_data.reserve(200);
@@ -850,15 +851,14 @@ RtResynth::init(int const sample_rate) {
       vocoder_env_follower_cutoff_ratio.load()
     };
   },
-                     [this] () -> std::optional<std::pair<double, double>> {
-    std::optional<double> mod = read_queued_input();
-    if (!mod) {
-      return {};
-    }
+                     [this] () -> std::pair<std::optional<std::pair<double, SampleContinuity>>, std::optional<std::pair<double, SampleContinuity>>> {
+    std::optional<std::pair<double, SampleContinuity>> mod = read_queued_input();
     double carrier_val{};
     vocoder_carrier.compute(&carrier_val,
                             1);
-    return std::make_pair(*mod, carrier_val);
+    return std::make_pair(mod,
+                          std::make_pair(carrier_val,
+                                         SampleContinuity::Yes));
   });
 
   vocoder_carrier.setSynchronousElementInitializer(VocoderCarrierElementInitializer<double>(
@@ -979,7 +979,7 @@ RtResynth::analysis_thread(int const sample_rate) {
       {
         profiling::ThreadCPUTimer timer(dt);
         
-        extractLocalMaxFreqsMags(sample_rate / PeriodicFft::windowed_signal_stride,
+        extractLocalMaxFreqsMags(sample_rate / PeriodicFFT::windowed_signal_stride,
                                  frequencies_sqmag,
                                  SqMagToDb<double>(),
                                  freqmags);

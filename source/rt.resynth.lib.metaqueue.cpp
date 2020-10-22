@@ -66,6 +66,11 @@ void drain_queue_until_size_smaller(Q & q,
   }
 }
 
+enum class SampleContinuity {
+  Yes, // The sample is the follower of the previous sample
+  No   // Some samples were dropped in-between
+};
+
 /*
  Starts reading when the queue is half full, to avoid starvation
  */
@@ -82,8 +87,9 @@ struct ReadQueuedSampleSource {
     ctxt = &context;
 #endif
   }
-  
-  std::optional<double> operator()() {
+    
+  std::optional<std::pair<double, SampleContinuity>>
+  operator()() {
     // we synchronize here so as to:
     // - minimize audio latency, and
     // - avoid queue starvation (which would lead to audio cracks)
@@ -105,6 +111,7 @@ struct ReadQueuedSampleSource {
     }
     //std::cout << "vocoder queue producer : size=" << q.queue.was_size() << std::endl;
     
+    SampleContinuity continuity = SampleContinuity::Yes;
     typename Queue::value_type var_modulator;
     while(true) {
       if (unlikely(!q->try_pop(var_modulator))) {
@@ -122,12 +129,16 @@ struct ReadQueuedSampleSource {
         // some frames have been dropped, so the queue is probably quite full now, we will
         // re-establish balance by dropping some items:
         drain_queue_until_size_smaller(*q, min_size_queue());
+        continuity = SampleContinuity::No;
         continue;
       }
       break;
     }
     Assert(std::holds_alternative<InputSample>(var_modulator));
-    return std::get<InputSample>(var_modulator).value;
+    return std::make_pair(
+      std::get<InputSample>(var_modulator).value,
+      continuity
+    );
   }
   
   
