@@ -204,7 +204,8 @@ struct FftOperation {
     Algo fft(Contexts::getInstance().getBySize(fft_length));
     
     signal.clear();
-    signal.reserve(fft_length);
+    reserve_no_shrink(signal,
+                      fft_length);
     
     // apply the rectangular window...
     apply_rectangular_window(it, end, windowed_signal_stride, signal);
@@ -256,8 +257,10 @@ struct SqMagFftOperation {
     Assert(0 == window_size % 2);
     int const fft_length = get_fft_length_for(window_size,
                                               zero_padding_factor);
-    work_vector_signal.reserve(fft_length);
-    work_vector_freqs.reserve(fft_length);
+    reserve_no_shrink(work_vector_signal,
+                      fft_length);
+    reserve_no_shrink(work_vector_freqs,
+                      fft_length);
     if (static_cast<int>(half_window.size()) != window_size/2) {
       switch(window_type) {
         case Window::Rectangular:

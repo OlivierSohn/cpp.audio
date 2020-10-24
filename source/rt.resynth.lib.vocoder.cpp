@@ -2,6 +2,23 @@
 
 namespace imajuscule::audio::rtresynth {
 
+struct SetupParams {
+
+  // Params for modulator:
+  float env_follower_cutoff_ratio;
+  float modulator_window_size_seconds;
+  
+  // Params for carrier:
+
+  
+  bool operator !=(SetupParams const & o) const {
+    return
+    std::make_tuple(env_follower_cutoff_ratio, modulator_window_size_seconds) !=
+    std::make_tuple(o.env_follower_cutoff_ratio, o.modulator_window_size_seconds);
+  }
+};
+
+/*
 template<int ORDER, typename T>
 struct BandPass {
   void setup(int sample_rate, T freq_from, T freq_to) {
@@ -34,6 +51,7 @@ struct EnvelopeFollower {
 private:
   Filter<T, 1, FilterType::LOW_PASS, ORDER> lp_;
 };
+*/
 
 /*
  "Good" in the sense that crossfades have an even half length
@@ -48,13 +66,12 @@ inline int good_stride(float const seconds,
   return res;
 }
 
-constexpr std::size_t modulator_max_fft_size = pow2(13);
-constexpr std::size_t carrier_max_fft_size = pow2(13);
+constexpr std::size_t modulator_max_fft_size = pow2(16);
+constexpr std::size_t carrier_max_fft_size = pow2(16);
 
 template<typename T>
 struct FFTModulator {
   
-  static double constexpr window_size_seconds = 0.05;
   static double constexpr window_center_stride_seconds = 0.005;
 
   // This dynamically allocates memory
@@ -74,7 +91,16 @@ struct FFTModulator {
     
     // TODO use different sizes of ftts to have a better latency on higher freqs or overlapp the ffts (more computationaly intensive, though?)
 
-    periodic_fft.setLambdas([sample_rate]() { return sample_rate * window_size_seconds; },
+    periodic_fft.setLambdas([this, sample_rate]() {
+      int candidate_sz = std::max(1,
+                                  static_cast<int>(0.5f + sample_rate * window_size_seconds));
+      if (1 == candidate_sz % 2) {
+        ++candidate_sz;
+      }
+      Assert(candidate_sz <= modulator_max_fft_size);
+      return std::min(static_cast<int>(modulator_max_fft_size),
+                      candidate_sz);
+    },
                             [sample_rate]() { return good_stride(window_center_stride_seconds,
                                                                  sample_rate); },
                             [this, sample_rate](int const window_center_stride,
@@ -138,10 +164,10 @@ struct FFTModulator {
 #endif
   }
   
-  void setup_env_followers(int sample_rate,
-                           std::vector<T> const & freqs,
-                           T const factor) {
-    // Not applicable
+  void setup(int sample_rate,
+             std::vector<T> const & freqs,
+             SetupParams const & p) {
+    window_size_seconds = p.modulator_window_size_seconds;
   }
   
   void on_dropped_frame() {
@@ -193,12 +219,15 @@ private:
   std::vector<T> old_bands_amplitudes;
   std::vector<T> new_bands_amplitudes;
 
+  double window_size_seconds;
+
 #if IMJ_DEBUG_VOCODER
   std::unique_ptr<AsyncWavWriter> wav_writer_modulator_input;
   std::vector<std::unique_ptr<AsyncWavWriter>> wav_writer_modulator_envelopes;
 #endif
 };
 
+/*
 template<typename T>
 struct FFT2Modulator {
   
@@ -220,9 +249,9 @@ struct FFT2Modulator {
 #endif
   }
   
-  void setup_env_followers(int sample_rate,
-                           std::vector<T> const & freqs,
-                           T const factor) {
+  void setup(int sample_rate,
+             std::vector<T> const & freqs,
+             SetupParams const &) {
     // Not applicable
   }
   
@@ -253,7 +282,8 @@ private:
   std::unique_ptr<AsyncWavWriter> wav_writer_modulator_input;
 #endif
 };
-
+*/
+/*
 template<int ORDER, typename T>
 struct Modulator {
 
@@ -290,15 +320,15 @@ struct Modulator {
   // This does not allocate memory
   //
   // @param factor : low-pass cutoff = factor * band start freq
-  void setup_env_followers(int sample_rate,
-                           std::vector<T> const & freqs,
-                           T const factor) {
+  void setup(int sample_rate,
+             std::vector<T> const & freqs,
+             SetupParams const & setup) {
     Assert(sz == static_cast<int>(freqs.size()) - 1);
     Assert(env_follower.size() == (freqs.size() - 1));
     for (int i=0; i<sz; ++i) {
       env_follower[i].setup(sample_rate,
                             //1. // https://www.ncbi.nlm.nih.gov/pmc/articles/PMC2730710/
-                            freqs[i] * factor
+                            freqs[i] * setup.env_follower_cutoff_ratio
                             );
     }
   }
@@ -337,6 +367,7 @@ private:
   std::vector<std::unique_ptr<AsyncWavWriter>> wav_writer_modulator_envelopes;
 #endif
 };
+*/
 
 template<typename T>
 struct FFTCarrier {
@@ -484,6 +515,7 @@ private:
 #endif
 };
 
+/*
 // TODO : apply the xfade techniques seen in FFTCarrier, and compare the results with FFTCarrier
 template<typename T>
 struct FFT2Carrier {
@@ -595,7 +627,9 @@ private:
   std::unique_ptr<AsyncWavWriter> wav_writer_carrier_bands_weighted_sum;
 #endif
 };
+*/
 
+/*
 template<int ORDER, typename T>
 struct Carrier {
   void setup(int sample_rate,
@@ -660,7 +694,7 @@ private:
   std::unique_ptr<AsyncWavWriter> wav_writer_carrier_bands_weighted_sum;
 #endif
 };
-
+*/
 
 struct Vocoder {
   static constexpr int count_bands = 5;
@@ -677,10 +711,9 @@ struct Vocoder {
     float carrier;
     float vocoder;
   };
-  
   struct Params {
     Volumes vol;
-    float env_follower_cutoff_ratio;
+    SetupParams setup;
   };
   
   Vocoder()
@@ -708,11 +741,11 @@ struct Vocoder {
         }
 
         Params const params = get_params();
-        if (!last_env_follower_cutoff_ratio || *last_env_follower_cutoff_ratio != params.env_follower_cutoff_ratio) {
-          last_env_follower_cutoff_ratio = params.env_follower_cutoff_ratio;
-          modulator.setup_env_followers(*sample_rate,
-                                        freqs,
-                                        params.env_follower_cutoff_ratio);
+        if (!last_setup || *last_setup != params.setup) {
+          last_setup = params.setup;
+          modulator.setup(*sample_rate,
+                          freqs,
+                          params.setup);
         }
       
         Volumes const & volume = params.vol;
@@ -788,7 +821,7 @@ private:
   std::vector<double> freqs;
   
   std::optional<int> sample_rate;
-  std::optional<float> last_env_follower_cutoff_ratio;
+  std::optional<SetupParams> last_setup;
   
   mutable std::mutex mutex; // protects amplitudes and freq allocation
 
@@ -796,7 +829,8 @@ private:
     std::lock_guard l(mutex);
     
     freqs.clear();
-    freqs.reserve(count_bands + 1);
+    reserve_no_shrink(freqs,
+                      count_bands + 1);
     
     auto log_min = std::log(min_freq);
     auto log_max = std::log(max_freq);

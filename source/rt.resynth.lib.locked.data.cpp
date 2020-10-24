@@ -269,8 +269,10 @@ void NonRealtimeAnalysisFrame::fetch_last_frame(std::vector<PlayedNote> & result
       }
     }
     // allocate when we don't own the mutex
-    result.reserve(3*sz);
-    result_dropped.reserve(3*sz_dropped);
+    reserve_no_shrink(result,
+                      3*sz);
+    reserve_no_shrink(result_dropped,
+                      3*sz_dropped);
   }
 }
 } // NS

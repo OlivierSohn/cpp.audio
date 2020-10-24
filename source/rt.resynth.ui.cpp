@@ -359,12 +359,20 @@ struct MyApp : public wxApp {
     {
       {
         {
-          "Vocoder env follower cutoff ratio",
+          "Vocoder modulator env follower cutoff ratio",
           "",
           [this](){ return resynth.getVocoderEnvFollowerCutoffRatio(); },
           [this](float v){ resynth.setVocoderEnvFollowerCutoffRatio(v); },
           0.f,
           2.f
+        },
+        {
+          "Vocoder modulator window size",
+          "seconds",
+          [this](){ return resynth.getVocoderModulatorWindowSizeSeconds(); },
+          [this](float v){ resynth.setVocoderModulatorWindowSizeSeconds(v); },
+          0.f,
+          0.4f
         },
         {
           "Vocoder volume",

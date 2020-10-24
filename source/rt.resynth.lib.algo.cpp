@@ -127,7 +127,8 @@ void aggregate_pitches(double const nearby_distance_tones,
                        // invariant : ordered by pitch
                        std::vector<PitchInterval> & pitch_intervals) {
   pitch_intervals.clear();
-  pitch_intervals.reserve(pitch_volumes.size());
+  reserve_no_shrink(pitch_intervals,
+                    pitch_volumes.size());
   
   std::optional<PitchInterval> cur;
 #ifndef NDEBUG
@@ -168,7 +169,8 @@ void reduce_pitches(PitchReductionMethod const pitch_method,
                     std::vector<PitchInterval> const & pitch_intervals,
                     std::vector<PitchVolume> & reduced_pitches) {
   reduced_pitches.clear();
-  reduced_pitches.reserve(pitch_intervals.size());
+  reserve_no_shrink(reduced_pitches,
+                    pitch_intervals.size());
   for (auto const & i : pitch_intervals) {
     double const vol = i.getVolume(volume_method);
     if (vol < min_volume) {
@@ -195,7 +197,8 @@ void autotune_pitches(int const max_pitch,
                       // invariant : ordered by pitch
                       std::vector<PitchVolume> & output) {
   output.clear();
-  output.reserve(input.size());
+  reserve_no_shrink(output,
+                    input.size());
 #ifndef NDEBUG
   float pitch = std::numeric_limits<float>::lowest();
 #endif
@@ -374,7 +377,8 @@ order_pitches_by_perceived_loudness(F perceived_loudness,
                                     std::vector<float> & autotuned_pitches_perceived_loudness,
                                     std::vector<int> & autotuned_pitches_idx_sorted_by_perceived_loudness) {
   autotuned_pitches_perceived_loudness.clear();
-  autotuned_pitches_perceived_loudness.reserve(new_pitches.size());
+  reserve_no_shrink(autotuned_pitches_perceived_loudness,
+                    new_pitches.size());
   
 #ifndef NDEBUG
   float pitch = std::numeric_limits<float>::lowest();

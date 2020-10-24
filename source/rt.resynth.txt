@@ -1,8 +1,10 @@
 
 /*
 
+- when modulator window is small, the frequency detection is not stable anymore
+. we could try envelope followers to smooth this out, or use bigger windows
+
 - Vocoder : ability to change interactively:
-. the window size for modulator (or sync with 2*stride?)
 . the window shape for modulator
 . the stride (synced for both modulator and carrier) (the window size of the carrier is deduced from the stride)
 . the method to compute the bands (max or sum)

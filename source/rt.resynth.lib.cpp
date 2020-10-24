@@ -627,7 +627,13 @@ public:
   void setVocoderEnvFollowerCutoffRatio(float f) {
     vocoder_env_follower_cutoff_ratio = f;
   }
-
+  float getVocoderModulatorWindowSizeSeconds() const {
+    return vocoder_modulator_window_size_seconds;
+  }
+  void setVocoderModulatorWindowSizeSeconds(float f) {
+    vocoder_modulator_window_size_seconds = f;
+  }
+  
   float getDirectVoiceVolume() const {
     return voice_volume;
   }
@@ -719,11 +725,12 @@ private:
   std::atomic<uint64_t> autotune_bit_chord = 0b10010001; // least significant beat = lower pitch
   
   std::atomic<float> vocoder_env_follower_cutoff_ratio = 1.f/20.f;
+  std::atomic<float> vocoder_modulator_window_size_seconds = 0.10f;
   
-  std::atomic<float> voice_volume = 1.f;
+  std::atomic<float> voice_volume = 0.f;
   std::atomic<float> carrier_volume = 0.f;
-  std::atomic<float> vocoder_volume = 0.f;
-  std::atomic<float> analysis_volume = 1.f;
+  std::atomic<float> vocoder_volume = 1.f;
+  std::atomic<float> analysis_volume = 0.f;
   
   std::vector<float> allowed_pitches;
   
@@ -848,7 +855,10 @@ RtResynth::init(int const sample_rate) {
         carrier_volume.load(),
         vocoder_volume.load()
       },
-      vocoder_env_follower_cutoff_ratio.load()
+      {
+        vocoder_env_follower_cutoff_ratio.load(),
+        vocoder_modulator_window_size_seconds.load()
+      }
     };
   },
                      [this] () -> std::pair<std::optional<std::pair<double, SampleContinuity>>, std::optional<std::pair<double, SampleContinuity>>> {
