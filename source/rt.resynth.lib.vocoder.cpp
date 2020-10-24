@@ -35,9 +35,28 @@ private:
   Filter<T, 1, FilterType::LOW_PASS, ORDER> lp_;
 };
 
+/*
+ "Good" in the sense that crossfades have an even half length
+ */
+inline int good_stride(float const seconds,
+                       int sample_rate) {
+  int res = std::max(1,
+                     static_cast<int>(0.5f + seconds * sample_rate));
+  if (0 == res % 2) {
+    ++res; // EqualGainXFade requires that the xfade size is even
+  }
+  return res;
+}
+
+constexpr std::size_t modulator_max_fft_size = pow2(13);
+constexpr std::size_t carrier_max_fft_size = pow2(13);
+
 template<typename T>
 struct FFTModulator {
   
+  static double constexpr window_size_seconds = 0.05;
+  static double constexpr window_center_stride_seconds = 0.005;
+
   // This dynamically allocates memory
   void setup_bands(int sample_rate,
                    std::vector<T> const & band_freqs) {
@@ -50,17 +69,14 @@ struct FFTModulator {
     new_bands_amplitudes.resize(sz);
     old_bands_amplitudes.clear();
     old_bands_amplitudes.resize(sz);
-   
-    double constexpr window_size_seconds = 0.05;
-    double constexpr window_center_stride_seconds = 0.005;
     
     // TODO use hanning window (no need for "very fine" frequency peak measurement here)
     
     // TODO use different sizes of ftts to have a better latency on higher freqs or overlapp the ffts (more computationaly intensive, though?)
 
     periodic_fft.setLambdas([sample_rate]() { return sample_rate * window_size_seconds; },
-                            [sample_rate]() { return std::max(1,
-                                                              static_cast<int>(0.5f + window_center_stride_seconds * sample_rate)); },
+                            [sample_rate]() { return good_stride(window_center_stride_seconds,
+                                                                 sample_rate); },
                             [this, sample_rate](int const window_center_stride,
                                    FrequenciesSqMag<double> const & frequencies_sqmag) {
       itp_length = window_center_stride + 1;
@@ -72,6 +88,7 @@ struct FFTModulator {
                 new_bands_amplitudes.end(),
                 static_cast<T>(0));
 
+      Assert(frequencies_sqmag.get_fft_length() <= modulator_max_fft_size);
       double const bin_to_Hz = frequencies_sqmag.bin_index_to_Hz(sample_rate);
 
       auto itLow = freqs.begin();
@@ -159,12 +176,19 @@ struct FFTModulator {
     }
   }
   
+  std::vector<T> const & getNewBandsAmplitudes() const {
+    return new_bands_amplitudes;
+  }
+  std::vector<T> const & getOldBandsAmplitudes() const {
+    return old_bands_amplitudes;
+  }
+
 private:
   int sz; // number of bands
   int itp_length = 2; // includes start and end values
   int itp_index = 1;
   std::vector<T> freqs;
-  PeriodicFFT periodic_fft{pow2(13)};
+  PeriodicFFT<SqMagFftOperation<Window::Gaussian, double>> periodic_fft{modulator_max_fft_size};
   
   std::vector<T> old_bands_amplitudes;
   std::vector<T> new_bands_amplitudes;
@@ -172,6 +196,61 @@ private:
 #if IMJ_DEBUG_VOCODER
   std::unique_ptr<AsyncWavWriter> wav_writer_modulator_input;
   std::vector<std::unique_ptr<AsyncWavWriter>> wav_writer_modulator_envelopes;
+#endif
+};
+
+template<typename T>
+struct FFT2Modulator {
+  
+  static double constexpr window_size_seconds = 0.05;
+  
+  // This dynamically allocates memory
+  void setup_bands(int sample_rate,
+                   std::vector<T> const & band_freqs) {
+    periodic_fft.setLambdas([sample_rate]() { return std::max(1,
+                                                              static_cast<int>(0.5f + window_size_seconds * sample_rate)); },
+                            [sample_rate]() { return std::max(1,
+                                                              static_cast<int>(0.5f + window_size_seconds * sample_rate)); },
+                            [](int const window_center_stride,
+                               auto const & ) {});
+#if IMJ_DEBUG_VOCODER
+    wav_writer_modulator_input = std::make_unique<AsyncWavWriter>(1,
+                                                                  sample_rate,
+                                                                  "debug_modulator_input");
+#endif
+  }
+  
+  void setup_env_followers(int sample_rate,
+                           std::vector<T> const & freqs,
+                           T const factor) {
+    // Not applicable
+  }
+  
+  void on_dropped_frame() {
+    periodic_fft.reset_samples();
+  }
+  
+  void feed(std::pair<T, SampleContinuity> const & sample,
+            std::vector<T> const &) {
+#if IMJ_DEBUG_VOCODER
+    wav_writer_modulator_input->sync_feed_frame(&sample.first);
+#endif
+    
+    if (unlikely(sample.second == SampleContinuity::No)) {
+      periodic_fft.reset_samples();
+    }
+    periodic_fft.feed(sample.first);
+  }
+  
+  auto const & getFreqBins() const {
+    return periodic_fft.getResults();
+  }
+
+private:
+  PeriodicFFT<FftOperation<double>> periodic_fft{modulator_max_fft_size};
+  
+#if IMJ_DEBUG_VOCODER
+  std::unique_ptr<AsyncWavWriter> wav_writer_modulator_input;
 #endif
 };
 
@@ -256,6 +335,264 @@ private:
   std::unique_ptr<AsyncWavWriter> wav_writer_modulator_input;
   std::vector<std::unique_ptr<AsyncWavWriter>> wav_writer_modulator_bands;
   std::vector<std::unique_ptr<AsyncWavWriter>> wav_writer_modulator_envelopes;
+#endif
+};
+
+template<typename T>
+struct FFTCarrier {
+  FFTCarrier(FFTModulator<T> & mod)
+  : modulator(mod)
+  {
+    tmp_freq_bins.resize(carrier_max_fft_size);
+    signal_old.resize(carrier_max_fft_size);
+    signal_new.resize(carrier_max_fft_size);
+  }
+  
+  using FreqBinsImpl = typename fft::RealFBins_<fft::Fastest, T, a64::Alloc>;
+  using FreqBins = typename FreqBinsImpl::type;
+  
+  void setup(int sample_rate,
+             std::vector<T> const & band_freqs) {
+    freqs = band_freqs;
+
+    sz_half_signal = good_stride(FFTModulator<T>::window_center_stride_seconds,
+                                 sample_rate);
+    
+    xfade.set(sz_half_signal - 1,
+              EqualGainCrossFade::Sinusoidal);
+
+    periodic_fft.setLambdas([this]() { return 2 * sz_half_signal; },
+                            [this]() { return sz_half_signal; },
+                            [this, sample_rate](int const window_center_stride,
+                                                FreqBins const & freq_bins) {
+      Assert(window_center_stride == sz_half_signal);
+
+      int const fft_length = FreqBinsImpl::get_fft_length(freq_bins);
+      Assert(fft_length <= carrier_max_fft_size);
+      Assert(fft_length == ceil_power_of_two(2*sz_half_signal));
+
+      signal_old.swap(signal_new);
+      
+      using Algo = fft::Algo_<fft::Fastest, T>;
+      using Contexts = fft::Contexts_<fft::Fastest, T>;
+      
+      Algo fft(Contexts::getInstance().getBySize(fft_length));
+
+      T const scale_factor = 1/(Algo::scale * static_cast<T>(fft_length));
+      
+      new_signal_idx = 0;
+            
+      Assert(freq_bins.size() <= tmp_freq_bins.capacity());
+      tmp_freq_bins.resize(freq_bins.size());
+      
+      FreqBinsImpl::copy_same_size(freq_bins,
+                                   tmp_freq_bins);
+      
+      FreqBinsImpl::modulate_bands(sample_rate,
+                                   modulator.getNewBandsAmplitudes(),
+                                   freqs,
+                                   tmp_freq_bins);
+      if constexpr (Algo::inplace_dft) {
+        fft.inverse(tmp_freq_bins.data(),
+                    fft_length);
+        for(int i=0; i<fft_length; ++i) {
+          signal_new[i] = Algo::extractRealOutput(tmp_freq_bins.data(),
+                                                  i,
+                                                  fft_length);
+        }
+      }
+      else {
+        fft.inverse(tmp_freq_bins.data(),
+                    signal_new.data(),
+                    fft_length);
+      }
+      
+      for(auto & v : signal_new) {
+        v *= scale_factor;
+      }
+    });
+#if IMJ_DEBUG_VOCODER
+    wav_writer_carrier_input = std::make_unique<AsyncWavWriter>(1,
+                                                                sample_rate,
+                                                                "debug_carrier_input");
+    wav_writer_carrier_bands_weighted_sum = std::make_unique<AsyncWavWriter>(1,
+                                                                             sample_rate,
+                                                                             "debug_carrier_bands_weighted_sum");
+    wav_writer_carrier_bands_weighted_sum_new = std::make_unique<AsyncWavWriter>(1,
+                                                                                 sample_rate,
+                                                                                 "debug_carrier_bands_weighted_sum_new");
+    wav_writer_carrier_bands_weighted_sum_old = std::make_unique<AsyncWavWriter>(1,
+                                                                                 sample_rate,
+                                                                                 "debug_carrier_bands_weighted_sum_old");
+#endif
+  }
+  
+  void on_dropped_frame() {
+    // TODO : ? (will not happen in today's use cases, though)
+  }
+  
+  T feed(std::pair<T, SampleContinuity> const & sample,
+         std::vector<T> const &) {
+    // TODO : handle the case where sample.first == SampledDiscontinuity::Yes
+    // (will not happen in real life use cases today, though)
+    
+#if IMJ_DEBUG_VOCODER
+    wav_writer_carrier_input->sync_feed_frame(&sample.first);
+#endif
+    
+    periodic_fft.feed(sample.first);
+
+    Assert(signal_new.size() == signal_old.size());
+    Assert(new_signal_idx < (signal_new.size() / 2));
+
+    // cross-fade from the old signal with old bands amplitudes to the new signal with new bands amplitudes
+    XFadeValues<T> xf = xfade.get(new_signal_idx + 1);
+
+    T const res =
+    signal_new[new_signal_idx] * xf.new_signal_mult +
+    signal_old[new_signal_idx + sz_half_signal] * xf.old_signal_mult;
+
+#if IMJ_DEBUG_VOCODER
+    wav_writer_carrier_bands_weighted_sum->sync_feed_frame(&res);
+    wav_writer_carrier_bands_weighted_sum_new->sync_feed_frame(&signal_new[new_signal_idx]);
+    wav_writer_carrier_bands_weighted_sum_old->sync_feed_frame(&signal_old[new_signal_idx + sz_half_signal]);
+#endif
+
+    ++new_signal_idx;
+    
+    return res;
+  }
+private:
+  int sz_half_signal;
+  int new_signal_idx = 0; // old_signal_idx = new_signal_idx + sz_half_signal
+  EqualGainXFade<T> xfade;
+  FFTModulator<T> & modulator;
+  std::vector<T> freqs;
+  FreqBins tmp_freq_bins;
+  // The 2nd half of "old" and the 1st half of "new" are crossfaded:
+  //   during its 2nd half, "old" contribution goes linearily from 1 to 0
+  //   during its 1st half, "new" contribution goes linearily from 0 to 1
+  // Then, old and new are swapped and a new "new" signal is computed.
+  a64::vector<T> signal_old;
+  a64::vector<T> signal_new;
+  PeriodicFFT<FftOperation<double>> periodic_fft{carrier_max_fft_size};
+#if IMJ_DEBUG_VOCODER
+  std::unique_ptr<AsyncWavWriter> wav_writer_carrier_input;
+  std::unique_ptr<AsyncWavWriter> wav_writer_carrier_bands_weighted_sum;
+  std::unique_ptr<AsyncWavWriter> wav_writer_carrier_bands_weighted_sum_new;
+  std::unique_ptr<AsyncWavWriter> wav_writer_carrier_bands_weighted_sum_old;
+#endif
+};
+
+// TODO : apply the xfade techniques seen in FFTCarrier, and compare the results with FFTCarrier
+template<typename T>
+struct FFT2Carrier {
+  FFT2Carrier(FFT2Modulator<T> & mod)
+  : modulator(mod)
+  , signal_length(carrier_max_fft_size)
+  {
+    tmp_freq_bins.resize(carrier_max_fft_size);
+    signal.resize(carrier_max_fft_size);
+  }
+  
+  static constexpr double window_size_seconds = FFT2Modulator<T>::window_size_seconds;
+  
+  using FreqBinsImpl = typename fft::RealFBins_<fft::Fastest, T, a64::Alloc>;
+  using FreqBins = typename FreqBinsImpl::type;
+  
+  void setup(int sample_rate,
+             std::vector<T> const & band_freqs) {
+    periodic_fft.setLambdas([sample_rate]() { return std::max(1,
+                                                              static_cast<int>(0.5f + window_size_seconds * sample_rate)); },
+                            [sample_rate]() { return std::max(1,
+                                                              static_cast<int>(0.5f + window_size_seconds * sample_rate)); },
+                            [this, sample_rate](int const window_center_stride,
+                                                FreqBins const & freq_bins) {
+      using Algo = fft::Algo_<fft::Fastest, T>;
+      using Contexts = fft::Contexts_<fft::Fastest, T>;
+      
+      int const fft_length = FreqBinsImpl::get_fft_length(freq_bins);
+      Assert(fft_length <= carrier_max_fft_size);
+      
+      Algo fft(Contexts::getInstance().getBySize(fft_length));
+      
+      T const scale_factor = 1/(Algo::scale * static_cast<T>(fft_length));
+      
+      signal_idx = 0;
+      signal_length = fft_length;
+      
+      Assert(freq_bins.size() <= tmp_freq_bins.capacity());
+      tmp_freq_bins.resize(freq_bins.size());
+      
+      FreqBinsImpl::multiply(tmp_freq_bins.data(),
+                             freq_bins.data(),
+                             modulator.getFreqBins().data(),
+                             fft_length/2);
+      if constexpr (Algo::inplace_dft) {
+        fft.inverse(tmp_freq_bins.data(),
+                    fft_length);
+        for(int i=0; i<fft_length; ++i) {
+          signal[i] = Algo::extractRealOutput(tmp_freq_bins.data(),
+                                              i,
+                                              fft_length);
+        }
+      } else {
+        fft.inverse(tmp_freq_bins.data(),
+                    signal.data(),
+                    fft_length);
+      }
+      
+      for(auto & v : signal) {
+        v *= scale_factor;
+      }
+    });
+#if IMJ_DEBUG_VOCODER
+    wav_writer_carrier_input = std::make_unique<AsyncWavWriter>(1,
+                                                                sample_rate,
+                                                                "debug_carrier_input");
+    wav_writer_carrier_bands_weighted_sum = std::make_unique<AsyncWavWriter>(1,
+                                                                             sample_rate,
+                                                                             "debug_carrier_bands_weighted_sum");
+#endif
+  }
+  
+  void on_dropped_frame() {
+    // TODO : ? (will not happen in today's use cases, though)
+  }
+  
+  T feed(std::pair<T, SampleContinuity> const & sample,
+         std::vector<T> const &) {
+    // TODO : handle the case where sample.first == SampledDiscontinuity::Yes
+    // (will not happen in real life use cases today, though)
+    
+#if IMJ_DEBUG_VOCODER
+    wav_writer_carrier_input->sync_feed_frame(&sample.first);
+#endif
+    
+    periodic_fft.feed(sample.first);
+    
+    Assert(signal_idx < signal_length);
+    
+    T const res = signal[signal_idx];
+    
+#if IMJ_DEBUG_VOCODER
+    wav_writer_carrier_bands_weighted_sum->sync_feed_frame(&res);
+#endif
+    
+    ++signal_idx;
+    
+    return res;
+  }
+private:
+  int signal_idx = 0;
+  int signal_length = carrier_max_fft_size;
+  FreqBins tmp_freq_bins;
+  FFT2Modulator<T> & modulator;
+  a64::vector<T> signal;
+  PeriodicFFT<FftOperation<double>> periodic_fft{carrier_max_fft_size};
+#if IMJ_DEBUG_VOCODER
+  std::unique_ptr<AsyncWavWriter> wav_writer_carrier_input;
+  std::unique_ptr<AsyncWavWriter> wav_writer_carrier_bands_weighted_sum;
 #endif
 };
 
@@ -443,8 +780,11 @@ private:
   
   //Modulator<order_filters_modulator, double> modulator;
   FFTModulator<double> modulator;
+  //FFT2Modulator<double> modulator;
   std::vector<double> amplitudes;
-  Carrier<order_filters_carrier, double> carrier;
+  //Carrier<order_filters_carrier, double> carrier;
+  FFTCarrier<double> carrier{modulator};
+  //FFT2Carrier<double> carrier{modulator};
   std::vector<double> freqs;
   
   std::optional<int> sample_rate;
@@ -465,13 +805,7 @@ private:
       double const ratio = static_cast<double>(i) / count_bands;
       freqs.push_back(std::exp(log_min + ratio * (log_max-log_min)));
     }
-/*
-    std::cout << "Vocoder freqs :";
-    for (auto const & f : freqs) {
-      std::cout << f << " ";
-    }
-    std::cout << std::endl;
- */
+
     modulator.setup_bands(*sample_rate,
                           freqs);
     carrier.setup(*sample_rate,

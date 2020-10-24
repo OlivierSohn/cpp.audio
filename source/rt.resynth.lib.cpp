@@ -729,7 +729,7 @@ private:
   
   int64_t next_noteid = 0;
   
-  PeriodicFFT periodic_fft;
+  PeriodicFFT<SqMagFftOperation<Window::Gaussian, double>> periodic_fft;
     
   std::vector<FreqMag<double>> freqmags;
   std::vector<PitchVolume> freqmags_data;
@@ -979,7 +979,7 @@ RtResynth::analysis_thread(int const sample_rate) {
       {
         profiling::ThreadCPUTimer timer(dt);
         
-        extractLocalMaxFreqsMags(sample_rate / PeriodicFFT::windowed_signal_stride,
+        extractLocalMaxFreqsMags(sample_rate / decltype(periodic_fft)::FftOp::windowed_signal_stride,
                                  frequencies_sqmag,
                                  SqMagToDb<double>(),
                                  freqmags);

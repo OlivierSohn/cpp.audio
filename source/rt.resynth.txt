@@ -1,11 +1,30 @@
 
 /*
 
-- The voice characteristics are lost through the vocoder.
-What is wrong?
-Try to change the number of bands, the filter order.
-- use ffts to have better resolution (reduced leakage between bands)
-. first, use windowed fft on modulator
+- Vocoder : ability to change interactively:
+. the window size for modulator (or sync with 2*stride?)
+. the window shape for modulator
+. the stride (synced for both modulator and carrier) (the window size of the carrier is deduced from the stride)
+. the method to compute the bands (max or sum)
+
+- do we need some low pass filtering on the band coefficients?
+
+- Vocoder : this seems to work well:
+. band amplitude using sum of fft bins
+.. alternatives :
+... use max of fft bins
+... use a different window : rectangular, hanning
+... use different window sizes
+... use filters + envelope followers
+. band modulation in frequency domain and linear crossfade with overlap to avoid clicks
+.. alternatives :
+... use different xfade shapes
+(our signals are correlated so f must satisfy f(x) + f(1-x) = 1. we could try having a continuous first order derivative using x^2 or sin(x)
+... use different window sizes
+... use filters
+
+alternative:
+multilevel fft to have fast reactions for high frequencies
 
 - make vocoder parameters modifyable in realtime:
 
@@ -21,8 +40,6 @@ number of bands
 band range (min, max)
 
 Modifying one of these will require to fade out the vocoder before changing it.
-
-- vocoder : visual feedback of envelope followers
 
 - make the carrier synth able to mix between noise and {sine / triangle / saw / square}
 
