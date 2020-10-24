@@ -49,8 +49,12 @@ struct VocoderWindow
     }
     */
     
-    this->Connect( wxEVT_PAINT, wxPaintEventHandler( VocoderWindow::OnPaint ), NULL, this );
-    envelopes.reserve(200);
+    envelopes.reserve(max_count_bands);
+    new_envelopes.reserve(max_count_bands);
+    frequencies.reserve(max_count_bands+1);
+    new_frequencies.reserve(max_count_bands+1);
+
+    this->Connect( wxEVT_PAINT, wxPaintEventHandler( VocoderWindow::OnPaint ), NULL, this );    
   }
   
   bool TryFetchNewFrame() {

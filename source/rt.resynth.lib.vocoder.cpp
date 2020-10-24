@@ -8,13 +8,40 @@ struct SetupParams {
   float env_follower_cutoff_ratio;
   float modulator_window_size_seconds;
   
-  // Params for carrier:
-
+  // Params for modulator and carrier:
+  float stride_seconds;
+  int count_bands;
+  float min_freq;
+  float max_freq;
+  
+  void fill_freqs(std::vector<double> & freqs) const {
+    freqs.clear();
+    reserve_no_shrink(freqs,
+                      count_bands + 1);
+    
+    auto log_min = std::log(min_freq);
+    auto log_max = std::log(max_freq);
+    
+    for (int i=0; i<=count_bands; ++i) {
+      double const ratio = static_cast<double>(i) / count_bands;
+      freqs.push_back(std::exp(log_min + ratio * (log_max-log_min)));
+    }
+  }
   
   bool operator !=(SetupParams const & o) const {
     return
-    std::make_tuple(env_follower_cutoff_ratio, modulator_window_size_seconds) !=
-    std::make_tuple(o.env_follower_cutoff_ratio, o.modulator_window_size_seconds);
+    std::make_tuple(env_follower_cutoff_ratio,
+                    modulator_window_size_seconds,
+                    stride_seconds,
+                    count_bands,
+                    min_freq,
+                    max_freq) !=
+    std::make_tuple(o.env_follower_cutoff_ratio,
+                    o.modulator_window_size_seconds,
+                    o.stride_seconds,
+                    o.count_bands,
+                    o.min_freq,
+                    o.max_freq);
   }
 };
 
@@ -67,63 +94,49 @@ inline int good_stride(float const seconds,
 }
 
 constexpr std::size_t modulator_max_fft_size = pow2(16);
-constexpr std::size_t carrier_max_fft_size = pow2(16);
+constexpr std::size_t carrier_max_fft_size = 2 * modulator_max_fft_size;
+constexpr std::size_t max_stride_size = pow2(16);
+
+constexpr std::size_t max_count_bands = 50;
 
 template<typename T>
 struct FFTModulator {
-  
-  static double constexpr window_center_stride_seconds = 0.005;
-
-  // This dynamically allocates memory
-  void setup_bands(int sample_rate,
-                   std::vector<T> const & band_freqs) {
-    sz = static_cast<int>(band_freqs.size()) - 1;
-    Assert(sz > 0);
-
-    freqs = band_freqs;
+  FFTModulator() {
+    bands_amplitudes.reserve(max_count_bands);
     
-    new_bands_amplitudes.clear();
-    new_bands_amplitudes.resize(sz);
-    old_bands_amplitudes.clear();
-    old_bands_amplitudes.resize(sz);
-    
-    // TODO use hanning window (no need for "very fine" frequency peak measurement here)
-    
-    // TODO use different sizes of ftts to have a better latency on higher freqs or overlapp the ffts (more computationaly intensive, though?)
+    freqs.reserve(max_count_bands + 1);
+  }
 
+  void init_dynamic_allocs(int sample_rate) {
     periodic_fft.setLambdas([this, sample_rate]() {
       int candidate_sz = std::max(1,
                                   static_cast<int>(0.5f + sample_rate * window_size_seconds));
       if (1 == candidate_sz % 2) {
         ++candidate_sz;
       }
-      Assert(candidate_sz <= modulator_max_fft_size);
+      Assert(candidate_sz <= static_cast<int>(modulator_max_fft_size)); // to avoid dynamic allocations in real time thread
       return std::min(static_cast<int>(modulator_max_fft_size),
                       candidate_sz);
     },
-                            [sample_rate]() { return good_stride(window_center_stride_seconds,
-                                                                 sample_rate); },
+                            [this, sample_rate]() {
+      return getStride(sample_rate);
+    },
                             [this, sample_rate](int const window_center_stride,
-                                   FrequenciesSqMag<double> const & frequencies_sqmag) {
-      itp_length = window_center_stride + 1;
-      itp_index = 1;
-      
-      old_bands_amplitudes.swap(new_bands_amplitudes);
-      
-      std::fill(new_bands_amplitudes.begin(),
-                new_bands_amplitudes.end(),
+                                                FrequenciesSqMag<double> const & frequencies_sqmag) {
+      std::fill(bands_amplitudes.begin(),
+                bands_amplitudes.end(),
                 static_cast<T>(0));
-
-      Assert(frequencies_sqmag.get_fft_length() <= modulator_max_fft_size);
+      
+      Assert(frequencies_sqmag.get_fft_length() <= static_cast<int>(modulator_max_fft_size));
       double const bin_to_Hz = frequencies_sqmag.bin_index_to_Hz(sample_rate);
-
+      
       auto itLow = freqs.begin();
       auto end = freqs.end();
       Assert (itLow != end);
       auto itHigh = itLow + 1;
       Assert (itHigh != end);
       int band_idx = 0;
-
+      
       for (int i=0, sz = static_cast<int>(frequencies_sqmag.frequencies_sqmag.size()); i < sz; ++i) {
         double const Hz = bin_to_Hz * i;
         if (Hz <= *itLow) {
@@ -142,40 +155,45 @@ struct FFTModulator {
         }
         Assert(Hz <= *itHigh);
         Assert(Hz > *itLow);
-        new_bands_amplitudes[band_idx] += frequencies_sqmag.frequencies_sqmag[i];
-        //new_bands_amplitudes[band_idx] = std::max(new_bands_amplitudes[band_idx],
-          //                                        frequencies_sqmag.frequencies_sqmag[i]);
+        bands_amplitudes[band_idx] += frequencies_sqmag.frequencies_sqmag[i];
+        //bands_amplitudes[band_idx] = std::max(new_bands_amplitudes[band_idx],
+        //                                      frequencies_sqmag.frequencies_sqmag[i]);
       }
-      for (auto & a : new_bands_amplitudes) {
+      for (auto & a : bands_amplitudes) {
         a = std::sqrt(a);
       }
     }
                             );
-    
 #if IMJ_DEBUG_VOCODER
     wav_writer_modulator_input = std::make_unique<AsyncWavWriter>(1,
                                                                   sample_rate,
                                                                   "debug_modulator_input");
-    for (int i=0; i<sz; ++i) {
+    for (std::size_t i=0; i<max_count_bands; ++i) {
       wav_writer_modulator_envelopes.push_back(std::make_unique<AsyncWavWriter>(1,
                                                                                 sample_rate,
                                                                                 "debug_modulator_envelope_" + std::to_string(i)));
     }
 #endif
   }
-  
-  void setup(int sample_rate,
-             std::vector<T> const & freqs,
-             SetupParams const & p) {
+
+  void setup(SetupParams const & p) {
+    p.fill_freqs(freqs);
+    sz = static_cast<int>(freqs.size()) - 1;
+    Assert(sz > 0);
+    
+    Assert(static_cast<int>(bands_amplitudes.capacity()) >= sz);
+    bands_amplitudes.clear();
+    bands_amplitudes.resize(sz);
+
     window_size_seconds = p.modulator_window_size_seconds;
+    window_center_stride_seconds = p.stride_seconds;
   }
   
   void on_dropped_frame() {
     periodic_fft.reset_samples();
   }
   
-  void feed(std::pair<T, SampleContinuity> const & sample,
-            std::vector<T> & res) {
+  void feed(std::pair<T, SampleContinuity> const & sample) {
 #if IMJ_DEBUG_VOCODER
     wav_writer_modulator_input->sync_feed_frame(&sample.first);
 #endif
@@ -185,41 +203,49 @@ struct FFTModulator {
     }
     periodic_fft.feed(sample.first);
     
-    // interpolate linearily from the old to the new coefficients
-    float const progress = static_cast<float>(itp_index) / itp_length;
-    float const one_minus_progress = 1.f - progress;
-    
-    Assert(static_cast<int>(res.size()) == sz);
-    for (int i=0; i<sz; ++i) {
-      res[i] = progress * new_bands_amplitudes[i] + one_minus_progress * old_bands_amplitudes[i];
 #if IMJ_DEBUG_VOCODER
-      wav_writer_modulator_envelopes[i]->sync_feed_frame(&res[i]);
-#endif
+    for (int i=0; i<sz; ++i) {
+      wav_writer_modulator_envelopes[i]->sync_feed_frame(&bands_amplitudes[i]);
     }
+#endif
+  }
+  
+  int getStride(int sample_rate) const {
+    return good_stride(window_center_stride_seconds,
+                       sample_rate);
+  }
 
-    if (itp_index < itp_length) {
-      ++ itp_index;
+  std::vector<T> const & getBandsAmplitudes() const {
+    return bands_amplitudes;
+  }
+
+  void getBandsAmplitudes(std::vector<T> & v) const {
+    int s = sz;
+    Assert(static_cast<int>(v.capacity()) >= s);
+    v.clear();
+    for (int i=0; i<s; ++i) {
+      v.push_back(bands_amplitudes[i]);
     }
   }
   
-  std::vector<T> const & getNewBandsAmplitudes() const {
-    return new_bands_amplitudes;
-  }
-  std::vector<T> const & getOldBandsAmplitudes() const {
-    return old_bands_amplitudes;
+  void getBandsFreqs(std::vector<T> & v) const {
+    int s = sz;
+    Assert(static_cast<int>(v.capacity()) > s);
+    v.clear();
+    for (int i=0; i<=s; ++i) {
+      v.push_back(freqs[i]);
+    }
   }
 
 private:
   int sz; // number of bands
-  int itp_length = 2; // includes start and end values
-  int itp_index = 1;
   std::vector<T> freqs;
   PeriodicFFT<SqMagFftOperation<Window::Gaussian, double>> periodic_fft{modulator_max_fft_size};
   
-  std::vector<T> old_bands_amplitudes;
-  std::vector<T> new_bands_amplitudes;
+  std::vector<T> bands_amplitudes;
 
   double window_size_seconds;
+  double window_center_stride_seconds;
 
 #if IMJ_DEBUG_VOCODER
   std::unique_ptr<AsyncWavWriter> wav_writer_modulator_input;
@@ -371,48 +397,55 @@ private:
 
 template<typename T>
 struct FFTCarrier {
+
+  using FreqBinsImpl = typename fft::RealFBins_<fft::Fastest, T, a64::Alloc>;
+  using FreqBins = typename FreqBinsImpl::type;
+  
   FFTCarrier(FFTModulator<T> & mod)
   : modulator(mod)
   {
     tmp_freq_bins.resize(carrier_max_fft_size);
     signal_old.resize(carrier_max_fft_size);
     signal_new.resize(carrier_max_fft_size);
+    xfade.reserve(max_stride_size * 2);
+    
+    freqs.reserve(max_count_bands + 1);
   }
   
-  using FreqBinsImpl = typename fft::RealFBins_<fft::Fastest, T, a64::Alloc>;
-  using FreqBins = typename FreqBinsImpl::type;
-  
-  void setup(int sample_rate,
-             std::vector<T> const & band_freqs) {
-    freqs = band_freqs;
-
-    sz_half_signal = good_stride(FFTModulator<T>::window_center_stride_seconds,
-                                 sample_rate);
-    
-    xfade.set(sz_half_signal - 1,
-              EqualGainCrossFade::Sinusoidal);
-
-    periodic_fft.setLambdas([this]() { return 2 * sz_half_signal; },
-                            [this]() { return sz_half_signal; },
+  void init_dynamic_allocs(int sample_rate) {
+    periodic_fft.setLambdas([this, sample_rate]() {
+      return 2 * modulator.getStride(sample_rate);
+    },
+                            [this, sample_rate]() {
+      return modulator.getStride(sample_rate);
+    },
                             [this, sample_rate](int const window_center_stride,
                                                 FreqBins const & freq_bins) {
-      Assert(window_center_stride == sz_half_signal);
-
+      Assert(modulator.getStride(sample_rate) == window_center_stride);
+      
+      sz_half_signal = window_center_stride;
+      
+      Assert(static_cast<int>(signal_new.size() / 2) >= sz_half_signal);
+      Assert(static_cast<int>(signal_old.size() / 2) >= sz_half_signal);
+      
+      // TODO this could be very costly if stride is big. Instead, for very big strides we should limit the crossfade duration.
+      xfade.set(sz_half_signal - 1,
+                EqualGainCrossFade::Sinusoidal);
+      
       int const fft_length = FreqBinsImpl::get_fft_length(freq_bins);
-      Assert(fft_length <= carrier_max_fft_size);
-      Assert(fft_length == ceil_power_of_two(2*sz_half_signal));
-
+      Assert(fft_length <= static_cast<int>(carrier_max_fft_size));
+      
       signal_old.swap(signal_new);
       
       using Algo = fft::Algo_<fft::Fastest, T>;
       using Contexts = fft::Contexts_<fft::Fastest, T>;
       
       Algo fft(Contexts::getInstance().getBySize(fft_length));
-
+      
       T const scale_factor = 1/(Algo::scale * static_cast<T>(fft_length));
       
       new_signal_idx = 0;
-            
+      
       Assert(freq_bins.size() <= tmp_freq_bins.capacity());
       tmp_freq_bins.resize(freq_bins.size());
       
@@ -420,7 +453,7 @@ struct FFTCarrier {
                                    tmp_freq_bins);
       
       FreqBinsImpl::modulate_bands(sample_rate,
-                                   modulator.getNewBandsAmplitudes(),
+                                   modulator.getBandsAmplitudes(),
                                    freqs,
                                    tmp_freq_bins);
       if constexpr (Algo::inplace_dft) {
@@ -442,6 +475,7 @@ struct FFTCarrier {
         v *= scale_factor;
       }
     });
+
 #if IMJ_DEBUG_VOCODER
     wav_writer_carrier_input = std::make_unique<AsyncWavWriter>(1,
                                                                 sample_rate,
@@ -457,13 +491,16 @@ struct FFTCarrier {
                                                                                  "debug_carrier_bands_weighted_sum_old");
 #endif
   }
-  
+
+  void setup(SetupParams const & p) {
+    p.fill_freqs(freqs); // in the future, we could have a frequency shift between carrier and modulator
+  }
+
   void on_dropped_frame() {
     // TODO : ? (will not happen in today's use cases, though)
   }
   
-  T feed(std::pair<T, SampleContinuity> const & sample,
-         std::vector<T> const &) {
+  T feed(std::pair<T, SampleContinuity> const & sample) {
     // TODO : handle the case where sample.first == SampledDiscontinuity::Yes
     // (will not happen in real life use cases today, though)
     
@@ -474,7 +511,7 @@ struct FFTCarrier {
     periodic_fft.feed(sample.first);
 
     Assert(signal_new.size() == signal_old.size());
-    Assert(new_signal_idx < (signal_new.size() / 2));
+    Assert(new_signal_idx < static_cast<int>((signal_new.size() / 2)));
 
     // cross-fade from the old signal with old bands amplitudes to the new signal with new bands amplitudes
     XFadeValues<T> xf = xfade.get(new_signal_idx + 1);
@@ -697,12 +734,8 @@ private:
 */
 
 struct Vocoder {
-  static constexpr int count_bands = 5;
-  
-  static constexpr float min_freq = 100.f;
-  static constexpr float max_freq = 20000.f;
-  
   // we need at least order 4 to have a good separation between bands, but then the bands are not flat anymore, and the output is very low
+  // so we use ffts instead
   static constexpr int order_filters_carrier = 1;
   static constexpr int order_filters_modulator = 1;
 
@@ -715,16 +748,13 @@ struct Vocoder {
     Volumes vol;
     SetupParams setup;
   };
-  
-  Vocoder()
-  : amplitudes(count_bands) {
-  }
 
   template<typename Out, typename P, typename S>
   void initialize(Out & ctxt,
                   P && get_params,
                   S && get_modulator_carrier_sample) {
     sample_rate = ctxt.getSampleRate();
+    last_setup = get_params().setup;
     setup();
 
     Assert(state == SynthState::ComputeNotRegistered);
@@ -743,9 +773,8 @@ struct Vocoder {
         Params const params = get_params();
         if (!last_setup || *last_setup != params.setup) {
           last_setup = params.setup;
-          modulator.setup(*sample_rate,
-                          freqs,
-                          params.setup);
+          modulator.setup(params.setup);
+          carrier.setup(params.setup);
         }
       
         Volumes const & volume = params.vol;
@@ -762,15 +791,13 @@ struct Vocoder {
             // happens during initialization phase (if we use a queue)
             modulator.on_dropped_frame();
           } else {
-            modulator.feed(*res_modulator,
-                           amplitudes);
+            modulator.feed(*res_modulator);
           }
           if (unlikely(!res_carrier)) {
             // happens during initialization phase (if we use a queue)
             carrier.on_dropped_frame();
           } else {
-            double const vocoded = carrier.feed(*res_carrier,
-                                                amplitudes);
+            double const vocoded = carrier.feed(*res_carrier);
             if (res_modulator) {
               double const mixed =
               volume.modulator * res_modulator->first +
@@ -801,11 +828,10 @@ struct Vocoder {
     }
   }
   
-  void fetch_last_data(std::vector<double> & envelopes, std::vector<double> & band_freqs) const {
-    std::lock_guard l(mutex);
-
-    envelopes = amplitudes;
-    band_freqs = freqs;
+  void fetch_last_data(std::vector<double> & envelopes,
+                       std::vector<double> & band_freqs) const {
+    modulator.getBandsAmplitudes(envelopes);
+    modulator.getBandsFreqs(band_freqs);
   }
 
 private:
@@ -814,36 +840,19 @@ private:
   //Modulator<order_filters_modulator, double> modulator;
   FFTModulator<double> modulator;
   //FFT2Modulator<double> modulator;
-  std::vector<double> amplitudes;
   //Carrier<order_filters_carrier, double> carrier;
   FFTCarrier<double> carrier{modulator};
   //FFT2Carrier<double> carrier{modulator};
-  std::vector<double> freqs;
   
   std::optional<int> sample_rate;
   std::optional<SetupParams> last_setup;
   
-  mutable std::mutex mutex; // protects amplitudes and freq allocation
-
   void setup() {
-    std::lock_guard l(mutex);
-    
-    freqs.clear();
-    reserve_no_shrink(freqs,
-                      count_bands + 1);
-    
-    auto log_min = std::log(min_freq);
-    auto log_max = std::log(max_freq);
-    
-    for (int i=0; i<=count_bands; ++i) {
-      double const ratio = static_cast<double>(i) / count_bands;
-      freqs.push_back(std::exp(log_min + ratio * (log_max-log_min)));
-    }
+    modulator.init_dynamic_allocs(*sample_rate);
+    carrier.init_dynamic_allocs(*sample_rate);
 
-    modulator.setup_bands(*sample_rate,
-                          freqs);
-    carrier.setup(*sample_rate,
-                  freqs);
+    modulator.setup(*last_setup);
+    carrier.setup(*last_setup);
   }
 };
 

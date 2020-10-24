@@ -1,7 +1,7 @@
 
 namespace imajuscule::audio::rtresynth {
 
-void setDuration(std::optional<float> secs,
+inline void setDuration(std::optional<float> secs,
                  std::atomic<float> & atom) {
   if (secs) {
     atom = *secs;
@@ -17,9 +17,13 @@ struct PeriodicFFT {
   using Result = typename FftOperation::Result;
 
   template <typename... Args>
-  PeriodicFFT(Args&&... args)
-  : fft_op(std::forward<Args>(args)...)
-  {}
+  PeriodicFFT(int reserve_for_max_fft_size,
+              Args&&... args)
+  : fft_op(reserve_for_max_fft_size,
+           std::forward<Args>(args)...)
+  {
+    samples.reserve(reserve_for_max_fft_size);
+  }
   
   using OnFftResult = folly::Function<void(int const, Result const &)>;
   using GetWindowSizeFunc = folly::Function<int()>;
@@ -113,9 +117,17 @@ private:
   std::atomic<float> dt_copy_seconds = -1.f;
   
   bool init_data() {
-    window_size_ = get_window_size();
+    bool changed = false;
     
-    return fft_op.init_data(window_size_);
+    int new_size = get_window_size();
+    if (new_size != window_size_) {
+      window_size_ = new_size;
+      // Returning true will zero the samples.
+      // But we could be more subtle : if there are enough samples for the window overlap, we could reuse these samples.
+      changed = true;
+    }
+    
+    return fft_op.init_data(window_size_) || changed;
   }
   
   void onFullBuffer() {
@@ -142,6 +154,8 @@ private:
       reset_samples();
     }
     
+    Assert(end == 0);
+
     {
       std::optional<float> duration_copy_seconds;
       std::optional<profiling::CpuDuration> dt;
@@ -149,9 +163,8 @@ private:
         profiling::ThreadCPUTimer timer(dt);
         int const windowoverlapp = window_size_ - window_center_stride;
         if (windowoverlapp >= 0) {
-          const int offset = window_size_-windowoverlapp;
           for (; end<windowoverlapp; ++end) {
-            samples[end] = samples[end + offset];
+            samples[end] = samples[end + window_center_stride];
           }
           ignore_frames = 0;
         } else {
@@ -185,6 +198,7 @@ struct FftOperation {
   bool init_data(int const window_size) {
     int const fft_length = get_fft_length_for(window_size,
                                               zero_padding_factor);
+    Assert(fft_length <= static_cast<int>(signal.capacity()));
     signal.resize(fft_length);
     result.resize(fft_length);
     return false;
@@ -257,6 +271,7 @@ struct SqMagFftOperation {
     Assert(0 == window_size % 2);
     int const fft_length = get_fft_length_for(window_size,
                                               zero_padding_factor);
+    Assert(fft_length <= work_vector_signal.capacity());
     reserve_no_shrink(work_vector_signal,
                       fft_length);
     reserve_no_shrink(work_vector_freqs,
@@ -265,12 +280,12 @@ struct SqMagFftOperation {
       switch(window_type) {
         case Window::Rectangular:
           half_rectangular_window<T>(window_size/2,
-                                          half_window);
+                                     half_window);
           break;
         case Window::Gaussian:
           half_gaussian_window<T>(4,
-                                       window_size/2,
-                                       half_window);
+                                  window_size/2,
+                                  half_window);
           break;
       }
       normalize_window(half_window);

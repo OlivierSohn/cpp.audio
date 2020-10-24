@@ -633,7 +633,31 @@ public:
   void setVocoderModulatorWindowSizeSeconds(float f) {
     vocoder_modulator_window_size_seconds = f;
   }
-  
+  float getVocoderStrideSeconds() const {
+    return vocoder_stride_seconds;
+  }
+  void setVocoderStrideSeconds(float f) {
+    vocoder_stride_seconds = f;
+  }
+  int getVocoderBandsCount() const {
+    return vocoder_count_bands;
+  }
+  void setVocoderBandsCount(int f) {
+    vocoder_count_bands = f;
+  }
+  float getVocoderMinFreq() const {
+    return vocoder_min_freq;
+  }
+  void setVocoderMinFreq(float f) {
+    vocoder_min_freq = f;
+  }
+  float getVocoderMaxFreq() const {
+    return vocoder_max_freq;
+  }
+  void setVocoderMaxFreq(float f) {
+    vocoder_max_freq = f;
+  }
+
   float getDirectVoiceVolume() const {
     return voice_volume;
   }
@@ -726,6 +750,10 @@ private:
   
   std::atomic<float> vocoder_env_follower_cutoff_ratio = 1.f/20.f;
   std::atomic<float> vocoder_modulator_window_size_seconds = 0.10f;
+  std::atomic<float> vocoder_stride_seconds = 0.005f;
+  std::atomic<int> vocoder_count_bands = 5;
+  std::atomic<float> vocoder_min_freq = 100.f;
+  std::atomic<float> vocoder_max_freq = 20000.f;
   
   std::atomic<float> voice_volume = 0.f;
   std::atomic<float> carrier_volume = 0.f;
@@ -857,7 +885,11 @@ RtResynth::init(int const sample_rate) {
       },
       {
         vocoder_env_follower_cutoff_ratio.load(),
-        vocoder_modulator_window_size_seconds.load()
+        vocoder_modulator_window_size_seconds.load(),
+        vocoder_stride_seconds.load(),
+        vocoder_count_bands.load(),
+        vocoder_min_freq.load(),
+        vocoder_max_freq.load()
       }
     };
   },

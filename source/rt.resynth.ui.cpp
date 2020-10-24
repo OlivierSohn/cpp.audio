@@ -359,6 +359,30 @@ struct MyApp : public wxApp {
     {
       {
         {
+          "Vocoder bands count",
+          "",
+          [this](){ return resynth.getVocoderBandsCount(); },
+          [this](int v){ resynth.setVocoderBandsCount(v); },
+          1,
+          50
+        },
+        {
+          "Vocoder min freq",
+          "Hz",
+          [this](){ return resynth.getVocoderMinFreq(); },
+          [this](float v){ resynth.setVocoderMinFreq(v); },
+          10.f,
+          1000.f
+        },
+        {
+          "Vocoder max freq",
+          "Hz",
+          [this](){ return resynth.getVocoderMaxFreq(); },
+          [this](float v){ resynth.setVocoderMaxFreq(v); },
+          100.f,
+          20000.f
+        },
+        {
           "Vocoder modulator env follower cutoff ratio",
           "",
           [this](){ return resynth.getVocoderEnvFollowerCutoffRatio(); },
@@ -371,6 +395,14 @@ struct MyApp : public wxApp {
           "seconds",
           [this](){ return resynth.getVocoderModulatorWindowSizeSeconds(); },
           [this](float v){ resynth.setVocoderModulatorWindowSizeSeconds(v); },
+          0.f,
+          0.4f
+        },
+        {
+          "Vocoder stride",
+          "seconds",
+          [this](){ return resynth.getVocoderStrideSeconds(); },
+          [this](float v){ resynth.setVocoderStrideSeconds(v); },
           0.f,
           0.4f
         },
@@ -606,7 +638,8 @@ struct MyApp : public wxApp {
                                                  result_dropped,
                                                  frame_id);
     },
-                             [this](std::vector<double> & envelopes, std::vector<double> & band_freqs) {
+                             [this](std::vector<double> & envelopes,
+                                    std::vector<double> & band_freqs) {
       resynth.getVocoder().fetch_last_data(envelopes, band_freqs);
     });
     frame->Show(true);
