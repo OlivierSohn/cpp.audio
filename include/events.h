@@ -178,4 +178,92 @@ struct MIDITimestampAndSource {
 private:
   uint64_t time, src_key;
 };
+
+/*
+ Can be used to generate note ids for a synth where each physical key can only be pressed
+ at most once at any given time, and is identified by 'Key'.
+ 
+ The idea is the following:
+
+ For every note-on event, a new unique note id is created, and associated to that
+ key.
+ Until a "note off" event for that key is sent, subsequent "note change" events
+ for that same key will use the same noteid.
+ The subsequent "note off" event will also use the same noteid, and remove the association
+ between the key and the note id, so that on a subsequent note-on event for that key,
+ a new note id is generated.
+ */
+struct NoteIdsGenerator {
+  using Key = int;
+  
+  NoteIdsGenerator(int approx_max_simultaneous_chans)
+  : noteids(approx_max_simultaneous_chans)
+  {}
+  
+  NoteIdsGenerator(NoteIdsGenerator const &) = delete;
+  NoteIdsGenerator & operator = (NoteIdsGenerator const &) = delete;
+  NoteIdsGenerator(NoteIdsGenerator &&) = delete;
+  NoteIdsGenerator & operator = (NoteIdsGenerator &&) = delete;
+
+  NoteId NoteOnId(Key const key) {
+    next.noteid++;
+    auto it = noteids.find(key);
+    if (it == noteids.end()) {
+      noteids.emplace(key, next);
+    } else {
+      it->second = next;
+    }
+    return next;
+  }
+  
+  NoteId NoteChangeId(Key const key) {
+    auto it = noteids.find(key);
+    if (it == noteids.end()) {
+      Assert(0); // a notechange must be preceeded by noteon, and must be before noteoff
+      return {-key};
+    } else {
+      return it->second;
+    }
+  }
+  
+  NoteId NoteOffId(Key const key) {
+    auto it = noteids.find(key);
+    if (it == noteids.end()) {
+      Assert(0); // a noteoff must be preceded by noteon
+      return {-key};
+    } else {
+      auto res = it->second;
+      noteids.erase(it);
+      return res;
+    }
+  }
+  
+private:
+  NoteId next{};
+  std::unordered_map<Key, NoteId> noteids;
+};
+
+// @param e [in/out] :
+//   In the input, e.noteid.noteid is the key that uniquely identifies the played note among all currently played notes.
+//     It must fit in the values of an int.
+//     Typically, for a synth played via a midi keyboard it could be the midipitch, because in a midi keyboard,
+//       there is a physical constraint that prevents the same key to be pressed twice in a row without being released first.
+//   In the output, e.noteid.noteid is the noteid that uniquely identifies the played note among all notes played currently or in the past or in the future:
+inline void convertKeyToNoteId(NoteIdsGenerator & gen,
+                               Event & e) {
+  int const key = static_cast<int>(e.noteid.noteid);
+  switch(e.type) {
+    case EventType::NoteOn:
+      e.noteid = gen.NoteOnId(key);
+      break;
+    case EventType::NoteChange:
+      e.noteid = gen.NoteChangeId(key);
+      break;
+    case EventType::NoteOff:
+      e.noteid = gen.NoteOffId(key);
+      break;
+  }
+}
+
+
 } // namespace

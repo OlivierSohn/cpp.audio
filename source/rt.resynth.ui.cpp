@@ -359,6 +359,22 @@ struct MyApp : public wxApp {
     {
       {
         {
+          "Vocoder carrier noise",
+          "",
+          [this](){ return resynth.getVocoderCarrierNoiseVolume(); },
+          [this](float v){ resynth.setVocoderCarrierNoiseVolume(v); },
+          0.f,
+          1.f
+        },
+        {
+          "Vocoder carrier saw",
+          "",
+          [this](){ return resynth.getVocoderCarrierSawVolume(); },
+          [this](float v){ resynth.setVocoderCarrierSawVolume(v); },
+          0.f,
+          1.f
+        },
+        {
           "Vocoder bands count",
           "",
           [this](){ return resynth.getVocoderBandsCount(); },

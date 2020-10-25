@@ -1,6 +1,7 @@
 
 /*
 
+- it would be nice to have some detune to have more phasing of oscillators
 - when modulator window is small, the frequency detection is not stable anymore
 . we could try envelope followers to smooth this out, or use bigger windows
 

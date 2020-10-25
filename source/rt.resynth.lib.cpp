@@ -23,12 +23,19 @@ using VocoderCarrierElement =
 VolumeAdjusted<
 Enveloped<
 FreqCtrl_<
-//soundBufferWrapperAlgo<Sound::NOISE>,
-FOscillatorAlgo<T, FOscillator::SAW, OscillatorUsage::FilteredByLoudnessAdaptedSound>, // Use a saw as carrier to have a wide spectrum
+UnityGainMix<
+VolumeAdjusted<
+soundBufferWrapperAlgo<Sound::NOISE>
+>,
+VolumeAdjusted<
+FOscillatorAlgo<T, FOscillator::SAW, OscillatorUsage::FilteredByLoudnessAdaptedSound> // Use a saw as carrier to have a wide spectrum
+>
+>,
 InterpolatedFreq<T>
 >,
 AHDSREnvelope<Atomicity::Yes, T, EnvelopeRelease::WaitForKeyRelease>
->
+>,
+BaseVolumeDef::One // because it's used as a carrier
 >
 ;
 
@@ -118,9 +125,13 @@ private:
 template<typename T>
 struct VocoderCarrierElementInitializer {
   VocoderCarrierElementInitializer(int const sample_rate,
-                                   audioelement::AHDSR const & a)
+                                   audioelement::AHDSR const & a,
+                                   float const noise_vol,
+                                   float const saw_vol)
   : sample_rate(sample_rate)
   , ahdsr(a)
+  , noise_volume(noise_vol)
+  , saw_volume(saw_vol)
   {}
   
   void operator()(audioelement::VocoderCarrierElement<T> & e,
@@ -129,12 +140,15 @@ struct VocoderCarrierElementInitializer {
                               sample_rate);
     e.getVolumeAdjustment().getOsc().getAlgo().getCtrl().setup(100,
                                                                itp::LINEAR);
+    auto & oscs = e.getVolumeAdjustment().getOsc().getAlgo().getOsc().get();
+    std::get<0>(oscs).setVolumeTarget(noise_volume);
+    std::get<1>(oscs).setVolumeTarget(saw_volume);
   }
   
   bool operator ==(VocoderCarrierElementInitializer const& o) const {
     return
-    std::make_tuple(sample_rate, ahdsr) ==
-    std::make_tuple(o.sample_rate, o.ahdsr);
+    std::make_tuple(sample_rate, ahdsr, noise_volume, saw_volume) ==
+    std::make_tuple(o.sample_rate, o.ahdsr, o.noise_volume, o.saw_volume);
   }
   bool operator !=(VocoderCarrierElementInitializer const& o) const {
     return !this->operator ==(o);
@@ -143,6 +157,8 @@ struct VocoderCarrierElementInitializer {
 private:
   int sample_rate;
   audioelement::AHDSR ahdsr;
+  float noise_volume;
+  float saw_volume;
 };
 
 
@@ -595,32 +611,51 @@ public:
   }
   void setEnvAttackSeconds(float f) {
     env_attack_seconds = f;
+    updateVocoderCarrierInitializer();
   }
   float getEnvHoldSeconds() const {
     return env_hold_seconds;
   }
   void setEnvHoldSeconds(float f) {
     env_hold_seconds = f;
+    updateVocoderCarrierInitializer();
   }
   float getEnvDecaySeconds() const {
     return env_decay_seconds;
   }
   void setEnvDecaySeconds(float f) {
     env_decay_seconds = f;
+    updateVocoderCarrierInitializer();
   }
   float getEnvReleaseSeconds() const {
     return env_release_seconds;
   }
   void setEnvReleaseSeconds(float f) {
     env_release_seconds = f;
+    updateVocoderCarrierInitializer();
   }
   float getEnvSustainLevel() const {
     return env_sustain_level;
   }
   void setEnvSustainLevel(float f) {
     env_sustain_level = f;
+    updateVocoderCarrierInitializer();
   }
-  
+
+  float getVocoderCarrierNoiseVolume() const {
+    return vocoder_carrier_noise_volume;
+  }
+  void setVocoderCarrierNoiseVolume(float f) {
+    vocoder_carrier_noise_volume = f;
+    updateVocoderCarrierInitializer();
+  }
+  float getVocoderCarrierSawVolume() const {
+    return vocoder_carrier_saw_volume;
+  }
+  void setVocoderCarrierSawVolume(float f) {
+    vocoder_carrier_saw_volume = f;
+    updateVocoderCarrierInitializer();
+  }
   float getVocoderEnvFollowerCutoffRatio() const {
     return vocoder_env_follower_cutoff_ratio;
   }
@@ -699,6 +734,7 @@ private:
   Ctxt ctxt;
   Synth synth;
   SynthVocoderCarier vocoder_carrier;
+  NoteIdsGenerator vocoder_carrier_noteids;
   Midi midi;
   
   std::atomic_bool thread_resynth_active{false};
@@ -748,6 +784,8 @@ private:
   std::atomic<AutotuneChordFrequencies> autotune_chord_frequencies = AutotuneChordFrequencies::Harmonics;
   std::atomic<uint64_t> autotune_bit_chord = 0b10010001; // least significant beat = lower pitch
   
+  std::atomic<float> vocoder_carrier_noise_volume = 1.f;
+  std::atomic<float> vocoder_carrier_saw_volume = 1.f;
   std::atomic<float> vocoder_env_follower_cutoff_ratio = 1.f/20.f;
   std::atomic<float> vocoder_modulator_window_size_seconds = 0.10f;
   std::atomic<float> vocoder_stride_seconds = 0.005f;
@@ -796,6 +834,8 @@ private:
   
   void onInputMidiEvent(int sample_rate, uint64_t time_ms, midi::Event const & e);
   void onLostInputMidiEvents();
+
+  void updateVocoderCarrierInitializer();
 };
 
 
@@ -809,6 +849,7 @@ RtResynth::RtResynth()
 , input(4,
         4)
 , periodic_fft(pow2(14))
+, vocoder_carrier_noteids(150)
 {
   freqmags.reserve(200);
   freqmags_data.reserve(200);
@@ -902,16 +943,8 @@ RtResynth::init(int const sample_rate) {
                           std::make_pair(carrier_val,
                                          SampleContinuity::Yes));
   });
-
-  vocoder_carrier.setSynchronousElementInitializer(VocoderCarrierElementInitializer<double>(
-    sample_rate,
-    mkAHDSR(sample_rate,
-            env_attack_seconds,
-            env_hold_seconds,
-            env_decay_seconds,
-            env_release_seconds,
-            env_sustain_level)
-  ));
+  
+  updateVocoderCarrierInitializer();
 
   midi_thread_active = true;
   midi_thread = std::make_unique<std::thread>([this, sample_rate](){
@@ -963,6 +996,21 @@ RtResynth::teardown() {
   ctxt.doTearDown();
 }
 
+void RtResynth::updateVocoderCarrierInitializer() {
+  if (std::optional<int> const sample_rate = ctxt.getMaybeSampleRate()) {
+    vocoder_carrier.setSynchronousElementInitializer(VocoderCarrierElementInitializer<double>(*sample_rate,
+                                                                                              mkAHDSR(*sample_rate,
+                                                                                                      env_attack_seconds,
+                                                                                                      env_hold_seconds,
+                                                                                                      env_decay_seconds,
+                                                                                                      env_release_seconds,
+                                                                                                      env_sustain_level),
+                                                                                              vocoder_carrier_noise_volume.load(),
+                                                                                              vocoder_carrier_saw_volume.load()
+                                                                                              ));
+  }
+}
+
 void RtResynth::onInputMidiEvent(int const sample_rate,
                                  uint64_t time_ms,
                                  midi::Event const & e) {
@@ -972,7 +1020,7 @@ void RtResynth::onInputMidiEvent(int const sample_rate,
     midi::NoteOn const & on = std::get<midi::NoteOn>(e);
     Assert(on.velocity);
     vocoder_carrier.onEvent(sample_rate,
-                            mkNoteOn(NoteId{on.key},
+                            mkNoteOn(vocoder_carrier_noteids.NoteOnId(on.key),
                                      midi.midi_pitch_to_freq(on.key),
                                      on.velocity / 127.f),
                             ctxt.getStepper(),
@@ -981,7 +1029,7 @@ void RtResynth::onInputMidiEvent(int const sample_rate,
   } else if (std::holds_alternative<midi::NoteOff>(e)) {
     midi::NoteOff const & off = std::get<midi::NoteOff>(e);
     vocoder_carrier.onEvent(sample_rate,
-                            mkNoteOff(NoteId{off.key}),
+                            mkNoteOff(vocoder_carrier_noteids.NoteOffId(off.key)),
                             ctxt.getStepper(),
                             ctxt.getStepper(),
                             MIDITimestampAndSource{time_nanos, to_underlying(MidiSource::MidiInput)});

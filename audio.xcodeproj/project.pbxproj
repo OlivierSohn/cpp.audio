@@ -407,7 +407,7 @@
 		097D56CC1E86DCA000018F14 /* CoreFoundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreFoundation.framework; path = System/Library/Frameworks/CoreFoundation.framework; sourceTree = SDKROOT; };
 		097D56CE1E86DCB600018F14 /* CoreGraphics.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreGraphics.framework; path = System/Library/Frameworks/CoreGraphics.framework; sourceTree = SDKROOT; };
 		097D56D01E86DCC900018F14 /* AppKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = AppKit.framework; path = System/Library/Frameworks/AppKit.framework; sourceTree = SDKROOT; };
-		097DBC76252F0D0F00AFFD0E /* rt.resynth.ui.pitch.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = rt.resynth.ui.pitch.cpp; path = source/rt.resynth.ui.pitch.cpp; sourceTree = "<group>"; };
+		097DBC76252F0D0F00AFFD0E /* rt.resynth.ui.analysis.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = rt.resynth.ui.analysis.cpp; path = source/rt.resynth.ui.analysis.cpp; sourceTree = "<group>"; };
 		097DBD332531D8A400AFFD0E /* rt.resynth.ui.autotune.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = rt.resynth.ui.autotune.cpp; path = source/rt.resynth.ui.autotune.cpp; sourceTree = "<group>"; };
 		097DBDDB2531DA7800AFFD0E /* rt.resynth.lib.autotune.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = rt.resynth.lib.autotune.cpp; path = source/rt.resynth.lib.autotune.cpp; sourceTree = "<group>"; };
 		097DBDE82531DBA500AFFD0E /* rt.resynth.lib.algo.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = rt.resynth.lib.algo.cpp; path = source/rt.resynth.lib.algo.cpp; sourceTree = "<group>"; };
@@ -426,6 +426,8 @@
 		098EFCCA1E6C5E50000ADD0D /* noise.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; lineEnding = 0; name = noise.h; path = include/noise.h; sourceTree = "<group>"; xcLanguageSpecificationIdentifier = xcode.lang.objcpp; };
 		099B6CF6253CBF12003E4929 /* rt.resynth.lib.midi.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = rt.resynth.lib.midi.cpp; path = source/rt.resynth.lib.midi.cpp; sourceTree = "<group>"; };
 		099B6D22253CC419003E4929 /* libportmidi.dylib */ = {isa = PBXFileReference; lastKnownFileType = "compiled.mach-o.dylib"; name = libportmidi.dylib; path = ../../../../usr/local/Cellar/portmidi/217_2/lib/libportmidi.dylib; sourceTree = "<group>"; };
+		099B6E78253F0F2A003E4929 /* rt.resynth.ui.vocoder.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = rt.resynth.ui.vocoder.cpp; path = source/rt.resynth.ui.vocoder.cpp; sourceTree = "<group>"; };
+		099B7051253FA6FE003E4929 /* rt.resynth.lib.periodicfft.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = rt.resynth.lib.periodicfft.cpp; path = source/rt.resynth.lib.periodicfft.cpp; sourceTree = "<group>"; };
 		099E06DC1E36EC6D0012348E /* parse.music.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = parse.music.cpp; path = source/parse.music.cpp; sourceTree = "<group>"; };
 		099E06DD1E36EC6D0012348E /* private.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = private.h; path = source/private.h; sourceTree = "<group>"; };
 		099E06DF1E36EC6D0012348E /* sound.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = sound.cpp; path = source/sound.cpp; sourceTree = "<group>"; };
@@ -704,13 +706,15 @@
 				097DBE0C2531DFB300AFFD0E /* rt.resynth.lib.locked.data.cpp */,
 				093315D82539D4A20033E23A /* rt.resynth.lib.metaqueue.cpp */,
 				099B6CF6253CBF12003E4929 /* rt.resynth.lib.midi.cpp */,
+				099B7051253FA6FE003E4929 /* rt.resynth.lib.periodicfft.cpp */,
 				09112FE02533221A00DA5248 /* rt.resynth.lib.test.cpp */,
 				093315F02539D66F0033E23A /* rt.resynth.lib.vocoder.cpp */,
 				097DBE002531DCBA00AFFD0E /* rt.resynth.txt */,
+				097DBC76252F0D0F00AFFD0E /* rt.resynth.ui.analysis.cpp */,
 				097DBD332531D8A400AFFD0E /* rt.resynth.ui.autotune.cpp */,
 				09432204252A268800C8B64E /* rt.resynth.ui.cpp */,
 				097DBE252531FEF200AFFD0E /* rt.resynth.ui.params.cpp */,
-				097DBC76252F0D0F00AFFD0E /* rt.resynth.ui.pitch.cpp */,
+				099B6E78253F0F2A003E4929 /* rt.resynth.ui.vocoder.cpp */,
 				092412A01E56F04500A848A8 /* samples.cpp */,
 				099E06DF1E36EC6D0012348E /* sound.cpp */,
 				09A8F2291E442C3A0071C141 /* soundengine.cpp */,

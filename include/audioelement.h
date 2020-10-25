@@ -1191,15 +1191,18 @@ protected:
   }
 };
 
-
+enum class BaseVolumeDef {
+  FromAlgo, // The base volume is deduced from the underlying algorithm
+  One       // The base volume is 1.
+};
 /**
  The user of the class can adjust the volume
  */
-template<typename ALGO>
+template<typename ALGO, BaseVolumeDef BV = BaseVolumeDef::FromAlgo>
 struct VolumeAdjusted : BaseVolumeAdjusted<ALGO> {
   using T = typename ALGO::FPT;
 
-  static constexpr auto baseVolume = ALGO::baseVolume;
+  static constexpr auto baseVolume = (BV == BaseVolumeDef::FromAlgo) ? ALGO::baseVolume : static_cast<T>(1);
 
   auto & getVolumeAdjustment() { return *this; }
   auto const & getVolumeAdjustment() const { return *this; }
@@ -1782,6 +1785,113 @@ public:
     return sum;
   }
 
+  void setLoudnessParams(int sample_rate, int low_index, float log_ratio, float loudness_level) {
+    for_each(aes, [=](auto & ae) {
+      ae.setLoudnessParams(sample_rate, low_index, log_ratio, loudness_level);
+    });
+  }
+};
+
+template<class...AEs>
+struct UnityGainMix {
+  using MeT = UnityGainMix<AEs...>;
+
+  static constexpr auto hasEnvelope = AllHaveEnvelope<AEs...>();
+  static constexpr auto baseVolume = minBaseVolume<AEs...>(); // be conservative.
+  static constexpr bool isMonoHarmonic = AllMonoHarmonic<AEs...>();
+  static constexpr int count_channels = 1; // we could do better
+  
+  bool isEnvelopeFinished() const {
+    Assert(0);
+    return false;
+  }
+  void onKeyPressed(int32_t) {
+    Assert(0);
+  }
+  void onKeyReleased(int32_t) {
+    Assert(0);
+  }
+  
+  using T = typename NthTypeOf<0, AEs...>::FPT;
+  using FPT = T;
+  static_assert(std::is_floating_point<FPT>::value);
+  
+private:
+  std::tuple<AEs...> aes;
+  
+public:
+  auto & get() {
+    return aes;
+  }
+  auto const & get() const {
+    return aes;
+  }
+  
+  void set_sample_rate(int s) {
+    for_each(aes, [s](auto & ae) {
+      ae.set_sample_rate(s);
+    });
+  }
+  
+  void setFiltersOrder(int order) {
+    for_each(aes, [order](auto & ae) {
+      ae.setFiltersOrder(order);
+    });
+  }
+  
+  void forgetPastSignals() {
+    for_each(aes, [](auto & ae) {
+      ae.forgetPastSignals();
+    });
+  }
+  
+  void step() {
+    for_each(aes, [](auto & ae) {
+      ae.step();
+    });
+  }
+  
+  void setAngleIncrements(T v) {
+    for_each(aes, [v](auto & ae) {
+      ae.setAngleIncrements(v);
+    });
+  }
+  
+  void setAngle(T v) {
+    for_each(aes, [v](auto & ae) {
+      ae.setAngle(v);
+    });
+  }
+  
+  // we return the minimum angle, which is the most constraining wrt time constants for volume variations
+  T angleIncrements() const {
+    std::optional<T> minAngle;
+    for_each_i(aes, [&minAngle, this](int i, auto & ae) {
+      T const ai = std::abs(ae.angleIncrements());
+      // ignore the ones that return 0 : they are a-periodic, like soundBufferWrapperAlgo
+      if (ai) {
+        if (!minAngle || *minAngle > ai) {
+          minAngle = ai;
+        }
+      }
+    });
+    return minAngle ? *minAngle : 0;
+  }
+  
+  void synchronizeAngles(MeT const & other) {
+    for_each_zip(aes, other.get(), [this](auto & ae, auto & otherAe) {
+      ae.synchronizeAngles(otherAe);
+    });
+  }
+
+  T imag() const {
+    T sum = 0.f;
+    for_each_i(aes, [&sum, this] (int i, auto const & ae) {
+      sum += ae.imag();
+    });
+    return sum;
+  }
+  
   void setLoudnessParams(int sample_rate, int low_index, float log_ratio, float loudness_level) {
     for_each(aes, [=](auto & ae) {
       ae.setLoudnessParams(sample_rate, low_index, log_ratio, loudness_level);
@@ -2896,12 +3006,19 @@ struct FreqCtrl_ {
 
   // It is debatable, whether this should return the oscillator's increment, or the control's.
   //
-  // The reason why it returns the oscillator frequency is because
+  // The reason why it returns (in priority) the oscillator frequency is because
   // 'BaseVolumeAdjusted' uses this to adjust the time constant of the filter that controls the amplitude,
   // so it is safer imho to return the current oscillator frequency, instead of a future frequency.
   // (Note that in that use case, it would be even safer to return the minimum frequency between the current
   // and the future frequencies).
-  FPT angleIncrements() const { return osc.angleIncrements(); }
+  FPT angleIncrements() const {
+    FPT const ai = osc.angleIncrements();
+    if (ai) {
+      return ai;
+    }
+    // osc has a 0 angle increment, so we are at initialization time, when the angle increment of the control has not yet propagated to the oscillator
+    return std::get<0>(ctrls).getFrom();
+  }
 
   void step() {
     setFreqs(ctrls, osc);

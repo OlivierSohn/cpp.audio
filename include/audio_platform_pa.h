@@ -226,6 +226,10 @@ struct Context<AudioPlatform::PortAudio, F, Chans> {
     return *sample_rate_;
   }
   
+  std::optional<int> getMaybeSampleRate() const {
+    return sample_rate_;
+  }
+  
   double getOutputLatencySeconds() const {
     Assert(output_latency_seconds);
     return *output_latency_seconds;
