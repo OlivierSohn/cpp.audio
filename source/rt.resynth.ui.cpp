@@ -375,6 +375,30 @@ struct MyApp : public wxApp {
           1.f
         },
         {
+          "Vocoder carrier tri",
+          "",
+          [this](){ return resynth.getVocoderCarrierTriangleVolume(); },
+          [this](float v){ resynth.setVocoderCarrierTriangleVolume(v); },
+          0.f,
+          1.f
+        },
+        {
+          "Vocoder carrier square",
+          "",
+          [this](){ return resynth.getVocoderCarrierSquareVolume(); },
+          [this](float v){ resynth.setVocoderCarrierSquareVolume(v); },
+          0.f,
+          1.f
+        },
+        {
+          "Vocoder carrier sine",
+          "",
+          [this](){ return resynth.getVocoderCarrierSineVolume(); },
+          [this](float v){ resynth.setVocoderCarrierSineVolume(v); },
+          0.f,
+          1.f
+        },
+        {
           "Vocoder bands count",
           "",
           [this](){ return resynth.getVocoderBandsCount(); },

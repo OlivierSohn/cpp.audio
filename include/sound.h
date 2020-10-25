@@ -228,6 +228,9 @@ struct FGetBuffer<Sound::NOISE> {
   float getAbsMean(int sample_rate) const {
     return getWhiteNoiseAbsMean(sample_rate);
   }
+  float getAngleIncrements() const {
+    return 0.5f; // this is used to evaluate the change rate of a signal, so for a sinus, pi/2 leads to the most changes
+  }
 };
 template<>
 struct FGetBuffer<Sound::PINK_NOISE> {
@@ -237,6 +240,9 @@ struct FGetBuffer<Sound::PINK_NOISE> {
   float getAbsMean(int sample_rate) const {
     return getPinkNoiseAbsMean(sample_rate);
   }
+  float getAngleIncrements() const {
+    return 0.5f; // this is used to evaluate the change rate of a signal, so for a sinus, pi/2 leads to the most changes
+  }
 };
 template<>
 struct FGetBuffer<Sound::GREY_NOISE> {
@@ -245,6 +251,9 @@ struct FGetBuffer<Sound::GREY_NOISE> {
   }
   float getAbsMean(int sample_rate) const {
     return getGreyNoiseAbsMean(sample_rate);
+  }
+  float getAngleIncrements() const {
+    return 0.5f; // this is used to evaluate the change rate of a signal, so for a sinus, pi/2 leads to the most changes
   }
 };
 

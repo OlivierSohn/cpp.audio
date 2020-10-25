@@ -28,7 +28,16 @@ VolumeAdjusted<
 soundBufferWrapperAlgo<Sound::NOISE>
 >,
 VolumeAdjusted<
-FOscillatorAlgo<T, FOscillator::SAW, OscillatorUsage::FilteredByLoudnessAdaptedSound> // Use a saw as carrier to have a wide spectrum
+FOscillatorAlgo<T, FOscillator::SAW, OscillatorUsage::FilteredByLoudnessAdaptedSound>
+>,
+VolumeAdjusted<
+FOscillatorAlgo<T, FOscillator::TRIANGLE, OscillatorUsage::FilteredByLoudnessAdaptedSound>
+>,
+VolumeAdjusted<
+FOscillatorAlgo<T, FOscillator::SQUARE, OscillatorUsage::FilteredByLoudnessAdaptedSound>
+>,
+VolumeAdjusted<
+SineOscillatorAlgo<T>
 >
 >,
 InterpolatedFreq<T>
@@ -127,11 +136,17 @@ struct VocoderCarrierElementInitializer {
   VocoderCarrierElementInitializer(int const sample_rate,
                                    audioelement::AHDSR const & a,
                                    float const noise_vol,
-                                   float const saw_vol)
+                                   float const saw_vol,
+                                   float const triangle_vol,
+                                   float const square_vol,
+                                   float const sine_vol)
   : sample_rate(sample_rate)
   , ahdsr(a)
   , noise_volume(noise_vol)
   , saw_volume(saw_vol)
+  , triangle_volume(triangle_vol)
+  , square_volume(square_vol)
+  , sine_volume(sine_vol)
   {}
   
   void operator()(audioelement::VocoderCarrierElement<T> & e,
@@ -143,12 +158,15 @@ struct VocoderCarrierElementInitializer {
     auto & oscs = e.getVolumeAdjustment().getOsc().getAlgo().getOsc().get();
     std::get<0>(oscs).setVolumeTarget(noise_volume);
     std::get<1>(oscs).setVolumeTarget(saw_volume);
+    std::get<2>(oscs).setVolumeTarget(triangle_volume);
+    std::get<3>(oscs).setVolumeTarget(square_volume);
+    std::get<4>(oscs).setVolumeTarget(sine_volume);
   }
   
   bool operator ==(VocoderCarrierElementInitializer const& o) const {
     return
-    std::make_tuple(sample_rate, ahdsr, noise_volume, saw_volume) ==
-    std::make_tuple(o.sample_rate, o.ahdsr, o.noise_volume, o.saw_volume);
+    std::make_tuple(sample_rate, ahdsr, noise_volume, saw_volume, triangle_volume, square_volume, sine_volume) ==
+    std::make_tuple(o.sample_rate, o.ahdsr, o.noise_volume, o.saw_volume, o.triangle_volume, o.square_volume, o.sine_volume);
   }
   bool operator !=(VocoderCarrierElementInitializer const& o) const {
     return !this->operator ==(o);
@@ -159,6 +177,9 @@ private:
   audioelement::AHDSR ahdsr;
   float noise_volume;
   float saw_volume;
+  float triangle_volume;
+  float square_volume;
+  float sine_volume;
 };
 
 
@@ -670,6 +691,27 @@ public:
     vocoder_carrier_saw_volume = f;
     updateVocoderCarrierInitializer();
   }
+  float getVocoderCarrierTriangleVolume() const {
+    return vocoder_carrier_triangle_volume;
+  }
+  void setVocoderCarrierTriangleVolume(float f) {
+    vocoder_carrier_triangle_volume = f;
+    updateVocoderCarrierInitializer();
+  }
+  float getVocoderCarrierSquareVolume() const {
+    return vocoder_carrier_square_volume;
+  }
+  void setVocoderCarrierSquareVolume(float f) {
+    vocoder_carrier_square_volume = f;
+    updateVocoderCarrierInitializer();
+  }
+  float getVocoderCarrierSineVolume() const {
+    return vocoder_carrier_sine_volume;
+  }
+  void setVocoderCarrierSineVolume(float f) {
+    vocoder_carrier_sine_volume = f;
+    updateVocoderCarrierInitializer();
+  }
   float getVocoderEnvFollowerCutoffRatio() const {
     return vocoder_env_follower_cutoff_ratio;
   }
@@ -800,6 +842,9 @@ private:
   
   std::atomic<float> vocoder_carrier_noise_volume = 1.f;
   std::atomic<float> vocoder_carrier_saw_volume = 1.f;
+  std::atomic<float> vocoder_carrier_triangle_volume = 0.f;
+  std::atomic<float> vocoder_carrier_square_volume = 0.f;
+  std::atomic<float> vocoder_carrier_sine_volume = 0.f;
   std::atomic<float> vocoder_env_follower_cutoff_ratio = 1.f/20.f;
   std::atomic<float> vocoder_modulator_window_size_seconds = 0.10f;
   std::atomic<float> vocoder_stride_seconds = 0.005f;
@@ -1020,7 +1065,10 @@ void RtResynth::updateVocoderCarrierInitializer() {
                                                                  env_release_seconds,
                                                                  env_sustain_level),
                                                          vocoder_carrier_noise_volume.load(),
-                                                         vocoder_carrier_saw_volume.load()
+                                                         vocoder_carrier_saw_volume.load(),
+                                                         vocoder_carrier_triangle_volume.load(),
+                                                         vocoder_carrier_square_volume.load(),
+                                                         vocoder_carrier_sine_volume.load()
                                                          );
     apply_initializer_to_current_and_future_notes(ctxt,
                                                   vocoder_carrier,

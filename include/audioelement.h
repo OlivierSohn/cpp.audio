@@ -1469,7 +1469,7 @@ struct soundBufferWrapperAlgo {
   }
   void setLoudnessParams(int sample_rate, int low_index, float log_ratio, float loudness_level) {}
   void setAngleIncrements(T ai) {}
-  T angleIncrements() const { return 0; }
+  T angleIncrements() const { return F_GET_BUFFER().getAngleIncrements(); }
   void setAngle(T a) {
     Assert(sb);
     // a is between -1 and 1
@@ -1868,11 +1868,8 @@ public:
     std::optional<T> minAngle;
     for_each_i(aes, [&minAngle, this](int i, auto & ae) {
       T const ai = std::abs(ae.angleIncrements());
-      // ignore the ones that return 0 : they are a-periodic, like soundBufferWrapperAlgo
-      if (ai) {
-        if (!minAngle || *minAngle > ai) {
-          minAngle = ai;
-        }
+      if (!minAngle || *minAngle > ai) {
+        minAngle = ai;
       }
     });
     return minAngle ? *minAngle : 0;
