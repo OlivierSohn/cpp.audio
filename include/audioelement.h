@@ -1338,16 +1338,30 @@ private:
 
 // the unit of angle and angle increments is "radian / pi"
 
-template<typename T>
+template<typename Algo>
 struct Phased {
-  using FPT = T;
+  static constexpr auto hasEnvelope = Algo::hasEnvelope;
+  static constexpr auto isMonoHarmonic = Algo::isMonoHarmonic;
+  static constexpr auto count_channels = Algo::count_channels;
+  static constexpr auto baseVolume = Algo::baseVolume;
+
+  using MeT = Phased<Algo>;
+  using FPT = typename Algo::FPT;
+  using T = FPT;
+
   static_assert(std::is_floating_point<FPT>::value);
+
   using Tr = NumTraits<T>;
 
-  Phased() = default;
-  Phased(T f) {
-    setAngleIncrements(f);
-  }
+  auto       & getOsc()       {return *this; }
+  auto const & getOsc() const {return *this; }
+  
+  Algo const & getAlgo() const { return algo; }
+  Algo & getAlgo() { return algo; }
+
+  void set_sample_rate(int) {}
+  
+  void setLoudnessParams(int sample_rate, int low_index, float log_ratio, float loudness_level) {}
 
   bool isEnvelopeFinished() const {
     Assert(0);
@@ -1361,39 +1375,53 @@ struct Phased {
   }
 
   void forgetPastSignals() {
+    algo.onForgetPastSignals();
   }
 
-  void synchronizeAngles(Phased<T> const & other) {
+  void synchronizeAngles(MeT const & other) {
     setAngle(other.angle_);
   }
 
   void setAngle( T angle ) {
     angle_ = phaseToNormalForm(angle);
   }
+
   T angle() const { return angle_; }
 
   void setAngleIncrements(T v) {
     angle_increments = phaseToNormalForm(v);
     aliasingMult = freqAliasingMultiplicator(v); // it's important to pass v instead of angle_increments here.
   }
+
   T angleIncrements() const { return angle_increments; }
 
   void step() {
+    Assert(angle_ >= Tr::zero());
+    Assert(angle_ <= Tr::two());
+    Assert(angle_increments >= Tr::zero());
+    Assert(angle_increments <= Tr::two());
+
     angle_ += angle_increments;
+
+    Assert(angle_ >= Tr::zero());
+
     if(angle_ > Tr::two()) {
       angle_ -= Tr::two();
-      Assert(angle_ <= Tr::two());
-    }
-    else if(angle_ < Tr::zero()) {
-      angle_ += Tr::two();
       Assert(angle_ >= Tr::zero());
+      Assert(angle_ <= Tr::two());
+      Assert(angle_ <= angle_increments);
+      algo.onNewPeriod();
     }
   }
 
-protected:
+  T real() const { return aliasingMult * algo.real(angle_); }
+  T imag() const { return aliasingMult * algo.imag(angle_); }
+
+private:
   T angle_ = {};
   T angle_increments = {};
   T aliasingMult = static_cast<T>(1);
+  Algo algo;
 };
 
 /*
@@ -1403,32 +1431,23 @@ protected:
  * which are less performant than 'SineOscillatorAlgo'.
  */
 template<typename T>
-struct PCOscillatorAlgo : public Phased<T> {
+struct PCOscillatorAlgo_ {
   static constexpr auto hasEnvelope = false;
   static constexpr auto isMonoHarmonic = true;
   static constexpr auto baseVolume = reduceUnadjustedVolumes * soundBaseVolume(Sound::SINE);
   static constexpr int count_channels = 1;
 
-  using Phased<T>::angle_;
-  using Phased<T>::aliasingMult;
+  using FPT = T;
 
-  PCOscillatorAlgo() = default;
-  PCOscillatorAlgo(T angle_increments) : Phased<T>(angle_increments) {}
+  void onNewPeriod() const {}
+  void onForgetPastSignals() const {}
 
-  bool isEnvelopeFinished() const {
-    Assert(0);
-    return false;
-  }
-  void onKeyPressed(int32_t) {
-    Assert(0);
-  }
-  void onKeyReleased(int32_t) {
-    Assert(0);
-  }
-
-  T real() const { return aliasingMult * std::cos(static_cast<T>(M_PI) * angle_); }
-  T imag() const { return aliasingMult * std::sin(static_cast<T>(M_PI) * angle_); }
+  T real(T angle) const { return std::cos(static_cast<T>(M_PI) * angle); }
+  T imag(T angle) const { return std::sin(static_cast<T>(M_PI) * angle); }
 };
+
+template<typename T>
+using PCOscillatorAlgo = Phased<PCOscillatorAlgo_<T>>;
 
 template<typename T>
 using PCOscillator = FinalAudioElement<PCOscillatorAlgo<T>>;
@@ -1582,34 +1601,26 @@ enum class OscillatorUsage {
   FilteredByLoudnessAdaptedSound
 };
 template<typename T, FOscillator O, OscillatorUsage usage>
-struct FOscillatorAlgo : public Phased<T> {
+struct FOscillatorAlgo_ {
   static constexpr auto hasEnvelope = false;
   static constexpr auto isMonoHarmonic = monoHarmonic(O);
   static constexpr T baseVolume = (usage == OscillatorUsage::FilteredByLoudnessAdaptedSound) ? 1 : (reduceUnadjustedVolumes * refVolume<O>());
   static constexpr int count_channels = 1;
 
-  using Phased<T>::angle_;
-  using Phased<T>::aliasingMult;
+  using FPT = T;
 
-  FOscillatorAlgo() = default;
-  FOscillatorAlgo(T angle_increments) : Phased<T>(angle_increments) {}
+  void onNewPeriod() const {}
+  void onForgetPastSignals() const {}
 
-  auto       & getOsc()       {return *this; }
-  auto const & getOsc() const {return *this; }
-
-  void set_sample_rate(int) {}
-
-  void setLoudnessParams(int sample_rate, int low_index, float log_ratio, float loudness_level) {}
-
-  T imag() const {
+  T imag(T const angle) const {
     if constexpr (O == FOscillator::SAW) {
-      return aliasingMult * saw(angle_);
+      return saw(angle);
     }
     else if constexpr(O == FOscillator::SQUARE) {
-      return aliasingMult * square(angle_);
+      return square(angle);
     }
     else if constexpr(O == FOscillator::TRIANGLE) {
-      return aliasingMult * triangle(angle_);
+      return triangle(angle);
     }
     else {
       Assert(0);
@@ -1618,6 +1629,10 @@ struct FOscillatorAlgo : public Phased<T> {
   }
 };
 
+template<typename T, FOscillator O, OscillatorUsage usage>
+using FOscillatorAlgo = Phased<FOscillatorAlgo_<T, O, usage>>;
+
+
 template<typename Envel>
 using Square = FinalAudioElement<Enveloped<FOscillatorAlgo<typename Envel :: FPT, FOscillator::SQUARE, OscillatorUsage::Raw>,Envel>>;
 
@@ -1625,38 +1640,64 @@ using Square = FinalAudioElement<Enveloped<FOscillatorAlgo<typename Envel :: FPT
  * first pulse happens at angle = 0
  */
 template<typename T>
-struct PulseTrainAlgo : public Phased<T> {
+struct PulseTrainAlgo_ {
   static constexpr auto hasEnvelope = false;
   static constexpr auto baseVolume = reduceUnadjustedVolumes * soundBaseVolume(Sound::SQUARE);
   static constexpr auto isMonoHarmonic = true;
   static constexpr int count_channels = 1;
 
-  using Tr = NumTraits<T>;
-  using Phased<T>::angle_;
-  using Phased<T>::aliasingMult;
+  using FPT = T;
 
-  PulseTrainAlgo() = default;
-  PulseTrainAlgo(T angle_increments, T pulse_width) :
-  Phased<T>(angle_increments),
-  pulse_width(pulse_width) {
-    Assert(pulse_width >= angle_increments); // else it's always 0
+  void setPulseWidth(T w) {
+    // To avoid audio cracks, this will have a side effect only at the beginning of a new period.
+    w = std::max(static_cast<T>(0.), w);
+    w = std::min(static_cast<T>(2.), w);
+    pulse_width = w;
+    // To remove DC offset, we need to ensure that on average, the waveform is 0, hence:
+    // low = high * w / (w-2)
+    //
+    // and high - low = 1, hence:
+    // high ( 1 - (w / (w-2))) = 1
+    // high ( -2 / (w-2)) = 1
+    // high = (2-w) / 2
+
+    high = 0.5 * (2. - w);
+    low = high - 1.;
+
+    if (!used_pulse_width) {
+      onNewPeriod();
+    }
   }
 
-  void set(T angle_increments, T pulse_width_) {
-    Assert(pulse_width_ >= angle_increments); // else it's always 0
-    this->setAngleIncrements(angle_increments);
-    pulse_width = pulse_width_;
+  T imag(T const angle) const {
+    return pulse(angle,
+                 *used_pulse_width,
+                 used_high,
+                 used_low);
   }
 
-  T imag() const { return aliasingMult * pulse(angle_, pulse_width); }
+  void onForgetPastSignals() {
+    used_pulse_width.reset();
+  }
+  
+  void onNewPeriod() {
+    used_pulse_width = pulse_width;
+    used_high = high;
+    used_low = low;
+  }
 
 private:
+  std::optional<T> used_pulse_width{};
+  T used_high{};
+  T used_low{};
+
   T pulse_width{};
+  T high{};
+  T low{};
 };
 
 template<typename T>
-using PulseTrain = FinalAudioElement<PulseTrainAlgo<T>>;
-
+using PulseTrainAlgo = Phased<PulseTrainAlgo_<T>>;
 
 template<typename T>
 struct BaseVolume {

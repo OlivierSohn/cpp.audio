@@ -12,6 +12,7 @@ public:
           Autotune const & autotune,
           std::vector<std::pair<std::vector<ParamProxy<float>>, wxColor>> const & params_after_autotune,
           std::vector<std::pair<std::vector<ParamProxy<float>>, wxColor>> const & params_envelope,
+          std::vector<std::pair<std::vector<ParamProxy<float>>, wxColor>> const & params_vocoder,
           std::vector<std::vector<ParamPollProxy>> const & poll_params,
           PitchWindow::PitchFunction const & pitch_func,
           VocoderWindow::VocoderFunc const & vocoder_func)
@@ -53,7 +54,10 @@ public:
     Bind(wxEVT_MENU, &MyFrame::OnAbout, this, wxID_ABOUT);
     Bind(wxEVT_MENU, &MyFrame::OnExit, this, wxID_EXIT);
     
-    auto make_params_sizer = [this](std::vector<std::pair<std::vector<ParamProxy<float>>, wxColor>> const & params, wxOrientation orient, wxBoxSizer * sizer) {
+    auto make_params_sizer = [this]
+    (std::vector<std::pair<std::vector<ParamProxy<float>>, wxColor>> const & params,
+     wxOrientation orient,
+     wxBoxSizer * sizer) {
       for (auto const & [params2, label_color] : params) {
         auto sliders_sizer2 = new wxBoxSizer(orient);
         
@@ -74,11 +78,16 @@ public:
 
     auto global_sizer = new wxBoxSizer(wxHORIZONTAL);
     auto sliders_sizer = new wxBoxSizer(wxVERTICAL);
-    auto post_sizer = new wxBoxSizer(wxVERTICAL);
+    auto env_sizer = new wxBoxSizer(wxVERTICAL);
+    auto vocoder_sizer = new wxBoxSizer(wxVERTICAL);
 
     make_params_sizer(params_envelope,
                       wxVERTICAL,
-                      post_sizer);
+                      env_sizer);
+
+    make_params_sizer(params_vocoder,
+                      wxVERTICAL,
+                      vocoder_sizer);
 
     make_params_sizer(params_before_autotune,
                       wxHORIZONTAL,
@@ -118,7 +127,11 @@ public:
         global_sizer,
         0,
         wxALL | wxALIGN_CENTER);
-    Add(post_sizer,
+    Add(env_sizer,
+        global_sizer,
+        0,
+        wxALL | wxALIGN_CENTER);
+    Add(vocoder_sizer,
         global_sizer,
         0,
         wxALL | wxALIGN_CENTER);
@@ -355,7 +368,10 @@ struct MyApp : public wxApp {
         },
       },
       color_slider_label_4
-    },
+    }
+  }
+  , params_vocoder
+  {
     {
       {
         {
@@ -397,6 +413,22 @@ struct MyApp : public wxApp {
           [this](float v){ resynth.setVocoderCarrierSineVolume(v); },
           0.f,
           1.f
+        },
+        {
+          "Vocoder carrier pulse",
+          "",
+          [this](){ return resynth.getVocoderCarrierPulseVolume(); },
+          [this](float v){ resynth.setVocoderCarrierPulseVolume(v); },
+          0.f,
+          1.f
+        },
+        {
+          "Vocoder carrier pulse width",
+          "",
+          [this](){ return resynth.getVocoderCarrierPulseWidth(); },
+          [this](float v){ resynth.setVocoderCarrierPulseWidth(v); },
+          0.f,
+          2.f
         },
         {
           "Vocoder bands count",
@@ -664,6 +696,7 @@ struct MyApp : public wxApp {
                              autotune,
                              params_after_autotune,
                              params_envelope,
+                             params_vocoder,
                              poll_params,
                              [this](std::vector<PlayedNote> & result, std::vector<PlayedNote> & result_dropped, std::optional<int64_t> & frame_id){
       resynth.getAnalysisData().fetch_last_frame(result,
@@ -681,7 +714,7 @@ private:
   RtResynth resynth;
   
   ReinitializingParameters reinit_params;
-  std::vector<std::pair<std::vector<ParamProxy<float>>, wxColor>> params_before_autotune, params_after_autotune, params_envelope;
+  std::vector<std::pair<std::vector<ParamProxy<float>>, wxColor>> params_before_autotune, params_after_autotune, params_envelope, params_vocoder;
   std::vector<std::vector<ParamPollProxy>> poll_params;
   Autotune autotune;
 };

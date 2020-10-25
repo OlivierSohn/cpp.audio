@@ -38,6 +38,9 @@ FOscillatorAlgo<T, FOscillator::SQUARE, OscillatorUsage::FilteredByLoudnessAdapt
 >,
 VolumeAdjusted<
 SineOscillatorAlgo<T>
+>,
+VolumeAdjusted<
+PulseTrainAlgo<T>
 >
 >,
 InterpolatedFreq<T>
@@ -139,7 +142,9 @@ struct VocoderCarrierElementInitializer {
                                    float const saw_vol,
                                    float const triangle_vol,
                                    float const square_vol,
-                                   float const sine_vol)
+                                   float const sine_vol,
+                                   float const pulse_vol,
+                                   float const pulsewidth)
   : sample_rate(sample_rate)
   , ahdsr(a)
   , noise_volume(noise_vol)
@@ -147,6 +152,8 @@ struct VocoderCarrierElementInitializer {
   , triangle_volume(triangle_vol)
   , square_volume(square_vol)
   , sine_volume(sine_vol)
+  , pulse_volume(pulse_vol)
+  , pulse_width(pulsewidth)
   {}
   
   void operator()(audioelement::VocoderCarrierElement<T> & e,
@@ -156,17 +163,21 @@ struct VocoderCarrierElementInitializer {
     e.getVolumeAdjustment().getOsc().getAlgo().getCtrl().setup(100,
                                                                itp::LINEAR);
     auto & oscs = e.getVolumeAdjustment().getOsc().getAlgo().getOsc().get();
+    
     std::get<0>(oscs).setVolumeTarget(noise_volume);
     std::get<1>(oscs).setVolumeTarget(saw_volume);
     std::get<2>(oscs).setVolumeTarget(triangle_volume);
     std::get<3>(oscs).setVolumeTarget(square_volume);
     std::get<4>(oscs).setVolumeTarget(sine_volume);
+    std::get<5>(oscs).setVolumeTarget(pulse_volume);
+
+    std::get<5>(oscs).getOsc().getAlgo().setPulseWidth(pulse_width);
   }
   
   bool operator ==(VocoderCarrierElementInitializer const& o) const {
     return
-    std::make_tuple(sample_rate, ahdsr, noise_volume, saw_volume, triangle_volume, square_volume, sine_volume) ==
-    std::make_tuple(o.sample_rate, o.ahdsr, o.noise_volume, o.saw_volume, o.triangle_volume, o.square_volume, o.sine_volume);
+    std::make_tuple(sample_rate, ahdsr, noise_volume, saw_volume, triangle_volume, square_volume, sine_volume, pulse_volume, pulse_width) ==
+    std::make_tuple(o.sample_rate, o.ahdsr, o.noise_volume, o.saw_volume, o.triangle_volume, o.square_volume, o.sine_volume, o.pulse_volume, o.pulse_width);
   }
   bool operator !=(VocoderCarrierElementInitializer const& o) const {
     return !this->operator ==(o);
@@ -180,6 +191,8 @@ private:
   float triangle_volume;
   float square_volume;
   float sine_volume;
+  float pulse_volume;
+  float pulse_width;
 };
 
 
@@ -712,6 +725,20 @@ public:
     vocoder_carrier_sine_volume = f;
     updateVocoderCarrierInitializer();
   }
+  float getVocoderCarrierPulseVolume() const {
+    return vocoder_carrier_pulse_volume;
+  }
+  void setVocoderCarrierPulseVolume(float f) {
+    vocoder_carrier_pulse_volume = f;
+    updateVocoderCarrierInitializer();
+  }
+  float getVocoderCarrierPulseWidth() const {
+    return vocoder_carrier_pulse_width;
+  }
+  void setVocoderCarrierPulseWidth(float f) {
+    vocoder_carrier_pulse_width = f;
+    updateVocoderCarrierInitializer();
+  }
   float getVocoderEnvFollowerCutoffRatio() const {
     return vocoder_env_follower_cutoff_ratio;
   }
@@ -845,6 +872,8 @@ private:
   std::atomic<float> vocoder_carrier_triangle_volume = 0.f;
   std::atomic<float> vocoder_carrier_square_volume = 0.f;
   std::atomic<float> vocoder_carrier_sine_volume = 0.f;
+  std::atomic<float> vocoder_carrier_pulse_volume = 0.f;
+  std::atomic<float> vocoder_carrier_pulse_width = 0.01f;
   std::atomic<float> vocoder_env_follower_cutoff_ratio = 1.f/20.f;
   std::atomic<float> vocoder_modulator_window_size_seconds = 0.10f;
   std::atomic<float> vocoder_stride_seconds = 0.005f;
@@ -1068,7 +1097,9 @@ void RtResynth::updateVocoderCarrierInitializer() {
                                                          vocoder_carrier_saw_volume.load(),
                                                          vocoder_carrier_triangle_volume.load(),
                                                          vocoder_carrier_square_volume.load(),
-                                                         vocoder_carrier_sine_volume.load()
+                                                         vocoder_carrier_sine_volume.load(),
+                                                         vocoder_carrier_pulse_volume.load(),
+                                                         vocoder_carrier_pulse_width.load()
                                                          );
     apply_initializer_to_current_and_future_notes(ctxt,
                                                   vocoder_carrier,

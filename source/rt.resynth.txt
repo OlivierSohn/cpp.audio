@@ -1,6 +1,16 @@
 
 /*
 
+-
+. bandlimit oscillators to avoid aliasing:
+https://courses.cs.washington.edu/courses/cse490s/11au/Readings/Digital_Sound_Generation_1.pdf
+https://ccrma.stanford.edu/~juhan/vas.html
+
+- view waveform for carrier, modulator, analysis, sum
+sync on ascending zero crossing
+
+- add harmonics (for each waveform)
+
 - it would be nice to have some detune to have more phasing of oscillators
 - when modulator window is small, the frequency detection is not stable anymore
 . we could try envelope followers to smooth this out, or use bigger windows

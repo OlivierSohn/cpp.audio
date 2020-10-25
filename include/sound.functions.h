@@ -95,16 +95,19 @@ T angle_increment_to_period_in_continuous_samples(T i) {
   }
 
   template<typename T>
-  constexpr T pulse(T ang, T pulse_width) {
+  constexpr T pulse(T const ang,
+                    T const pulse_width,
+                    T const high,
+                    T const low) {
     static_assert(std::is_floating_point_v<T>);
     using Tr = NumTraits<T>;
     Assert(pulse_width >= 0);
     Assert(ang >= 0);
     Assert(ang <= 2);
     if( ang < pulse_width ) {
-      return Tr::one();
+      return high;
     } else {
-      return Tr::zero();
+      return low;
     }
   }
 
