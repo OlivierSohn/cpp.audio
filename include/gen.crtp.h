@@ -129,21 +129,21 @@ void setPhase(ElementMidi & e, CS & cs)
 {
   auto & thisAlgo = e.elem;
   if constexpr (Sync == SynchronizePhase::Yes) {
-    auto & tp = cs.corresponding(e);
-    for(auto &p : firsts(cs)) {
-      if((&p == &tp) || (p != tp)) {
-        // same channel, or different frequency.
+    auto const ai = thisAlgo.angleIncrements();
+    for(auto &otherChannel : seconds(cs)) {
+      if(&otherChannel == &e) {
+        // same channel
         continue;
       }
-      auto & otherChannel = cs.corresponding(p);
-      Assert(&otherChannel != &e);
       // To prevent phase cancellation, the phase of the new note will be
       // coherent with the phase of any active channel that plays a note at the same frequency.
       if(!otherChannel.elem.getEnvelope().isEnvelopeRTActive()) {
         continue;
       }
-      thisAlgo.getOsc().synchronizeAngles(otherChannel.elem.getOsc());
-      return;
+      if (otherChannel.elem.angleIncrements() == ai) {
+        thisAlgo.getOsc().synchronizeAngles(otherChannel.elem.getOsc());
+        return;
+      }
     }
   }
   if constexpr (Phase == DefaultStartPhase::Zero) {
