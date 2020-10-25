@@ -207,6 +207,26 @@ PostImpl
 
 bool constexpr logs = false;
 
+template<typename ACtxt, typename ASynth, typename Initializer>
+void apply_initializer_to_current_and_future_notes(ACtxt & ctxt,
+                                                   ASynth & synth,
+                                                   Initializer const & initializer) {
+  if (!synth.getSynchronousElementInitializer() || *synth.getSynchronousElementInitializer() != initializer) {
+    // This will apply the new params for new notes:
+    synth.setSynchronousElementInitializer(initializer);
+    
+    // This will apply the new params for currently played notes
+    ctxt.getStepper().enqueueOneShot([&synth,
+                                      initializer](auto &, auto){
+      synth.forEachRTActiveElem([initializer](auto & e) {
+        initializer(e, InitializationType::ExistingNote);
+      });
+    });
+    
+    // If we are unlucky, we missed the notes that are in "SoonKeyPressed" state.
+  }
+}
+
 inline
 void synthesize_sounds(Midi const & midi,
                        int64_t const analysis_frame_idx,
@@ -227,21 +247,15 @@ void synthesize_sounds(Midi const & midi,
                        NonRealtimeAnalysisFrame & analysis_data,
                        std::atomic_int & dropped_note_on) {
   {
-    ResynthElementInitializer<double> initializer{sample_rate, future_stride, stereo_spread, ahdsr};
-    if (!synth.getSynchronousElementInitializer() || *synth.getSynchronousElementInitializer() != initializer) {
-      // This will apply the new params for new notes:
-      synth.setSynchronousElementInitializer(initializer);
-      
-      // This will apply the new params for currently played notes
-      ctxt.getStepper().enqueueOneShot([&synth,
-                                        initializer](auto &, auto){
-        synth.forEachRTActiveElem([initializer](auto & e) {
-          initializer(e, InitializationType::ExistingNote);
-        });
-      });
-      
-      // If we are unlucky, we missed the notes that are in "SoonKeyPressed" state.
-    }
+    ResynthElementInitializer<double> initializer{
+      sample_rate,
+      future_stride,
+      stereo_spread,
+      ahdsr
+    };
+    apply_initializer_to_current_and_future_notes(ctxt,
+                                                  synth,
+                                                  initializer);
   }
   
   // issue "note off" events
@@ -998,16 +1012,19 @@ RtResynth::teardown() {
 
 void RtResynth::updateVocoderCarrierInitializer() {
   if (std::optional<int> const sample_rate = ctxt.getMaybeSampleRate()) {
-    vocoder_carrier.setSynchronousElementInitializer(VocoderCarrierElementInitializer<double>(*sample_rate,
-                                                                                              mkAHDSR(*sample_rate,
-                                                                                                      env_attack_seconds,
-                                                                                                      env_hold_seconds,
-                                                                                                      env_decay_seconds,
-                                                                                                      env_release_seconds,
-                                                                                                      env_sustain_level),
-                                                                                              vocoder_carrier_noise_volume.load(),
-                                                                                              vocoder_carrier_saw_volume.load()
-                                                                                              ));
+    VocoderCarrierElementInitializer<double> initializer(*sample_rate,
+                                                         mkAHDSR(*sample_rate,
+                                                                 env_attack_seconds,
+                                                                 env_hold_seconds,
+                                                                 env_decay_seconds,
+                                                                 env_release_seconds,
+                                                                 env_sustain_level),
+                                                         vocoder_carrier_noise_volume.load(),
+                                                         vocoder_carrier_saw_volume.load()
+                                                         );
+    apply_initializer_to_current_and_future_notes(ctxt,
+                                                  vocoder_carrier,
+                                                  initializer);
   }
 }
 

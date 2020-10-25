@@ -208,7 +208,7 @@ struct MyApp : public wxApp {
           1.f
         },
         {
-          "Analysis window size",
+          "Analysis window",
           "seconds",
           [this](){ return resynth.getWindowSizeSeconds(); },
           [this](float v){ resynth.setWindowSizeSeconds(v); },
@@ -399,15 +399,7 @@ struct MyApp : public wxApp {
           20000.f
         },
         {
-          "Vocoder modulator env follower cutoff ratio",
-          "",
-          [this](){ return resynth.getVocoderEnvFollowerCutoffRatio(); },
-          [this](float v){ resynth.setVocoderEnvFollowerCutoffRatio(v); },
-          0.f,
-          2.f
-        },
-        {
-          "Vocoder modulator window size",
+          "Vocoder mod. win",
           "seconds",
           [this](){ return resynth.getVocoderModulatorWindowSizeSeconds(); },
           [this](float v){ resynth.setVocoderModulatorWindowSizeSeconds(v); },
