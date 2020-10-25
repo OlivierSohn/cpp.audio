@@ -1099,7 +1099,7 @@ struct BaseVolumeAdjusted {
 
   auto       & getOsc()       { return osc; }
   auto const & getOsc() const { return osc; }
-  
+
   template <class U=ALGO,typename=std::enable_if_t<U::hasEnvelope>>
   auto & getEnvelope() const {
     return osc.getEnvelope();
@@ -1214,7 +1214,7 @@ struct VolumeAdjusted : BaseVolumeAdjusted<ALGO> {
   void setAngleIncrements(T ai) {
     this->setAngleIncrementsInternal(ai);
   }
-  
+
   void setLoudnessParams(int sample_rate, int low_index, float log_ratio, float loudness_level) {
     this->getOsc().setLoudnessParams(sample_rate, low_index, log_ratio, loudness_level);
   }
@@ -1274,61 +1274,61 @@ private:
 
 template<typename ALGO>
 struct StereoPanned {
-  
+
   static constexpr auto hasEnvelope = ALGO::hasEnvelope;
   static constexpr auto baseVolume = ALGO::baseVolume;
   static constexpr auto isMonoHarmonic = ALGO::isMonoHarmonic;
   static_assert(ALGO::count_channels == 1);
   static constexpr int count_channels = 2;
-  
+
   using FPT = typename ALGO::FPT;
-  
+
   auto & editEnvelope() { return algo.editEnvelope(); }
   auto const & getEnvelope() const { return algo.getEnvelope(); }
-  
+
   auto       & getOsc()       { return algo; }
   auto const & getOsc() const { return algo; }
-  
+
   auto & getVolumeAdjustment() { return algo.getVolumeAdjustment(); }
   auto const & getVolumeAdjustment() const { return algo.getVolumeAdjustment(); }
-  
-  
+
+
   void set_sample_rate(int s) {
     algo.set_sample_rate(s);
   }
-  
+
   void setup(StereoGain const & g) {
     gain_ = g;
   }
-  
+
   void forgetPastSignals() {
     algo.forgetPastSignals();
   }
-  
+
   void setAngleIncrements(FPT ai) {
     algo.setAngleIncrements(ai);
   }
-  
+
   FPT angleIncrements() const {
     return algo.angleIncrements();
   }
-  
+
   void setAngle(FPT a) {
     algo.setAngle(a);
   }
-  
+
   void setLoudnessParams(int sample_rate, int low_index, float log_ratio, float loudness_level) {
     algo.setLoudnessParams(sample_rate, low_index, log_ratio, loudness_level);
   }
-  
+
   void step() {
     algo.step();
   }
-  
+
   FPT imag(int i) const {
     return gain_.gains[i] * algo.imag();
   }
-  
+
 private:
   ALGO algo;
   StereoGain gain_;
@@ -1800,7 +1800,7 @@ struct UnityGainMix {
   static constexpr auto baseVolume = minBaseVolume<AEs...>(); // be conservative.
   static constexpr bool isMonoHarmonic = AllMonoHarmonic<AEs...>();
   static constexpr int count_channels = 1; // we could do better
-  
+
   bool isEnvelopeFinished() const {
     Assert(0);
     return false;
@@ -1811,14 +1811,14 @@ struct UnityGainMix {
   void onKeyReleased(int32_t) {
     Assert(0);
   }
-  
+
   using T = typename NthTypeOf<0, AEs...>::FPT;
   using FPT = T;
   static_assert(std::is_floating_point<FPT>::value);
-  
+
 private:
   std::tuple<AEs...> aes;
-  
+
 public:
   auto & get() {
     return aes;
@@ -1826,43 +1826,43 @@ public:
   auto const & get() const {
     return aes;
   }
-  
+
   void set_sample_rate(int s) {
     for_each(aes, [s](auto & ae) {
       ae.set_sample_rate(s);
     });
   }
-  
+
   void setFiltersOrder(int order) {
     for_each(aes, [order](auto & ae) {
       ae.setFiltersOrder(order);
     });
   }
-  
+
   void forgetPastSignals() {
     for_each(aes, [](auto & ae) {
       ae.forgetPastSignals();
     });
   }
-  
+
   void step() {
     for_each(aes, [](auto & ae) {
       ae.step();
     });
   }
-  
+
   void setAngleIncrements(T v) {
     for_each(aes, [v](auto & ae) {
       ae.setAngleIncrements(v);
     });
   }
-  
+
   void setAngle(T v) {
     for_each(aes, [v](auto & ae) {
       ae.setAngle(v);
     });
   }
-  
+
   // we return the minimum angle, which is the most constraining wrt time constants for volume variations
   T angleIncrements() const {
     std::optional<T> minAngle;
@@ -1877,7 +1877,7 @@ public:
     });
     return minAngle ? *minAngle : 0;
   }
-  
+
   void synchronizeAngles(MeT const & other) {
     for_each_zip(aes, other.get(), [this](auto & ae, auto & otherAe) {
       ae.synchronizeAngles(otherAe);
@@ -1891,7 +1891,7 @@ public:
     });
     return sum;
   }
-  
+
   void setLoudnessParams(int sample_rate, int low_index, float log_ratio, float loudness_level) {
     for_each(aes, [=](auto & ae) {
       ae.setLoudnessParams(sample_rate, low_index, log_ratio, loudness_level);
@@ -2442,8 +2442,8 @@ struct LogRamp {
     return do_step(C);
   }
 
-  T getFrom() const { return from; }
-  T getTo() const { return to; }
+  T getAngleIncrementFrom() const { return from; }
+  T getAngleIncrementTo() const { return to; }
 
   T get_duration_in_samples() const { return duration_in_samples; }
 
@@ -2566,8 +2566,8 @@ struct LogSingleRamp {
     return f_result;
   }
 
-  T getFrom() const { return from; }
-  T getTo() const { return to; }
+  T getAngleIncrementFrom() const { return from; }
+  T getAngleIncrementTo() const { return to; }
 
   T get_duration_in_samples() const { return duration_in_samples; }
 
@@ -2684,8 +2684,8 @@ struct InterpolatedFreq {
     return *f_result;
   }
 
-  T getFrom() const { return from; }
-  T getTo() const { return to; }
+  T getAngleIncrementFrom() const { return from; }
+  T getAngleIncrementTo() const { return to; }
 
   T get_duration_in_samples() const { return duration_in_samples; }
 
@@ -3017,7 +3017,7 @@ struct FreqCtrl_ {
       return ai;
     }
     // osc has a 0 angle increment, so we are at initialization time, when the angle increment of the control has not yet propagated to the oscillator
-    return std::get<0>(ctrls).getFrom();
+    return std::get<0>(ctrls).getAngleIncrementFrom();
   }
 
   void step() {

@@ -2,11 +2,11 @@ namespace imajuscule::audio {
 
 enum class FreqXfade : unsigned char {
   BEGIN,
-  
+
   No=BEGIN,
   NonTrivial,
   All,
-  
+
   END
 };
 
@@ -44,7 +44,6 @@ namespace imajuscule::audio::audioelement {
       StartAfresh
     };
 
-    // to optimize things, should this class work in increments instead of frequencies?
     template<typename ITER>
     struct SoundEngineFreqCtrl {
       using FPT = typename ITER::FPT;
@@ -53,7 +52,7 @@ namespace imajuscule::audio::audioelement {
       void set_sample_rate(int s) {
         ctrl.set_sample_rate(s);
       }
-      
+
       void setAngleIncrementsRange(range<float> const & r) {
         Assert(r.getMin() > 0);
         Assert(r.getMax() > 0);
@@ -77,6 +76,10 @@ namespace imajuscule::audio::audioelement {
 
       void setAngleIncrements(T v) {
         ctrl.setAngleIncrements(v);
+      }
+
+      T getAngleIncrementFrom() const {
+        return 0;
       }
 
       T step() {
@@ -110,7 +113,7 @@ namespace imajuscule::audio::audioelement {
         ctrl.set_sample_rate(s);
         noise.set_sample_rate(s);
       }
-      
+
       void setAngleIncrementsRange(range<float> const & r) {
         ctrl.setAngleIncrementsRange(r);
       }
@@ -154,7 +157,7 @@ namespace imajuscule::audio::audioelement {
                itp::interpolation i) {
         Assert(0);
       }
-      float getFrom() const {
+      float getAngleIncrementFrom() const {
         Assert(0);
         return 0.f;
       }
@@ -257,7 +260,7 @@ namespace imajuscule::audio::audioelement {
       static constexpr auto atomicity = A;
       using oddOnTraits = maybeAtomic<atomicity,unsigned int>;
       using oddOnType = typename oddOnTraits::type;
-      
+
       static enumTraversal ModeTraversal;
 
       SoundEngine()
@@ -290,7 +293,7 @@ namespace imajuscule::audio::audioelement {
 
       auto &       editEnvelope()       { return *this; }
       auto const & getEnvelope()  const { return *this; }
-      
+
       bool tryAcquire() {
         unsigned int cur = getOddOn();
         while(1) {
@@ -308,12 +311,12 @@ namespace imajuscule::audio::audioelement {
           // ... but the other thread released ownership already, so we can retry.
         }
       }
-      
+
       bool acquireStates() const {
         unsigned int cur = getOddOn();
         return is_odd(cur);
       }
-      
+
       void forgetPastSignals() {
         remaining_silence_steps = 0;
         start_angle = 0;
@@ -344,20 +347,20 @@ namespace imajuscule::audio::audioelement {
           }
         }
       }
-      
+
       void setLoudnessParams(int sample_rate, int low_index, float log_ratio, float loudness_level) {
         for(auto & r : ramps) {
           r.getOsc().setLoudnessParams(sample_rate, low_index, log_ratio, loudness_level);
         }
       }
-      
+
       template<typename T>
       void setGains(T&& gains) {
         for(auto & r : ramps) {
           r.getVolumeAdjustment().getOsc().getOsc().setGains(std::forward<T>(gains));
         }
       }
-      
+
       void setFiltersOrder(int order) {
         for(auto & r : ramps) {
           r.getVolumeAdjustment().getOsc().getOsc().setFiltersOrder(order);
@@ -382,9 +385,9 @@ namespace imajuscule::audio::audioelement {
         }
         return {};
       }
-      
+
       void setAngleIncrements(FPT) {}
-      
+
       FPT angleIncrements() const {
         for (auto const & r : ramps) {
           switch (r.getEnvelope().getRelaxedState()) {
@@ -399,7 +402,7 @@ namespace imajuscule::audio::audioelement {
         }
         return {};
       }
-      
+
       void step_algos() {
         for (auto & r : ramps) {
           switch (r.getEnvelope().getRelaxedState()) {
@@ -431,11 +434,11 @@ namespace imajuscule::audio::audioelement {
         }
         return v;
       }
-      
+
     private:
       // 3 because there is 'before', 'current' and the inactive one
       std::array<audioElt, 3> ramps;
-      
+
       bool isEnvelopeFinished_internal (unsigned int state) const {
         if(is_odd(state)) {
           return false;
@@ -447,11 +450,11 @@ namespace imajuscule::audio::audioelement {
         }
         return true;
       }
-      
+
     public:
       auto & getRamps() { return ramps; }
       auto const & getRamps() const { return ramps; }
-            
+
       void set_sample_rate(int s) {
         sample_rate = s;
         for (auto & r : ramps) {
@@ -502,8 +505,8 @@ namespace imajuscule::audio::audioelement {
           }
           if(current) {
             // there was a spec before the one we just added...
-            auto from_inc = current->get().getTo();
-            auto to_inc = ramp_spec->get().getFrom();
+            auto from_inc = current->get().getAngleIncrementTo();
+            auto to_inc = ramp_spec->get().getAngleIncrementFrom();
             auto diff = from_inc - to_inc;
             if(xfade_freq==FreqXfade::All || diff) {
               // ... and the new spec creates a frequency discontinuity
@@ -714,9 +717,9 @@ namespace imajuscule::audio::audioelement {
         if (ramp_specs.done()) {
           return;
         }
-        
+
         // there are some more specs to run
-        
+
         auto cur = ramp_specs.get_current();
 
         if(auto const * pressed = get_ramps().keyPressed) {
@@ -724,7 +727,7 @@ namespace imajuscule::audio::audioelement {
           if (remaining_steps_to_release > 0) {
             return;
           }
-          
+
           if (remaining_steps_to_release == 0) {
             if (cur && cur->getSilenceFollows()) {
               remaining_silence_steps = articulative_pause_length;
@@ -970,7 +973,7 @@ namespace imajuscule::audio::audioelement {
         }
 
         ramp_specs.finalize();
-        
+
         return true;
       }
 
