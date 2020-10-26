@@ -301,7 +301,7 @@ public:
       }
     });
   }
-  
+
   template<typename Chans>
   void onAngleIncrementMultiplier(Chans & chans,
                                   float const mult) {
@@ -321,6 +321,13 @@ public:
       if (c.elem.getEnvelope().isEnvelopeRTActive()) {
         f(c);
       }
+    }
+  }
+
+  template <typename F>
+  void forEachElem(F && f) {
+    for(auto & c : seconds(channels)) {
+      f(c);
     }
   }
 
@@ -403,9 +410,9 @@ public:
 
         c.angle_increments = freq_to_angle_increment(e.noteOn.frequency,
                                                      sample_rate);
-        
+
         // TODO merge notions of 'synchronous_element_initializer' and 'setupAudioElement'
-        
+
         // called before setupAudioElement so that we can setup before setting the angle increment in setupAudioElement
         if (synchronous_element_initializer) {
           (*synchronous_element_initializer)(c.elem);
