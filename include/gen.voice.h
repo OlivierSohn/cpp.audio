@@ -977,7 +977,7 @@ namespace imajuscule::audio::voice {
         }
       }
 
-      {
+      if constexpr (Element::count_channels > 1) {
         float pan;
         {
           auto rnd_pan = value<RANDOM_PAN>() ? false : true;
@@ -988,9 +988,9 @@ namespace imajuscule::audio::voice {
             pan = denorm<PAN>();
           }
         }
-        auto gains = stereo(pan);
+        auto stereo_gain = stereo(pan);
         for(auto & r : engine.getRamps()) {
-          r.setup(gains);
+          r.setStereoGain(stereo_gain);
         }
       }
 
@@ -998,7 +998,7 @@ namespace imajuscule::audio::voice {
 
       if constexpr (MODE == Mode::SWEEP) {
         return engine.initialize_sweep(denorm<LOW_FREQ>(),
-                                        denorm<HIGH_FREQ>());
+                                       denorm<HIGH_FREQ>());
       }
       else if constexpr (MODE == Mode::BIRDS) {
         engine.set_freq_xfade(denorm<FREQ_TRANSITION_LENGTH>() * sample_rate);
@@ -1146,7 +1146,9 @@ namespace imajuscule::audio::voice {
       auto * events = data.inputEvents;
       Assert( events );
 
-      EventIterator it(events, Iterator::Begin), end(events, Iterator::End);
+      EventIteratorOf<std::remove_reference_t<decltype(*events)>>
+      it(events, Iterator::Begin),
+      end(events, Iterator::End);
 
       int nextEventPosition = getNextEventPosition(it, end);
       Assert(nextEventPosition >= currentFrame);

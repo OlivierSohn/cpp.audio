@@ -66,18 +66,15 @@ bool useConvolutionReverb(int const sample_rate,
 
 constexpr int xfade_on_close = 5000; // in samples
 
-template <typename T, Features Feat, AudioPlatform AUP >
-struct AudioOutContext : public Context<AUP, Feat, T> {
-  static constexpr auto nAudioOut = T::nOuts;
-  static constexpr auto policy = T::policy;
-  using Chans=T;
-  using LockFromRT = typename Chans::LockFromRT;
-  using LockFromNRT = typename Chans::LockFromNRT;
-  using Request = typename Chans::Request;
-  using Volumes = typename Chans::ChannelsT::Volumes;
-  using Base = Context<AUP, Feat, T>;
-  using Base::chans;
-  using Base::bInitialized;
+template <typename Stepper, Features Feat, AudioPlatform AUP >
+struct AudioOutContext : public Context<AUP, Feat> {
+  static constexpr auto nAudioOut = Stepper::nOuts;
+  static constexpr auto policy = Stepper::policy;
+  using LockFromRT = typename Stepper::LockFromRT;
+  using LockFromNRT = typename Stepper::LockFromNRT;
+  using Request = typename Stepper::Request;
+  using Volumes = typename Stepper::ChannelsT::Volumes;
+  using Base = Context<AUP, Feat>;
   using Base::doInit;
   using Base::doTearDown;
 
@@ -89,11 +86,12 @@ private:
 
   std::atomic_bool closing;
   std::optional<int> sample_rate_;
+  Stepper stepper;
 
 public:
   template<typename ...Args>
   AudioOutContext(Args... args)
-  : Base(GlobalAudioLock<policy>::get(), args ...)
+  : stepper(GlobalAudioLock<policy>::get(), args ...)
   {
     closing.store(false, std::memory_order_relaxed);
   }
@@ -106,9 +104,7 @@ public:
     finalize();
   }
 
-  bool Initialized() const { return bInitialized; }
-
-  auto & getChannelHandler() { return chans; }
+  auto & getChannelHandler() { return stepper; }
 
   void onApplicationShouldClose() {
     auto cur = false;
@@ -116,24 +112,25 @@ public:
       // already done
       return;
     }
-    chans.getChannels().closeAllChannels(xfade_on_close);
+    stepper.getChannels().closeAllChannels(xfade_on_close);
     LG(INFO, "Fading out Audio before shutdown...");
   }
 
   void finalize() {
-    if(bInitialized) {
-      // Commented out because 'closeAllChannels' uses a queue to execute its action,
-      // but since the audio stream is deactivated right after this, the action stays
-      // in the queue until another stream reactivates the queue, and the channel
-      // close themselves at that point, which is not what we want. (Note that the channel activation
-      // is not done through the queue, but directly).
-      //
-      // Another good reason to comment this out is that it is recommended to call 'onApplicationShouldClose'
-      // and sleep one second before calling finalize, so if you follow this recommendation,
-      // the channels should be closed already at this point, hence this action becomes useless.
+    // Commented out because 'closeAllChannels' uses a queue to execute its action,
+    // but since the audio stream is deactivated right after this, the action stays
+    // in the queue until another stream reactivates the queue, and the channel
+    // close themselves at that point, which is not what we want. (Note that the channel activation
+    // is not done through the queue, but directly).
+    //
+    // Another good reason to comment this out is that it is recommended to call 'onApplicationShouldClose'
+    // and sleep one second before calling finalize, so if you follow this recommendation,
+    // the channels should be closed already at this point, hence this action becomes useless.
 
-      // chans.getChannels().closeAllChannels(0);
-    }
+    /*if(Initialized()) {
+
+      stepper.getChannels().closeAllChannels(0);
+    }*/
   }
 
   /*
@@ -148,10 +145,24 @@ public:
   }
 
   [[nodiscard]] bool Init(int sample_rate, float minLatency) {
-    if(bInitialized) {
+    if(this->Initialized()) {
       return true;
     }
-    if(!doInit(minLatency, sample_rate)) {
+    if(!doInit(minLatency,
+               sample_rate,
+               nAudioOut,
+               [this,
+                nanos_per_audioelement_buffer = static_cast<uint64_t>(0.5f +
+                                                                      audio::nanos_per_frame<float>(sample_rate) *
+                                                                      static_cast<float>(audio::audioelement::n_frames_per_buffer))]
+               (SAMPLE *outputBuffer,
+                int nFrames,
+                uint64_t const tNanos){
+      stepper.step(outputBuffer,
+                   nFrames,
+                   tNanos,
+                   nanos_per_audioelement_buffer);
+    })) {
       return false;
     }
     sample_rate_ = sample_rate;
@@ -161,14 +172,15 @@ public:
 
   void initializeConvolutionReverb(int sample_rate)
   {
-    dontUseConvolutionReverbs(chans, sample_rate);
+    dontUseConvolutionReverbs(stepper,
+                              sample_rate);
 
     // this one needs to be high pass filtered (5hz loud stuff)
     /*    std::string dirname = std::string(impulse_responses_root_dir) + "/nyc.showroom";
      constexpr auto filename = "BigRoomStereo (16).wav";
      //std::string dirname = std::string(impulse_responses_root_dir) + "/im.reverbs";
      //constexpr auto filename = "Conic Long Echo Hall.wav";
-     audio::useConvolutionReverb(sample_rate_, chans, dirname, filename);
+     audio::useConvolutionReverb(sample_rate_, stepper, dirname, filename);
      */
   }
 
@@ -227,14 +239,14 @@ public:
     }
   }
 
-  typename Chans::ChannelsT::XFadeInfiniteChans * getFirstXfadeInfiniteChans() {
+  typename Stepper::ChannelsT::XFadeInfiniteChans * getFirstXfadeInfiniteChans() {
     if(auto m = getChannelHandler().getChannels().getChannelsXFadeInfinite().maybe_front()) {
       return &get_value(m).first;
     }
     return {};
   }
 
-  typename Chans::ChannelsT::NoXFadeChans * getFirstNoXfadeChans() {
+  typename Stepper::ChannelsT::NoXFadeChans * getFirstNoXfadeChans() {
     if(auto m = getChannelHandler().getChannels().getChannelsNoXFade().maybe_front()) {
       return &get_value(m).first;
     }

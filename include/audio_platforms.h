@@ -7,14 +7,25 @@ enum class AudioPlatform {
   AudioUnits
 };
 
+
+// TODO
+// Context is for out only, and has a Stepper
+// AudioInput is for in only, and has a callback
+//
+// we need to support fullduplex in/out
+
+
 enum class Features {
   JustOut,
   InAndOut
 };
 
 // for output:
-template<AudioPlatform A, Features F, typename Chans>
+template<AudioPlatform A, Features F>
 struct Context;
+using PlayF = std::function<void(SAMPLE *,
+                                 int,
+                                 uint64_t const)>;
 
 // for input:
 template<AudioPlatform A>

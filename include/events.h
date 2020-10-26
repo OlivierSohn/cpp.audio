@@ -161,6 +161,18 @@ private:
   IEventList * list;
 };
 
+
+template<typename T>
+struct EventIteratorFor;
+
+template<typename T>
+using EventIteratorOf = typename EventIteratorFor<T>::type;
+
+template<>
+struct EventIteratorFor<IEventList> {
+  using type = EventIterator;
+};
+
 struct MIDITimestampAndSource {
   MIDITimestampAndSource(uint64_t t,
                          uint64_t sourceKey)

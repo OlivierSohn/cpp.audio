@@ -749,18 +749,19 @@ struct Vocoder {
     SetupParams setup;
   };
 
-  template<typename Out, typename P, typename S>
-  void initialize(Out & ctxt,
+  template<typename Stepper, typename P, typename S>
+  void initialize(Stepper & stepper,
+                  int const samplerate,
                   P && get_params,
                   S && get_modulator_carrier_sample) {
-    sample_rate = ctxt.getSampleRate();
+    sample_rate = samplerate;
     last_setup = get_params().setup;
     setup();
 
     Assert(state == SynthState::ComputeNotRegistered);
-    ctxt.getStepper().enqueueOneShot([this,
-                                      get_params,
-                                      get_modulator_carrier_sample](auto & out, auto){
+    stepper.enqueueOneShot([this,
+                            get_params,
+                            get_modulator_carrier_sample](auto & out, auto){
       if (!out.registerSimpleCompute([this,
                                       get_params,
                                       get_modulator_carrier_sample
@@ -803,8 +804,8 @@ struct Vocoder {
               volume.modulator * res_modulator->first +
               volume.carrier * res_carrier->first +
               volume.vocoder * vocoded;
-              for (int j=0; j<Out::nAudioOut; ++j) {
-                buf[Out::nAudioOut * i + j] += mixed;
+              for (int j=0; j<Stepper::nAudioOut; ++j) {
+                buf[Stepper::nAudioOut * i + j] += mixed;
               }
             }
           }

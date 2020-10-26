@@ -242,15 +242,18 @@ namespace imajuscule::audio::audioelement {
       using Algo = typename SoundEngineAlgo_<Mix, M>::type;
 
       using FPT = typename Algo::FPT;
-      using audioElt =
-      audioelement::StereoPanned<
-       audioelement::VolumeAdjusted<
-        audioelement::Enveloped <
-         Algo,
-         audioelement::AHDSREnvelope<A, FPT, audioelement::EnvelopeRelease::WaitForKeyRelease>
-        >
-       >
+      
+      using MonoAudioElt =
+      audioelement::VolumeAdjusted<
+      audioelement::Enveloped <
+      Algo,
+      audioelement::AHDSREnvelope<A, FPT, audioelement::EnvelopeRelease::WaitForKeyRelease>
+      >
       >;
+      
+      using StereoAudioElt = audioelement::StereoPanned<MonoAudioElt>;
+      
+      using audioElt = std::conditional_t<nOuts == 1, MonoAudioElt, StereoAudioElt>;      
 
       static constexpr auto hasEnvelope = true;
       static constexpr auto baseVolume = audioElt::baseVolume;
@@ -420,7 +423,29 @@ namespace imajuscule::audio::audioelement {
         }
       }
 
-      FPT imag(int i) const {
+      
+      template<int C = nOuts>
+      std::enable_if_t<C == 1, FPT>
+      imag() const {
+        FPT v{};
+        for (auto & r : ramps) {
+          switch (r.getEnvelope().getRelaxedState()) {
+            case EnvelopeState::KeyReleased:
+            case EnvelopeState::KeyPressed:
+              v += r.imag();
+              break;
+            case EnvelopeState::SoonKeyPressed:
+            case EnvelopeState::EnvelopeDone1:
+            case EnvelopeState::EnvelopeDone2:
+              break;
+          }
+        }
+        return v;
+      }
+      
+      template<int C = nOuts>
+      std::enable_if_t<(C > 1), FPT>
+      imag(int i) const {
         FPT v{};
         for (auto & r : ramps) {
           switch (r.getEnvelope().getRelaxedState()) {
@@ -436,7 +461,7 @@ namespace imajuscule::audio::audioelement {
         }
         return v;
       }
-
+      
     private:
       // 3 because there is 'before', 'current' and the inactive one
       std::array<audioElt, 3> ramps;

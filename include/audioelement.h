@@ -1299,7 +1299,7 @@ struct StereoPanned {
     algo.set_sample_rate(s);
   }
 
-  void setup(StereoGain const & g) {
+  void setStereoGain(StereoGain const & g) {
     gain_ = g;
   }
 

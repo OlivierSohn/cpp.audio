@@ -28,11 +28,12 @@ void birds(int const sample_rate) {
 
   using Ctxt = Context<
   AudioPlatform::PortAudio,
-  Features::JustOut,
-  SimpleAudioOutContext<
+  Features::JustOut
+  >;
+  
+  using Stepper = SimpleAudioOutContext<
   nAudioOut,
   audioEnginePolicy
-  >
   >;
 
   constexpr audioelement::SoundEngineMode mode =
@@ -42,17 +43,32 @@ void birds(int const sample_rate) {
 
   using Synth = audioelement::Voice<nAudioOut, audioEnginePolicy, mode>;
 
-  Ctxt ctxt(GlobalAudioLock<audioEnginePolicy>::get(),
-            Synth::n_channels * 4 /* one shot */,
-            1 /* a single compute is needed (global for the synth)*/);
+  Ctxt ctxt;
+  Stepper stepper(GlobalAudioLock<audioEnginePolicy>::get(),
+                  Synth::n_channels * 4 /* one shot */,
+                  1 /* a single compute is needed (global for the synth)*/);
   
-  if (!ctxt.doInit(0.008, sample_rate)) {
+  if (!ctxt.doInit(0.008,
+                   sample_rate,
+                   nAudioOut,
+                   [&stepper,
+                    nanos_per_audioelement_buffer = static_cast<uint64_t>(0.5f +
+                                                                          audio::nanos_per_frame<float>(sample_rate) *
+                                                                          static_cast<float>(audio::audioelement::n_frames_per_buffer))]
+                   (SAMPLE *outputBuffer,
+                          int nFrames,
+                          uint64_t const tNanos){
+    stepper.step(outputBuffer,
+                 nFrames,
+                 tNanos,
+                 nanos_per_audioelement_buffer);
+  })) {
     throw std::runtime_error("ctxt init failed");
   }
 
   Synth synth;
 
-  synth.initialize(ctxt.getStepper());
+  synth.initialize(stepper);
 
   auto & v = synth;
   v.initializeSlow(); // does something only the 1st time
@@ -78,8 +94,8 @@ void birds(int const sample_rate) {
                                      mkNoteOn(*noteid,
                                               frequency,
                                               volume),
-   ctxt.getStepper(),
-   ctxt.getStepper(),
+   stepper,
+   stepper,
                                      {});
     std::cout << *noteid << ": pitch " << frequency << " vol " << volume << " " << res << std::endl;
     while(true) {
@@ -103,8 +119,8 @@ void birds(int const sample_rate) {
 
       auto res = synth.onEvent(sample_rate,
                                mkNoteOff(*noteid),
-                               ctxt.getStepper(),
-                               ctxt.getStepper(),
+                               stepper,
+                               stepper,
                                {});
       std::cout << "XXX " << *noteid << " " << res << std::endl;
       noteid.reset();
@@ -139,8 +155,8 @@ void birds(int const sample_rate) {
                                     mkNoteOn(*noteid,
                                              frequency,
                                              volume),
-                                    ctxt.getStepper(),
-                                    ctxt.getStepper(),
+                                    stepper,
+                                    stepper,
                                     {});
     std::cout << *noteid << ": pitch " << frequency << " vol " << volume << " " << res << std::endl;
 
@@ -154,7 +170,7 @@ void birds(int const sample_rate) {
     }*/
   }
 
-  synth.finalize(ctxt.getStepper());
+  synth.finalize(stepper);
 
   std::this_thread::sleep_for(std::chrono::milliseconds(1000)); // so that the audio produced during finalization has a chance to be played
 

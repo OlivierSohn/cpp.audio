@@ -113,7 +113,7 @@ struct ResynthElementInitializer {
     // panning (except for note changes)
     
     if (t==InitializationType::NewNote) {
-      e.setup(stereo(stereo_spread_ * std::uniform_real_distribution<float>{-1.f,1.f}(mersenne<SEEDED::No>())));
+      e.setStereoGain(stereo(stereo_spread_ * std::uniform_real_distribution<float>{-1.f,1.f}(mersenne<SEEDED::No>())));
     }
   }
   
@@ -224,19 +224,20 @@ using PostImpl = AudioPostPolicyImpl<nAudioOut, ReverbType::Realtime_Synchronous
 
 using Ctxt = Context<
 AudioPlatform::PortAudio,
-Features::InAndOut,
-SimpleAudioOutContext<
+Features::InAndOut
+>;
+
+using Stepper = SimpleAudioOutContext<
 nAudioOut,
 audioEnginePolicy,
 PostImpl
->
 >;
 
 
 bool constexpr logs = false;
 
-template<typename ACtxt, typename ASynth, typename Initializer>
-void apply_initializer_to_current_and_future_notes(ACtxt & ctxt,
+template<typename AStepper, typename ASynth, typename Initializer>
+void apply_initializer_to_current_and_future_notes(AStepper & stepper,
                                                    ASynth & synth,
                                                    Initializer const & initializer) {
   if (!synth.getSynchronousElementInitializer() || *synth.getSynchronousElementInitializer() != initializer) {
@@ -244,8 +245,8 @@ void apply_initializer_to_current_and_future_notes(ACtxt & ctxt,
     synth.setSynchronousElementInitializer(initializer);
     
     // This will apply the new params for currently played notes
-    ctxt.getStepper().enqueueOneShot([&synth,
-                                      initializer](auto &, auto){
+    stepper.enqueueOneShot([&synth,
+                            initializer](auto &, auto){
       synth.forEachRTActiveElem([initializer](auto & e) {
         initializer(e.elem, InitializationType::ExistingNote);
       });
@@ -269,7 +270,7 @@ void synthesize_sounds(Midi const & midi,
                        std::vector<std::optional<int>> const & pitch_changes,
                        std::vector<bool> const & continue_playing,
                        Synth & synth,
-                       Ctxt & ctxt,
+                       Stepper & stepper,
                        int64_t & next_noteid,
                        std::vector<PlayedNote> & played_pitches,
                        NonRealtimeAnalysisFrame & analysis_data,
@@ -281,7 +282,7 @@ void synthesize_sounds(Midi const & midi,
       stereo_spread,
       ahdsr
     };
-    apply_initializer_to_current_and_future_notes(ctxt,
+    apply_initializer_to_current_and_future_notes(stepper,
                                                   synth,
                                                   initializer);
   }
@@ -294,8 +295,8 @@ void synthesize_sounds(Midi const & midi,
       if (!play) {
         auto res = synth.onEvent(sample_rate,
                                  mkNoteOff(played_pitches[idx].noteid),
-                                 ctxt.getStepper(),
-                                 ctxt.getStepper(),
+                                 stepper,
+                                 stepper,
                                  miditime);
         if (logs) std::cout << analysis_frame_idx << ": XXX pitch " << played_pitches[idx].midi_pitch << " " << res << std::endl;
         if (res != onEventResult::OK) {
@@ -324,8 +325,8 @@ void synthesize_sounds(Midi const & midi,
                                mkNoteChange(played.noteid,
                                             volume,
                                             new_freq),
-                               ctxt.getStepper(),
-                               ctxt.getStepper(),
+                               stepper,
+                               stepper,
                                miditime);
       if (res != onEventResult::OK) {
         throw std::logic_error("dropped note change");
@@ -347,8 +348,8 @@ void synthesize_sounds(Midi const & midi,
                                      mkNoteOn(note_id,
                                               new_freq,
                                               volume),
-                                     ctxt.getStepper(),
-                                     ctxt.getStepper(),
+                                     stepper,
+                                     stepper,
                                      miditime);
       if (logs) std::cout << analysis_frame_idx << ": pitch " << new_pitch << " vol " << volume << " " << res << std::endl;
       
@@ -502,10 +503,10 @@ public:
   }
   
   int countFailedComputeInsertions() const {
-    return ctxt.getStepper().countFailedComputeInsertions();
+    return stepper.countFailedComputeInsertions();
   }
   int countRetriedOneshotInsertions() const {
-    return ctxt.getStepper().countRetriedOneshotInsertions();
+    return stepper.countRetriedOneshotInsertions();
   }
   
   std::optional<float> getDurationFft() {
@@ -810,11 +811,12 @@ public:
   }
 
   float getCompressionFactor() const {
-    return ctxt.getStepper().getPost().getLimiter().getTargetCompressionLevel();
+    return stepper.getPost().getLimiter().getTargetCompressionLevel();
   }
   
 private:
   Ctxt ctxt;
+  Stepper stepper;
   Synth synth;
   SynthVocoderCarier vocoder_carrier;
   NoteIdsGenerator vocoder_carrier_noteids;
@@ -932,11 +934,11 @@ private:
 
 RtResynth::RtResynth()
 : synth()
-, ctxt(GlobalAudioLock<audioEnginePolicy>::get(),
-       Synth::n_channels * 4 /* one shot */,
-       1 // fft-based synth
-       + 1    //vocoder
-       )
+, stepper(GlobalAudioLock<audioEnginePolicy>::get(),
+          Synth::n_channels * 4 /* one shot */,
+          1 // fft-based synth
+          + 1    //vocoder
+          )
 , input(4,
         4)
 , periodic_fft(pow2(14))
@@ -974,11 +976,25 @@ RtResynth::init(int const sample_rate) {
   teardown();
   Assert(!thread_resynth_active);
   
-  if (!ctxt.doInit(minOutLatency, sample_rate)) {
+  if (!ctxt.doInit(minOutLatency,
+                   sample_rate,
+                   nAudioOut,
+                   [this,
+                    nanos_per_audioelement_buffer = static_cast<uint64_t>(0.5f +
+                                                                          audio::nanos_per_frame<float>(sample_rate) *
+                                                                          static_cast<float>(audio::audioelement::n_frames_per_buffer))]
+                   (SAMPLE *outputBuffer,
+                    int nFrames,
+                    uint64_t const tNanos){
+    stepper.step(outputBuffer,
+                 nFrames,
+                 tNanos,
+                 nanos_per_audioelement_buffer);
+  })) {
     throw std::runtime_error("ctxt init failed");
   }
   
-  if (!synth.initialize(ctxt.getStepper())) {
+  if (!synth.initialize(stepper)) {
     throw std::logic_error("failed to initialize synth");
   }
   
@@ -1006,7 +1022,8 @@ RtResynth::init(int const sample_rate) {
 #endif
                         );
   
-  vocoder.initialize(ctxt,
+  vocoder.initialize(stepper,
+                     ctxt.getSampleRate(),
                      [this] () -> Vocoder::Params{
     return
     {
@@ -1069,10 +1086,8 @@ RtResynth::teardown() {
   midi_thread->join();
   midi_thread.reset();
   
-  vocoder.finalize(ctxt.getStepper());
-  
-  // finalize synth
-  synth.finalize(ctxt.getStepper());
+  vocoder.finalize(stepper);
+  synth.finalize(stepper);
   
   Assert(input_2_analysis_queue);
   input.remove_queue(input_2_analysis_queue);
@@ -1104,7 +1119,7 @@ void RtResynth::updateVocoderCarrierInitializer() {
                                                          vocoder_carrier_pulse_volume.load(),
                                                          vocoder_carrier_pulse_width.load()
                                                          );
-    apply_initializer_to_current_and_future_notes(ctxt,
+    apply_initializer_to_current_and_future_notes(stepper,
                                                   vocoder_carrier,
                                                   initializer);
   }
@@ -1122,15 +1137,15 @@ void RtResynth::onInputMidiEvent(int const sample_rate,
                             mkNoteOn(vocoder_carrier_noteids.NoteOnId(on.key),
                                      midi.midi_pitch_to_freq(on.key),
                                      on.velocity / 127.f),
-                            ctxt.getStepper(),
-                            ctxt.getStepper(),
+                            stepper,
+                            stepper,
                             MIDITimestampAndSource{time_nanos, to_underlying(MidiSource::MidiInput)});
   } else if (std::holds_alternative<midi::NoteOff>(e)) {
     midi::NoteOff const & off = std::get<midi::NoteOff>(e);
     vocoder_carrier.onEvent(sample_rate,
                             mkNoteOff(vocoder_carrier_noteids.NoteOffId(off.key)),
-                            ctxt.getStepper(),
-                            ctxt.getStepper(),
+                            stepper,
+                            stepper,
                             MIDITimestampAndSource{time_nanos, to_underlying(MidiSource::MidiInput)});
   } else if (std::holds_alternative<midi::KeyPressure>(e)) {
     std::cout << "todo use keypressure" << std::endl;
@@ -1141,16 +1156,16 @@ void RtResynth::onInputMidiEvent(int const sample_rate,
     float const factor = std::pow(midi.getHalfToneRatio(),
                                   half_tone_offset);
     // we apply the effect on both synths.
-    vocoder_carrier.onAngleIncrementMultiplier(ctxt.getStepper(),
+    vocoder_carrier.onAngleIncrementMultiplier(stepper,
                                                factor);
-    synth.onAngleIncrementMultiplier(ctxt.getStepper(),
-                                               factor);
+    synth.onAngleIncrementMultiplier(stepper,
+                                     factor);
   }
 }
 
 void RtResynth::onLostInputMidiEvents() {
   // stop all notes because maybe one note off was dropped
-  vocoder_carrier.allNotesOff(ctxt.getStepper());
+  vocoder_carrier.allNotesOff(stepper);
 }
 
 void
@@ -1303,7 +1318,7 @@ RtResynth::step (int const sample_rate,
                     continue_playing,
                     // mutable args:
                     synth,
-                    ctxt,
+                    stepper,
                     next_noteid,
                     played_pitches,
                     analysis_data,
