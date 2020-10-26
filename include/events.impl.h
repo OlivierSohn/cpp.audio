@@ -24,8 +24,8 @@ struct ProcessData
   IEventList* outputEvents;				///< outgoing events for this block (optional)
 };
 
-template<AudioOutPolicy outPolicy, int nAudioOut, audioelement::SoundEngineMode MODE, bool withNoteOff>
-using Voice = voice::Impl_<outPolicy, nAudioOut, MODE, withNoteOff, std::vector<float>, EventIterator, ProcessData>;
+template<AudioOutPolicy outPolicy, int nAudioOut, audioelement::SoundEngineMode MODE, HandleNoteOff withNoteOff>
+using Voice = voice::Impl_<outPolicy, nAudioOut, MODE, withNoteOff, std::vector<float>, ProcessData>;
 
 
 ////////////////////

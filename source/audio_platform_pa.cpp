@@ -66,13 +66,6 @@ double getGoodSuggestedLatency(double suggestedLatency,
 }
 
 #ifndef NDEBUG
-std::atomic_int& PartialCallbackCheck::flag() {
-  static std::atomic_int f{0};
-  return f;
-}
-#endif
-
-#ifndef NDEBUG
 void analyzeTime(uint64_t t,
                  int nFrames,
                  int sample_rate,

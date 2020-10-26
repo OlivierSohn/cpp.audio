@@ -162,22 +162,6 @@ private:
 #endif
 
 #ifndef NDEBUG
-// 'PartialCallbackCheck' verifies that every audio-callback call completes.
-struct PartialCallbackCheck {
-  PartialCallbackCheck(PortaudioAsyncLogger & logger)
-  {
-    if(unlikely(flag() != 0)) {
-      logger.sync_feed(PartialCallback());
-      Assert(0);
-    }
-    flag()++;
-  }
-  ~PartialCallbackCheck() { flag()--; }
-private:
-  static std::atomic_int& flag();
-  static_assert(std::atomic_int::is_always_lock_free);
-};
-
 void analyzeTime(uint64_t t,
                  int nFrames,
                  int sample_rate,
@@ -281,10 +265,6 @@ private:
                           void *userData)
   {
     auto This = static_cast<MeT*>(userData);
-
-#ifndef NDEBUG
-    PartialCallbackCheck partial_cb_check(This->asyncLogger());
-#endif
 
 #ifdef IMJ_LOG_AUDIO_TIME
     LogAudioTime log_time(This->asyncLogger());

@@ -197,34 +197,28 @@ private:
 
 
 constexpr int nAudioOut = 2;
-constexpr auto audioEnginePolicy = AudioOutPolicy::MasterLockFree;
 
 using Synth = sine::Synth <
-audioEnginePolicy
-, nAudioOut
-, XfadePolicy::SkipXfade
+nAudioOut
 , audioelement::ResynthElement<double>
 , SynchronizePhase::Yes
 , DefaultStartPhase::Random
-, true
-, EventIterator
+, HandleNoteOff::Yes
 , 127  // lots of voices
 , ResynthElementInitializer<double>
 >;
 
 using SynthVocoderCarier = sine::Synth <
-audioEnginePolicy
-, 1 // mono
-, XfadePolicy::SkipXfade
+1 // mono
 , audioelement::VocoderCarrierElement<double>
 , SynchronizePhase::Yes
 , DefaultStartPhase::Random
-, true
-, EventIterator
+, HandleNoteOff::Yes
 , 127  // lots of voices
 , VocoderCarrierElementInitializer<double>
 >;
 
+constexpr auto audioEnginePolicy = AudioOutPolicy::MasterLockFree;
 
 using PostImpl = AudioPostPolicyImpl<nAudioOut, ReverbType::Realtime_Synchronous, audioEnginePolicy>;
 

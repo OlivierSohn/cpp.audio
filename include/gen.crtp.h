@@ -167,15 +167,18 @@ enum class SynthState {
   WaitingForComputeUnregistration
 };
 
+// maybe this could be replaced by the notion of canHandleExplicitKeyReleaseNow
+enum class HandleNoteOff {
+  Yes,
+  No // for bird/robot/wind
+};
+
 template<
-AudioOutPolicy outPolicy,
 int nOuts,
-XfadePolicy xfade_policy_,
 typename AE,
 SynchronizePhase Sync,
 DefaultStartPhase Phase,
-bool handle_note_off,
-typename EventIterator,
+HandleNoteOff handle_note_off,
 typename Base,
 int n_max_voices = 8,
 typename ElementInitializer = NoopElementInitializer
@@ -183,8 +186,6 @@ typename ElementInitializer = NoopElementInitializer
 struct ImplCRTP : public Base {
 
   static constexpr auto nAudioOut = nOuts;
-  static constexpr auto xfade_policy = xfade_policy_;
-  static constexpr Atomicity atomicity = getAtomicity<outPolicy>();
 
   using Element = AE;
   struct ElemMidiDelay {
@@ -234,10 +235,6 @@ public:
   int getAcquireRaceErrors() const {
     return count_acquire_race_errors;
   }
-
-  ImplCRTP()
-  : channels()
-  {}
 
   template<typename ChannelsT>
   bool initialize(ChannelsT & chans) {
@@ -365,7 +362,6 @@ public:
                         Chans & chans,
                         std::optional<MIDITimestampAndSource> const & maybeMidiTimeAndSource)
   {
-    static_assert(Out::policy == outPolicy);
     switch(e.type) {
       case EventType::NoteOn:
       {
@@ -502,7 +498,7 @@ public:
         break;
       case EventType::NoteOff:
       {
-        if(!handle_note_off) { // TODO remove handle_note_off, redundant with autorelease notion?
+        if constexpr (handle_note_off == HandleNoteOff::No) {
           MIDI_LG(INFO, "off (ignored) %d", e.noteid.noteid);
           // the initial implementation was using CloseMode::WHEN_DONE_PLAYING for that case
           // but close method sets the channel to -1 so it's impossible to fade it to zero

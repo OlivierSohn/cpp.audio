@@ -1088,25 +1088,21 @@ namespace imajuscule::audio::voice {
     AudioOutPolicy outPolicy,
     int nAudioOut,
     Mode MODE,
-    bool withNoteOff,
+    HandleNoteOff handleNoteOff,
 
     typename Parameters,
-    typename EventIterator,
     typename ProcessData,
 
     typename Base = ImplBase<MODE, Parameters, ProcessData>,
 
     typename Parent = ImplCRTP <
-      outPolicy,
       nAudioOut,
-      XfadePolicy::SkipXfade,
       audioelement::VolumeAdjusted<
         audioelement::SoundEngine<MODE, nAudioOut, getAtomicity<outPolicy>(), Logger>
       >,
       SynchronizePhase::No, // TODO Yes when MODE uses no sweep?
       DefaultStartPhase::Zero, // TODO Randomize when MODE uses no sweep?
-      withNoteOff,
-      EventIterator,
+      handleNoteOff,
       Base
     >
   >
@@ -1123,10 +1119,8 @@ namespace imajuscule::audio::voice {
     using Base::get_xfade_length;
 
     using Parent::onEvent;
-    using Parent::channels;
 
     static constexpr auto n_channels = Parent::n_channels;
-    static constexpr auto xfade_policy = Parent::xfade_policy;
 
   public:
 

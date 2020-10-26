@@ -389,7 +389,6 @@
 		0951A5291EB62CBB00CE4A4E /* count_channels */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = count_channels; sourceTree = BUILT_PRODUCTS_DIR; };
 		0951A52F1EB62CD700CE4A4E /* main.count_channels.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = main.count_channels.cpp; path = source/main.count_channels.cpp; sourceTree = "<group>"; };
 		09529DF81E439D8D00705B99 /* gen.voice.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; lineEnding = 0; name = gen.voice.h; path = include/gen.voice.h; sourceTree = "<group>"; xcLanguageSpecificationIdentifier = xcode.lang.objcpp; };
-		09529DF91E439D8D00705B99 /* mononotechannel.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = mononotechannel.h; path = include/mononotechannel.h; sourceTree = "<group>"; };
 		09529DFA1E439D8D00705B99 /* events.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = events.h; path = include/events.h; sourceTree = "<group>"; };
 		09529DFB1E439E5F00705B99 /* paramspec.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = paramspec.h; path = include/paramspec.h; sourceTree = "<group>"; };
 		09529DFC1E439EC000705B99 /* program.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = program.h; path = include/program.h; sourceTree = "<group>"; };
@@ -756,7 +755,6 @@
 				090B14C41E75CDF9005A47C5 /* loudness_params_specs.h */,
 				091177B41E5B2F9100343D54 /* loudness.h */,
 				09529DFE1E439FD800705B99 /* midi.h */,
-				09529DF91E439D8D00705B99 /* mononotechannel.h */,
 				098EFCCA1E6C5E50000ADD0D /* noise.h */,
 				091E76E91E46BE78009CFBA5 /* normalization.h */,
 				099E06E51E36EC920012348E /* note.h */,
@@ -1416,7 +1414,7 @@
 				INFOPLIST_FILE = "rt.resynth copy-Info.plist";
 				LIBRARY_SEARCH_PATHS = (
 					"$(inherited)",
-					/usr/local/Cellar/portaudio/HEAD/lib,
+					"/usr/local/Cellar/portaudio/HEAD-a1f61a9/lib",
 				);
 				PRODUCT_NAME = "$(TARGET_NAME)";
 			};
@@ -1429,7 +1427,7 @@
 				INFOPLIST_FILE = "rt.resynth copy-Info.plist";
 				LIBRARY_SEARCH_PATHS = (
 					"$(inherited)",
-					/usr/local/Cellar/portaudio/HEAD/lib,
+					"/usr/local/Cellar/portaudio/HEAD-a1f61a9/lib",
 				);
 				PRODUCT_NAME = "$(TARGET_NAME)";
 			};

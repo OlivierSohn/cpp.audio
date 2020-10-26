@@ -8,9 +8,8 @@ using Voice = imajuscule::audio::voice::Impl_<
 policy,
 nAudioOut,
 MODE,
-true,
+HandleNoteOff::Yes,
 std::vector<float>,
-EventIterator,
 ProcessData
 >;
 

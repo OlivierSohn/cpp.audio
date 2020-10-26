@@ -22,26 +22,20 @@ namespace imajuscule::audio::sine {
   };
 
   template<
-    AudioOutPolicy outPolicy,
     int nOuts,
-    XfadePolicy xfade_policy_,
     typename AE,
     SynchronizePhase Sync,
     DefaultStartPhase Phase,
-    bool close_channel_on_note_off,
-    typename EventIterator,
+    HandleNoteOff handle_note_off,
     int nVoices = 32, // using 32 voices to support long releases
     typename Initializer = NoopElementInitializer
   >
   using Synth = ImplCRTP <
-    outPolicy,
     nOuts,
-    xfade_policy_,
     AE,
     Sync,
     Phase,
-    close_channel_on_note_off,
-    EventIterator,
+    handle_note_off,
     SynthImpl,
     nVoices,
     Initializer

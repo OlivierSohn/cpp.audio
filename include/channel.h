@@ -61,7 +61,6 @@ namespace imajuscule::audio {
 
     enum class XfadePolicy {
         SkipXfade, // internal fades are skipped, we rely solely on volume to act as fade in / out.
-                  // this is usefull for MonoNoteChannel usecase.
         UseXfade // use internal fades
     };
 
