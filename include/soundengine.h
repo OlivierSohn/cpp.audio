@@ -386,8 +386,10 @@ namespace imajuscule::audio::audioelement {
         return {};
       }
 
-      void setAngleIncrements(FPT) {}
-
+      void setAngleIncrements(FPT ai) {
+        base_freq = angle_increment_to_freq(ai, sample_rate);
+      }
+      
       FPT angleIncrements() const {
         for (auto const & r : ramps) {
           switch (r.getEnvelope().getRelaxedState()) {
@@ -780,9 +782,6 @@ namespace imajuscule::audio::audioelement {
       }
       void set_freq_xfade(int xfade_) {
         freq_xfade = xfade_;
-      }
-      void set_base_freq(float freq_) {
-        base_freq = freq_;
       }
       void set_freq_scatter(float scatter_) {
         freq_scatter = scatter_;

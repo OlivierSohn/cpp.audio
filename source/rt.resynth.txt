@@ -5,6 +5,9 @@
 . bandlimit oscillators to avoid aliasing:
 https://courses.cs.washington.edu/courses/cse490s/11au/Readings/Digital_Sound_Generation_1.pdf
 https://ccrma.stanford.edu/~juhan/vas.html
+https://www.music.mcgill.ca/~gary/307/week5/bandlimited.html
+
+For square, triangle, saw : simply use additive synthesis
 
 - view waveform for carrier, modulator, analysis, sum
 sync on ascending zero crossing

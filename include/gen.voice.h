@@ -928,7 +928,7 @@ namespace imajuscule::audio::voice {
         engine.set_length_exp(ex, ex);
       }
 
-      engine.set_base_freq(freq);
+      engine.setAngleIncrements(freq_to_angle_increment(freq, sample_rate));
 
       engine.set_length(denorm<LENGTH>());
 

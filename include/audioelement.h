@@ -72,7 +72,9 @@ struct FinalAudioElement {
   FinalAudioElement& operator = (FinalAudioElement &&) = delete;
 
   template <class... Args>
-  FinalAudioElement(buffer_t & b, Args&&... args) : buffer(&b), algo(std::forward<Args>(args)...) {}
+  FinalAudioElement(buffer_t & b, Args&&... args)
+  : buffer(&b)
+  , algo(std::forward<Args>(args)...) {}
 
   void forgetPastSignals() {
     algo.forgetPastSignals();
@@ -1245,8 +1247,8 @@ struct LoudnessVolumeAdjusted : BaseVolumeAdjusted<ALGO> {
   {}
 
   void setAngleIncrements(T ai) {
-    this->setVolumeTargetInternal(loudness::equal_loudness_volume_from_freq(angle_increment_to_freq<T>(ai,
-                                                                                                       sample_rate_),
+    this->setVolumeTargetInternal(loudness::equal_loudness_volume_from_freq(angle_increment_to_freq(ai,
+                                                                                                    sample_rate_),
                                                                             low_index_,
                                                                             log_ratio_,
                                                                             loudness_level));

@@ -61,11 +61,11 @@ constexpr T freq_to_angle_increment(T freq, int sample_rate) {
   return 2 * freq / sample_rate;
 }
 
-    template<typename T>
-    constexpr T angle_increment_to_freq(T i, T sample_rate) {
-        static_assert(std::is_floating_point_v<T>);
-        return i * 0.5 * sample_rate;
-    }
+template<typename T, typename U>
+constexpr T angle_increment_to_freq(T i, U sample_rate) {
+  static_assert(std::is_floating_point_v<T>);
+  return i * 0.5 * sample_rate;
+}
 
 template<typename T>
 T angle_increment_to_period_in_continuous_samples(T i) {

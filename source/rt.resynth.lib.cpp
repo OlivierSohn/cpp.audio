@@ -867,10 +867,10 @@ private:
   std::atomic<AutotuneChordFrequencies> autotune_chord_frequencies = AutotuneChordFrequencies::Harmonics;
   std::atomic<uint64_t> autotune_bit_chord = 0b10010001; // least significant beat = lower pitch
   
-  std::atomic<float> vocoder_carrier_noise_volume = 1.f;
-  std::atomic<float> vocoder_carrier_saw_volume = 1.f;
+  std::atomic<float> vocoder_carrier_noise_volume = 0.f;
+  std::atomic<float> vocoder_carrier_saw_volume = 0.f;
   std::atomic<float> vocoder_carrier_triangle_volume = 0.f;
-  std::atomic<float> vocoder_carrier_square_volume = 0.f;
+  std::atomic<float> vocoder_carrier_square_volume = 1.f;
   std::atomic<float> vocoder_carrier_sine_volume = 0.f;
   std::atomic<float> vocoder_carrier_pulse_volume = 0.f;
   std::atomic<float> vocoder_carrier_pulse_width = 0.01f;
@@ -882,8 +882,8 @@ private:
   std::atomic<float> vocoder_max_freq = 20000.f;
   
   std::atomic<float> voice_volume = 0.f;
-  std::atomic<float> carrier_volume = 0.f;
-  std::atomic<float> vocoder_volume = 1.f;
+  std::atomic<float> carrier_volume = 0.1f;
+  std::atomic<float> vocoder_volume = 0.f;
   std::atomic<float> analysis_volume = 0.f;
   
   std::vector<float> allowed_pitches;
@@ -1134,7 +1134,7 @@ void RtResynth::onInputMidiEvent(int const sample_rate,
   } else if (std::holds_alternative<midi::ChannelPressure>(e)) {
     std::cout << "todo use channelpressure" << std::endl;
   } else if (std::holds_alternative<midi::PitchWheel>(e)) {
-    std::cout << "todo use pitchwheel" << std::endl;
+    std::cout << "todo use pitchwheel : " << std::get<midi::PitchWheel>(e).getCenteredValue() << std::endl;
   }
 }
 

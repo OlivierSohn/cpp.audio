@@ -161,6 +161,15 @@ inline std::ostream & operator << (std::ostream & os, ChannelPressure const & n)
 struct PitchWheel {
   uint8_t channel;
   uint16_t pitchweel;
+  
+  // returns a value in [-1, 1)
+  float getCenteredValue() const {
+    return -1.f + 2.f * (static_cast<int>(pitchweel) - min) * factor;
+  }
+private:
+  static constexpr int max = 0x7F7F; // Arturia minilab
+  static constexpr int min = 0x0000; // Arturia minilab
+  static constexpr float factor = 1.f / (max - min);
 };
 inline std::ostream & operator << (std::ostream & os, PitchWheel const & n) {
   os << "PitchWheel(" << static_cast<int>(n.channel) << ", " << n.pitchweel << ")";
