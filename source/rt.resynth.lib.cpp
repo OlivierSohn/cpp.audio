@@ -253,7 +253,7 @@ void apply_initializer_to_current_and_future_notes(ACtxt & ctxt,
     ctxt.getStepper().enqueueOneShot([&synth,
                                       initializer](auto &, auto){
       synth.forEachRTActiveElem([initializer](auto & e) {
-        initializer(e, InitializationType::ExistingNote);
+        initializer(e.elem, InitializationType::ExistingNote);
       });
     });
     
@@ -776,6 +776,13 @@ public:
     vocoder_max_freq = f;
   }
 
+  float getPitchWheelMultiplier() const {
+    return pitch_wheel_multiplier;
+  }
+  void setPitchWheelMultiplier(float f) {
+    pitch_wheel_multiplier = f;
+  }
+  
   float getDirectVoiceVolume() const {
     return voice_volume;
   }
@@ -794,7 +801,6 @@ public:
   void setVocoderVolume(float f) {
     vocoder_volume = f;
   }
-  
   float getAnalysisVolume() const {
     return analysis_volume;
   }
@@ -835,6 +841,8 @@ private:
   NonRealtimeAnalysisFrame analysis_data;
   int64_t analysis_frame_idx = 0;
   
+  std::atomic<float> pitch_wheel_multiplier = 2.f;
+  
   std::atomic<float> window_size_seconds = 0.1814f;
   std::atomic<float> window_center_stride_seconds = 0.09f;
   std::atomic<float> min_volume = 0.0001;
@@ -846,6 +854,7 @@ private:
   std::atomic<float> pitch_harmonize_pre_autotune = 0.f;
   std::atomic<float> pitch_harmonize_post_autotune = 0.f;
   std::atomic<float> stereo_spread = 1.f;
+  
   std::atomic<float> env_attack_seconds = 0.f;
   std::atomic<float> env_hold_seconds = 0.f;
   std::atomic<float> env_decay_seconds = 0.f;
@@ -1134,7 +1143,14 @@ void RtResynth::onInputMidiEvent(int const sample_rate,
   } else if (std::holds_alternative<midi::ChannelPressure>(e)) {
     std::cout << "todo use channelpressure" << std::endl;
   } else if (std::holds_alternative<midi::PitchWheel>(e)) {
-    std::cout << "todo use pitchwheel : " << std::get<midi::PitchWheel>(e).getCenteredValue() << std::endl;
+    float const half_tone_offset = pitch_wheel_multiplier * std::get<midi::PitchWheel>(e).getCenteredValue();
+    float const factor = std::pow(midi.getHalfToneRatio(),
+                                  half_tone_offset);
+    // we apply the effect on both synths.
+    vocoder_carrier.onAngleIncrementMultiplier(ctxt.getStepper(),
+                                               factor);
+    synth.onAngleIncrementMultiplier(ctxt.getStepper(),
+                                               factor);
   }
 }
 

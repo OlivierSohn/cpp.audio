@@ -1,6 +1,9 @@
 
 /*
 
+- full duplex support, then
+input feedback
+
 -
 . bandlimit oscillators to avoid aliasing:
 https://courses.cs.washington.edu/courses/cse490s/11au/Readings/Digital_Sound_Generation_1.pdf

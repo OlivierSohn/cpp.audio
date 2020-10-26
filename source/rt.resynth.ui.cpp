@@ -327,6 +327,14 @@ struct MyApp : public wxApp {
     {
       {
         {
+          "Pitch wheel magnitude",
+          "",
+          [this](){ return resynth.getPitchWheelMultiplier(); },
+          [this](float v){ resynth.setPitchWheelMultiplier(v); },
+          0.f,
+          24.f
+        },
+        {
           "Attack",
           "seconds",
           [this](){ return resynth.getEnvAttackSeconds(); },

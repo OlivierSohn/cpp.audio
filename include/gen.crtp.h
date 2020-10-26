@@ -190,8 +190,10 @@ struct ImplCRTP : public Base {
   struct ElemMidiDelay {
     Element elem;
     Optional<MIDITimestampAndSource> midiDelay;
+    float angle_increments; // based on infos in "noteon" and "notechange" events, _not_ taking pitchwheel into account
   };
 
+private:
   using Base::get_xfade_length;
   using Base::get_gain;
   using Base::setupAudioElement;
@@ -202,11 +204,12 @@ struct ImplCRTP : public Base {
   // TODO if the release time is long, and notes are consecutive and short, this number
   // should be increased.
   static constexpr auto n_max_simultaneous_notes_per_voice = 2;
+
+public:
   // assumes a single channel is used per note
   static constexpr auto n_channels = n_max_voices * n_max_simultaneous_notes_per_voice;
 
-protected:
-
+private:
   // We use this datastructure because we generally iterate on the indexes,
   // and once we find out match, we go to the corresponding channel. But instead we could simply use:
   //std::array<std::optional<NoteId>, n_channels> index_to_noteid;
@@ -214,7 +217,6 @@ protected:
 
   LocalPairArray<std::optional<NoteId>, ElemMidiDelay, n_channels> channels;
 
-private:
   std::atomic<SynthState> state = SynthState::ComputeNotRegistered;
   std::optional<ElementInitializer> synchronous_element_initializer;
   std::atomic_int count_acquire_race_errors{0};
@@ -229,10 +231,8 @@ public:
     return synchronous_element_initializer;
   }
 
-  int getAndResetAcquireRaceErrors() {
-    int res = count_acquire_race_errors;
-    count_acquire_race_errors -= res;
-    return res;
+  int getAcquireRaceErrors() const {
+    return count_acquire_race_errors;
   }
 
   ImplCRTP()
@@ -304,19 +304,26 @@ public:
       }
     });
   }
+  
+  template<typename Chans>
+  void onAngleIncrementMultiplier(Chans & chans,
+                                  float const mult) {
+    chans.enqueueOneShot([this,
+                          mult](auto &, auto){
+      for(auto & c : seconds(channels)) {
+        if (c.elem.getEnvelope().isEnvelopeRTActive()) {
+          c.elem.setAngleIncrements(c.angle_increments * mult);
+        }
+      }
+    });
+  }
 
   template <typename F>
-  void forEachRTActiveElem(F f) {
+  void forEachRTActiveElem(F && f) {
     for(auto &c : seconds(channels)) {
       if (c.elem.getEnvelope().isEnvelopeRTActive()) {
-        f(c.elem);
+        f(c);
       }
-    }
-  }
-  template <typename F>
-  void forEachElem(F f) {
-    for(auto & c : seconds(channels)) {
-      f(c.elem);
     }
   }
 
@@ -398,6 +405,11 @@ public:
         c.elem.set_sample_rate(sample_rate);
         c.elem.getVolumeAdjustment().setVolumeTarget(Element::baseVolume * e.noteOn.velocity);
 
+        c.angle_increments = freq_to_angle_increment(e.noteOn.frequency,
+                                                     sample_rate);
+        
+        // TODO merge notions of 'synchronous_element_initializer' and 'setupAudioElement'
+        
         // called before setupAudioElement so that we can setup before setting the angle increment in setupAudioElement
         if (synchronous_element_initializer) {
           (*synchronous_element_initializer)(c.elem);
@@ -543,17 +555,18 @@ public:
         {
           typename Out::LockFromNRT L(out.get_lock());
           chans.enqueueOneShot([this,
-                                volume = Element::baseVolume * e.noteChange.changed_velocity,
-                                noteid = e.noteid,
-                                increments = freq_to_angle_increment(e.noteChange.changed_frequency, sample_rate)](auto &,
+                                e,
+                                sample_rate](auto &,
                                                                                                                    uint64_t){
             for(auto &i : firsts(channels)) {
-              if (!i || *i != noteid) {
+              if (!i || *i != e.noteid) {
                 continue;
               }
               auto & c = channels.corresponding(i);
-              c.elem.getVolumeAdjustment().setVolumeTarget(volume);
-              c.elem.setAngleIncrements(increments);
+              c.elem.getVolumeAdjustment().setVolumeTarget(Element::baseVolume * e.noteChange.changed_velocity);
+              c.angle_increments = freq_to_angle_increment(e.noteChange.changed_frequency,
+                                                           sample_rate);
+              c.elem.setAngleIncrements(c.angle_increments);
             }
           });
         }
