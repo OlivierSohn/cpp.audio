@@ -242,12 +242,14 @@ private:
 
 template<audio::ReverbType ReverbT, int nSources, int nOuts>
 struct ReverbPost {
-  
+
+  // Must _not_ be called from the realtime thread
   void dont_use() {
     // clear deletes objects so this should not be called from the realtime thread
     reverbs.clear();
   }
     
+  // Must _not_ be called from the realtime thread
   template<typename T>
   bool use(audio::DeinterlacedBuffers<T> const &db,
            int n_audiocb_frames,
@@ -270,6 +272,24 @@ struct ReverbPost {
 
   static constexpr int transition_duration_milliseconds = 200;
   
+  // Must be called from the realtime thread
+  void post_process(double * buf,
+                    int const nFrames,
+                    int const blockSize) {
+    if (!can_process) {
+      return;
+    }
+    reverbs.declareBlockSize(blockSize);
+    if (!reverbs.isActive()) {
+      return;
+    }
+    Assert(nFrames <= audio::audioelement::n_frames_per_buffer);
+    auto ** ins = conversion.transposeInput(buf, nFrames);
+    reverbs.apply(ins, nSources, conversion.editOutput(), nOuts, nFrames);
+    conversion.transposeOutput(buf, nFrames);
+  }
+
+  // Must be called from the realtime thread
   void transitionConvolutionReverbWetRatio(double wet,
                                            int sample_rate) {
     reverbs.transitionConvolutionReverbWetRatio(wet,
@@ -277,20 +297,32 @@ struct ReverbPost {
                                                                     sample_rate));
   }
 
-  void post_process(double * buf,
-                    int const nFrames,
-                    int const blockSize) {
-    if (!reverbs.isActive()) {
-      return;
+  // Must be called from the realtime thread
+  //
+  // returns true if the processing has been (or is already) stopped
+  bool try_stop_processing() {
+    if (!can_process) {
+      return true;
     }
-    reverbs.declareBlockSize(blockSize);
-    Assert(nFrames <= audio::audioelement::n_frames_per_buffer);
-    auto ** ins = conversion.transposeInput(buf, nFrames);
-    reverbs.apply(ins, nSources, conversion.editOutput(), nOuts, nFrames);
-    conversion.transposeOutput(buf, nFrames);
+    if (reverbs.getWetRatioWithoutStepping != 0) {
+      return false;
+    }
+    can_process = false;
+    return true;
+  }
+  
+  // Thread safe
+  void start_processing() {
+    can_process = true;
+  }
+  
+  // Thread safe
+  bool is_processing() const {
+    return can_process;
   }
 
 private:
+  std::atomic_bool can_process = true;
   Conversion<double, nSources, nOuts, audio::audioelement::n_frames_per_buffer> conversion;
   audio::ConvReverbsByBlockSize<audio::Reverbs<nOuts, ReverbT, audio::PolicyOnWorkerTooSlow::PermanentlySwitchToDry>> reverbs;
 };
