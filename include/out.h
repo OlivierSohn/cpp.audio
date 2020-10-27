@@ -242,7 +242,6 @@ private:
 
 template<audio::ReverbType ReverbT, int nSources, int nOuts>
 struct ReverbPost {
-
   // Must _not_ be called from the realtime thread
   void dont_use() {
     // clear deletes objects so this should not be called from the realtime thread
@@ -276,16 +275,17 @@ struct ReverbPost {
   void post_process(double * buf,
                     int const nFrames,
                     int const blockSize) {
+    can_fadeout = false;
     if (!can_process) {
       return;
     }
     reverbs.declareBlockSize(blockSize);
-    if (!reverbs.isActive()) {
+    if (!reverbs.hasCurrentReverb()) {
       return;
     }
     Assert(nFrames <= audio::audioelement::n_frames_per_buffer);
     auto ** ins = conversion.transposeInput(buf, nFrames);
-    reverbs.apply(ins, nSources, conversion.editOutput(), nOuts, nFrames);
+    reverbs.apply(ins, nSources, conversion.editOutput(), nOuts, nFrames, can_fadeout);
     conversion.transposeOutput(buf, nFrames);
   }
 
@@ -297,18 +297,26 @@ struct ReverbPost {
                                                                     sample_rate));
   }
 
+  enum class StopProcessingResult {
+    Undefined, // this value is never returned by 'try_stop_processing'
+    AlreadyStopped, // the processing was already stopped when 'try_stop_processing' was called
+    StillFadingOut, // the reverb is active and the wet ration has not yet faded out
+    Stopped
+  };
+
   // Must be called from the realtime thread
   //
   // returns true if the processing has been (or is already) stopped
-  bool try_stop_processing() {
+  StopProcessingResult try_stop_processing() {
     if (!can_process) {
-      return true;
+      return StopProcessingResult::AlreadyStopped;
     }
-    if (reverbs.getWetRatioWithoutStepping() != 0) {
-      return false;
+    if (can_fadeout &&
+        (reverbs.getWetRatioWithoutStepping() != 0)) {
+      return StopProcessingResult::StillFadingOut;
     }
     can_process = false;
-    return true;
+    return StopProcessingResult::Stopped;
   }
 
   // Thread safe
@@ -323,6 +331,7 @@ struct ReverbPost {
 
 private:
   std::atomic_bool can_process = true;
+  bool can_fadeout = false;
   Conversion<double, nSources, nOuts, audio::audioelement::n_frames_per_buffer> conversion;
   audio::ConvReverbsByBlockSize<audio::Reverbs<nOuts, ReverbT, audio::PolicyOnWorkerTooSlow::PermanentlySwitchToDry>> reverbs;
 };
