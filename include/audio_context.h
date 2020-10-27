@@ -41,9 +41,9 @@ constexpr auto impulse_responses_root_dir = "audio.ir";
 
 int wait_for_first_n_audio_cb_frames();
 
-template<typename Stepper>
+template<typename Rev>
 bool useConvolutionReverb(int const sample_rate,
-                          Stepper & stepper,
+                          Rev & rev,
                           std::string const & dirname, std::string const & filename) {
 
   try{
@@ -59,9 +59,9 @@ bool useConvolutionReverb(int const sample_rate,
       throw std::runtime_error("negative count frames");
     }
     DeinterlacedBuffers<T> db(ib);
-    return stepper.setConvolutionReverbIR(sample_rate,
-                                          db,
-                                          wait_for_first_n_audio_cb_frames());
+    return rev.use(db,
+                   wait_for_first_n_audio_cb_frames(),
+                   sample_rate);
   }
   catch(std::exception const & e) {
     LG(ERR, "useConvolutionReverb error : %s", e.what());

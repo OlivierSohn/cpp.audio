@@ -429,6 +429,9 @@ public:
   auto & getPost() { return post; }
   auto const & getPost() const { return post; }
   
+  auto & getReverb() { return reverb_post; }
+  auto const & getReverb() const { return reverb_post; }
+  
   AudioLockPolicyImpl<policy> & get_lock_policy() { return _lock; }
   decltype(std::declval<AudioLockPolicyImpl<policy>>().lock()) get_lock() { return _lock.lock(); }
   
