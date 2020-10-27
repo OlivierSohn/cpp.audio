@@ -24,7 +24,7 @@ struct AudioLockCtrl;
 template<>
 struct AudioLockCtrl<ThreadType::NonRealTime> {
   AudioLockCtrl(std::atomic_flag & l) noexcept : spin(l) {}
-  
+
   void lock() {
     priority.lock();
     spin.lock();
@@ -33,7 +33,7 @@ struct AudioLockCtrl<ThreadType::NonRealTime> {
     spin.unlock();
     priority.unlock();
   }
-  
+
 private:
   thread::CtrlRTPriority priority;
   LockCtrl spin;
@@ -42,21 +42,21 @@ private:
 template<>
 struct AudioLockCtrl<ThreadType::RealTime> {
   AudioLockCtrl(std::atomic_flag & l) noexcept : spin(l) {}
-  
+
   void lock() {
     spin.lock();
   }
   void unlock() {
     spin.unlock();
   }
-  
+
 private:
   LockCtrl spin;
 };
 
 struct NoOpLockCtrl {
   NoOpLockCtrl(bool) {}
-  
+
   void lock() {
   }
   void unlock() {
@@ -71,7 +71,7 @@ struct AudioLock {
   ~AudioLock() {
     ctrl.unlock();
   }
-  
+
 private:
   AudioLockCtrl<T> ctrl;
 };
@@ -120,7 +120,7 @@ template <>
 struct AudioLockPolicyImpl<AudioOutPolicy::Slave> {
   static constexpr auto sync = Synchronization::SingleThread;
   static constexpr auto useLock = WithLock::No;
-  
+
   bool lock() { return false; }
 };
 
@@ -128,7 +128,7 @@ template <>
 struct AudioLockPolicyImpl<AudioOutPolicy::MasterGlobalLock> {
   static constexpr auto sync = Synchronization::SingleThread;
   static constexpr auto useLock = WithLock::Yes;
-  
+
   std::atomic_flag & lock() { return used; }
 private:
   std::atomic_flag used = ATOMIC_FLAG_INIT;
@@ -138,7 +138,7 @@ template <>
 struct AudioLockPolicyImpl<AudioOutPolicy::MasterLockFree> {
   static constexpr auto sync = Synchronization::Lockfree_SingleConsumerMultipleProducer;
   static constexpr auto useLock = WithLock::No;
-  
+
   bool lock() { return false; }
 };
 
@@ -177,7 +177,7 @@ struct Conversion {
       outputBuffers[out] = &outs[out * nFramesMax];
     }
   }
-  
+
   // data   = frame1 frame2 ...
   // frameN = in1 in2 ...
   T ** transposeInput(T const * data, int const nFrames) {
@@ -188,9 +188,9 @@ struct Conversion {
     }
     return inputBuffers.data();
   }
-  
+
   T ** editOutput() { return outputBuffers.data(); }
-  
+
   // data   = frame1 frame2 ...
   // frameN = out1 out2 ...
   void transposeOutput(T * data, int const nFrames) {
@@ -200,7 +200,7 @@ struct Conversion {
       }
     }
   }
-  
+
 private:
   // ins = "frames of input1" "frames of input2" ...
   // outs = "frames of output1" "frames of output2" ...
@@ -210,7 +210,7 @@ private:
 };
 
 struct AudioPost {
-  
+
   using postProcessFunc = std::function<void(double*, // buffer
                                              int, // number of frames in the buffer
                                              int // block size (i.e the total number of frames per callback call
@@ -219,22 +219,22 @@ struct AudioPost {
   void set_post_processors(std::vector<postProcessFunc> && v) {
     post_process = std::move(v);
   }
-  
+
   void declareBlockSize(int sz) {
     block_size = sz;
   }
-  
+
   void postprocess(double*buffer,
                    int nFrames) const {
     Assert(block_size);
-    
+
     for(auto const & f: post_process) {
       f(buffer,
         nFrames,
         *block_size);
     }
   }
-  
+
 private:
   std::optional<int> block_size;
   std::vector<postProcessFunc> post_process;
@@ -248,7 +248,7 @@ struct ReverbPost {
     // clear deletes objects so this should not be called from the realtime thread
     reverbs.clear();
   }
-    
+
   // Must _not_ be called from the realtime thread
   template<typename T>
   bool use(audio::DeinterlacedBuffers<T> const &db,
@@ -271,7 +271,7 @@ struct ReverbPost {
   }
 
   static constexpr int transition_duration_milliseconds = 200;
-  
+
   // Must be called from the realtime thread
   void post_process(double * buf,
                     int const nFrames,
@@ -304,18 +304,18 @@ struct ReverbPost {
     if (!can_process) {
       return true;
     }
-    if (reverbs.getWetRatioWithoutStepping != 0) {
+    if (reverbs.getWetRatioWithoutStepping() != 0) {
       return false;
     }
     can_process = false;
     return true;
   }
-  
+
   // Thread safe
   void start_processing() {
     can_process = true;
   }
-  
+
   // Thread safe
   bool is_processing() const {
     return can_process;
@@ -345,22 +345,22 @@ struct Compute {
 // !! This is deprecated in favor of SimpleAudioContext, because we try to avoid channels, and replace them by audioelement
 template< typename ChannelsType, audio::ReverbType ReverbT>
 struct outputDataBase {
-  
+
   using T = SAMPLE;
-  
+
   static constexpr auto policy = ChannelsType::policy;
   static constexpr auto nOuts = ChannelsType::nAudioOut;
   static constexpr auto nAudioIn = nOuts;
 
   // We disable postprocessing for audio plugins (i.e 'AudioOutPolicy::Slave')
   static constexpr bool disable_post = policy == AudioOutPolicy::Slave;
-  
+
   using ChannelsT = ChannelsType;
   using Request = typename ChannelsType::Request;
   using LockFromRT = LockIf<AudioLockPolicyImpl<policy>::useLock, ThreadType::RealTime>;
   using LockFromNRT = LockIf<AudioLockPolicyImpl<policy>::useLock, ThreadType::NonRealTime>;
   using LockCtrlFromNRT = LockCtrlIf<AudioLockPolicyImpl<policy>::useLock, ThreadType::NonRealTime>;
-  
+
 private:
   using SimpleComputeFunc = folly::Function<bool(double *, // buffer
                                                  const int  // the number of frames to compute
@@ -410,7 +410,7 @@ public:
       initialize_postprocessor();
     }
   }
-  
+
   outputDataBase(AudioLockPolicyImpl<policy>&l)
   : _lock(l)
   , simple_computes(500)
@@ -421,20 +421,20 @@ public:
       initialize_postprocessor();
     }
   }
-  
+
 
   ChannelsT & getChannels() { return channelsT; }
   ChannelsT const & getConstChannels() const { return channelsT; }
-  
+
   auto & getPost() { return post; }
   auto const & getPost() const { return post; }
-  
+
   auto & getReverb() { return reverb_post; }
   auto const & getReverb() const { return reverb_post; }
-  
+
   AudioLockPolicyImpl<policy> & get_lock_policy() { return _lock; }
   decltype(std::declval<AudioLockPolicyImpl<policy>>().lock()) get_lock() { return _lock.lock(); }
-  
+
   // this method should not be called from the real-time thread
   // because it yields() and retries.
   template<typename F>
@@ -448,7 +448,7 @@ public:
       f(*this, 0); // TODO pass an accurate time
     }
   }
-  
+
   bool registerSimpleCompute(SimpleComputeFunc && f) {
     if(!simple_computes.tryInsert(std::move(f))) {
       Assert(0);
@@ -456,9 +456,9 @@ public:
     }
     return true;
   }
-  
+
   // called from audio callback
-  
+
   void step(SAMPLE *outputBuffer,
             int nFrames,
             uint64_t const tNanos,
@@ -470,32 +470,32 @@ public:
      std::cout << "audio thread: " << std::endl;
      thread::logSchedParams();
      }*/
-    
+
     LockFromRT l(_lock.lock());
-    
+
     oneShots.dequeueAll([this](auto const & f) {
       f(*this);
     });
-    
+
     if(unlikely(!postIsReady())) {
       // post-processing is being modified in another thread
       memset(outputBuffer, 0, nFrames * nOuts * sizeof(SAMPLE));
       return;
     }
     post.declareBlockSize(nFrames);
-    
+
     auto t = tNanos;
-    
+
     double precisionBuffer[audio::audioelement::n_frames_per_buffer * nOuts];
     while(nFrames > 0) {
       auto const nLocalFrames = std::min(nFrames, audio::audioelement::n_frames_per_buffer);
-      
+
       channelsT.run_computes(nLocalFrames, t); // this is when the note on, notechange, noteoff callbacks are called, and when the registered computes are called
-      
+
       const int nSamples = nLocalFrames * nOuts;
-      
+
       memset(precisionBuffer, 0, nSamples * sizeof(double));
-      
+
       consume_buffers(precisionBuffer, nLocalFrames, t);
       for(int i=0;
           i != nSamples;
@@ -512,14 +512,14 @@ public:
     if constexpr (disable_post) {
       return;
     }
-    
+
     muteAudio(sample_rate);
-    
+
     reverb_post.dont_use();
-    
+
     unmuteAudio();
   }
-  
+
   template<typename T>
   [[nodiscard]] bool setConvolutionReverbIR(int sample_rate,
                                             audio::DeinterlacedBuffers<T> const & db,
@@ -532,7 +532,7 @@ public:
     // having the audio thread compute reverbs at the same time would make our calibration not very reliable
     // (due to cache effects for roots and possibly other) so we disable them now
     muteAudio(sample_rate);
-    
+
     // locking here would possibly incur dropped audio frames due to the time spent setting the coefficients.
     // we ensured reverbs are not used so we don't need to lock.
     bool const res = reverb_post.use(db,
@@ -541,18 +541,18 @@ public:
     if (res) {
       has_spatializer = db.countChannels() > nAudioIn;
     }
-    
+
     unmuteAudio();
-    
+
     return res;
   }
-  
+
   bool hasSpatializer() const { return has_spatializer; }
-  
+
 private:
-  
+
   void consume_buffers(double * outputBuffer, int const nFrames, uint64_t const tNanos) {
-    
+
     struct ComputeFunctor {
       double * buffer;
       int n_frames;
@@ -563,15 +563,15 @@ private:
         return compute(buffer, n_frames);
       }
     };
-    
+
     simple_computes.forEach(ComputeFunctor{outputBuffer, nFrames});
-    
+
     Assert(nFrames <= audio::audioelement::n_frames_per_buffer); // by design
-    
+
     channelsT.forEach(detail::Compute{outputBuffer, nFrames, tNanos});
     post.postprocess(outputBuffer, nFrames);
   }
-  
+
   void initialize_postprocessor() {
     post.set_post_processors({
       {
@@ -595,7 +595,7 @@ private:
             if(likely(-1.f <= v[i] && v[i] <= 1.f)) {
               continue;
             }
-            
+
             if(v[i] > 1.f) {
               std::cout << "clamp " << v[i] << std::endl;
               v[i] = 1.f;
@@ -617,8 +617,8 @@ private:
     }
                              );
   }
-  
-  
+
+
   bool postIsReady() const
   {
     if constexpr (disable_post) {
@@ -627,7 +627,7 @@ private:
     std::atomic_thread_fence(std::memory_order_acquire);
     return readyTraits::read(post_ready, std::memory_order_relaxed);
   }
-  
+
   void muteAudio(int sample_rate) {
     LockFromNRT l(_lock.lock());
     readyTraits::write(post_ready, false, std::memory_order_relaxed);
@@ -643,7 +643,7 @@ private:
       std::this_thread::sleep_for(std::chrono::milliseconds(static_cast<int>(0.5f + 20.f * ceil(millisPerBuffer))));
     }
   }
-  
+
   void unmuteAudio() {
     // we use a fence to ensure that previous non atomic writes
     // will not appear after the write of 'post_ready'.
