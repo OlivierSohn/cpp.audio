@@ -7,14 +7,6 @@ enum class AudioPlatform {
   AudioUnits
 };
 
-
-// TODO
-// Context is for out only, and has a Stepper
-// AudioInput is for in only, and has a callback
-//
-// we need to support fullduplex in/out
-
-
 enum class Features {
   JustOut,
   InAndOut
@@ -23,15 +15,23 @@ enum class Features {
 // for output:
 template<AudioPlatform A, Features F>
 struct Context;
-using PlayF = std::function<void(SAMPLE *,
-                                 int,
-                                 uint64_t const)>;
 
 // for input:
 template<AudioPlatform A>
 struct AudioInput;
-using RecordF = std::function<void(const SAMPLE*, int /* num frames */)>;
 
+// for input and output in the same stream
+template<AudioPlatform A>
+struct FullDuplexContext;
+
+// output callback:
+using PlayF = std::function<void(SAMPLE *,
+                                 int,
+                                 uint64_t const)>;
+// input callback:
+// Note that we could use PlayF for input too, but there is currently no use case where we need the time of inputs
+using RecordF = std::function<void(const SAMPLE*,
+                                   int /* num frames */)>;
 
 
 constexpr auto initial_n_audio_cb_frames = -1;

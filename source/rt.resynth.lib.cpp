@@ -227,6 +227,10 @@ AudioPlatform::PortAudio,
 Features::InAndOut
 >;
 
+using FullDuplexCtxt = FullDuplexContext<
+AudioPlatform::PortAudio
+>;
+
 using Stepper = SimpleAudioOutContext<
 nAudioOut,
 audioEnginePolicy,
@@ -804,10 +808,20 @@ public:
   }
   
   float getInputStreamCpuLoad() const {
-    return input.getStreamCpuLoad();
+    if (input.Initialized()) {
+      return input.getStreamCpuLoad();
+    } else if (fullduplex.Initialized()) {
+      return fullduplex.getStreamCpuLoad();
+    }
+    return -1.f;
   }
   float getOutputStreamCpuLoad() const {
-    return ctxt.getStreamCpuLoad();
+    if (ctxt.Initialized()) {
+      return ctxt.getStreamCpuLoad();
+    } else if (fullduplex.Initialized()) {
+      return fullduplex.getStreamCpuLoad();
+    }
+    return -1.f;
   }
 
   float getCompressionFactor() const {
@@ -815,24 +829,27 @@ public:
   }
   
 private:
+  FullDuplexCtxt fullduplex;
   Ctxt ctxt;
   Stepper stepper;
   Synth synth;
   SynthVocoderCarier vocoder_carrier;
   NoteIdsGenerator vocoder_carrier_noteids;
   Midi midi;
+  int sample_rate = 0;
   
   std::atomic_bool thread_resynth_active{false};
   std::unique_ptr<std::thread> thread_resynth;
   
   MetaQueue<Queue> * input_2_analysis_queue = nullptr;
-  MetaQueue<Queue> * input_2_vocoder_queue = nullptr;
   
-  ReadQueuedSampleSource<Queue, Ctxt> read_queued_input;
+  MetaQueue<Queue> * input_2_vocoder_queue = nullptr;
+  ReadQueuedSampleSource<Queue> read_queued_input;
   
   Vocoder vocoder;
   
-  Input<AudioPlatform::PortAudio, Queue> input;
+  AudioInput<AudioPlatform::PortAudio> input;
+  Input<Queue> input_queues;
   
   NonRealtimeAnalysisFrame analysis_data;
   int64_t analysis_frame_idx = 0;
@@ -915,17 +932,16 @@ private:
   std::atomic_bool midi_thread_active = true;
   std::unique_ptr<std::thread> midi_thread;
   
-  void analysis_thread(int const sample_rate);
+  void analysis_thread();
   
-  void step (int const sample_rate,
-             std::vector<FreqMag<double>> const & fs,
+  void step (std::vector<FreqMag<double>> const & fs,
              MIDITimestampAndSource const & miditime,
              int const future_stride);
   
   std::function<std::optional<float>(float const)>
   mkAutotuneFunction();
   
-  void onInputMidiEvent(int sample_rate, uint64_t time_ms, midi::Event const & e);
+  void onInputMidiEvent(uint64_t time_ms, midi::Event const & e);
   void onLostInputMidiEvents();
 
   void updateVocoderCarrierInitializer();
@@ -939,8 +955,8 @@ RtResynth::RtResynth()
           1 // fft-based synth
           + 1    //vocoder
           )
-, input(4,
-        4)
+, input_queues(4, // num oneshots max
+               4) // num queues max
 , periodic_fft(pow2(14))
 , vocoder_carrier_noteids(150)
 {
@@ -968,62 +984,108 @@ RtResynth::~RtResynth() {
 }
 
 void
-RtResynth::init(int const sample_rate) {
-  if (sample_rate <= 0) {
+RtResynth::init(int const samplerate) {
+  if (samplerate <= 0) {
     throw std::invalid_argument("sample_rate is too small");
   }
   
   teardown();
   Assert(!thread_resynth_active);
   
-  if (!ctxt.doInit(minOutLatency,
-                   sample_rate,
-                   nAudioOut,
-                   [this,
-                    nanos_per_audioelement_buffer = static_cast<uint64_t>(0.5f +
-                                                                          audio::nanos_per_frame<float>(sample_rate) *
-                                                                          static_cast<float>(audio::audioelement::n_frames_per_buffer))]
-                   (SAMPLE *outputBuffer,
-                    int nFrames,
-                    uint64_t const tNanos){
+  if (fullduplex.Init(samplerate,
+                      minInLatency,
+                      1,
+                      [this](const float * buf, int nFrames){
+    input_queues.try_push_buffer(buf,
+                                 nFrames);
+  },
+                      minOutLatency,
+                      nAudioOut,
+                      [this,
+                       nanos_per_audioelement_buffer = static_cast<uint64_t>(0.5f +
+                                                                             audio::nanos_per_frame<float>(samplerate) *
+                                                                             static_cast<float>(audio::audioelement::n_frames_per_buffer))]
+                      (SAMPLE *outputBuffer,
+                       int nFrames,
+                       uint64_t const tNanos){
     stepper.step(outputBuffer,
                  nFrames,
                  tNanos,
                  nanos_per_audioelement_buffer);
   })) {
-    throw std::runtime_error("ctxt init failed");
+    sample_rate = fullduplex.getSampleRate();
+  } else {
+    // no fullduplex, fallback to separate buffers
+    if (!ctxt.doInit(minOutLatency,
+                     samplerate,
+                     nAudioOut,
+                     [this,
+                      nanos_per_audioelement_buffer = static_cast<uint64_t>(0.5f +
+                                                                            audio::nanos_per_frame<float>(samplerate) *
+                                                                            static_cast<float>(audio::audioelement::n_frames_per_buffer))]
+                     (SAMPLE *outputBuffer,
+                      int nFrames,
+                      uint64_t const tNanos){
+      stepper.step(outputBuffer,
+                   nFrames,
+                   tNanos,
+                   nanos_per_audioelement_buffer);
+    })) {
+      throw std::runtime_error("ctxt init failed");
+    }
+    
+    // This sleep is necessary, else no sound is audible
+    // (maybe a portaudio bug?)
+    std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+    
+    if (!input.Init([this](const float * buf, int nFrames){
+      input_queues.try_push_buffer(buf,
+                                   nFrames);
+    },
+                    samplerate,
+                    minInLatency)) {
+      throw std::runtime_error("input init failed");
+    }
+    
+    sample_rate = ctxt.getSampleRate();
+    if (input.getSampleRate() != sample_rate) {
+      throw std::runtime_error("in and out sample rates mismatch");
+    }
+  }
+  
+  if (sample_rate != samplerate) {
+    throw std::runtime_error("samplerate mismatch");
   }
   
   if (!synth.initialize(stepper)) {
     throw std::logic_error("failed to initialize synth");
   }
-  
-  std::this_thread::sleep_for(std::chrono::milliseconds(1000));
-  
-  input.Init(sample_rate,
-             minInLatency);
-  
-  input_2_analysis_queue = input.add_queue(sample_rate); // one second of input can fit in the queue
 
-  if (input.getSampleRate() != ctxt.getSampleRate()) {
-    throw std::runtime_error("in and out sample rates mismatch");
-  }
+  input_2_analysis_queue = input_queues.add_queue(sample_rate); // one second of input can fit in the queue
 
   {
-    int const size = sample_rate * 4. * std::max(input.getInputLatencySeconds(),
-                                                 ctxt.getOutputLatencySeconds());
+    int size;
+    if (input.Initialized() && ctxt.Initialized()) {
+      size = sample_rate * 4. * std::max(input.getInputLatencySeconds(),
+                                         ctxt.getOutputLatencySeconds());
+    } else if (fullduplex.Initialized()) {
+      size = sample_rate * 2. * std::max(fullduplex.getInputLatencySeconds(),
+                                         fullduplex.getOutputLatencySeconds());
+    } else {
+      throw std::logic_error("neither fullduplex nor ctxt.input are initialized");
+    }
     std::cout << "Vocoder queue size = " << size << std::endl;
-    input_2_vocoder_queue = input.add_queue(size);
+    input_2_vocoder_queue = input_queues.add_queue(size);
   }
 
   read_queued_input.set(input_2_vocoder_queue->queue
 #ifndef NDEBUG
-                        , ctxt
+                        , ctxt.Initialized() ? ctxt.asyncLogger() : fullduplex.asyncLogger()
 #endif
                         );
   
   vocoder.initialize(stepper,
-                     ctxt.getSampleRate(),
+                     sample_rate,
                      [this] () -> Vocoder::Params{
     return
     {
@@ -1055,20 +1117,19 @@ RtResynth::init(int const sample_rate) {
   updateVocoderCarrierInitializer();
 
   midi_thread_active = true;
-  midi_thread = std::make_unique<std::thread>([this, sample_rate](){
+  midi_thread = std::make_unique<std::thread>([this](){
     midi::listen_to_midi_input(midi_thread_active,
-                               [this,
-                                sample_rate](midi::Event const & midievent, uint64_t time_ms){ onInputMidiEvent(sample_rate,
-                                                                                                               time_ms,
-                                                                                                               midievent); },
-                               [this](){ onLostInputMidiEvents(); }
-                               );
+                               [this](midi::Event const & midievent, uint64_t time_ms){
+      onInputMidiEvent(time_ms, midievent);
+    },
+                               [this](){
+      onLostInputMidiEvents();
+    });
   });
 
   thread_resynth_active = true;
-  thread_resynth = std::make_unique<std::thread>([this,
-                                                  sample_rate](){
-    analysis_thread(sample_rate);
+  thread_resynth = std::make_unique<std::thread>([this](){
+    analysis_thread();
   });
 }
 
@@ -1090,43 +1151,50 @@ RtResynth::teardown() {
   synth.finalize(stepper);
   
   Assert(input_2_analysis_queue);
-  input.remove_queue(input_2_analysis_queue);
+  input_queues.remove_queue(input_2_analysis_queue);
   input_2_analysis_queue = nullptr;
   
   Assert(input_2_vocoder_queue);
-  input.remove_queue(input_2_vocoder_queue);
+  input_queues.remove_queue(input_2_vocoder_queue);
   input_2_vocoder_queue = nullptr;
   
-  input.Teardown();
+  if (input.Initialized()) {
+    if (!input.Teardown()) {
+      throw std::runtime_error("input teardown failed");
+    }
+  }
   
-  ctxt.doTearDown();
-}
-
-void RtResynth::updateVocoderCarrierInitializer() {
-  if (std::optional<int> const sample_rate = ctxt.getMaybeSampleRate()) {
-    VocoderCarrierElementInitializer<double> initializer(*sample_rate,
-                                                         mkAHDSR(*sample_rate,
-                                                                 env_attack_seconds,
-                                                                 env_hold_seconds,
-                                                                 env_decay_seconds,
-                                                                 env_release_seconds,
-                                                                 env_sustain_level),
-                                                         vocoder_carrier_noise_volume.load(),
-                                                         vocoder_carrier_saw_volume.load(),
-                                                         vocoder_carrier_triangle_volume.load(),
-                                                         vocoder_carrier_square_volume.load(),
-                                                         vocoder_carrier_sine_volume.load(),
-                                                         vocoder_carrier_pulse_volume.load(),
-                                                         vocoder_carrier_pulse_width.load()
-                                                         );
-    apply_initializer_to_current_and_future_notes(stepper,
-                                                  vocoder_carrier,
-                                                  initializer);
+  if (ctxt.Initialized()) {
+    ctxt.doTearDown();
+  }
+  
+  if (fullduplex.Initialized()) {
+    fullduplex.Teardown();
   }
 }
 
-void RtResynth::onInputMidiEvent(int const sample_rate,
-                                 uint64_t time_ms,
+void RtResynth::updateVocoderCarrierInitializer() {
+  VocoderCarrierElementInitializer<double> initializer(sample_rate,
+                                                       mkAHDSR(sample_rate,
+                                                               env_attack_seconds,
+                                                               env_hold_seconds,
+                                                               env_decay_seconds,
+                                                               env_release_seconds,
+                                                               env_sustain_level),
+                                                       vocoder_carrier_noise_volume.load(),
+                                                       vocoder_carrier_saw_volume.load(),
+                                                       vocoder_carrier_triangle_volume.load(),
+                                                       vocoder_carrier_square_volume.load(),
+                                                       vocoder_carrier_sine_volume.load(),
+                                                       vocoder_carrier_pulse_volume.load(),
+                                                       vocoder_carrier_pulse_width.load()
+                                                       );
+  apply_initializer_to_current_and_future_notes(stepper,
+                                                vocoder_carrier,
+                                                initializer);
+}
+
+void RtResynth::onInputMidiEvent(uint64_t time_ms,
                                  midi::Event const & e) {
   // Portmidi time is in milliseconds, we convert it to nanoseconds.
   uint64_t const time_nanos = 1000000 * time_ms;
@@ -1169,15 +1237,15 @@ void RtResynth::onLostInputMidiEvents() {
 }
 
 void
-RtResynth::analysis_thread(int const sample_rate) {
-  double const nanos_pre_frame = 1. / static_cast<double>(sample_rate);
+RtResynth::analysis_thread() {
+  double const nanos_per_frame = 1. / static_cast<double>(sample_rate);
   uint64_t count_queued_frames = 0;
   uint64_t local_count_dropped_input_frames = 0;
 
-  periodic_fft.setLambdas([this, sample_rate]() {return getEvenWindowSizeFrames(sample_rate); },
-                          [this, sample_rate]() {return std::max(1,
+  periodic_fft.setLambdas([this]() {return getEvenWindowSizeFrames(sample_rate); },
+                          [this]() {return std::max(1,
                                                                  static_cast<int>(0.5f + getWindowCenterStrideSeconds() * sample_rate)); },
-                          [this, sample_rate, nanos_pre_frame, &count_queued_frames, &local_count_dropped_input_frames]
+                          [this, nanos_per_frame, &count_queued_frames, &local_count_dropped_input_frames]
                           (int const window_center_stride,
                            FrequenciesSqMag<double> const & frequencies_sqmag) {
     if (!thread_resynth_active) {
@@ -1205,9 +1273,8 @@ RtResynth::analysis_thread(int const sample_rate) {
       {
         profiling::ThreadCPUTimer timer(dt);
         
-        step(sample_rate,
-             freqmags,
-             MIDITimestampAndSource((count_queued_frames + local_count_dropped_input_frames) * nanos_pre_frame,
+        step(freqmags,
+             MIDITimestampAndSource((count_queued_frames + local_count_dropped_input_frames) * nanos_per_frame,
                                     to_underlying(MidiSource::Analysis)),
              window_center_stride); // we pass the future stride, on purpose
       }
@@ -1239,8 +1306,7 @@ RtResynth::analysis_thread(int const sample_rate) {
 }
 
 void
-RtResynth::step (int const sample_rate,
-                 std::vector<FreqMag<double>> const & fs,
+RtResynth::step (std::vector<FreqMag<double>> const & fs,
                  MIDITimestampAndSource const & miditime,
                  int const future_stride) {
   ++analysis_frame_idx;

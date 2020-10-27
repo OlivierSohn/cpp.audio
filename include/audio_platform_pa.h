@@ -10,7 +10,11 @@
 
 namespace imajuscule::audio {
 
-void printDevices();
+void printPortaudioDevices();
+
+std::optional<PaDeviceIndex>
+findPortaudioDevice(int nAudioIn,
+                    int nAudioOut);
 
 double getGoodSuggestedLatency(double seconds,
                                int const sample_rate);
@@ -178,6 +182,8 @@ constexpr uint64_t secondsToNanos(PaTime t) {
 
 constexpr uint64_t noTime = std::numeric_limits<uint64_t>::min();
 
+
+
 template <Features F>
 struct Context<AudioPlatform::PortAudio, F> {
   using MeT = Context<AudioPlatform::PortAudio, F>;
@@ -187,15 +193,10 @@ struct Context<AudioPlatform::PortAudio, F> {
     return *sample_rate_;
   }
   
-  std::optional<int> getMaybeSampleRate() const {
-    return sample_rate_;
-  }
-  
   double getOutputLatencySeconds() const {
     Assert(output_latency_seconds);
     return *output_latency_seconds;
   }
-  
   
   float getStreamCpuLoad() const {
     if( stream) {
@@ -260,7 +261,8 @@ private:
     // This global variable is used to dynamically optimize
     // the reverb algorithms according to the
     // number of frames we need to compute per callback.
-    n_audio_cb_frames.store(numFrames, std::memory_order_relaxed);
+    n_audio_cb_frames.store(static_cast<int>(numFrames),
+                            std::memory_order_relaxed);
     
     Assert(timeInfo);
     uint64_t tNanos = [timeInfo]() -> uint64_t {
@@ -276,7 +278,7 @@ private:
 # ifndef IMJ_LOG_AUDIO_TIME // when we have a callback that takes too long to exectute, analyzeTime(...) will detect a problem, so to avoid gaving too much of these logs, when IMJ_LOG_AUDIO_TIME is on, we deactivate analyzeTime
     Assert(This->sample_rate_);
     analyzeTime(tNanos,
-                numFrames,
+                static_cast<int>(numFrames),
                 *This->sample_rate_,
                 This->asyncLogger());
 # endif
@@ -322,7 +324,7 @@ public:
       
       LG(INFO,"AudioOut::doInit : %d host apis", Pa_GetHostApiCount());
       
-      printDevices();
+      printPortaudioDevices();
       
       PaStreamParameters p;
       p.device = Pa_GetDefaultOutputDevice();
@@ -455,6 +457,323 @@ public:
     LG(INFO, "AudioOut::doTearDown : success");
   }
 };
+
+template<>
+struct FullDuplexContext<AudioPlatform::PortAudio> {
+  using MeT = FullDuplexContext<AudioPlatform::PortAudio>;
+  
+  int getSampleRate() const {
+    Assert(sample_rate_);
+    return *sample_rate_;
+  }
+  
+  double getInputLatencySeconds() const {
+    Assert(input_latency_seconds);
+    return *input_latency_seconds;
+  }
+
+  double getOutputLatencySeconds() const {
+    Assert(output_latency_seconds);
+    return *output_latency_seconds;
+  }
+  
+  float getStreamCpuLoad() const {
+    if(stream) {
+      return Pa_GetStreamCpuLoad(stream);
+    }
+    return -1.f;
+  }
+  
+  bool Initialized() const {
+    return bInitialized;
+  }
+
+private:
+  std::optional<int> sample_rate_;
+  std::optional<double> output_latency_seconds;
+  std::optional<double> input_latency_seconds;
+
+  PlayF playFunc;
+  RecordF recordFunc;
+
+  bool bInitialized = false;
+  PaStream *stream = nullptr;
+  
+#if IMJ_DEBUG_AUDIO_OUT
+  std::unique_ptr<AsyncWavWriter> async_wav_writer_out;
+  int writer_out_idx = 0;
+#endif
+#if IMJ_DEBUG_AUDIO_IN
+  std::unique_ptr<AsyncWavWriter> async_wav_writer_in;
+  int writer_in_idx = 0;
+#endif
+#if IMJ_AUDIO_NEEDS_ASYNC_LOGGING
+  std::unique_ptr<PortaudioAsyncLogger> async_logger;
+  
+public:
+  // called from realtime thread
+  PortaudioAsyncLogger & asyncLogger() {
+    Assert(async_logger);
+    return *async_logger;
+  }
+private:
+#endif
+  
+  static int audioinoutCallback(const void *inputBuffer,
+                                void *outputBuffer,
+                                unsigned long numFrames,
+                                const PaStreamCallbackTimeInfo* timeInfo,
+                                PaStreamCallbackFlags f [[maybe_unused]],
+                                void *userData)
+  {
+    auto This = static_cast<MeT*>(userData);
+    
+#ifdef IMJ_LOG_AUDIO_TIME
+    LogAudioTime log_time(This->asyncLogger());
+#endif
+    
+#ifdef IMJ_LOG_MEMORY
+    ScopedThreadNature stn{
+      ThreadNature::RealTime_Program, // inside this function
+      ThreadNature::RealTime_OS       // outside this function
+    };
+#endif
+    
+#ifdef IMJ_LOG_AUDIO_OVERFLOW
+    if(f) {
+      This->asyncLogger().sync_feed(AudioOverflow{static_cast<double>(f)});
+    }
+#endif
+    
+    // This global variable is used to dynamically optimize
+    // the reverb algorithms according to the
+    // number of frames we need to compute per callback.
+    n_audio_cb_frames.store(static_cast<int>(numFrames),
+                            std::memory_order_relaxed);
+    
+    Assert(timeInfo);
+    uint64_t tNanos = [timeInfo]() -> uint64_t {
+      if(likely(timeInfo)) {
+        // on osx, it seems the outputBufferDacTime value is incorrect, see traces of analyzeTime.
+        // the error becomes large (sometimes 5 samples offset) with the UA Apollo x4 soundcard
+        return secondsToNanos(timeInfo->outputBufferDacTime);
+      }
+      return noTime; // then, MIDI synchronizatin will not work.
+    }();
+    
+#ifndef NDEBUG
+# ifndef IMJ_LOG_AUDIO_TIME // when we have a callback that takes too long to exectute, analyzeTime(...) will detect a problem, so to avoid having too much of these logs, when IMJ_LOG_AUDIO_TIME is on, we deactivate analyzeTime
+    Assert(This->sample_rate_);
+    analyzeTime(tNanos,
+                static_cast<int>(numFrames),
+                *This->sample_rate_,
+                This->asyncLogger());
+# endif
+#endif
+    
+#ifndef NDEBUG
+    try {
+#endif
+      This->recordFunc(static_cast<const SAMPLE*>(inputBuffer),
+                    static_cast<int>(numFrames));
+      This->playFunc(static_cast<SAMPLE*>(outputBuffer),
+                     static_cast<int>(numFrames),
+                     tNanos);
+#ifndef NDEBUG
+    } catch(std::exception const & e) {
+      // exception should never be thrown in a real time thread because when they are thrown, they need dynamic memory allocation.
+      std::cout << e.what() << std::endl;
+      This->asyncLogger().sync_feed(AnException{});
+      throw;
+    }
+#endif
+
+#if IMJ_DEBUG_AUDIO_IN
+    This->async_wav_writer_in->sync_feed_frames(static_cast<const SAMPLE*>(inputBuffer),
+                                                static_cast<int>(numFrames));
+#endif
+#if IMJ_DEBUG_AUDIO_OUT
+    This->async_wav_writer_out->sync_feed_frames(static_cast<SAMPLE*>(outputBuffer),
+                                                 static_cast<int>(numFrames));
+#endif
+    
+    return paContinue;
+  }
+  
+public:
+  // minOutLatency, minInLatency : latency in seconds
+  bool Init(int sample_rate,
+            float minInLatency,
+            int nAudioIn,
+            RecordF recordF,
+            float minOutLatency,
+            int nAudioOut,
+            PlayF playF) {
+    LG(INFO, "FullDuplexCtxt::Init");
+    LG(INFO, "FullDuplexCtxt::Init : initializing %s", Pa_GetVersionText());
+    Assert(!bInitialized);
+    if(PaError err = Pa_Initialize()) {
+      LG(ERR, "FullDuplexCtxt::Init : PA_Initialize failed : %s", Pa_GetErrorText(err));
+      Assert(0);
+      return false;
+    }
+    bInitialized = true;
+    
+    LG(INFO, "FullDuplexCtxt::Init : done initializing %s", Pa_GetVersionText());
+    
+    LG(INFO,"FullDuplexCtxt::Init : %d host apis", Pa_GetHostApiCount());
+    
+    printPortaudioDevices();
+    
+    std::optional<PaDeviceIndex> const full_duplex_device_idx =
+    findPortaudioDevice(nAudioIn,
+                        nAudioOut);
+    if (!full_duplex_device_idx) {
+      LG(INFO, "FullDuplexCtxt::Init : no device with full duplex capability");
+      return false;
+    }
+
+    LG(INFO, "FullDuplexCtxt::Init : min out user lat %f", minOutLatency);
+    LG(INFO, "FullDuplexCtxt::Init : min out user lat %f", minInLatency);
+
+    LG(INFO, "FullDuplexCtxt::Init : audio device : id %d", *full_duplex_device_idx);
+
+    auto pi = Pa_GetDeviceInfo(*full_duplex_device_idx);
+    LG(INFO, "FullDuplexCtxt::Init : audio device : hostApi    %d", pi->hostApi);
+    LG(INFO, "FullDuplexCtxt::Init : audio device : name       %s", pi->name);
+    LG(INFO, "FullDuplexCtxt::Init : audio device : maxIC      %d", pi->maxInputChannels);
+    LG(INFO, "FullDuplexCtxt::Init : audio device : maxOC      %d", pi->maxOutputChannels);
+    LG(INFO, "FullDuplexCtxt::Init : audio device : def. sr    %f", pi->defaultSampleRate);
+    LG(INFO, "FullDuplexCtxt::Init : audio device : def. lolat %f", pi->defaultLowOutputLatency);
+    LG(INFO, "FullDuplexCtxt::Init : audio device : def. holat %f", pi->defaultHighOutputLatency);
+
+
+    PaStreamParameters pOut;
+    pOut.device = *full_duplex_device_idx;
+    pOut.channelCount = nAudioOut;
+    pOut.sampleFormat = PortAudioSample<SAMPLE>::format;
+    pOut.hostApiSpecificStreamInfo = nullptr;
+    pOut.suggestedLatency = getGoodSuggestedLatency(std::max(static_cast<double>(minOutLatency),
+                                                             pi->defaultLowOutputLatency),
+                                                    sample_rate);
+    PaStreamParameters pIn;
+    pIn.device = *full_duplex_device_idx;
+    pIn.channelCount = nAudioIn;
+    pIn.sampleFormat = PortAudioSample<SAMPLE>::format;
+    pIn.hostApiSpecificStreamInfo = nullptr;
+    pIn.suggestedLatency = getGoodSuggestedLatency(std::max(static_cast<double>(minInLatency),
+                                                            pi->defaultLowInputLatency),
+                                                   sample_rate);
+#if IMJ_DEBUG_AUDIO_OUT
+    if (!async_wav_writer_out) {
+      async_wav_writer_out = std::make_unique<AsyncWavWriter>(nAudioOut,
+                                                              sample_rate,
+                                                              "debug_audioout" + std::to_string(writer_out_idx));
+      ++writer_out_idx;
+    }
+#endif  // IMJ_DEBUG_AUDIO_OUT
+#if IMJ_DEBUG_AUDIO_IN
+    if (!async_wav_writer_in) {
+      async_wav_writer_in = std::make_unique<AsyncWavWriter>(1, // n. audio channels
+                                                             sample_rate,
+                                                             "debug_audioin" + std::to_string(writer_in_idx));
+      ++writer_in_idx;
+    }
+#endif  // IMJ_DEBUG_AUDIO_IN
+#if IMJ_AUDIO_NEEDS_ASYNC_LOGGING
+    if (!async_logger) {
+      async_logger = std::make_unique<PortaudioAsyncLogger>(100);
+    }
+#endif
+    
+    sample_rate_ = sample_rate;
+    Assert(playF);
+    Assert(recordF);
+    playFunc = playF;
+    recordFunc = recordF;
+    if (PaError err = Pa_OpenStream(&stream,
+                                    &pIn,
+                                    &pOut,
+                                    sample_rate,
+                                    paFramesPerBufferUnspecified, /* to decrease latency */
+                                    paClipOff | paPrimeOutputBuffersUsingStreamCallback, /* we won't output out of range samples so don't bother clipping them */
+                                    audioinoutCallback,
+                                    this)) {
+      sample_rate_.reset();
+      output_latency_seconds.reset();
+      input_latency_seconds.reset();
+      stream = nullptr;
+      LG(ERR, "FullDuplexCtxt::Init : Pa_OpenStream failed : %s", Pa_GetErrorText(err));
+      Assert(0);
+      return false;
+    }
+    
+    const PaStreamInfo * si = Pa_GetStreamInfo(stream);
+    if (std::abs(si->sampleRate - sample_rate) > 0.0001) {
+      throw std::logic_error("sample rate mismatch");
+    }
+        
+    LG(INFO, "FullDuplexCtxt::Init : stream : sample rate %f",
+       si->sampleRate);
+    LG(INFO, "FullDuplexCtxt::Init : stream : output lat  %f (%f frames)",
+       si->outputLatency, si->outputLatency * si->sampleRate);
+    LG(INFO, "FullDuplexCtxt::Init : stream : input  lat  %f (%f frames)",
+       si->inputLatency,  si->inputLatency  * si->sampleRate);
+    
+    output_latency_seconds = si->outputLatency;
+    input_latency_seconds = si->inputLatency;
+    if (*input_latency_seconds != *output_latency_seconds) {
+      //throw std::logic_error("full duplex different latencies");
+    }
+
+    if(PaError err = Pa_StartStream( stream )) {
+      LG(ERR, "FullDuplexCtxt::Init : Pa_StartStream failed : %s", Pa_GetErrorText(err));
+      Assert(0);
+      return false;
+    }
+    
+    LG(INFO, "FullDuplexCtxt::Init : success");
+    return true;
+  }
+  
+  void Teardown() {
+    LG(INFO, "FullDuplexCtxt::Teardown");
+    if(stream) {
+      PaError err = Pa_CloseStream( stream );
+      stream = nullptr;
+      sample_rate_.reset();
+      input_latency_seconds.reset();
+      output_latency_seconds.reset();
+      if( unlikely(err != paNoError) ) {
+        LG(ERR, "FullDuplexCtxt::doTearDown : Pa_CloseStream failed : %s", Pa_GetErrorText(err));
+        Assert(0);
+        return;
+      }
+    }
+        
+    if( bInitialized ) { // don't call Pa_Terminate if Pa_Initialize failed
+      bInitialized = false;
+      
+      PaError err = Pa_Terminate();
+      if(err != paNoError)
+      {
+        LG(ERR, "FullDuplexCtxt::doTearDown : PA_Terminate failed : %s", Pa_GetErrorText(err));
+        return;
+      }
+    }
+#if IMJ_DEBUG_AUDIO_IN
+    async_wav_writer_in.reset();
+#endif
+#if IMJ_DEBUG_AUDIO_OUT
+    async_wav_writer_out.reset();
+#endif
+#if IMJ_AUDIO_NEEDS_ASYNC_LOGGING
+    async_logger.reset();
+#endif
+    LG(INFO, "FullDuplexCtxt::doTearDown : success");
+  }
+};
+
 
 template<>
 struct AudioInput<AudioPlatform::PortAudio> {
@@ -604,6 +923,10 @@ struct AudioInput<AudioPlatform::PortAudio> {
       return Pa_GetStreamCpuLoad(stream);
     }
     return -1.f;
+  }
+
+  bool Initialized() const {
+    return bInitialized;
   }
 
 private:

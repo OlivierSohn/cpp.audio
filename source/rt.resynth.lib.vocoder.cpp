@@ -1,5 +1,3 @@
-#define IMJ_DEBUG_VOCODER 1
-
 namespace imajuscule::audio::rtresynth {
 
 struct SetupParams {

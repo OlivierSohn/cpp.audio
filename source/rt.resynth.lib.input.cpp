@@ -1,6 +1,6 @@
 namespace imajuscule::audio {
 
-template<AudioPlatform audio_platform, typename Queue>
+template<typename Queue>
 struct Input {
   Input(int num_one_shots_max,
         int num_queues_max)
@@ -8,45 +8,8 @@ struct Input {
   {
     input_queues.reserve(num_queues_max);
   }
-  
-  double getInputLatencySeconds() const {
-    return input.getInputLatencySeconds();
-  }
-  
-  int getSampleRate() const {
-    return input.getSampleRate();
-  }
-  
-  float getStreamCpuLoad() const {
-    return input.getStreamCpuLoad();
-  }
-
-  void Init(int sample_rate,
-            float min_latency_seconds) {
-    if (!input.Init([this](const float * buf, int nFrames){
-      oneshots.dequeueAll([](auto & f) {
-        if (f.heapAllocatedMemory()) {
-          throw std::runtime_error("no allocation is allowed in functors");
-        }
-        f(); // this will add / remove queues
-      });
-      for (auto * q : input_queues) {
-        q->try_push_buffer(buf,
-                           nFrames);
-      }
-    },
-                    sample_rate,
-                    min_latency_seconds)) {
-      throw std::runtime_error("input init failed");
-    }
-  }
-  
-  void Teardown() {
-    if (!input.Teardown()) {
-      throw std::runtime_error("input teardown failed");
-    }
-  }
-  
+    
+  // must be called from a single producer thread
   MetaQueue<Queue>* add_queue(int num_elts) {
     auto q = std::make_unique<MetaQueue<Queue>>(num_elts);
     auto q_ptr = q.get();
@@ -64,6 +27,7 @@ struct Input {
     return q_ptr;
   }
   
+  // must be called from a single producer thread
   void remove_queue(MetaQueue<Queue> * q) {
     enum class QueueRemoval {
       Scheduled,
@@ -104,6 +68,23 @@ struct Input {
       queues.erase(it);
     }
   }
+
+  // must be called from a single consumer thread
+  bool try_push_buffer(const float * buf,
+                       int nFrames) {
+    oneshots.dequeueAll([](auto & f) {
+      if (f.heapAllocatedMemory()) {
+        throw std::runtime_error("no allocation is allowed in functors");
+      }
+      f(); // this will add / remove queues
+    });
+    bool res = true;
+    for (auto * q : input_queues) {
+      res = res && q->try_push_buffer(buf,
+                                      nFrames);
+    }
+    return res;
+  }
   
 private:
   // we might need a mutex to protect this vector in the future in case we can, from the UI thread,
@@ -114,8 +95,6 @@ private:
   
   using OneShotFunc = folly::Function<void(void)>;
   lockfree::scmp::fifo<OneShotFunc> oneshots; // these are used to synchronize modifications of 'input_queues'
-  
-  AudioInput<audio_platform> input;
 };
 
 }

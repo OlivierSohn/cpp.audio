@@ -1,6 +1,7 @@
-#define IMJ_DEBUG_AUDIO_OUT 1
-#define IMJ_DEBUG_AUDIO_IN 1
-#define IMJ_LOG_MIDI 1
+//#define IMJ_DEBUG_AUDIO_OUT 1
+//#define IMJ_DEBUG_AUDIO_IN 1
+//#define IMJ_LOG_MIDI 1
+//#define IMJ_DEBUG_VOCODER 1
 
 #include <mutex>
 #include <iostream>

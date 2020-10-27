@@ -1,8 +1,8 @@
 
 /*
 
-- full duplex support, then
-input feedback
+- full duplex : the lambda that gives samples of modulator will read directly from the buffer
+, then input feedback
 
 -
 . bandlimit oscillators to avoid aliasing:

@@ -3,7 +3,7 @@
 namespace imajuscule::audio {
 
 
-void printDevices() {
+void printPortaudioDevices() {
   int numDevices;
   numDevices = Pa_GetDeviceCount();
   if( numDevices < 0 )
@@ -32,6 +32,31 @@ void printDevices() {
     }
     std::cout << std::endl;
   }
+}
+
+
+std::optional<PaDeviceIndex>
+findPortaudioDevice(int const nAudioIn,
+                    int const nAudioOut) {
+  std::optional<PaDeviceIndex> res;
+  int numDevices;
+  numDevices = Pa_GetDeviceCount();
+  for( int i=0; i<numDevices; i++ )
+  {
+    const PaDeviceInfo *deviceInfo = Pa_GetDeviceInfo(i);
+    if (deviceInfo) {
+      if (deviceInfo->maxInputChannels >= nAudioIn) {
+        if (deviceInfo->maxOutputChannels >= nAudioOut) {
+          if (!res) {
+            res = i;
+          } else {
+            std::cout << "ignored possible device : " << i << std::endl;
+          }
+        }
+      }
+    }
+  }
+  return res;
 }
 
 double getGoodSuggestedLatency(double suggestedLatency,

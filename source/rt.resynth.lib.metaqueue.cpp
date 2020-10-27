@@ -74,17 +74,17 @@ enum class SampleContinuity {
 /*
  Starts reading when the queue is half full, to avoid starvation
  */
-template<typename Queue, typename Ctxt>
+template<typename Queue>
 struct ReadQueuedSampleSource {
   void set(Queue & queue
 #ifndef NDEBUG
-           , Ctxt & context
+           , PortaudioAsyncLogger & async_logger
 #endif
   ) {
     initialization = true;
     q = &queue;
 #ifndef NDEBUG
-    ctxt = &context;
+    this->async_logger = &async_logger;
 #endif
   }
     
@@ -121,7 +121,7 @@ struct ReadQueuedSampleSource {
       if (unlikely(std::holds_alternative<CountDroppedFrames>(var_modulator))) {
         // happens when the cpu load of the callback is big, so some frames are dropped
 #ifndef NDEBUG
-        ctxt->asyncLogger().sync_feed(AudioQueueDroppedFrames{
+        async_logger->sync_feed(AudioQueueDroppedFrames{
           "vocoder",
           std::get<CountDroppedFrames>(var_modulator).count
         });
@@ -146,7 +146,7 @@ private:
   bool initialization = true;
   Queue * q = nullptr;
 #ifndef NDEBUG
-  Ctxt * ctxt = nullptr;
+  PortaudioAsyncLogger * async_logger = nullptr;
 #endif
   
   unsigned min_size_queue() const {
