@@ -240,6 +240,12 @@ private:
   std::vector<postProcessFunc> post_process;
 };
 
+enum class StopProcessingResult {
+  Undefined, // this value is never returned by 'try_stop_processing'
+  AlreadyStopped, // the processing was already stopped when 'try_stop_processing' was called
+  StillFadingOut, // the reverb is active and the wet ration has not yet faded out
+  Stopped
+};
 template<audio::ReverbType ReverbT, int nSources, int nOuts>
 struct ReverbPost {
   // Must _not_ be called from the realtime thread
@@ -296,13 +302,6 @@ struct ReverbPost {
                                                 audio::ms_to_frames(transition_duration_milliseconds,
                                                                     sample_rate));
   }
-
-  enum class StopProcessingResult {
-    Undefined, // this value is never returned by 'try_stop_processing'
-    AlreadyStopped, // the processing was already stopped when 'try_stop_processing' was called
-    StillFadingOut, // the reverb is active and the wet ration has not yet faded out
-    Stopped
-  };
 
   // Must be called from the realtime thread
   //
