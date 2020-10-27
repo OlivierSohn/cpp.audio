@@ -240,6 +240,61 @@ private:
   std::vector<postProcessFunc> post_process;
 };
 
+template<audio::ReverbType ReverbT, int nSources, int nOuts>
+struct ReverbPost {
+  
+  void dont_use() {
+    // clear deletes objects so this should not be called from the realtime thread
+    reverbs.clear();
+  }
+    
+  template<typename T>
+  bool use(audio::DeinterlacedBuffers<T> const &db,
+           int n_audiocb_frames,
+           int sample_rate) {
+    try {
+      std::map<int, audio::ConvReverbOptimizationReport> results;
+      reverbs.setConvolutionReverbIR(nSources,
+                                     db,
+                                     n_audiocb_frames,
+                                     n_audiocb_frames,
+                                     sample_rate,
+                                     results);
+      return true;
+    }
+    catch(std::exception const & e) {
+      LG(ERR, "setConvolutionReverbIR error : %s", e.what());
+      return false;
+    }
+  }
+
+  static constexpr int transition_duration_milliseconds = 200;
+  
+  void transitionConvolutionReverbWetRatio(double wet,
+                                           int sample_rate) {
+    reverbs.transitionConvolutionReverbWetRatio(wet,
+                                                audio::ms_to_frames(transition_duration_milliseconds,
+                                                                    sample_rate));
+  }
+
+  void post_process(double * buf,
+                    int const nFrames,
+                    int const blockSize) {
+    if (!reverbs.isActive()) {
+      return;
+    }
+    reverbs.declareBlockSize(blockSize);
+    Assert(nFrames <= audio::audioelement::n_frames_per_buffer);
+    auto ** ins = conversion.transposeInput(buf, nFrames);
+    reverbs.apply(ins, nSources, conversion.editOutput(), nOuts, nFrames);
+    conversion.transposeOutput(buf, nFrames);
+  }
+
+private:
+  Conversion<double, nSources, nOuts, audio::audioelement::n_frames_per_buffer> conversion;
+  audio::ConvReverbsByBlockSize<audio::Reverbs<nOuts, ReverbT, audio::PolicyOnWorkerTooSlow::PermanentlySwitchToDry>> reverbs;
+};
+
 namespace detail {
 struct Compute {
   template<typename T>
@@ -303,9 +358,10 @@ private:
   static_vector<Synchronization::SingleThread, SimpleComputeFunc> simple_computes;
 
   readyType post_ready;
-  Conversion<double, nAudioIn, nOuts, audio::audioelement::n_frames_per_buffer> conversion;
-  audio::ConvReverbsByBlockSize<audio::Reverbs<nOuts, ReverbT, audio::PolicyOnWorkerTooSlow::PermanentlySwitchToDry>> reverbs;
+
+  ReverbPost<ReverbT, nAudioIn, nOuts> reverb_post;
   bool has_spatializer = false;
+
   audio::Limiter<double> limiter;
 
 public:
@@ -424,8 +480,7 @@ public:
     
     muteAudio(sample_rate);
     
-    reverbs.flushToSilence();
-    reverbs.clear();
+    reverb_post.dont_use();
     
     unmuteAudio();
   }
@@ -439,33 +494,22 @@ public:
       Assert(0);
       return false;
     }
-    bool res = false;
     // having the audio thread compute reverbs at the same time would make our calibration not very reliable
     // (due to cache effects for roots and possibly other) so we disable them now
     muteAudio(sample_rate);
     
     // locking here would possibly incur dropped audio frames due to the time spent setting the coefficients.
     // we ensured reverbs are not used so we don't need to lock.
-    try {
-      std::map<int, audio::ConvReverbOptimizationReport> results;
-      reverbs.setConvolutionReverbIR(nAudioIn, db, n_audiocb_frames, n_audiocb_frames, sample_rate, results);
+    bool const res = reverb_post.use(db,
+                                     n_audiocb_frames,
+                                     sample_rate);
+    if (res) {
       has_spatializer = db.countChannels() > nAudioIn;
-      res = true;
-    }
-    catch(std::exception const & e) {
-      LG(ERR, "setConvolutionReverbIR error : %s", e.what());
     }
     
     unmuteAudio();
     
     return res;
-  }
-  
-  void transitionConvolutionReverbWetRatio(double wet,
-                                           int sample_rate) {
-    reverbs.transitionConvolutionReverbWetRatio(wet,
-                                                audio::ms_to_frames(200,
-                                                                    sample_rate));
   }
   
   bool hasSpatializer() const { return has_spatializer; }
@@ -497,13 +541,7 @@ private:
     post.set_post_processors({
       {
         [this](double * buf, int const nFrames, int const blockSize) {
-          if (reverbs.isActive()) {
-            reverbs.declareBlockSize(blockSize);
-            Assert(nFrames <= audio::audioelement::n_frames_per_buffer);
-            auto ** ins = conversion.transposeInput(buf, nFrames);
-            reverbs.apply(ins, nAudioIn, conversion.editOutput(), nOuts, nFrames);
-            conversion.transposeOutput(buf, nFrames);
-          }
+          reverb_post.post_process(buf, nFrames, blockSize);
         }
       },
       {
