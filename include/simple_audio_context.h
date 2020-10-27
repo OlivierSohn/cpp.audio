@@ -1,26 +1,9 @@
 
 namespace imajuscule::audio {
 
-struct PostNoOp {
-  template<typename T>
-  PostNoOp(T &){}
-
-  bool isReady() const {
-    return true;
-  }
-
-  void declareBlockSize(int) const {}
-
-  void postprocess(double*, int) const {}
-};
-
-// Limiting is not required as a default: for example in a DAW, it is ok to have a signal with magnitude > 1,
-// as long as there is a gain adjustment after the plugin.
-//
-// Hence, by default, we use 'PostNoOp'
-template<int NAudioOuts, AudioOutPolicy Policy, typename PostImpl = PostNoOp>
+template<int NAudioOuts, AudioOutPolicy Policy>
 struct SimpleAudioOutContext   {
-  using MeT = SimpleAudioOutContext<NAudioOuts, Policy, PostImpl>;
+  using MeT = SimpleAudioOutContext<NAudioOuts, Policy>;
 
   static constexpr auto nOuts = NAudioOuts;
   static constexpr auto nAudioOut = nOuts;
@@ -49,12 +32,11 @@ public:
   : _lock(lock)
   , oneShots(sz_one_shots)
   , computes(sz_computes)
-  , post(lock)
   {
   }
 
-  PostImpl & getPost() { return post; }
-  PostImpl const & getPost() const { return post; }
+  AudioPost & getPost() { return post; }
+  AudioPost const & getPost() const { return post; }
 
   // this method should not be called from the real-time thread
   // because it yields() and retries.
@@ -94,15 +76,6 @@ public:
       f(*this, tNanos);
     });
 
-    // TODO make post optional, and use the 'oneShots' to set it:
-    // - one oneshot starts the fade-out
-    // - X ms later, another one shot swaps and fades-in the new current post.
-    // Then, we won't have the need to shutdown the audio output while post is being initialized, like below:
-    if(unlikely(!post.isReady())) {
-      // post is being initialized in another thread
-      memset(outputBuffer, 0, nFrames * nOuts * sizeof(SAMPLE));
-      return;
-    }
     post.declareBlockSize(nFrames);
 
     auto t = tNanos;
@@ -157,7 +130,7 @@ private:
   // We use the 'Synchronization::SingleThread' synchronization because
   // these vectors are accessed from a single thread only (the audio real-time thread).
   static_vector<Synchronization::SingleThread, ComputeFunc> computes;
-  PostImpl post;
+  AudioPost post;
 
   std::atomic_int failed_compute_insertion = 0;
   std::atomic_int retried_oneshot_insertion = 0;

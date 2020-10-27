@@ -220,8 +220,6 @@ using SynthVocoderCarier = sine::Synth <
 
 constexpr auto audioEnginePolicy = AudioOutPolicy::MasterLockFree;
 
-using PostImpl = AudioPostPolicyImpl<nAudioOut, ReverbType::Realtime_Synchronous, audioEnginePolicy>;
-
 using Ctxt = Context<
 AudioPlatform::PortAudio,
 Features::InAndOut
@@ -233,8 +231,7 @@ AudioPlatform::PortAudio
 
 using Stepper = SimpleAudioOutContext<
 nAudioOut,
-audioEnginePolicy,
-PostImpl
+audioEnginePolicy
 >;
 
 
@@ -830,7 +827,7 @@ public:
   }
 
   float getCompressionFactor() const {
-    return stepper.getPost().getLimiter().getTargetCompressionLevel();
+    return limiter.getTargetCompressionLevel();
   }
   
 private:
@@ -839,6 +836,7 @@ private:
   Ctxt ctxt;
 
   Stepper stepper;
+  Limiter<double> limiter;
   Synth synth;
   SynthVocoderCarier vocoder_carrier;
   NoteIdsGenerator vocoder_carrier_noteids;
@@ -994,6 +992,18 @@ RtResynth::RtResynth()
   
   allowed_pitches.reserve(2*max_audible_midi_pitch);
   
+  stepper.getPost().set_post_processors({
+    {
+      [this](double * buf, int const nFrames, int const blockSize) {
+        for (int i=0; i<nFrames; ++i) {
+          CArray<nAudioOut, double> a{buf + i*nAudioOut};
+          limiter.feedOneFrame(a);
+        }
+        // by now, the signal is compressed and limited
+      }
+    }
+  });
+
 #ifndef NDEBUG
   testAutotune();
 #endif

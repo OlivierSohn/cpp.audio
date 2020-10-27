@@ -2,6 +2,12 @@
 
 namespace imajuscule::audio {
 
+enum class CloseMode {
+  NOW, // channel is closed now even if it is playing something
+  XFADE_ZERO, // channel will be converted to autoclosing and forced to crossfade to zero right now.
+  WHEN_DONE_PLAYING, // channel will be converted to autoclosing
+};
+
 template <AudioOutPolicy>
 struct GlobalAudioLock;
 
@@ -35,9 +41,9 @@ constexpr auto impulse_responses_root_dir = "audio.ir";
 
 int wait_for_first_n_audio_cb_frames();
 
-template<typename Post>
+template<typename Stepper>
 bool useConvolutionReverb(int const sample_rate,
-                          Post & post,
+                          Stepper & stepper,
                           std::string const & dirname, std::string const & filename) {
 
   try{
@@ -53,9 +59,9 @@ bool useConvolutionReverb(int const sample_rate,
       throw std::runtime_error("negative count frames");
     }
     DeinterlacedBuffers<T> db(ib);
-    return post.setConvolutionReverbIR(sample_rate,
-                                       db,
-                                       wait_for_first_n_audio_cb_frames());
+    return stepper.setConvolutionReverbIR(sample_rate,
+                                          db,
+                                          wait_for_first_n_audio_cb_frames());
   }
   catch(std::exception const & e) {
     LG(ERR, "useConvolutionReverb error : %s", e.what());
@@ -172,8 +178,7 @@ public:
 
   void initializeConvolutionReverb(int sample_rate)
   {
-    dontUseConvolutionReverbs(stepper,
-                              sample_rate);
+    stepper.dontUseConvolutionReverbs(sample_rate);
 
     // this one needs to be high pass filtered (5hz loud stuff)
     /*    std::string dirname = std::string(impulse_responses_root_dir) + "/nyc.showroom";
