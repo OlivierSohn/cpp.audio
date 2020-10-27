@@ -9,9 +9,7 @@ int initAudioStreams(Features f, AudioUnit & audioUnit, void * cb_data,
                      AURenderCallback cb, int nOuts, int sample_rate,
                      AudioStreamBasicDescription & streamDescription);
 
-template <typename T>
 struct iOSOutputData { // TODO could that be part of Context ?
-  using Chans = T;
   // we cannot know for sure how much the os will ask us to compute.
   // on my iPhone 4s I observed 512 was asked.
   static constexpr auto initial_buffer_size = 1024;
@@ -21,8 +19,8 @@ struct iOSOutputData { // TODO could that be part of Context ?
     buf.reserve(initial_buffer_size);
   }
   
-  Chans * chans = nullptr;
-  std::vector<typename Chans::T> buf;
+  PlayF playFunc;
+  std::vector<SAMPLE> buf;
 };
 
 template<Features Feat>
@@ -42,8 +40,6 @@ struct Context <AudioPlatform::AudioUnits, Feat> {
     return bInitialized;
   }
 private:
-  PlayF playFunc;
-  Chans chans;
   bool bInitialized = false;
   AudioStreamBasicDescription desc;
   AudioUnit audioUnit_out = nullptr;
@@ -57,10 +53,15 @@ private:
     
     n_audio_cb_frames.store(numFrames, std::memory_order_relaxed);
     
-    auto ios_data = reinterpret_cast<iOSOutputData<Chans>*>(userData);
-    auto sizeBuffer = numFrames * nAudioOut;
+    auto ios_data = reinterpret_cast<iOSOutputData*>(userData);
+    int sizeBuffer = 0;
     for (UInt32 i=0; i<buffers->mNumberBuffers; ++i) {
       // might be less than previous value (when using parot headphones in bluetooth)
+      int const nAudioOut = buffers->mBuffers[i].mNumberChannels;
+      int const candidate = numFrames * nAudioOut;
+      if (sizeBuffer < candidate) {
+        sizeBuffer = candidate;
+      }
       auto v = buffers->mBuffers[i].mDataByteSize / sizeof(SInt16);
       if(v < sizeBuffer) {
         LG(INFO, "diff %d", sizeBuffer-v);
@@ -72,15 +73,13 @@ private:
     auto & outputBuffer = ios_data->buf;
     outputBuffer.resize(sizeBuffer); // hopefully we already reserved enough
     
-    ios_data->chans->step(outputBuffer.data(),
-                          numFrames,
-                          // TODO is audioTimeStamp->mWordClockTime in nanoseconds?
-                          audioTimeStamp?audioTimeStamp->mWordClockTime:0,
-                          0);
+    ios_data->playFunc(outputBuffer.data(),
+                       numFrames,
+                       // TODO is audioTimeStamp->mWordClockTime in nanoseconds?
+                       audioTimeStamp?audioTimeStamp->mWordClockTime:0);
     
     for (UInt32 i=0; i<buffers->mNumberBuffers; ++i) {
       Assert(sizeBuffer * sizeof(SInt16) <= buffers->mBuffers[i].mDataByteSize);
-      Assert(nAudioOut == buffers->mBuffers[i].mNumberChannels);
       auto buffer = (SInt16*)(buffers->mBuffers[i].mData);
       for( UInt32 j=0; j<sizeBuffer; j++ ) {
         auto val = (SInt16)(outputBuffer[j] * 32767.f);
@@ -102,10 +101,8 @@ protected:
     bInitialized = true;
     if(0==initAudioSession(minLatency))
     {
-      static imajuscule::audio::iOSOutputData<Chans> ios_odata;
-      Assert(!ios_odata.chans || (ios_odata.chans==&chans));
-      ios_odata.chans = &chans;
-      playFunc = playF;
+      static imajuscule::audio::iOSOutputData ios_odata;
+      ios_odata.playFunc = playF;
       
       if(0==initAudioStreams(Feat, audioUnit_out, &ios_odata, renderCallback_out, nAudioOut, sample_rate, desc))
       {
