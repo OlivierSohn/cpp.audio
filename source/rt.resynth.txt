@@ -1,14 +1,32 @@
 
 /*
 
-- full duplex : the lambda that gives samples of modulator will read directly from the buffer
-, then input feedback
+- post processing : using templates, make it possible to use limiting without reverbs:
+PostImpl<Limit>
+PostImpl<Limit, AssertSignalValid> // for debug
+PostImpl<Reverb<ReverbType>, Limit>
+PostImpl<Reverb<ReverbType>>
 
--
-. bandlimit oscillators to avoid aliasing:
+all output processors should work on the full buffer at once
+
+- use a feedback loop : output -> analysis
+implemented as a generic post processing step "write to queue""
+
+*/
+
+/* Backlog:
+
+- in a unit test, verify the effect of signal phase on peak magnitude (I expect that this has an influence on lower frequencies)
+
+------------
+Oscillators:
+------------
+
+- bandlimit oscillators to avoid aliasing:
 https://courses.cs.washington.edu/courses/cse490s/11au/Readings/Digital_Sound_Generation_1.pdf
 https://ccrma.stanford.edu/~juhan/vas.html
 https://www.music.mcgill.ca/~gary/307/week5/bandlimited.html
+https://ccrma.stanford.edu/~stilti/papers/blit.pdf
 
 For square, triangle, saw : simply use additive synthesis
 
@@ -18,134 +36,49 @@ sync on ascending zero crossing
 - add harmonics (for each waveform)
 
 - it would be nice to have some detune to have more phasing of oscillators
-- when modulator window is small, the frequency detection is not stable anymore
-. we could try envelope followers to smooth this out, or use bigger windows
 
-- Vocoder : ability to change interactively:
+--------
+Vocoder:
+-------
+
+- Change interactively:
 . the window shape for modulator
-. the stride (synced for both modulator and carrier) (the window size of the carrier is deduced from the stride)
 . the method to compute the bands (max or sum)
 
-- do we need some low pass filtering on the band coefficients?
+- Do we need some low pass filtering on the band coefficients?
 
-- Vocoder : this seems to work well:
-. band amplitude using sum of fft bins
-.. alternatives :
-... use max of fft bins
-... use a different window : rectangular, hanning
-... use different window sizes
-... use filters + envelope followers
-. band modulation in frequency domain and linear crossfade with overlap to avoid clicks
-.. alternatives :
-... use different xfade shapes
-(our signals are correlated so f must satisfy f(x) + f(1-x) = 1. we could try having a continuous first order derivative using x^2 or sin(x)
-... use different window sizes
-... use filters
+- multilevel fft to have fast reactions for high frequencies, and better slower detetction of low frequencies
 
-alternative:
-multilevel fft to have fast reactions for high frequencies
-
-- make vocoder parameters modifyable in realtime:
-
-bandpass order (modulator)
-bandpass order (carrier)
-bandpass order (envelope follower)
-
-lp freq (envelope follower) :
-. fixed
-. multiplicative factor (with lower bound of freq range)
-
-number of bands
-band range (min, max)
-
-Modifying one of these will require to fade out the vocoder before changing it.
-
-- make the carrier synth able to mix between noise and {sine / triangle / saw / square}
-
-- When possible, use a stream in full duplex mode to
-achieve better global latency
-because we don't need the vocoder queue anymore,
-we read the input and compute the output in the same thread.
-
-If we put analysis in the same thread, too, it may be costly cpu-wise.
-Else, we could keep analysis in another thread and the "AudioFullDuplex"
-should have the "registerSimpleCompute" capability.
-
-Currently observed latencies streams
-(by clapping in my hands and using natural feedback to measure delay):
-1024 frames out
-256 frames in
-
-vocoder queue size : 4096 = 4*max(1024, 256)
-start reading when queue size = 2*max(1024, 256)
-
-lead to feedback delay : 4000 frames
-= 45 ms
-
-- When full duplex is not an option, to synchronize audio input with output, and have a latency that is consistent across different program runs,
-we should use the input / output buffer times as reference to delay output by exactly
-2 * max(delayIn, delayOut) * sample_rate samples.
-Currently, we just "start using the queue when it is more than half full for the first time",
-this is not precise enough to lead to reproducible delays
-
-- post processing : using templates, make it possible to use limiting without reverbs:
-PostImpl<Limit>
-PostImpl<Limit, AssertSignalValid> // for debug
-PostImpl<Reverb<ReverbType>, Limit>
-PostImpl<Reverb<ReverbType>>
-
-all output processors should work on the full buffer at once
-
-Definitions:
------------
-
-- vocoder:
-apply the amplitudes of frequency bands of the voice to modulate another sound, using the same bands and volumes.
-To do this I would need:
-
-Vocoder =
-(Audio Input or other synth) -> Bandfilter(s) -> Envelope follower(s))
-Synth sound -> Bandfilter(s) -> Modulate by envelopes -> Sum
-
-the vocoding process will happen in a compute lambda:
-computeVocoder(
-
-function<std::optional<std::array<sample, n_channels_modulator>>(void)> && get_modulator
-// When empty is received, do not feed the bandpass / envelope followers, reuse previous amplitudes
-// Can be implemented by:
-// - computing one frame of a synth
-// - consuming a queue for audio input
-
-               vector<pair<BandFilter, EnvelopeFollower>> & modulator_amplitude,
-               
-// the modulator signal will be fed to each bandpassfilter, and the envelope followers will run
-
-               function<std::optional<std::array<sample, n_channels_modulator>>(void)>> && get_carrier,
-
-// empty should never be received
-// Can be implemented by :
-// (same as for modulator)
-
-               vector<BandFilter> & carrier_filters) // the envelope followers amplitudes are used to ponderate the sum of these to produce the output signal
-               
-                      
-https://ccrma.stanford.edu/~jos/sasp/Computing_Vocoder_Parameters.html#fig:envelope
-rectify signal, then low pass (or understand / use notion of instantaneous amplitude)
-
-https://www.soundonsound.com/techniques/introduction-esps-vocoders
+- https://www.soundonsound.com/techniques/introduction-esps-vocoders
 in one band, use white noise to make speech more intelligible
-*/
-
-/* Backlog:
-
-- make input thread more modular : we should be able to "plug" queues at will, ie have a "oneshot" vector that we execute at the beginning and that might add / remove queues.
-
-- in a unit test, verify the effect of signal phase on peak magnitude (I expect that this has an influence on lower frequencies)
 
  ----------------
  Creative effects
  ----------------
  
+  - record some presets
+ . save as json
+ . save last state every second
+ . hints to make make_presets:
+ .. max_pitch = 100 makes speec more intelligible, however we need max_pitch = 150 for robotic effects in the high end.
+ .. an interesting "frequency randomization" effect happens with
+ ... low frequency voice
+ ... small analysis window size (so that the frequency is not well found, hence the randomization effect)
+ ... "major chord + subharmonics" autotune (so that the frequencies are random but still "musically pleasing")
+
+ - an interesting robotic effect occurs with feedback and varying autotune interval size :
+ the fact that the interval size changes breaks the feedback loop so the variation should be fast enough so that the sound will not saturate.
+ Hence we need to automate, using oscillators and ranges, meta parameter variation.
+
+ - an interesting effect occurs when reinjecting a delayed version of the output in the input,
+ it was discovered by using the "external" feedback from speakers to mic, and by delaying the input signal by one second.
+ to implement "internal" feedback, we need additional parameters:
+ feedback volume:
+ feedback delay:
+ and a queue where the producer is the audio output thread, the consumer is the analysis thread.
+ The analysis thread reads from both the input and the output queue.
+ If the latencies for in and out are different, the sizes of the queues should be augmented by the number of samples corresponding to the max latency
+
  - randomly change stereo spread of currently played notes at the beginning of every analysis frame (randomize whether the pan changes or not, and by how much).
  . in StereoPanned, setup changes abruptly the pan, we could have a "move_to" method to change the pan with an interpolation (we need to maintain equal power during the interpolation)
 
@@ -166,19 +99,6 @@ in one band, use white noise to make speech more intelligible
  when "octave replication" is active:
  . sliders "count sub octaves" / "count upper octaves"
  
- - record some presets
- . save as json
- . hints to make make_presets:
- .. max_pitch = 100 makes speec more intelligible, however we need max_pitch = 150 for robotic effects in the high end.
- .. an interesting "frequency randomization" effect happens with
- ... low frequency voice
- ... small analysis window size (so that the frequency is not well found, hence the randomization effect)
- ... "major chord + subharmonics" autotune (so that the frequencies are random but still "musically pleasing")
-
- - an interesting robotic effect occurs with feedback and varying autotune interval size :
- the fact that the interval size changes breaks the feedback loop so the variation should be fast enough so that the sound will not saturate.
- Hence we need to automate, using oscillators and ranges, meta parameter variation.
-
  - pitch shifter
  . use double fft to detect main pitch, shift pitch according to midi played notes
  (if many notes are played a duplication ocurs)
@@ -231,15 +151,6 @@ in one band, use white noise to make speech more intelligible
  
  - control AHDSR parameters in realtime
 
- - an interesting effect occurs when reinjecting a delayed version of the output in the input,
- it was discovered by using the "external" feedback from speakers to mic, and by delaying the input signal by one second.
- to implement "internal" feedback, we need additional parameters:
- feedback volume:
- feedback delay:
- and a queue where the producer is the audio output thread, the consumer is the analysis thread.
- The analysis thread reads from both the input and the output queue.
- If the latencies for in and out are different, the sizes of the queues should be augmented by the number of samples corresponding to the max latency
-
  - customize resynthesys:
  Add a curve 0..1 -> 0..1 to change (compress / expand) volumes
  Add a filter notion : "volume(freq)" to allow to low-pass or high-pass for example
@@ -255,20 +166,10 @@ in one band, use white noise to make speech more intelligible
  pitch interval,
  pitch tracking
  
- - Display in UI :
- FFT size in frames,
- window size in frames,
- stride in frames
- 
  ------
  Others
  ------
- 
- - perf : sort/unique the vector used in find_closest_pitch, use binary search.
 
- - Find a way to that verify notechanges, noteon, noteoff take midi time into account
- (output buffers have a limited size so we can't easily test by using long output buffers)
- 
  - Improve memory locality of audio data by using
  . a move-only wrapper around a std::vector for audio queues
   (check the stream latency and use that value to compute the size of vectors)
@@ -280,6 +181,9 @@ in one band, use white noise to make speech more intelligible
  can become significant : for a stride = 1, for each audio frame, we copy "window size" audio frames!
  if 'samples' had twice its size, we would copy, on average, a single frame per audio frame which is much more reasonable.
 
+ - Find a way to that verify notechanges, noteon, noteoff take midi time into account
+ (output buffers have a limited size so we can't easily test by using long output buffers)
+ 
  --------------
  Peak detection
  --------------

@@ -380,6 +380,11 @@ void synthesize_sounds(Midi const & midi,
   }, played_pitches);
 }
 
+enum class Duplex {
+  Half, // one thread receives audio input, another thread writes audio output
+  Full, // the same thread receives audio input and writes audio output
+};
+
 struct RtResynth {
 private:
   // each midi time source needs to have a distinct identity:
@@ -829,8 +834,10 @@ public:
   }
   
 private:
+  std::optional<Duplex> mode;
   FullDuplexCtxt fullduplex;
   Ctxt ctxt;
+
   Stepper stepper;
   Synth synth;
   SynthVocoderCarier vocoder_carrier;
@@ -843,8 +850,12 @@ private:
   
   MetaQueue<Queue> * input_2_analysis_queue = nullptr;
   
+  // Only for Duplex::Half mode:
   MetaQueue<Queue> * input_2_vocoder_queue = nullptr;
   ReadQueuedSampleSource<Queue> read_queued_input;
+  
+  // Only for Duplex::Full mode:
+  const float * direct_input = nullptr;
   
   Vocoder vocoder;
   
@@ -945,6 +956,15 @@ private:
   void onLostInputMidiEvents();
 
   void updateVocoderCarrierInitializer();
+  
+  // must be called from the same thread that has previously writen 'direct_input'
+  std::optional<std::pair<double, SampleContinuity>> read_direct_input() {
+    Assert(direct_input);
+    double const val = *direct_input;
+    ++direct_input;
+    return std::make_pair(val,
+                          SampleContinuity::Yes);
+  }
 };
 
 
@@ -996,6 +1016,7 @@ RtResynth::init(int const samplerate) {
                       minInLatency,
                       1,
                       [this](const float * buf, int nFrames){
+    direct_input = buf;
     input_queues.try_push_buffer(buf,
                                  nFrames);
   },
@@ -1014,6 +1035,7 @@ RtResynth::init(int const samplerate) {
                  nanos_per_audioelement_buffer);
   })) {
     sample_rate = fullduplex.getSampleRate();
+    mode = Duplex::Full;
   } else {
     // no fullduplex, fallback to separate buffers
     if (!ctxt.doInit(minOutLatency,
@@ -1051,6 +1073,7 @@ RtResynth::init(int const samplerate) {
     if (input.getSampleRate() != sample_rate) {
       throw std::runtime_error("in and out sample rates mismatch");
     }
+    mode = Duplex::Half;
   }
   
   if (sample_rate != samplerate) {
@@ -1063,27 +1086,21 @@ RtResynth::init(int const samplerate) {
 
   input_2_analysis_queue = input_queues.add_queue(sample_rate); // one second of input can fit in the queue
 
-  {
-    int size;
-    if (input.Initialized() && ctxt.Initialized()) {
-      size = sample_rate * 4. * std::max(input.getInputLatencySeconds(),
-                                         ctxt.getOutputLatencySeconds());
-    } else if (fullduplex.Initialized()) {
-      size = sample_rate * 2. * std::max(fullduplex.getInputLatencySeconds(),
-                                         fullduplex.getOutputLatencySeconds());
-    } else {
-      throw std::logic_error("neither fullduplex nor ctxt.input are initialized");
-    }
+  if (mode == Duplex::Half) {
+    Assert(ctxt.Initialized());
+    Assert(input.Initialized());
+    int size = sample_rate * 4. * std::max(input.getInputLatencySeconds(),
+                                           ctxt.getOutputLatencySeconds());
     std::cout << "Vocoder queue size = " << size << std::endl;
     input_2_vocoder_queue = input_queues.add_queue(size);
+
+    read_queued_input.set(input_2_vocoder_queue->queue
+#ifndef NDEBUG
+                          , ctxt.asyncLogger()
+#endif
+                          );
   }
 
-  read_queued_input.set(input_2_vocoder_queue->queue
-#ifndef NDEBUG
-                        , ctxt.Initialized() ? ctxt.asyncLogger() : fullduplex.asyncLogger()
-#endif
-                        );
-  
   vocoder.initialize(stepper,
                      sample_rate,
                      [this] () -> Vocoder::Params{
@@ -1105,7 +1122,14 @@ RtResynth::init(int const samplerate) {
     };
   },
                      [this] () -> std::pair<std::optional<std::pair<double, SampleContinuity>>, std::optional<std::pair<double, SampleContinuity>>> {
-    std::optional<std::pair<double, SampleContinuity>> mod = read_queued_input();
+    std::optional<std::pair<double, SampleContinuity>> mod;
+    if (auto const m = mode) {
+      mod =
+      (*m == Duplex::Half) ?
+      read_queued_input() :
+      read_direct_input();
+    }
+    
     double carrier_val{};
     vocoder_carrier.compute(&carrier_val,
                             1);
@@ -1150,27 +1174,31 @@ RtResynth::teardown() {
   vocoder.finalize(stepper);
   synth.finalize(stepper);
   
-  Assert(input_2_analysis_queue);
-  input_queues.remove_queue(input_2_analysis_queue);
-  input_2_analysis_queue = nullptr;
+  if (input_2_analysis_queue) {
+    input_queues.remove_queue(input_2_analysis_queue);
+    input_2_analysis_queue = nullptr;
+  }
   
-  Assert(input_2_vocoder_queue);
-  input_queues.remove_queue(input_2_vocoder_queue);
-  input_2_vocoder_queue = nullptr;
+  if (input_2_vocoder_queue) {
+    input_queues.remove_queue(input_2_vocoder_queue);
+    input_2_vocoder_queue = nullptr;
+  }
   
   if (input.Initialized()) {
+    Assert(mode && *mode == Duplex::Half);
     if (!input.Teardown()) {
       throw std::runtime_error("input teardown failed");
     }
   }
-  
   if (ctxt.Initialized()) {
+    Assert(mode && *mode == Duplex::Half);
     ctxt.doTearDown();
   }
-  
   if (fullduplex.Initialized()) {
+    Assert(mode && *mode == Duplex::Full);
     fullduplex.Teardown();
   }
+  mode.reset();
 }
 
 void RtResynth::updateVocoderCarrierInitializer() {
