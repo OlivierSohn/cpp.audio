@@ -193,10 +193,17 @@ struct Conversion {
 
   // data   = frame1 frame2 ...
   // frameN = out1 out2 ...
-  void transposeOutput(T * data, int const nFrames) {
+  void invTransposeOutput(T * data, int const nFrames) {
     for (int i=0; i<nFrames; ++i) {
       for (int out = 0; out < nAudioOut; ++out) {
         data[i*nAudioOut + out] = outs[out * nFramesMax + i];
+      }
+    }
+  }
+  void invTransposeInput(T * data, int const nFrames) {
+    for (int i=0; i<nFrames; ++i) {
+      for (int in = 0; in < nAudioIn; ++in) {
+        data[i*nAudioIn + in] = ins[in * nFramesMax + i];
       }
     }
   }
@@ -291,8 +298,23 @@ struct ReverbPost {
     }
     Assert(nFrames <= audio::audioelement::n_frames_per_buffer);
     auto ** ins = conversion.transposeInput(buf, nFrames);
-    reverbs.apply(ins, nSources, conversion.editOutput(), nOuts, nFrames, can_fadeout);
-    conversion.transposeOutput(buf, nFrames);
+    reverbs.apply(ins, // input : dry signal
+                       // output : if (nSources == nOuts) : dry/wet mix
+                       //          else                   : dry signal
+                  nSources,
+                  conversion.editOutput(), // input = garbage
+                                           // output = wet signal
+                  nOuts,
+                  nFrames);
+    if (nSources == nOuts) {
+      // the dry/wet mix has been written to the input
+      can_fadeout = true;
+      conversion.invTransposeInput(buf, nFrames);
+    } else {
+      // the dry/wet mix has _not_ been written to the input
+      // because we have different number of channels
+      conversion.invTransposeOutput(buf, nFrames);
+    }
   }
 
   // Must be called from the realtime thread
