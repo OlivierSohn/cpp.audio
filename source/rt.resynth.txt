@@ -1,14 +1,6 @@
 
 /*
 
-- post processing : using templates, make it possible to use limiting without reverbs:
-PostImpl<Limit>
-PostImpl<Limit, AssertSignalValid> // for debug
-PostImpl<Reverb<ReverbType>, Limit>
-PostImpl<Reverb<ReverbType>>
-
-all output processors should work on the full buffer at once
-
 - use a feedback loop : output -> analysis
 implemented as a generic post processing step "write to queue""
 
