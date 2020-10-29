@@ -66,12 +66,15 @@ struct PeriodicFFT {
     }
   }
   
-  void on_dropped_frames(int count) {
-    if (ignore_frames > 0) {
-      ignore_frames -= count;
-    } else {
-      reset_samples();
+  void on_dropped_frames(std::optional<int> count) {
+    if (count) {
+      ignore_frames -= *count;
+      if (ignore_frames >= 0) {
+        // Luckily, the dropped frames have been ignored, so we don't need to reset the samples
+        return;
+      }
     }
+    reset_samples();
   }
   
   void reset_samples() {

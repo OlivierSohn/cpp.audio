@@ -311,6 +311,30 @@ struct MyApp : public wxApp {
           1.f
         },
         {
+          "Input gain",
+          "",
+          [this](){ return resynth.getAnalysisInputGain(); },
+          [this](float v){ resynth.setAnalysisInputGain(v); },
+          0.f,
+          1.f
+        },
+        {
+          "Feedback gain",
+          "",
+          [this](){ return resynth.getAnalysisFeedbackGain(); },
+          [this](float v){ resynth.setAnalysisFeedbackGain(v); },
+          0.f,
+          1.f
+        },
+        {
+          "Feedback delay",
+          "",
+          [this](){ return resynth.getAnalysisFeedbackDelay(); },
+          [this](float v){ resynth.setAnalysisFeedbackDelay(v); },
+          0.f,
+          2.f
+        },
+        {
           "Volume",
           "",
           [this](){ return resynth.getAnalysisVolume(); },
@@ -601,7 +625,15 @@ struct MyApp : public wxApp {
       {
         "Audio input frames dropped",
         [this](){ return resynth.countDroppedInputFrames(); }
-      }
+      },
+      {
+        "Audio output queue fill ratio",
+        [this](){ return resynth.getAudioOutputQueueFillRatio(); }
+      },
+      {
+        "Audio output frames dropped",
+        [this](){ return resynth.countDroppedOutputFrames(); }
+      },
     },
     {
       {

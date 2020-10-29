@@ -489,9 +489,22 @@ public:
   void storeAudioInputQueueFillRatio(float f) {
     input_queue_fill_ratio = f;
   }
+  void storeAudioOutputQueueFillRatio(float f) {
+    output_queue_fill_ratio = f;
+  }
   
   float getAudioInputQueueFillRatio() const {
     return input_queue_fill_ratio;
+  }
+  float getAudioOutputQueueFillRatio() const {
+    return output_queue_fill_ratio;
+  }
+  int countDroppedOutputFrames() const {
+    int count = 0;
+    if (output_2_analysis_queue) {
+      count += output_2_analysis_queue->countDroppedInputFrames();
+    }
+    return 0;
   }
   int countDroppedInputFrames() const {
     int count = 0;
@@ -809,18 +822,37 @@ public:
     analysis_volume = f;
   }
   
+  float getAnalysisInputGain() const {
+    return analysis_input_gain;
+  }
+  void setAnalysisInputGain(float f) {
+    analysis_input_gain = f;
+  }
+  float getAnalysisFeedbackGain() const {
+    return analysis_output_feedback_gain;
+  }
+  void setAnalysisFeedbackGain(float f) {
+    analysis_output_feedback_gain = f;
+  }
+  float getAnalysisFeedbackDelay() const {
+    return output_delay_seconds;
+  }
+  void setAnalysisFeedbackDelay(float f) {
+    output_delay_seconds = f;
+  }
+  
   float getInputStreamCpuLoad() const {
-    if (input.Initialized()) {
+    if (mode == Duplex::Half) {
       return input.getStreamCpuLoad();
-    } else if (fullduplex.Initialized()) {
+    } else if (mode == Duplex::Full) {
       return fullduplex.getStreamCpuLoad();
     }
     return -1.f;
   }
   float getOutputStreamCpuLoad() const {
-    if (ctxt.Initialized()) {
+    if (mode == Duplex::Half) {
       return ctxt.getStreamCpuLoad();
-    } else if (fullduplex.Initialized()) {
+    } else if (mode == Duplex::Full) {
       return fullduplex.getStreamCpuLoad();
     }
     return -1.f;
@@ -846,8 +878,11 @@ private:
   std::atomic_bool thread_resynth_active{false};
   std::unique_ptr<std::thread> thread_resynth;
   
-  MetaQueue<Queue> * input_2_analysis_queue = nullptr;
+  AudioBufferAggregator<Queue> analysis_input_aggregator;
   
+  MetaQueue<Queue> * input_2_analysis_queue = nullptr;
+  MetaQueue<Queue> * output_2_analysis_queue = nullptr;
+
   // Only for Duplex::Half mode:
   MetaQueue<Queue> * input_2_vocoder_queue = nullptr;
   ReadQueuedSampleSource<Queue> read_queued_input;
@@ -858,8 +893,10 @@ private:
   Vocoder vocoder;
   
   AudioInput<AudioPlatform::PortAudio> input;
-  Input<Queue> input_queues;
-  
+
+  AudioBufferPubSub<Queue> input_pubsub;
+  AudioBufferPubSub<Queue> output_pubsub;
+
   NonRealtimeAnalysisFrame analysis_data;
   int64_t analysis_frame_idx = 0;
   
@@ -917,6 +954,11 @@ private:
   std::atomic<float> vocoder_volume = 0.f;
   std::atomic<float> analysis_volume = 0.f;
   
+  std::atomic<float> analysis_input_gain = 1.f;
+  std::atomic<float> analysis_output_feedback_gain = 0.f;
+  std::atomic<float> output_delay_seconds = 1.f;
+  cyclic<float> output_delay;
+  
   std::vector<float> allowed_pitches;
   
   int64_t next_noteid = 0;
@@ -936,6 +978,7 @@ private:
   std::atomic<float> dt_extract_seconds = -1.f;
   std::atomic<float> dt_step_seconds = -1.f;
   std::atomic<float> input_queue_fill_ratio = 0.f;
+  std::atomic<float> output_queue_fill_ratio = 0.f;
   std::atomic_int dropped_note_on = 0;
   
   std::atomic_bool midi_thread_active = true;
@@ -973,8 +1016,10 @@ RtResynth::RtResynth()
           1 // fft-based synth
           + 1    //vocoder
           )
-, input_queues(4, // num oneshots max
+, input_pubsub(4, // num oneshots max
                4) // num queues max
+, output_pubsub(4, // num oneshots max
+                4) // num queues max
 , periodic_fft(pow2(14))
 , vocoder_carrier_noteids(150)
 {
@@ -1000,6 +1045,19 @@ RtResynth::RtResynth()
           limiter.feedOneFrame(a);
         }
         // by now, the signal is compressed and limited
+      }
+    },
+    {
+      [this](double * buf, int const nFrames, int const blockSize) {
+        output_pubsub.update_rt_listeners();
+        for (int i=0; i<nFrames; ++i) {
+          // make a mono version of the signal
+          double sum {};
+          for (int j=0; j<nAudioOut; ++j) {
+            sum += buf[i*nAudioOut + j];
+          }
+          output_pubsub.try_publish_sample(sum);
+        }
       }
     }
   });
@@ -1027,8 +1085,8 @@ RtResynth::init(int const samplerate) {
                       1,
                       [this](const float * buf, int nFrames){
     direct_input = buf;
-    input_queues.try_push_buffer(buf,
-                                 nFrames);
+    input_pubsub.try_publish_buffer(buf,
+                                    nFrames);
   },
                       minOutLatency,
                       nAudioOut,
@@ -1071,8 +1129,8 @@ RtResynth::init(int const samplerate) {
     std::this_thread::sleep_for(std::chrono::milliseconds(1000));
     
     if (!input.Init([this](const float * buf, int nFrames){
-      input_queues.try_push_buffer(buf,
-                                   nFrames);
+      input_pubsub.try_publish_buffer(buf,
+                                      nFrames);
     },
                     samplerate,
                     minInLatency)) {
@@ -1094,7 +1152,10 @@ RtResynth::init(int const samplerate) {
     throw std::logic_error("failed to initialize synth");
   }
 
-  input_2_analysis_queue = input_queues.add_queue(sample_rate); // one second of input can fit in the queue
+  input_2_analysis_queue = input_pubsub.add_listener(sample_rate); // one second of input can fit in the queue
+  output_2_analysis_queue = output_pubsub.add_listener(sample_rate); // one second of input can fit in the queue
+  analysis_input_aggregator.add_stream(input_2_analysis_queue->queue);
+  analysis_input_aggregator.add_stream(output_2_analysis_queue->queue);
 
   if (mode == Duplex::Half) {
     Assert(ctxt.Initialized());
@@ -1102,7 +1163,7 @@ RtResynth::init(int const samplerate) {
     int size = sample_rate * 4. * std::max(input.getInputLatencySeconds(),
                                            ctxt.getOutputLatencySeconds());
     std::cout << "Vocoder queue size = " << size << std::endl;
-    input_2_vocoder_queue = input_queues.add_queue(size);
+    input_2_vocoder_queue = input_pubsub.add_listener(size);
 
     read_queued_input.set(input_2_vocoder_queue->queue
 #ifndef NDEBUG
@@ -1184,28 +1245,32 @@ RtResynth::teardown() {
   vocoder.finalize(stepper);
   synth.finalize(stepper);
   
+  analysis_input_aggregator.reset();
+
   if (input_2_analysis_queue) {
-    input_queues.remove_queue(input_2_analysis_queue);
+    input_pubsub.remove_listener(input_2_analysis_queue);
     input_2_analysis_queue = nullptr;
   }
   
+  if (output_2_analysis_queue) {
+    output_pubsub.remove_listener(output_2_analysis_queue);
+    output_2_analysis_queue = nullptr;
+  }
+  
   if (input_2_vocoder_queue) {
-    input_queues.remove_queue(input_2_vocoder_queue);
+    input_pubsub.remove_listener(input_2_vocoder_queue);
     input_2_vocoder_queue = nullptr;
   }
   
   if (input.Initialized()) {
-    Assert(mode && *mode == Duplex::Half);
     if (!input.Teardown()) {
       throw std::runtime_error("input teardown failed");
     }
   }
   if (ctxt.Initialized()) {
-    Assert(mode && *mode == Duplex::Half);
     ctxt.doTearDown();
   }
   if (fullduplex.Initialized()) {
-    Assert(mode && *mode == Duplex::Full);
     fullduplex.Teardown();
   }
   mode.reset();
@@ -1320,24 +1385,53 @@ RtResynth::analysis_thread() {
       setDuration(duration_step_seconds, dt_step_seconds);
     }
     
+    storeAudioOutputQueueFillRatio(output_2_analysis_queue->queue.was_size() / static_cast<float>(output_2_analysis_queue->queue.capacity()));
     storeAudioInputQueueFillRatio(input_2_analysis_queue->queue.was_size() / static_cast<float>(input_2_analysis_queue->queue.capacity()));
   });
-  
+
   while (thread_resynth_active) {
-    QueueItem var;
-    while (input_2_analysis_queue->queue.try_pop(var)) {
-      if (std::holds_alternative<CountDroppedFrames>(var)) {
-        auto count = std::get<CountDroppedFrames>(var).count;
-        local_count_dropped_input_frames += count;
-        periodic_fft.on_dropped_frames(count);
+    while (analysis_input_aggregator.try_pop()) {
+      float sum{};
+      bool dropped = false;
+      int idx = -1;
+      for (auto const & var : analysis_input_aggregator.get_data()) {
+        ++idx;
+        if (std::holds_alternative<CountDroppedFrames>(var)) {
+          dropped = true;
+        } else {
+          Assert(std::holds_alternative<InputSample>(var));
+          if (idx == 0) {
+            sum += analysis_input_gain * std::get<InputSample>(var).value;
+          } else {
+            int const sz = std::max(0,
+                                    static_cast<int>(0.5f + output_delay_seconds * sample_rate));
+            if (output_delay.size() != sz) {
+              output_delay.resize(sz); // this also zeroes
+            }
+            if (sz) {
+              auto value = *output_delay.cycleEnd();
+              sum += analysis_output_feedback_gain * value;
+              output_delay.feed(std::get<InputSample>(var).value);
+            } else {
+              sum += analysis_output_feedback_gain * std::get<InputSample>(var).value;
+            }
+          }
+        }
+      }
+      if (dropped) {
+        std::cout << "stop analysis thread : frames dropped" << std::endl;
+        return;
+        /*
         if (!thread_resynth_active) {
           return;
         }
+        periodic_fft.on_dropped_frames(std::optional<int>{});
+        analysis_input_aggregator.resync();
         continue;
+        */
       }
-      Assert(std::holds_alternative<InputSample>(var));
       ++count_queued_frames;
-      periodic_fft.feed(std::get<InputSample>(var).value);
+      periodic_fft.feed(sum);
     }
     std::this_thread::yield(); // should we sleep?
   }

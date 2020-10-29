@@ -1,12 +1,8 @@
-
-/*
-
-- use a feedback loop : output -> analysis
-implemented as a generic post processing step "write to queue""
-
-*/
-
 /* Backlog:
+
+- currently, to use the synth as input to analysis, we need to use the output feedback,
+but this might be "too much" we could chose to have it as a clean input, too.
+
 
 - in a unit test, verify the effect of signal phase on peak magnitude (I expect that this has an influence on lower frequencies)
 
