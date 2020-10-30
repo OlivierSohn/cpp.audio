@@ -408,14 +408,23 @@ private:
   /* TOTAL_ORDER = */ true,
   /* SPSC = */ true
   >;
-  
+
+  using MidiQueueItem = folly::Function<void(midi::PortMidi &)>;
+  using MidiQueue = atomic_queue::AtomicQueueB2<
+  /* T = */ MidiQueueItem,
+  /* A = */ std::allocator<MidiQueueItem>,
+  /* MAXIMIZE_THROUGHPUT */ true,
+  /* TOTAL_ORDER = */ true,
+  /* SPSC = */ true
+  >;
+
 public:
   
-  RtResynth();
+  RtResynth(int const sample_rate);
   
   ~RtResynth();
 
-  void init(int const sample_rate);
+  void init();
   
   void teardown();
   
@@ -455,21 +464,24 @@ public:
   }
   
   // we need an even window size because we use 2 half windows to represent a full window
-  int getEvenWindowSizeFrames(int const sample_rate) const {
+  int getEvenWindowSizeFrames() const {
     return 2 * std::max(1,
-                        static_cast<int>(0.5 * window_size_seconds * sample_rate));
+                        sample_rate ? static_cast<int>(0.5 * window_size_seconds * sample_rate) : 0);
   }
   float getWindowSizeSeconds() const {
     return window_size_seconds;
   }
-  float getEffectiveWindowSizeSeconds(int const sample_rate) const {
+  float getEffectiveWindowSizeSeconds() const {
+    if (!sample_rate) {
+      return 0.f;
+    }
     return std::max(getWindowSizeSeconds(),
                     2.f/sample_rate);
   }
   float getWindowCenterStrideSeconds() const {
     return window_center_stride_seconds;
   }
-  float getEffectiveWindowCenterStrideSeconds(int sample_rate) const {
+  float getEffectiveWindowCenterStrideSeconds() const {
     if (!sample_rate) {
       return 0.f;
     }
@@ -862,6 +874,12 @@ public:
     return limiter.getTargetCompressionLevel();
   }
   
+  void saveAsPreset(Preset &) const;
+  void restorePreset(Preset const&);
+
+  std::optional<MidiName> getMidiInput();
+  void setMidiInput(std::optional<MidiName> const &);
+  std::vector<std::optional<MidiName>> listMidiInputs();
 private:
   std::optional<Duplex> mode;
   FullDuplexCtxt fullduplex;
@@ -900,6 +918,9 @@ private:
   NonRealtimeAnalysisFrame analysis_data;
   int64_t analysis_frame_idx = 0;
   
+  //
+  // Begin params
+  //
   std::atomic<float> pitch_wheel_multiplier = 2.f;
   
   std::atomic<float> window_size_seconds = 0.1814f;
@@ -957,6 +978,10 @@ private:
   std::atomic<float> analysis_input_gain = 1.f;
   std::atomic<float> analysis_output_feedback_gain = 0.f;
   std::atomic<float> output_delay_seconds = 1.f;
+  //
+  // End params
+  //
+  
   cyclic<float> output_delay;
   
   std::vector<float> allowed_pitches;
@@ -983,6 +1008,18 @@ private:
   
   std::atomic_bool midi_thread_active = true;
   std::unique_ptr<std::thread> midi_thread;
+  std::mutex midi_mutex;
+  midi::PortMidi portmidi;
+  
+  MidiQueue midi_queue;
+  
+  std::atomic_bool preset_autosave_thread_active = true;
+  std::unique_ptr<std::thread> preset_autosave_thread;
+  
+  static constexpr char * autosave_preset_file = "autosave.json";
+public:
+  static constexpr char * default_preset_file = "default.json";
+private:
   
   void analysis_thread();
   
@@ -1009,7 +1046,7 @@ private:
 };
 
 
-RtResynth::RtResynth()
+RtResynth::RtResynth(int const samplerate)
 : synth()
 , stepper(GlobalAudioLock<audioEnginePolicy>::get(),
           Synth::n_channels * 4 /* one shot */,
@@ -1022,6 +1059,8 @@ RtResynth::RtResynth()
                 4) // num queues max
 , periodic_fft(pow2(14))
 , vocoder_carrier_noteids(150)
+, sample_rate(samplerate)
+, midi_queue(10) // 10 should be enough
 {
   freqmags.reserve(200);
   freqmags_data.reserve(200);
@@ -1062,6 +1101,48 @@ RtResynth::RtResynth()
     }
   });
 
+  // Save "default" preset
+  Preset p;
+  saveAsPreset(p);
+  try {
+    writePresetToFile(default_preset_file,
+                      p);
+  } catch (std::exception const & e) {
+    std::cerr << "writePresetToFile : " << e.what() << std::endl;
+  }
+
+  // Restore autosave preset
+  {
+    Preset p;
+    try {
+      readPresetFromFile(autosave_preset_file,
+                         p);
+    } catch (std::exception const & e) {
+      std::cerr << "readPresetFromFile : " << e.what() << std::endl;
+    }
+    restorePreset(p);
+  }
+
+  // Periodically save autosave preset
+  preset_autosave_thread = std::make_unique<std::thread>([this](){
+    while(preset_autosave_thread_active) {
+      std::this_thread::sleep_for(std::chrono::seconds(1));
+      Preset p;
+      saveAsPreset(p);
+      try {
+        writePresetToFile(autosave_preset_file,
+                          p);
+      } catch (std::exception const & e) {
+        std::cerr << "writePresetToFile : " << e.what() << std::endl;
+      }
+    }
+  });
+  
+  getPinkNoise(sample_rate);
+  getPinkNoiseAbsMean(sample_rate);
+  getWhiteNoise(sample_rate);
+  getWhiteNoiseAbsMean(sample_rate);
+  // generate the static sounbBuffer for noises, to avoid a delay on the first played note
 #ifndef NDEBUG
   testAutotune();
 #endif
@@ -1069,18 +1150,17 @@ RtResynth::RtResynth()
 
 RtResynth::~RtResynth() {
   teardown();
+
+  preset_autosave_thread_active = false;
+  preset_autosave_thread->join();
 }
 
 void
-RtResynth::init(int const samplerate) {
-  if (samplerate <= 0) {
-    throw std::invalid_argument("sample_rate is too small");
-  }
-  
+RtResynth::init() {
   teardown();
   Assert(!thread_resynth_active);
   
-  if (fullduplex.Init(samplerate,
+  if (fullduplex.Init(sample_rate,
                       minInLatency,
                       1,
                       [this](const float * buf, int nFrames){
@@ -1092,7 +1172,7 @@ RtResynth::init(int const samplerate) {
                       nAudioOut,
                       [this,
                        nanos_per_audioelement_buffer = static_cast<uint64_t>(0.5f +
-                                                                             audio::nanos_per_frame<float>(samplerate) *
+                                                                             audio::nanos_per_frame<float>(sample_rate) *
                                                                              static_cast<float>(audio::audioelement::n_frames_per_buffer))]
                       (SAMPLE *outputBuffer,
                        int nFrames,
@@ -1102,16 +1182,18 @@ RtResynth::init(int const samplerate) {
                  tNanos,
                  nanos_per_audioelement_buffer);
   })) {
-    sample_rate = fullduplex.getSampleRate();
+    if (sample_rate != fullduplex.getSampleRate()) {
+      throw std::runtime_error("sample rate mismatch");
+    }
     mode = Duplex::Full;
   } else {
     // no fullduplex, fallback to separate buffers
     if (!ctxt.doInit(minOutLatency,
-                     samplerate,
+                     sample_rate,
                      nAudioOut,
                      [this,
                       nanos_per_audioelement_buffer = static_cast<uint64_t>(0.5f +
-                                                                            audio::nanos_per_frame<float>(samplerate) *
+                                                                            audio::nanos_per_frame<float>(sample_rate) *
                                                                             static_cast<float>(audio::audioelement::n_frames_per_buffer))]
                      (SAMPLE *outputBuffer,
                       int nFrames,
@@ -1132,20 +1214,17 @@ RtResynth::init(int const samplerate) {
       input_pubsub.try_publish_buffer(buf,
                                       nFrames);
     },
-                    samplerate,
+                    sample_rate,
                     minInLatency)) {
       throw std::runtime_error("input init failed");
     }
-    
-    sample_rate = ctxt.getSampleRate();
+    if (sample_rate != ctxt.getSampleRate()) {
+      throw std::runtime_error("sample rate mismatch");
+    }
     if (input.getSampleRate() != sample_rate) {
       throw std::runtime_error("in and out sample rates mismatch");
     }
     mode = Duplex::Half;
-  }
-  
-  if (sample_rate != samplerate) {
-    throw std::runtime_error("samplerate mismatch");
   }
   
   if (!synth.initialize(stepper)) {
@@ -1219,7 +1298,9 @@ RtResynth::init(int const samplerate) {
     },
                                [this](){
       onLostInputMidiEvents();
-    });
+    },
+                               midi_queue,
+                               portmidi);
   });
 
   thread_resynth_active = true;
@@ -1345,7 +1426,7 @@ RtResynth::analysis_thread() {
   uint64_t count_queued_frames = 0;
   uint64_t local_count_dropped_input_frames = 0;
 
-  periodic_fft.setLambdas([this]() {return getEvenWindowSizeFrames(sample_rate); },
+  periodic_fft.setLambdas([this]() {return getEvenWindowSizeFrames(); },
                           [this]() {return std::max(1,
                                                                  static_cast<int>(0.5f + getWindowCenterStrideSeconds() * sample_rate)); },
                           [this, nanos_per_frame, &count_queued_frames, &local_count_dropped_input_frames]
@@ -1405,7 +1486,7 @@ RtResynth::analysis_thread() {
           } else {
             int const sz = std::max(0,
                                     static_cast<int>(0.5f + output_delay_seconds * sample_rate));
-            if (output_delay.size() != sz) {
+            if (static_cast<int>(output_delay.size()) != sz) {
               output_delay.resize(sz); // this also zeroes
             }
             if (sz) {
@@ -1636,6 +1717,272 @@ RtResynth::mkAutotuneFunction() {
         return scale->closest_pitch<float>(root_pitch, pitch);
       };
   }
+}
+
+
+std::optional<MidiName> RtResynth::getMidiInput(){
+  if (!midi_thread_active) {
+    return {};
+  }
+  std::optional<MidiName> res;
+  bool called = false;
+  if (!midi_queue.try_push([this, &res, &called](midi::PortMidi & pm){
+    std::lock_guard l(midi_mutex);
+    res = pm.get_input_stream();
+    called = true;
+  })) {
+    std::cerr << "getMidiInput : midi queue full" << std::endl;
+    return {};
+  }
+  while(true) {
+    std::this_thread::yield();
+    std::lock_guard l(midi_mutex);
+    if (called) {
+      return res;
+    }
+  }
+}
+
+void RtResynth::setMidiInput(std::optional<MidiName> const & n){
+  if (!midi_thread_active) {
+    return;
+  }
+  bool called = false;
+  if (!midi_queue.try_push([this, &n, &called](midi::PortMidi & pm){
+    std::lock_guard l(midi_mutex);
+    if (n) {
+      pm.open_input_stream(*n);
+    } else {
+      pm.close_input_stream();
+    }
+    called = true;
+  })) {
+    std::cerr << "setMidiInput : midi queue full" << std::endl;
+    return;
+  }
+  while(true) {
+    std::this_thread::yield();
+    std::lock_guard l(midi_mutex);
+    if (called) {
+      return;
+    }
+  }
+}
+
+std::vector<std::optional<MidiName>> RtResynth::listMidiInputs(){
+  std::vector<MidiName> names = portmidi.list_input_devices_names();
+  std::vector<std::optional<MidiName>> res;
+  res.reserve(names.size() + 1);
+  res.push_back({});
+  for (auto const & n : names) {
+    res.push_back(n);
+  }
+  return res;
+}
+
+
+void RtResynth::saveAsPreset(Preset & p) const {
+  p.clear();
+  
+  p.set("pitch_wheel_multiplier",
+        pitch_wheel_multiplier);
+  
+  p.set("window_size_seconds",
+        window_size_seconds);
+  p.set("window_center_stride_seconds",
+        window_center_stride_seconds);
+  p.set("min_volume",
+        min_volume);
+  p.set("nearby_distance_tones",
+        nearby_distance_tones);
+  p.set("max_track_pitches",
+        max_track_pitches);
+  p.set("autotune_tolerance_pitches",
+        autotune_tolerance_pitches);
+  p.set("pitch_shift_pre_autotune",
+        pitch_shift_pre_autotune);
+  p.set("pitch_shift_post_autotune",
+        pitch_shift_post_autotune);
+  p.set("pitch_harmonize_pre_autotune",
+        pitch_harmonize_pre_autotune);
+  p.set("pitch_harmonize_post_autotune",
+        pitch_harmonize_post_autotune);
+  p.set("stereo_spread",
+        stereo_spread);
+  
+  p.set("env_attack_seconds",
+        env_attack_seconds);
+  p.set("env_hold_seconds",
+        env_hold_seconds);
+  p.set("env_decay_seconds",
+        env_decay_seconds);
+  p.set("env_release_seconds",
+        env_release_seconds);
+  p.set("env_sustain_level",
+        env_sustain_level);
+  
+  p.set("autotune_type",
+        autotune_type.load());
+  p.set("use_autotune",
+        use_autotune);
+  p.set("autotune_max_pitch",
+        autotune_max_pitch);
+  p.set("autotune_factor",
+        autotune_factor);
+  p.set("autotune_musical_scale_mode",
+        autotune_musical_scale_mode.load());
+  p.set("autotune_musical_scale_root_note",
+        autotune_musical_scale_root_note.load());
+  p.set("autotune_root_note_halftones_transpose",
+        autotune_root_note_halftones_transpose);
+  p.set("autotune_chord_frequencies",
+        autotune_chord_frequencies.load());
+  p.set("autotune_bit_chord",
+        autotune_bit_chord);
+  
+  p.set("vocoder_carrier_noise_volume",
+        vocoder_carrier_noise_volume);
+  p.set("vocoder_carrier_saw_volume",
+        vocoder_carrier_saw_volume);
+  p.set("vocoder_carrier_triangle_volume",
+        vocoder_carrier_triangle_volume);
+  p.set("vocoder_carrier_square_volume",
+        vocoder_carrier_square_volume);
+  p.set("vocoder_carrier_sine_volume",
+        vocoder_carrier_sine_volume);
+  p.set("vocoder_carrier_pulse_volume",
+        vocoder_carrier_pulse_volume);
+  p.set("vocoder_carrier_pulse_width",
+        vocoder_carrier_pulse_width);
+  p.set("vocoder_env_follower_cutoff_ratio",
+        vocoder_env_follower_cutoff_ratio);
+  p.set("vocoder_modulator_window_size_seconds",
+        vocoder_modulator_window_size_seconds);
+  p.set("vocoder_stride_seconds",
+        vocoder_stride_seconds);
+  p.set("vocoder_count_bands",
+        vocoder_count_bands);
+  p.set("vocoder_min_freq",
+        vocoder_min_freq);
+  p.set("vocoder_max_freq",
+        vocoder_max_freq);
+  
+  p.set("voice_volume",
+        voice_volume);
+  p.set("carrier_volume",
+        carrier_volume);
+  p.set("vocoder_volume",
+        vocoder_volume);
+  p.set("analysis_volume",
+        analysis_volume);
+
+  p.set("analysis_input_gain",
+        analysis_input_gain);
+  p.set("analysis_output_feedback_gain",
+        analysis_output_feedback_gain);
+  p.set("output_delay_seconds",
+        output_delay_seconds);
+}
+
+void RtResynth::restorePreset(Preset const& p) {
+  p.read("pitch_wheel_multiplier",
+         pitch_wheel_multiplier);
+  
+  p.read("window_size_seconds",
+         window_size_seconds);
+  p.read("window_center_stride_seconds",
+         window_center_stride_seconds);
+  p.read("min_volume",
+         min_volume);
+  p.read("nearby_distance_tones",
+         nearby_distance_tones);
+  p.read("max_track_pitches",
+         max_track_pitches);
+  p.read("autotune_tolerance_pitches",
+         autotune_tolerance_pitches);
+  p.read("pitch_shift_pre_autotune",
+         pitch_shift_pre_autotune);
+  p.read("pitch_shift_post_autotune",
+         pitch_shift_post_autotune);
+  p.read("pitch_harmonize_pre_autotune",
+         pitch_harmonize_pre_autotune);
+  p.read("pitch_harmonize_post_autotune",
+         pitch_harmonize_post_autotune);
+  p.read("stereo_spread",
+         stereo_spread);
+  
+  p.read("env_attack_seconds",
+         env_attack_seconds);
+  p.read("env_hold_seconds",
+         env_hold_seconds);
+  p.read("env_decay_seconds",
+         env_decay_seconds);
+  p.read("env_release_seconds",
+         env_release_seconds);
+  p.read("env_sustain_level",
+         env_sustain_level);
+  
+  p.read("autotune_type",
+         autotune_type);
+  p.read("use_autotune",
+         use_autotune);
+  p.read("autotune_max_pitch",
+         autotune_max_pitch);
+  p.read("autotune_factor",
+         autotune_factor);
+  p.read("autotune_musical_scale_mode",
+         autotune_musical_scale_mode);
+  p.read("autotune_musical_scale_root_note",
+         autotune_musical_scale_root_note);
+  p.read("autotune_root_note_halftones_transpose",
+         autotune_root_note_halftones_transpose);
+  p.read("autotune_chord_frequencies",
+         autotune_chord_frequencies);
+  p.read("autotune_bit_chord",
+         autotune_bit_chord);
+  
+  p.read("vocoder_carrier_noise_volume",
+         vocoder_carrier_noise_volume);
+  p.read("vocoder_carrier_saw_volume",
+         vocoder_carrier_saw_volume);
+  p.read("vocoder_carrier_triangle_volume",
+         vocoder_carrier_triangle_volume);
+  p.read("vocoder_carrier_square_volume",
+         vocoder_carrier_square_volume);
+  p.read("vocoder_carrier_sine_volume",
+         vocoder_carrier_sine_volume);
+  p.read("vocoder_carrier_pulse_volume",
+         vocoder_carrier_pulse_volume);
+  p.read("vocoder_carrier_pulse_width",
+         vocoder_carrier_pulse_width);
+  p.read("vocoder_env_follower_cutoff_ratio",
+         vocoder_env_follower_cutoff_ratio);
+  p.read("vocoder_modulator_window_size_seconds",
+         vocoder_modulator_window_size_seconds);
+  p.read("vocoder_stride_seconds",
+         vocoder_stride_seconds);
+  p.read("vocoder_count_bands",
+         vocoder_count_bands);
+  p.read("vocoder_min_freq",
+         vocoder_min_freq);
+  p.read("vocoder_max_freq",
+         vocoder_max_freq);
+  
+  p.read("voice_volume",
+         voice_volume);
+  p.read("carrier_volume",
+         carrier_volume);
+  p.read("vocoder_volume",
+         vocoder_volume);
+  p.read("analysis_volume",
+         analysis_volume);
+  
+  p.read("analysis_input_gain",
+         analysis_input_gain);
+  p.read("analysis_output_feedback_gain",
+         analysis_output_feedback_gain);
+  p.read("output_delay_seconds",
+         output_delay_seconds);
 }
 
 } // NS resynth

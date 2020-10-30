@@ -8,14 +8,20 @@ enum class TimerId {
 class MyFrame : public wxFrame
 {
 public:
-  MyFrame(std::vector<std::pair<std::vector<ParamProxy<float>>, wxColor>> const & params_before_autotune,
+  using SaveAsPresetFunc = std::function<void(Preset&)>;
+  using LoadPresetFunc = std::function<void(Preset const&)>;
+  
+  MyFrame(DynamicChoiceParamProxy<std::optional<MidiName>> const & midi_input,
+          std::vector<std::pair<std::vector<ParamProxy<float>>, wxColor>> const & params_before_autotune,
           Autotune const & autotune,
           std::vector<std::pair<std::vector<ParamProxy<float>>, wxColor>> const & params_after_autotune,
           std::vector<std::pair<std::vector<ParamProxy<float>>, wxColor>> const & params_envelope,
           std::vector<std::pair<std::vector<ParamProxy<float>>, wxColor>> const & params_vocoder,
           std::vector<std::vector<ParamPollProxy>> const & poll_params,
           PitchWindow::PitchFunction const & pitch_func,
-          VocoderWindow::VocoderFunc const & vocoder_func)
+          VocoderWindow::VocoderFunc const & vocoder_func,
+          SaveAsPresetFunc save,
+          LoadPresetFunc load)
   : wxFrame(NULL,
             wxID_ANY,
             "Resynth",
@@ -25,7 +31,11 @@ public:
             wxFULL_REPAINT_ON_RESIZE)
   , uiTimer(this,
             static_cast<int>(TimerId::RefreshUI))
+  , savePresetFunc(save)
+  , loadPresetFunc(load)
   {
+    update_param.reserve(200);
+    
     pitch_ui = new PitchWindow(this, Orientation::Horizontal, pitch_func);
     vocoder_ui = new VocoderWindow(this, Orientation::Horizontal, vocoder_func);
     
@@ -33,9 +43,19 @@ public:
     
     auto menuFile = new wxMenu();
 
-    auto const helloId = wxWindow::NewControlId();
-    menuFile->Append(helloId, "&Hello...\tCtrl-H",
-                     "Help string shown in status bar for this menu item");
+    auto const loadDefaultPresetId = wxWindow::NewControlId();
+    menuFile->Append(loadDefaultPresetId,
+                     "&Load default params...\tCtrl-S",
+                     "Loads default params");
+    auto const loadPresetId = wxWindow::NewControlId();
+    menuFile->Append(loadPresetId,
+                     "&Load preset...\tCtrl-S",
+                     "Loads a preset");
+    menuFile->AppendSeparator();
+    auto const savePresetId = wxWindow::NewControlId();
+    menuFile->Append(savePresetId,
+                     "&Save as preset...\tCtrl-S",
+                     "Saves the current parameters as a preset");
     menuFile->AppendSeparator();
     menuFile->Append(wxID_EXIT);
 
@@ -50,7 +70,10 @@ public:
 
     SetMenuBar(menuBar);
 
-    Bind(wxEVT_MENU, &MyFrame::OnHello, this, helloId);
+    Bind(wxEVT_MENU, &MyFrame::OnSavePreset, this, savePresetId);
+    Bind(wxEVT_MENU, &MyFrame::OnLoadPreset, this, loadPresetId);
+    Bind(wxEVT_MENU, &MyFrame::OnLoadDefaultPreset, this, loadDefaultPresetId);
+    
     Bind(wxEVT_MENU, &MyFrame::OnAbout, this, wxID_ABOUT);
     Bind(wxEVT_MENU, &MyFrame::OnExit, this, wxID_EXIT);
     
@@ -64,7 +87,8 @@ public:
         for (auto const & param : params2) {
           Add(createFloatSlider(this,
                                 param,
-                                label_color),
+                                label_color,
+                                update_param),
               sliders_sizer2,
               0,
               wxALL | wxALIGN_CENTER);
@@ -80,6 +104,16 @@ public:
     auto sliders_sizer = new wxBoxSizer(wxVERTICAL);
     auto env_sizer = new wxBoxSizer(wxVERTICAL);
     auto vocoder_sizer = new wxBoxSizer(wxVERTICAL);
+    
+    auto midi_sizer = createChoice(this,
+                                   midi_input,
+                                   color_midi_label_1,
+                                   ChoiceType::ComboBox,
+                                   nullptr);
+    Add(midi_sizer,
+        env_sizer,
+        0,
+        wxALL | wxALIGN_CENTER);
 
     make_params_sizer(params_envelope,
                       wxVERTICAL,
@@ -93,7 +127,8 @@ public:
                       wxHORIZONTAL,
                       sliders_sizer);
     Add(mkAutotuneSizer(this,
-                        autotune),
+                        autotune,
+                        update_param),
         sliders_sizer);
     make_params_sizer(params_after_autotune,
                       wxHORIZONTAL,
@@ -156,20 +191,73 @@ private:
   std::vector<std::pair<ParamPollProxy, wxStaticText*>> poll_params_ui;
   PitchWindow * pitch_ui;
   VocoderWindow * vocoder_ui;
-  
+  SaveAsPresetFunc savePresetFunc;
+  LoadPresetFunc loadPresetFunc;
+  std::vector<UpdateFunc> update_param;
+
   void OnExit(wxCommandEvent& event)
   {
     Close(true);
   }
   void OnAbout(wxCommandEvent& event)
   {
-    wxMessageBox("This is a wxWidgets Hello World example",
-                 "About Hello World", wxOK | wxICON_INFORMATION);
+    wxMessageBox("This is rtsynth",
+                 "About rtsynth", wxOK | wxICON_INFORMATION);
   }
-  void OnHello(wxCommandEvent& event)
+  void OnSavePreset(wxCommandEvent& event)
   {
-    wxLogMessage("Hello world from wxWidgets!");
+    wxFileDialog
+    saveFileDialog(this,
+                   "Save preset",
+                   "",
+                   "",
+                   "JSON files (*.json)|*.json",
+                   wxFD_SAVE|wxFD_OVERWRITE_PROMPT);
+    if (saveFileDialog.ShowModal() == wxID_CANCEL) {
+      return;
+    }
+
+    Preset preset;
+    savePresetFunc(preset);
+    writePresetToFile(saveFileDialog.GetPath().ToStdString(),
+                      preset);
   }
+
+  void OnLoadPreset(wxCommandEvent& event) {
+    wxFileDialog
+    saveFileDialog(this,
+                   "Open preset",
+                   "",
+                   "",
+                   "JSON files (*.json)|*.json",
+                   wxFD_OPEN|wxFD_FILE_MUST_EXIST);
+    if (saveFileDialog.ShowModal() == wxID_CANCEL) {
+      return;
+    }
+    
+    loadPreset(saveFileDialog.GetPath().ToStdString());
+  }
+
+  void OnLoadDefaultPreset(wxCommandEvent& event) {
+    loadPreset(RtResynth::default_preset_file);
+  }
+
+  void loadPreset(std::string const & str) {
+    Preset preset;
+    try {
+      readPresetFromFile(str,
+                         preset);
+    } catch (std::exception & e) {
+      std::cerr << "readPresetFromFile '" << str << "':" << e.what() << std::endl;
+      return;
+    }
+    loadPresetFunc(preset);
+    // param values have changed so we need to update them
+    for (auto const & u : update_param) {
+      u();
+    }
+  }
+
   void OnUITimer(wxTimerEvent &) {
     if (pitch_ui->TryFetchNewFrame()) {
       pitch_ui->Refresh();
@@ -197,18 +285,18 @@ private:
   }
 };
 
-struct ReinitializingParameters {
-  // modifiying sample_rate requires to reinitialize the resynth
-  int sample_rate = 88200;
-  
-  void init(RtResynth & r) {
-    r.init(sample_rate);
-  }
-};
-
 struct MyApp : public wxApp {
+  static int constexpr sample_rate = 88200;
+
   MyApp()
-  : params_before_autotune
+  : resynth(sample_rate)
+  , midi_input{
+    "Midi input",
+    [this](){ return resynth.getMidiInput(); },
+    [this](std::optional<MidiName> const & n){ return resynth.setMidiInput(n); },
+    [this](){ return resynth.listMidiInputs(); }
+  }
+  , params_before_autotune
   {
     {
       {
@@ -268,8 +356,8 @@ struct MyApp : public wxApp {
       },
       color_slider_label_2
     }
-  },
-  params_after_autotune
+  }
+  , params_after_autotune
   {
     {
       {
@@ -560,7 +648,7 @@ struct MyApp : public wxApp {
           std::optional<float> d = resynth.getDurationCopy();
           if (a && b && c && d) {
             float const secs = *a + *b + *c + *d;
-            float analysis_stride_secs = resynth.getEffectiveWindowCenterStrideSeconds(reinit_params.sample_rate);
+            float analysis_stride_secs = resynth.getEffectiveWindowCenterStrideSeconds();
             if (analysis_stride_secs) {
               return secs / analysis_stride_secs;
             }
@@ -572,7 +660,7 @@ struct MyApp : public wxApp {
         "Analysis/fft Load",
         [this]() -> ParamPollProxy::OptionalVariant {
           if (std::optional<float> secs = resynth.getDurationFft()) {
-            float analysis_stride_secs = resynth.getEffectiveWindowCenterStrideSeconds(reinit_params.sample_rate);
+            float analysis_stride_secs = resynth.getEffectiveWindowCenterStrideSeconds();
             if (analysis_stride_secs) {
               return *secs / analysis_stride_secs;
             }
@@ -584,7 +672,7 @@ struct MyApp : public wxApp {
         "Analysis/extract Load",
         [this]() -> ParamPollProxy::OptionalVariant {
           if (std::optional<float> secs = resynth.getDurationExtract()) {
-            float analysis_stride_secs = resynth.getEffectiveWindowCenterStrideSeconds(reinit_params.sample_rate);
+            float analysis_stride_secs = resynth.getEffectiveWindowCenterStrideSeconds();
             if (analysis_stride_secs) {
               return *secs / analysis_stride_secs;
             }
@@ -596,7 +684,7 @@ struct MyApp : public wxApp {
         "Analysis/step Load",
         [this]() -> ParamPollProxy::OptionalVariant {
           if (std::optional<float> secs = resynth.getDurationStep()) {
-            float analysis_stride_secs = resynth.getEffectiveWindowCenterStrideSeconds(reinit_params.sample_rate);
+            float analysis_stride_secs = resynth.getEffectiveWindowCenterStrideSeconds();
             if (analysis_stride_secs) {
               return *secs / analysis_stride_secs;
             }
@@ -608,7 +696,7 @@ struct MyApp : public wxApp {
         "Analysis/copy Load",
         [this]() -> ParamPollProxy::OptionalVariant {
           if (std::optional<float> secs = resynth.getDurationCopy()) {
-            float analysis_stride_secs = resynth.getEffectiveWindowCenterStrideSeconds(reinit_params.sample_rate);
+            float analysis_stride_secs = resynth.getEffectiveWindowCenterStrideSeconds();
             if (analysis_stride_secs) {
               return *secs / analysis_stride_secs;
             }
@@ -730,9 +818,10 @@ struct MyApp : public wxApp {
   {}
 
   bool OnInit() override {
-    reinit_params.init(resynth);
+    resynth.init();
 
-    auto frame = new MyFrame(params_before_autotune,
+    auto frame = new MyFrame(midi_input,
+                             params_before_autotune,
                              autotune,
                              params_after_autotune,
                              params_envelope,
@@ -746,6 +835,12 @@ struct MyApp : public wxApp {
                              [this](std::vector<double> & envelopes,
                                     std::vector<double> & band_freqs) {
       resynth.getVocoder().fetch_last_data(envelopes, band_freqs);
+    },
+                             [this](Preset &p) {
+      resynth.saveAsPreset(p);
+    },
+                             [this](Preset const &p) {
+      resynth.restorePreset(p);
     });
     frame->Show(true);
     return true;
@@ -753,7 +848,7 @@ struct MyApp : public wxApp {
 private:
   RtResynth resynth;
   
-  ReinitializingParameters reinit_params;
+  DynamicChoiceParamProxy<std::optional<MidiName>> midi_input;
   std::vector<std::pair<std::vector<ParamProxy<float>>, wxColor>> params_before_autotune, params_after_autotune, params_envelope, params_vocoder;
   std::vector<std::vector<ParamPollProxy>> poll_params;
   Autotune autotune;

@@ -23,6 +23,7 @@
 #include "rt.resynth.lib.algo.cpp"
 #include "rt.resynth.lib.locked.data.cpp"
 #include "rt.resynth.lib.test.cpp"
+#include "rt.resynth.lib.params.cpp"
 #include "rt.resynth.lib.cpp"
 
 #include "rt.resynth.ui.params.cpp"

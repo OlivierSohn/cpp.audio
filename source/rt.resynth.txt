@@ -1,8 +1,9 @@
 /* Backlog:
 
+- The UI thread reguarily checks which are the midi inputs available.
+
 - currently, to use the synth as input to analysis, we need to use the output feedback,
 but this might be "too much" we could chose to have it as a clean input, too.
-
 
 - in a unit test, verify the effect of signal phase on peak magnitude (I expect that this has an influence on lower frequencies)
 
@@ -45,8 +46,6 @@ in one band, use white noise to make speech more intelligible
  ----------------
  
   - record some presets
- . save as json
- . save last state every second
  . hints to make make_presets:
  .. max_pitch = 100 makes speec more intelligible, however we need max_pitch = 150 for robotic effects in the high end.
  .. an interesting "frequency randomization" effect happens with

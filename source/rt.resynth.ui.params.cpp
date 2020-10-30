@@ -1,5 +1,7 @@
 namespace imajuscule::audio::rtresynth {
 
+using UpdateFunc = std::function<void(void)>;
+
 constexpr int default_border = 2;
 
 template<typename T, typename U>
@@ -31,9 +33,30 @@ void forEachWindow(wxSizer * sizer,
 
 template<typename T>
 struct EnumeratedParamProxy {
+  using value_type = T;
+  
   std::string name;
   std::function<T()> get;
   std::function<void(T)> set;
+  auto list() const {
+    std::vector<T> values;
+    values.reserve(CountEnumValues<T>::count);
+    for (int i=0; i<CountEnumValues<T>::count; ++i) {
+      T const val = static_cast<T>(i);
+      values.emplace_back(val);
+    }
+    return values;
+  }
+};
+
+template<typename T>
+struct DynamicChoiceParamProxy {
+  using value_type = T;
+  
+  std::string name;
+  std::function<T()> get;
+  std::function<void(T)> set;
+  std::function<std::vector<T>()> list;
 };
 
 template<typename T>
@@ -120,6 +143,12 @@ const wxColor autotune_bg_color3{
   35
 };
 
+const wxColor color_midi_label_1{
+  200,
+  191,
+  0
+};
+
 inline std::string float_to_string(float v) {
   std::string s = std::to_string(v);
   if (s.find('.') != std::string::npos) {
@@ -145,35 +174,50 @@ enum class CombinationType {
 };
 
 
-template<typename T, typename F = std::function<void(void)>>
+template<typename U, typename F = std::function<void(void)>>
 wxBoxSizer * createChoice(wxWindow * parent,
-                          const EnumeratedParamProxy<T> & param,
+                          const U & param,
                           wxColor const & label_color,
                           ChoiceType const choice_type,
+                          std::vector<UpdateFunc> * update_on_new_preset,
                           F const & onNewValue = [](){}) {
+  using T = typename U::value_type;
+  
+  std::vector<T> vals = param.list();
+  T const current_value = param.get();
+
   std::vector<wxString> values;
-  values.reserve(CountEnumValues<T>::count);
-  for (int i=0; i<CountEnumValues<T>::count; ++i) {
-    T const val = static_cast<T>(i);
-    std::ostringstream os;
-    os << val;
-    values.emplace_back(os.str());
+  values.reserve(vals.size());
+  std::optional<int> cur_idx;
+  {
+    int i=-1;
+    for (auto const & v : vals) {
+      ++i;
+      std::ostringstream os;
+      os << v;
+      values.emplace_back(os.str());
+      
+      if (v == current_value) {
+        cur_idx = i;
+      }
+    }
   }
   
   auto on_event = [parent,
                    onNewValue,
                    &param
                    ](int idx){
-    T const candidate = static_cast<T>(idx);
-    if (candidate != param.get()) {
-      // The UI may becomes unresponsive if this is long:
-      param.set(candidate);
-      onNewValue();
+    auto vals = param.list();
+    if(idx >= 0 && idx < vals.size()) {
+      T const & candidate = vals[idx];
+      if (candidate != param.get()) {
+        // The UI may becomes unresponsive if this is long:
+        param.set(candidate);
+        onNewValue();
+      }
     }
   };
-  
-  T const current_value = param.get();
-  
+    
   auto global_sizer = new wxBoxSizer(wxVERTICAL);
   
   switch(choice_type) {
@@ -187,6 +231,8 @@ wxBoxSizer * createChoice(wxWindow * parent,
       
       bool first = true;
       int idx = 0;
+      std::vector<wxRadioButton*> radios;
+      radios.reserve(values.size());
       for (auto const & label : values) {
         wxRadioButton * radio = new wxRadioButton(parent,
                                                   wxWindow::NewControlId(),
@@ -194,11 +240,12 @@ wxBoxSizer * createChoice(wxWindow * parent,
                                                   wxDefaultPosition,
                                                   wxDefaultSize,
                                                   first?wxRB_GROUP:0);
+        radios.push_back(radio);
         radio->Bind(wxEVT_RADIOBUTTON,
                     [on_event, idx](wxCommandEvent &){
           on_event(idx);
         });
-        if (idx == to_underlying(current_value)) {
+        if (vals[idx] == current_value) {
           radio->SetValue(true);
         }
         first = false;
@@ -219,13 +266,27 @@ wxBoxSizer * createChoice(wxWindow * parent,
       Add(stat_box_sizer,
           global_sizer,
           0);
+      
+      // not all choices need to update when a preset is loaded
+      if (update_on_new_preset) {
+        update_on_new_preset->emplace_back([&param, radios, onNewValue](){
+          auto const vals = param.list();
+          T const current_value = param.get();
+          int idx = 0;
+          for (wxRadioButton * radio : radios) {
+            radio->SetValue(idx < vals.size() && vals[idx] == current_value);
+            ++idx;
+          }
+          onNewValue();
+        });
+      }
       break;
     }
     case ChoiceType::ComboBox:
     {
       wxComboBox * combo_box = new wxComboBox(parent,
                                               wxWindow::NewControlId(),
-                                              values[to_underlying(current_value)],
+                                              cur_idx ? values[*cur_idx] : "",
                                               wxDefaultPosition,
                                               wxDefaultSize,
                                               static_cast<int>(values.size()),
@@ -250,6 +311,28 @@ wxBoxSizer * createChoice(wxWindow * parent,
           global_sizer,
           0,
           wxALL | wxALIGN_CENTER);
+      
+      if(update_on_new_preset) {
+        update_on_new_preset->emplace_back([&param, combo_box, onNewValue](){
+          T const current_value = param.get();
+          auto const vals = param.list();
+          std::optional<int> cur_idx;
+          {
+            int i=-1;
+            for (auto const & v : vals) {
+              ++i;
+              if (v == current_value) {
+                cur_idx = i;
+              }
+            }
+          }
+          
+          if (cur_idx) {
+            combo_box->SetSelection(*cur_idx);
+            onNewValue();
+          }
+        });
+      }
       break;
     }
   }
@@ -261,7 +344,8 @@ template<typename T>
 wxBoxSizer * createCombination(wxWindow * parent,
                                const EnumeratedCombinationParamProxy<T> & param,
                                wxColor const & label_color,
-                               CombinationType const combination_type) {
+                               CombinationType const combination_type,
+                               std::vector<UpdateFunc> & updates) {
   std::vector<wxString> values;
   values.reserve(CountEnumValues<T>::count);
   for (int i=0; i<CountEnumValues<T>::count; ++i) {
@@ -273,12 +357,16 @@ wxBoxSizer * createCombination(wxWindow * parent,
   
   auto inner_sizer = new wxBoxSizer((combination_type == CombinationType::CheckBoxH) ? wxHORIZONTAL : wxVERTICAL);
   
+  std::vector<wxCheckBox*> checkboxes;
+  checkboxes.reserve(values.size());
+  
   int idx = 0;
   for (auto const & label : values) {
     T const enum_value = static_cast<T>(idx);
     wxCheckBox * checkbox = new wxCheckBox(parent,
                                            wxWindow::NewControlId(),
                                            label);
+    checkboxes.push_back(checkbox);
     checkbox->Bind(wxEVT_CHECKBOX,
                    [enum_value, &param](wxCommandEvent & e){
       param.enable(enum_value, static_cast<bool>(e.GetInt()));
@@ -299,6 +387,14 @@ wxBoxSizer * createCombination(wxWindow * parent,
       0,
       0); // no border
   
+  updates.emplace_back([checkboxes, &param](){
+    int idx = 0;
+    for (auto * checkbox : checkboxes) {
+      T const enum_value = static_cast<T>(idx);
+      checkbox->SetValue(param.enabled(enum_value));
+      ++idx;
+    }
+  });
   return stat_box_sizer;
 }
 
@@ -327,6 +423,7 @@ template<typename F = std::function<void(bool)>>
 wxCheckBox * createCheckBox(wxWindow * parent,
                             const ParamProxy<bool> & param,
                             wxColor const & label_color,
+                            std::vector<UpdateFunc> & updates,
                             F const & onNewValue = [](){}) {
   auto checkbox = new wxCheckBox(parent,
                                  wxWindow::NewControlId(),
@@ -340,6 +437,10 @@ wxCheckBox * createCheckBox(wxWindow * parent,
   checkbox->SetValue(param.get());
   checkbox->SetForegroundColour(label_color);
 
+  updates.emplace_back([&param, checkbox, onNewValue](){
+    checkbox->SetValue(param.get());
+    onNewValue();
+  });
   return checkbox;
 }
 
@@ -350,13 +451,13 @@ wxBoxSizer * createSlider(wxWindow * parent,
                           int const max_int_value,
                           f1 T_value_to_int_value,
                           f2 position_to_T,
-                          wxColor const & label_color) {
+                          wxColor const & label_color,
+                          std::vector<UpdateFunc> & updates) {
   T const current_T_value = param.get();
-  Assert(current_T_value <= param.max);
-  Assert(current_T_value >= param.min);
   
-  int const current_int_value = std::min(max_int_value,
-                                         static_cast<int>(T_value_to_int_value(current_T_value)));
+  int const current_int_value = std::max(min_int_value,
+                                         std::min(max_int_value,
+                                                  static_cast<int>(T_value_to_int_value(current_T_value))));
   auto slider = new wxSlider(parent,
                              wxWindow::NewControlId(),
                              current_int_value,
@@ -477,6 +578,27 @@ wxBoxSizer * createSlider(wxWindow * parent,
           show_label->SetLabel(param.show(candidate));
         }
       });
+      
+      updates.emplace_back([&param,
+                            slider,
+                            value_label,
+                            show_label,
+                            min_int_value,
+                            max_int_value,
+                            T_value_to_int_value]() {
+        T const candidate = param.get();
+        slider->SetValue(std::max(min_int_value,
+                                  std::min(max_int_value,
+                                           static_cast<int>(T_value_to_int_value(candidate)))));
+        if (value_label) {
+          value_label->SetLabel(T_to_string(candidate));
+          value_label->GetParent()->Layout();
+          value_label->SetForegroundColour(value_unchanged_color);
+        }
+        if (show_label) {
+          show_label->SetLabel(param.show(candidate));
+        }
+      });
     }
     Add(title_sizer,
         global_sizer,
@@ -491,17 +613,13 @@ wxBoxSizer * createSlider(wxWindow * parent,
       auto minText = new wxStaticText(parent,
                                       wxWindow::NewControlId(),
                                       param.show ? param.show(param.min) : T_to_string(param.min),
-                                      wxDefaultPosition,
-                                      boundsSz,
-                                      wxST_NO_AUTORESIZE);
+                                      wxDefaultPosition);
       minText->SetForegroundColour(dark_grey);
       
       auto maxText = new wxStaticText(parent,
                                       wxWindow::NewControlId(),
                                       param.show ? param.show(param.max) : T_to_string(param.max),
-                                      wxDefaultPosition,
-                                      boundsSz,
-                                      wxST_NO_AUTORESIZE);
+                                      wxDefaultPosition);
       maxText->SetForegroundColour(dark_grey);
       
       Add(minText,
@@ -522,13 +640,14 @@ wxBoxSizer * createSlider(wxWindow * parent,
         0,
         wxALL | wxALIGN_CENTER);
   }
-  
+
   return global_sizer;
 }
 
 wxBoxSizer * createFloatSlider(wxWindow * parent,
                                ParamProxy<float> const & param,
-                               wxColor const & label_color) {
+                               wxColor const & label_color,
+                               std::vector<UpdateFunc> & updates) {
   float const min_float_value = param.min;
   float const max_float_value = param.max;
   
@@ -554,13 +673,15 @@ wxBoxSizer * createFloatSlider(wxWindow * parent,
                       max_int_value,
                       float_value_to_int_value,
                       position_to_float,
-                      label_color);
+                      label_color,
+                      updates);
 }
 
 template<typename T>
 wxBoxSizer * createIntSlider(wxWindow * parent,
                              ParamProxy<T> const & param,
-                             wxColor const & label_color) {
+                             wxColor const & label_color,
+                             std::vector<UpdateFunc> & updates) {
   static_assert(std::is_integral_v<T>);
   return createSlider(parent,
                       param,
@@ -568,7 +689,8 @@ wxBoxSizer * createIntSlider(wxWindow * parent,
                       (param.max > std::numeric_limits<int>::max()) ? std::numeric_limits<int>::max() : static_cast<int>(param.max),
                       [](T v){ return v; },
                       [](T v){ return v; },
-                      label_color);
+                      label_color,
+                      updates);
 }
 
 
