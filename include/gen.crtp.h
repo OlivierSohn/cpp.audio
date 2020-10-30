@@ -217,6 +217,7 @@ private:
   //std::array<ElemMidiDelay, n_channels> channels;
 
   LocalPairArray<std::optional<NoteId>, ElemMidiDelay, n_channels> channels;
+  float last_angle_increment_multiplier = 1.f;
 
   std::atomic<SynthState> state = SynthState::ComputeNotRegistered;
   std::optional<ElementInitializer> synchronous_element_initializer;
@@ -305,6 +306,7 @@ public:
   template<typename Chans>
   void onAngleIncrementMultiplier(Chans & chans,
                                   float const mult) {
+    last_angle_increment_multiplier = mult;
     chans.enqueueOneShot([this,
                           mult](auto &, auto){
       for(auto & c : seconds(channels)) {
@@ -408,6 +410,7 @@ public:
         c.elem.set_sample_rate(sample_rate);
         c.elem.getVolumeAdjustment().setVolumeTarget(Element::baseVolume * e.noteOn.velocity);
 
+        // Don't take 'last_angle_increment_multiplier' into account here
         c.angle_increments = freq_to_angle_increment(e.noteOn.frequency,
                                                      sample_rate);
 
@@ -420,7 +423,9 @@ public:
 
         // setupAudioElement is allowed to be slow, allocate / deallocate memory, etc...
         // because it's not running in the audio realtime thread.
-        if(!setupAudioElement(e.noteOn.frequency, c.elem, sample_rate)) {
+        if(!setupAudioElement(e.noteOn.frequency * last_angle_increment_multiplier,
+                              c.elem,
+                              sample_rate)) {
           MIDI_LG(ERR,"setupAudioElement failed");
           // we let the noteoff reset the envelope state.
           return onDroppedNote(e);

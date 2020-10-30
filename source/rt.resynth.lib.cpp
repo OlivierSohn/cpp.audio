@@ -1030,8 +1030,8 @@ private:
   std::function<std::optional<float>(float const)>
   mkAutotuneFunction();
   
-  void onInputMidiEvent(uint64_t time_ms, midi::Event const & e);
-  void onLostInputMidiEvents();
+  void onInputMidiEvent(std::optional<uint64_t> const & time_ms,
+                        midi::Event const & e);
 
   void updateVocoderCarrierInitializer();
   
@@ -1061,6 +1061,9 @@ RtResynth::RtResynth(int const samplerate)
 , vocoder_carrier_noteids(150)
 , sample_rate(samplerate)
 , midi_queue(10) // 10 should be enough
+, portmidi([this](midi::Event const & midievent, std::optional<uint64_t> time_ms){
+  onInputMidiEvent(time_ms, midievent);
+})
 {
   freqmags.reserve(200);
   freqmags_data.reserve(200);
@@ -1293,12 +1296,6 @@ RtResynth::init() {
   midi_thread_active = true;
   midi_thread = std::make_unique<std::thread>([this](){
     midi::listen_to_midi_input(midi_thread_active,
-                               [this](midi::Event const & midievent, uint64_t time_ms){
-      onInputMidiEvent(time_ms, midievent);
-    },
-                               [this](){
-      onLostInputMidiEvents();
-    },
                                midi_queue,
                                portmidi);
   });
@@ -1378,11 +1375,12 @@ void RtResynth::updateVocoderCarrierInitializer() {
                                                 initializer);
 }
 
-void RtResynth::onInputMidiEvent(uint64_t time_ms,
+void RtResynth::onInputMidiEvent(std::optional<uint64_t> const &time_ms,
                                  midi::Event const & e) {
-  // Portmidi time is in milliseconds, we convert it to nanoseconds.
-  uint64_t const time_nanos = 1000000 * time_ms;
   if (std::holds_alternative<midi::NoteOn>(e)) {
+    Assert(time_ms); // the only case we have no time is for AllNotesOff
+    // Portmidi time is in milliseconds, we convert it to nanoseconds.
+    uint64_t const time_nanos = 1000000 * *time_ms;
     midi::NoteOn const & on = std::get<midi::NoteOn>(e);
     Assert(on.velocity);
     vocoder_carrier.onEvent(sample_rate,
@@ -1393,12 +1391,26 @@ void RtResynth::onInputMidiEvent(uint64_t time_ms,
                             stepper,
                             MIDITimestampAndSource{time_nanos, to_underlying(MidiSource::MidiInput)});
   } else if (std::holds_alternative<midi::NoteOff>(e)) {
+    Assert(time_ms); // the only case we have no time is for AllNotesOff
+    // Portmidi time is in milliseconds, we convert it to nanoseconds.
+    uint64_t const time_nanos = 1000000 * *time_ms;
     midi::NoteOff const & off = std::get<midi::NoteOff>(e);
     vocoder_carrier.onEvent(sample_rate,
                             mkNoteOff(vocoder_carrier_noteids.NoteOffId(off.key)),
                             stepper,
                             stepper,
                             MIDITimestampAndSource{time_nanos, to_underlying(MidiSource::MidiInput)});
+  } else if (std::holds_alternative<midi::AllNotesOff>(e)) {
+    // send explicit note-offs for every note currently playing
+    for (auto const & [key, note_id] : vocoder_carrier_noteids) {
+      vocoder_carrier.onEvent(sample_rate,
+                              mkNoteOff(note_id),
+                              stepper,
+                              stepper,
+                              {});
+    }
+    vocoder_carrier_noteids.clear();
+    vocoder_carrier.allNotesOff(stepper); // this is redundant, but... "just in case"
   } else if (std::holds_alternative<midi::KeyPressure>(e)) {
     std::cout << "todo use keypressure" << std::endl;
   } else if (std::holds_alternative<midi::ChannelPressure>(e)) {
@@ -1413,11 +1425,6 @@ void RtResynth::onInputMidiEvent(uint64_t time_ms,
     synth.onAngleIncrementMultiplier(stepper,
                                      factor);
   }
-}
-
-void RtResynth::onLostInputMidiEvents() {
-  // stop all notes because maybe one note off was dropped
-  vocoder_carrier.allNotesOff(stepper);
 }
 
 void
@@ -1751,7 +1758,9 @@ void RtResynth::setMidiInput(std::optional<MidiName> const & n){
   if (!midi_queue.try_push([this, &n, &called](midi::PortMidi & pm){
     std::lock_guard l(midi_mutex);
     if (n) {
-      pm.open_input_stream(*n);
+      if (n != pm.get_input_stream()) {
+        pm.open_input_stream(*n);
+      }
     } else {
       pm.close_input_stream();
     }

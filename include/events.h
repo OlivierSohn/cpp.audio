@@ -250,6 +250,12 @@ struct NoteIdsGenerator {
     }
   }
   
+  auto begin() const { return noteids.begin(); }
+  auto end() const { return noteids.end(); }
+
+  void clear() {
+    noteids.clear();
+  }
 private:
   NoteId next{};
   std::unordered_map<Key, NoteId> noteids;

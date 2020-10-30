@@ -1,6 +1,7 @@
 #include "portmidi.h"
 
 namespace imajuscule::audio::rtresynth {
+
 struct MidiName {
   std::string interf;
   std::string name;
@@ -28,138 +29,12 @@ inline std::ostream & operator << (std::ostream & os, const std::optional<MidiNa
 } // NS
 
 namespace imajuscule::audio::rtresynth::midi {
-
-struct PortMidi {
-  PortMidi();
-
-  ~PortMidi();
-  
-  std::vector<MidiName> list_input_devices_names() const;
-
-  void open_input_stream(MidiName const&);
-  void close_input_stream();
-  
-  std::optional<MidiName> const & get_input_stream() const { return input_stream_name; }
- 
-  bool input_stream_has_data();
-  
-  bool read_input_stream(std::vector<PmEvent> & buffer);
-
-private:
-  PortMidiStream * input_stream = nullptr;
-  std::optional<MidiName> input_stream_name;
-  
-  std::optional<int> find_device_id(MidiName const&) const;
+struct AllNotesOff {
 };
-
-PortMidi::PortMidi() {
-  PmError const err = Pm_Initialize();
-  if (err != pmNoError) {
-    throw std::runtime_error("failed to initialize portmidi");
-  }
-  // use the 1st one
-  for (auto const & n : list_input_devices_names()) {
-    open_input_stream(n);
-    return;
-  }
+inline std::ostream & operator << (std::ostream & os, AllNotesOff const & n) {
+  os << "AllNotesOff";
+  return os;
 }
-
-
-void PortMidi::open_input_stream(MidiName const & name) {
-  close_input_stream();
-  
-  if (std::optional<int> device_id = find_device_id(name)) {
-    if (PmError const err = Pm_OpenInput(&input_stream,
-                                         *device_id,
-                                         nullptr,
-                                         0,
-                                         nullptr,
-                                         nullptr)) {
-      std::cerr << "failed to open input stream : " << Pm_GetErrorText(err) << std::endl;
-      return;
-    }
-    input_stream_name = name;
-  } else {
-    std::cerr << "failed to open input stream : Not found." << std::endl;
-    return;
-  }
-}
-
-void PortMidi::close_input_stream() {
-  if (input_stream) {
-    PmError const err = Pm_Close(input_stream);
-    if (err != pmNoError) {
-      std::cerr << "failed to close input stream : " << Pm_GetErrorText(err) << std::endl;
-    }
-    input_stream = nullptr;
-    input_stream_name.reset();
-  }
-}
-
-PortMidi::~PortMidi() {
-  close_input_stream();
-  {
-    PmError const err = Pm_Terminate();
-    if (err != pmNoError) {
-      std::cerr << "failed to terminate portmidi : " << Pm_GetErrorText(err) << std::endl;
-    }
-  }
-}
-
-std::vector<MidiName> PortMidi::list_input_devices_names() const {
-  std::vector<MidiName> res;
-  int n_devices = Pm_CountDevices();
-  res.reserve(n_devices);
-  for (int i=0; i<n_devices; ++i) {
-    const PmDeviceInfo* info = Pm_GetDeviceInfo(i);
-    if (info->input) {
-      res.push_back({info->interf, info->name});
-    }
-  }
-  return res;
-}
-
-std::optional<int> PortMidi::find_device_id(MidiName const&n) const {
-  int n_devices = Pm_CountDevices();
-  for (int i=0; i<n_devices; ++i) {
-    const PmDeviceInfo* info = Pm_GetDeviceInfo(i);
-    if (info->input) {
-      if (info->interf == n.interf && info->name == n.name) {
-        return i;
-      }
-    }
-  }
-  return {};
-}
-
-
-bool PortMidi::input_stream_has_data() {
-  PmError const info = Pm_Poll(input_stream);
-  if (info == pmNoData) {
-    return false;
-  } else if(info == pmGotData) {
-    return true;
-  }
-  std::cerr << "midi failed to poll : " << Pm_GetErrorText(info) << std::endl;
-  return false;
-}
-
-bool PortMidi::read_input_stream(std::vector<PmEvent> & buffer)
-{
-  buffer.resize(buffer.capacity());
-  int const n = Pm_Read(input_stream,
-                        buffer.data(),
-                        static_cast<int>(buffer.capacity()));
-  if (n == pmBufferOverflow) {
-    buffer.clear();
-    return false;
-  } else {
-    Assert(n <= buffer.capacity());
-    buffer.resize(n);
-    return true;
-  }
-}
-
 struct NoteOn {
   uint8_t channel;
   uint8_t key;
@@ -237,7 +112,8 @@ KeyPressure,
 ControlChange,
 ProgramChange,
 ChannelPressure,
-PitchWheel
+PitchWheel,
+AllNotesOff
 >;
 
 // see 'msgToMidi' and
@@ -277,10 +153,171 @@ decode(int32_t const message) {
   }
 }
 
-template<typename F, typename G, typename Q>
+struct PortMidi {
+  using SendFunc = folly::Function<void(Event, std::optional<uint64_t>)>;
+  PortMidi(SendFunc);
+
+  ~PortMidi();
+  
+  std::vector<MidiName> list_input_devices_names() const;
+
+  void open_input_stream(MidiName const&);
+  void close_input_stream();
+  
+  std::optional<MidiName> const & get_input_stream() const { return input_stream_name; }
+ 
+  bool input_stream_has_data();
+  
+  void read_input_stream();
+
+private:
+  PortMidiStream * input_stream = nullptr;
+  std::optional<MidiName> input_stream_name;
+  
+  SendFunc send;
+  
+  std::vector<PmEvent> buffer;
+  
+  std::optional<int> find_device_id(MidiName const&) const;
+};
+
+PortMidi::PortMidi(SendFunc s)
+: send(std::move(s)) {
+  buffer.reserve(256);
+  
+  PmError const err = Pm_Initialize();
+  if (err != pmNoError) {
+    throw std::runtime_error("failed to initialize portmidi");
+  }
+  // use the 1st one
+  for (auto const & n : list_input_devices_names()) {
+    open_input_stream(n);
+    return;
+  }
+}
+
+void PortMidi::open_input_stream(MidiName const & name) {
+  close_input_stream();
+  
+  if (std::optional<int> device_id = find_device_id(name)) {
+    if (PmError const err = Pm_OpenInput(&input_stream,
+                                         *device_id,
+                                         nullptr,
+                                         0,
+                                         nullptr,
+                                         nullptr)) {
+      std::cerr << "failed to open input stream : " << Pm_GetErrorText(err) << std::endl;
+      return;
+    }
+    input_stream_name = name;
+  } else {
+    std::cerr << "failed to open input stream : Not found." << std::endl;
+    return;
+  }
+}
+
+void PortMidi::close_input_stream() {
+  if (input_stream) {
+    
+    send(AllNotesOff{}, {});
+    
+    PmError const err = Pm_Close(input_stream);
+    if (err != pmNoError) {
+      std::cerr << "failed to close input stream : " << Pm_GetErrorText(err) << std::endl;
+    }
+    input_stream = nullptr;
+    input_stream_name.reset();
+  }
+}
+
+PortMidi::~PortMidi() {
+  close_input_stream();
+  {
+    PmError const err = Pm_Terminate();
+    if (err != pmNoError) {
+      std::cerr << "failed to terminate portmidi : " << Pm_GetErrorText(err) << std::endl;
+    }
+  }
+}
+
+std::vector<MidiName> PortMidi::list_input_devices_names() const {
+  std::vector<MidiName> res;
+  int n_devices = Pm_CountDevices();
+  res.reserve(n_devices);
+  for (int i=0; i<n_devices; ++i) {
+    const PmDeviceInfo* info = Pm_GetDeviceInfo(i);
+    if (info->input) {
+      res.push_back({info->interf, info->name});
+    }
+  }
+  return res;
+}
+
+std::optional<int> PortMidi::find_device_id(MidiName const&n) const {
+  int n_devices = Pm_CountDevices();
+  for (int i=0; i<n_devices; ++i) {
+    const PmDeviceInfo* info = Pm_GetDeviceInfo(i);
+    if (info->input) {
+      if (info->interf == n.interf && info->name == n.name) {
+        return i;
+      }
+    }
+  }
+  return {};
+}
+
+
+bool PortMidi::input_stream_has_data() {
+  PmError const info = Pm_Poll(input_stream);
+  if (info == pmNoData) {
+    return false;
+  } else if(info == pmGotData) {
+    return true;
+  }
+  std::cerr << "midi failed to poll : " << Pm_GetErrorText(info) << std::endl;
+  return false;
+}
+
+void PortMidi::read_input_stream()
+{
+  buffer.resize(buffer.capacity());
+  int const n = Pm_Read(input_stream,
+                        buffer.data(),
+                        static_cast<int>(buffer.capacity()));
+  if (n == pmBufferOverflow) {
+
+    send(AllNotesOff{}, {});
+
+    buffer.clear();
+  } else {
+    Assert(n <= buffer.capacity());
+    buffer.resize(n);
+    
+    for (auto const & e : buffer) {
+      Assert(e.timestamp >= 0);
+      if(auto value = decode(e.message)) {
+        send(*value, e.timestamp);
+      } else {
+        // unhandled midi message
+      }
+      
+      /*
+       std::cout << "[midi] @" << e.timestamp << " ";
+       if (!value) {
+       // unhandled midi message
+       std::cout << "unhandled midi message";
+       } else {
+       std::visit([](auto && d){ std::cout << d; },
+       *value);
+       }
+       std::cout << std::endl;
+       */
+    }
+  }
+}
+
+template<typename Q>
 void listen_to_midi_input(std::atomic_bool & active,
-                          F && onReceivedMidiEvent,
-                          G && onLostMidiEvents,
                           Q & queue,
                           PortMidi & pm) {
   auto check_queue = [&pm, &queue] {
@@ -292,9 +329,6 @@ void listen_to_midi_input(std::atomic_bool & active,
     }
     return worked;
   };
-  
-  std::vector<PmEvent> buffer;
-  buffer.reserve(256);
   
   while(active) {
     if (!pm.get_input_stream()) {
@@ -311,33 +345,7 @@ void listen_to_midi_input(std::atomic_bool & active,
       std::this_thread::sleep_for(std::chrono::microseconds(100));
       continue;
     }
-    if (!pm.read_input_stream(buffer)) {
-      // buffer input overflow
-      Assert(buffer.empty());
-      onLostMidiEvents();
-    } else {
-      for (auto const & e : buffer) {
-        Assert(e.timestamp >= 0);
-        if(auto value = decode(e.message)) {
-          onReceivedMidiEvent(*value,
-                              e.timestamp);
-        } else {
-          // unhandled midi message
-        }
-        
-        /*
-        std::cout << "[midi] @" << e.timestamp << " ";
-        if (!value) {
-          // unhandled midi message
-          std::cout << "unhandled midi message";
-        } else {
-          std::visit([](auto && d){ std::cout << d; },
-                     *value);
-        }
-        std::cout << std::endl;
-         */
-      }
-    }
+    pm.read_input_stream();
   }
 }
 

@@ -1,9 +1,12 @@
 /* Backlog:
 
-- The UI thread reguarily checks which are the midi inputs available.
+- when multiple keyboards play on the same midi instrument we can have sticky notes.
+NoteIdsGenerator could use a std::multimap to cope with this (handling simultaneous notes with the same key)
+or, to have better memori locality than std::multimap, and
+since we'll never have more than say 100 notes at the same time we could use a vector.
 
-- currently, to use the synth as input to analysis, we need to use the output feedback,
-but this might be "too much" we could chose to have it as a clean input, too.
+- make it possible to use the carrier as direct input to analysis.
+To do this, we can use a sample queue for carrier that we feed in the output thread, and consume in analysis thread.
 
 - in a unit test, verify the effect of signal phase on peak magnitude (I expect that this has an influence on lower frequencies)
 
@@ -47,7 +50,7 @@ in one band, use white noise to make speech more intelligible
  
   - record some presets
  . hints to make make_presets:
- .. max_pitch = 100 makes speec more intelligible, however we need max_pitch = 150 for robotic effects in the high end.
+ .. max_pitch = 100 makes spec more intelligible, however we need max_pitch = 150 for robotic effects in the high end.
  .. an interesting "frequency randomization" effect happens with
  ... low frequency voice
  ... small analysis window size (so that the frequency is not well found, hence the randomization effect)
@@ -152,6 +155,8 @@ in one band, use white noise to make speech more intelligible
  min volume,
  pitch interval,
  pitch tracking
+ 
+ - add a "scan midi inputs" button that recomputes the list of available inputs
  
  ------
  Others
