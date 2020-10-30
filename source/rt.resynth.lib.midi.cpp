@@ -57,6 +57,11 @@ PortMidi::PortMidi() {
   if (err != pmNoError) {
     throw std::runtime_error("failed to initialize portmidi");
   }
+  // use the 1st one
+  for (auto const & n : list_input_devices_names()) {
+    open_input_stream(n);
+    return;
+  }
 }
 
 
