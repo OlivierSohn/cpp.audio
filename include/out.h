@@ -216,12 +216,12 @@ private:
   std::vector<T*> outputBuffers;
 };
 
-struct AudioPost {
+using postProcessFunc = std::function<void(double*, // buffer
+                                           int, // number of frames in the buffer
+                                           int // block size (i.e the total number of frames per callback call
+                                           )>;
 
-  using postProcessFunc = std::function<void(double*, // buffer
-                                             int, // number of frames in the buffer
-                                             int // block size (i.e the total number of frames per callback call
-                                             )>;
+struct AudioPost {
 
   void set_post_processors(std::vector<postProcessFunc> && v) {
     post_process = std::move(v);

@@ -74,6 +74,31 @@
 		098432A92523B03300F0DF48 /* Info.plist in CopyFiles */ = {isa = PBXBuildFile; fileRef = 09B01D9C25168CB40068FCFD /* Info.plist */; };
 		098474081E8058EE0014465E /* unity.build.genheaders.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 098474071E8058EE0014465E /* unity.build.genheaders.cpp */; };
 		098474281E8059920014465E /* libaudio.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 09FF3F231E36EBBB00C81351 /* libaudio.a */; };
+		098FFD75255224DE0082A9AB /* libwx_baseu_net-3.1.4.0.0.dylib in Frameworks */ = {isa = PBXBuildFile; fileRef = 0943228D252A2B0000C8B64E /* libwx_baseu_net-3.1.4.0.0.dylib */; };
+		098FFD76255224DE0082A9AB /* libwx_osx_cocoau_xrc-3.1.4.0.0.dylib in Frameworks */ = {isa = PBXBuildFile; fileRef = 0943228E252A2B0000C8B64E /* libwx_osx_cocoau_xrc-3.1.4.0.0.dylib */; };
+		098FFD77255224DE0082A9AB /* libwx_baseu_xml-3.1.4.0.0.dylib in Frameworks */ = {isa = PBXBuildFile; fileRef = 0943228F252A2B0000C8B64E /* libwx_baseu_xml-3.1.4.0.0.dylib */; };
+		098FFD78255224DE0082A9AB /* libwx_baseu-3.1.4.0.0.dylib in Frameworks */ = {isa = PBXBuildFile; fileRef = 09432290252A2B0000C8B64E /* libwx_baseu-3.1.4.0.0.dylib */; };
+		098FFD79255224DE0082A9AB /* libwx_osx_cocoau_html-3.1.4.0.0.dylib in Frameworks */ = {isa = PBXBuildFile; fileRef = 09432291252A2B0000C8B64E /* libwx_osx_cocoau_html-3.1.4.0.0.dylib */; };
+		098FFD7A255224DE0082A9AB /* libwx_osx_cocoau_core-3.1.4.0.0.dylib in Frameworks */ = {isa = PBXBuildFile; fileRef = 09432292252A2B0000C8B64E /* libwx_osx_cocoau_core-3.1.4.0.0.dylib */; };
+		098FFD7B255224DE0082A9AB /* libwx_osx_cocoau_qa-3.1.4.0.0.dylib in Frameworks */ = {isa = PBXBuildFile; fileRef = 09432293252A2B0000C8B64E /* libwx_osx_cocoau_qa-3.1.4.0.0.dylib */; };
+		098FFD7C255224DE0082A9AB /* OpenGL.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 0943228B252A2A4A00C8B64E /* OpenGL.framework */; };
+		098FFD7D255224DE0082A9AB /* SystemConfiguration.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 09432287252A2A4100C8B64E /* SystemConfiguration.framework */; };
+		098FFD7E255224DE0082A9AB /* SystemExtensions.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 09432288252A2A4100C8B64E /* SystemExtensions.framework */; };
+		098FFD7F255224DE0082A9AB /* AudioToolbox.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 09432285252A2A2C00C8B64E /* AudioToolbox.framework */; };
+		098FFD80255224DE0082A9AB /* Cocoa.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 09432283252A2A2200C8B64E /* Cocoa.framework */; };
+		098FFD81255224DE0082A9AB /* Carbon.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 09432281252A2A1C00C8B64E /* Carbon.framework */; };
+		098FFD82255224DE0082A9AB /* IOKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 0943227F252A2A1500C8B64E /* IOKit.framework */; };
+		098FFD83255224DE0082A9AB /* libportaudio.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 09432069252A0EA000C8B64E /* libportaudio.a */; };
+		098FFD84255224DE0082A9AB /* libalgorithms.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 0967E511208E539D004B488E /* libalgorithms.a */; };
+		098FFD85255224DE0082A9AB /* libportmidi.dylib in Frameworks */ = {isa = PBXBuildFile; fileRef = 099B6D22253CC419003E4929 /* libportmidi.dylib */; };
+		098FFD86255224DE0082A9AB /* Accelerate.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 093268CF1EAB7031001BAA8E /* Accelerate.framework */; };
+		098FFD87255224DE0082A9AB /* AppKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 097D56D01E86DCC900018F14 /* AppKit.framework */; };
+		098FFD88255224DE0082A9AB /* CoreGraphics.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 097D56CE1E86DCB600018F14 /* CoreGraphics.framework */; };
+		098FFD89255224DE0082A9AB /* CoreFoundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 097D56CC1E86DCA000018F14 /* CoreFoundation.framework */; };
+		098FFD8A255224DE0082A9AB /* libaudio.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 09FF3F231E36EBBB00C81351 /* libaudio.a */; };
+		098FFD8C255224DE0082A9AB /* Info.plist in CopyFiles */ = {isa = PBXBuildFile; fileRef = 09B01D9C25168CB40068FCFD /* Info.plist */; };
+		098FFD8E255224DE0082A9AB /* libportmidi.dylib in Embed Libraries */ = {isa = PBXBuildFile; fileRef = 099B6D22253CC419003E4929 /* libportmidi.dylib */; settings = {ATTRIBUTES = (CodeSignOnCopy, ); }; };
+		098FFD96255225A00082A9AB /* unity.build.rt.resynth.job.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 098FFD95255225A00082A9AB /* unity.build.rt.resynth.job.cpp */; };
 		099B6D23253CC419003E4929 /* libportmidi.dylib in Frameworks */ = {isa = PBXBuildFile; fileRef = 099B6D22253CC419003E4929 /* libportmidi.dylib */; };
 		099B6D24253CC419003E4929 /* libportmidi.dylib in Embed Libraries */ = {isa = PBXBuildFile; fileRef = 099B6D22253CC419003E4929 /* libportmidi.dylib */; settings = {ATTRIBUTES = (CodeSignOnCopy, ); }; };
 		099E06E11E36EC720012348E /* unity.build.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 099E06E01E36EC6D0012348E /* unity.build.cpp */; };
@@ -83,7 +108,7 @@
 		09B01D5425152F0A0068FCFD /* CoreGraphics.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 097D56CE1E86DCB600018F14 /* CoreGraphics.framework */; };
 		09B01D5525152F0A0068FCFD /* CoreFoundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 097D56CC1E86DCA000018F14 /* CoreFoundation.framework */; };
 		09B01D5625152F0A0068FCFD /* libaudio.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 09FF3F231E36EBBB00C81351 /* libaudio.a */; };
-		09B01D5C25152F240068FCFD /* unity.build.rt.resynth.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 09B01D4025152EE10068FCFD /* unity.build.rt.resynth.cpp */; };
+		09B01D5C25152F240068FCFD /* unity.build.rt.resynth.ui.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 09B01D4025152EE10068FCFD /* unity.build.rt.resynth.ui.cpp */; };
 		09B01D9E25168D330068FCFD /* Info.plist in CopyFiles */ = {isa = PBXBuildFile; fileRef = 09B01D9C25168CB40068FCFD /* Info.plist */; };
 		09BA14991E38791C00A05F83 /* unity.build.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 099E06E01E36EC6D0012348E /* unity.build.cpp */; };
 /* End PBXBuildFile section */
@@ -215,6 +240,13 @@
 			remoteGlobalIDString = 09FF3F221E36EBBB00C81351;
 			remoteInfo = audio;
 		};
+		098FFD71255224DE0082A9AB /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 09FF3F1B1E36EBBB00C81351 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 09FF3F221E36EBBB00C81351;
+			remoteInfo = audio;
+		};
 		09B01D4D25152F0A0068FCFD /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = 09FF3F1B1E36EBBB00C81351 /* Project object */;
@@ -297,6 +329,27 @@
 			files = (
 			);
 			runOnlyForDeploymentPostprocessing = 1;
+		};
+		098FFD8B255224DE0082A9AB /* CopyFiles */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 12;
+			dstPath = "";
+			dstSubfolderSpec = 16;
+			files = (
+				098FFD8C255224DE0082A9AB /* Info.plist in CopyFiles */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		098FFD8D255224DE0082A9AB /* Embed Libraries */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 10;
+			files = (
+				098FFD8E255224DE0082A9AB /* libportmidi.dylib in Embed Libraries */,
+			);
+			name = "Embed Libraries";
+			runOnlyForDeploymentPostprocessing = 0;
 		};
 		099B6D25253CC419003E4929 /* Embed Libraries */ = {
 			isa = PBXCopyFilesBuildPhase;
@@ -423,6 +476,10 @@
 		0984742B1E809F650014465E /* loudness_filter_coefficients.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = loudness_filter_coefficients.h; path = include/loudness_filter_coefficients.h; sourceTree = "<group>"; };
 		098EFCC21E677FBD000ADD0D /* sounds.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = sounds.h; path = include/sounds.h; sourceTree = "<group>"; };
 		098EFCCA1E6C5E50000ADD0D /* noise.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; lineEnding = 0; name = noise.h; path = include/noise.h; sourceTree = "<group>"; xcLanguageSpecificationIdentifier = xcode.lang.objcpp; };
+		098FFD92255224DE0082A9AB /* rt.resynth.job */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = rt.resynth.job; sourceTree = BUILT_PRODUCTS_DIR; };
+		098FFD93255224DE0082A9AB /* rt.resynth copy2-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; name = "rt.resynth copy2-Info.plist"; path = "/Users/Olivier/Dev/cpp.audio/rt.resynth copy2-Info.plist"; sourceTree = "<absolute>"; };
+		098FFD94255225480082A9AB /* unity.build.rt.resynth.lib.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = unity.build.rt.resynth.lib.cpp; path = source/unity.build.rt.resynth.lib.cpp; sourceTree = "<group>"; };
+		098FFD95255225A00082A9AB /* unity.build.rt.resynth.job.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = unity.build.rt.resynth.job.cpp; path = source/unity.build.rt.resynth.job.cpp; sourceTree = "<group>"; };
 		099B6CF6253CBF12003E4929 /* rt.resynth.lib.midi.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = rt.resynth.lib.midi.cpp; path = source/rt.resynth.lib.midi.cpp; sourceTree = "<group>"; };
 		099B6D22253CC419003E4929 /* libportmidi.dylib */ = {isa = PBXFileReference; lastKnownFileType = "compiled.mach-o.dylib"; name = libportmidi.dylib; path = ../../../../usr/local/Cellar/portmidi/217_2/lib/libportmidi.dylib; sourceTree = "<group>"; };
 		099B6E78253F0F2A003E4929 /* rt.resynth.ui.vocoder.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = rt.resynth.ui.vocoder.cpp; path = source/rt.resynth.ui.vocoder.cpp; sourceTree = "<group>"; };
@@ -452,7 +509,7 @@
 		099E06F61E36ECE50012348E /* Project.Release.xcconfig */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.xcconfig; name = Project.Release.xcconfig; path = xcode.config/Project.Release.xcconfig; sourceTree = "<group>"; };
 		099E06F71E36ECE50012348E /* Project.Shared.xcconfig */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.xcconfig; name = Project.Shared.xcconfig; path = xcode.config/Project.Shared.xcconfig; sourceTree = "<group>"; };
 		09A8F2291E442C3A0071C141 /* soundengine.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = soundengine.cpp; path = source/soundengine.cpp; sourceTree = "<group>"; };
-		09B01D4025152EE10068FCFD /* unity.build.rt.resynth.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = unity.build.rt.resynth.cpp; path = source/unity.build.rt.resynth.cpp; sourceTree = "<group>"; };
+		09B01D4025152EE10068FCFD /* unity.build.rt.resynth.ui.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = unity.build.rt.resynth.ui.cpp; path = source/unity.build.rt.resynth.ui.cpp; sourceTree = "<group>"; };
 		09B01D4A25152EE10068FCFD /* rt.resynth.lib.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = rt.resynth.lib.cpp; path = source/rt.resynth.lib.cpp; sourceTree = "<group>"; };
 		09B01D5B25152F0A0068FCFD /* rt.resynth */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = rt.resynth; sourceTree = BUILT_PRODUCTS_DIR; };
 		09B01D5D251534210068FCFD /* libportaudio_static.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libportaudio_static.a; path = "../portaudio-products/libportaudio_static.a"; sourceTree = "<group>"; };
@@ -569,6 +626,35 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		098FFD74255224DE0082A9AB /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				098FFD75255224DE0082A9AB /* libwx_baseu_net-3.1.4.0.0.dylib in Frameworks */,
+				098FFD76255224DE0082A9AB /* libwx_osx_cocoau_xrc-3.1.4.0.0.dylib in Frameworks */,
+				098FFD77255224DE0082A9AB /* libwx_baseu_xml-3.1.4.0.0.dylib in Frameworks */,
+				098FFD78255224DE0082A9AB /* libwx_baseu-3.1.4.0.0.dylib in Frameworks */,
+				098FFD79255224DE0082A9AB /* libwx_osx_cocoau_html-3.1.4.0.0.dylib in Frameworks */,
+				098FFD7A255224DE0082A9AB /* libwx_osx_cocoau_core-3.1.4.0.0.dylib in Frameworks */,
+				098FFD7B255224DE0082A9AB /* libwx_osx_cocoau_qa-3.1.4.0.0.dylib in Frameworks */,
+				098FFD7C255224DE0082A9AB /* OpenGL.framework in Frameworks */,
+				098FFD7D255224DE0082A9AB /* SystemConfiguration.framework in Frameworks */,
+				098FFD7E255224DE0082A9AB /* SystemExtensions.framework in Frameworks */,
+				098FFD7F255224DE0082A9AB /* AudioToolbox.framework in Frameworks */,
+				098FFD80255224DE0082A9AB /* Cocoa.framework in Frameworks */,
+				098FFD81255224DE0082A9AB /* Carbon.framework in Frameworks */,
+				098FFD82255224DE0082A9AB /* IOKit.framework in Frameworks */,
+				098FFD83255224DE0082A9AB /* libportaudio.a in Frameworks */,
+				098FFD84255224DE0082A9AB /* libalgorithms.a in Frameworks */,
+				098FFD85255224DE0082A9AB /* libportmidi.dylib in Frameworks */,
+				098FFD86255224DE0082A9AB /* Accelerate.framework in Frameworks */,
+				098FFD87255224DE0082A9AB /* AppKit.framework in Frameworks */,
+				098FFD88255224DE0082A9AB /* CoreGraphics.framework in Frameworks */,
+				098FFD89255224DE0082A9AB /* CoreFoundation.framework in Frameworks */,
+				098FFD8A255224DE0082A9AB /* libaudio.a in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		09B01D5025152F0A0068FCFD /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
@@ -681,6 +767,8 @@
 		099E06E21E36EC7F0012348E /* source */ = {
 			isa = PBXGroup;
 			children = (
+				098FFD95255225A00082A9AB /* unity.build.rt.resynth.job.cpp */,
+				098FFD94255225480082A9AB /* unity.build.rt.resynth.lib.cpp */,
 				09F16A8520B7168200555324 /* audio_context.cpp */,
 				094BFE4120B81A49001F1D81 /* audio_platform_au.cpp */,
 				094BFE4220B825A0001F1D81 /* audio_platform_pa.cpp */,
@@ -724,7 +812,7 @@
 				098474071E8058EE0014465E /* unity.build.genheaders.cpp */,
 				093A24C81E9B8C47009874DF /* unity.build.joinnonzeros.cpp */,
 				093671B22514B7B600620289 /* unity.build.resynth.cpp */,
-				09B01D4025152EE10068FCFD /* unity.build.rt.resynth.cpp */,
+				09B01D4025152EE10068FCFD /* unity.build.rt.resynth.ui.cpp */,
 				093A24E31E9B8D73009874DF /* unity.build.testfft.cpp */,
 				096C6D641E9F860300389746 /* unity.build.wir_2_wav.cpp */,
 			);
@@ -808,6 +896,7 @@
 				09FF3F241E36EBBB00C81351 /* Products */,
 				097D56CB1E86DCA000018F14 /* Frameworks */,
 				098432B72523B03300F0DF48 /* rt.resynth copy-Info.plist */,
+				098FFD93255224DE0082A9AB /* rt.resynth copy2-Info.plist */,
 			);
 			sourceTree = "<group>";
 		};
@@ -825,6 +914,7 @@
 				093671D02514B84200620289 /* resynth */,
 				09B01D5B25152F0A0068FCFD /* rt.resynth */,
 				098432AD2523B03300F0DF48 /* birds */,
+				098FFD92255224DE0082A9AB /* rt.resynth.job */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -986,9 +1076,28 @@
 			productReference = 098474001E8057E90014465E /* generate_filters_headers */;
 			productType = "com.apple.product-type.tool";
 		};
-		09B01D4B25152F0A0068FCFD /* rt.resynth */ = {
+		098FFD6F255224DE0082A9AB /* rt.resynth.job */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = 09B01D5825152F0A0068FCFD /* Build configuration list for PBXNativeTarget "rt.resynth" */;
+			buildConfigurationList = 098FFD8F255224DE0082A9AB /* Build configuration list for PBXNativeTarget "rt.resynth.job" */;
+			buildPhases = (
+				098FFD72255224DE0082A9AB /* Sources */,
+				098FFD74255224DE0082A9AB /* Frameworks */,
+				098FFD8B255224DE0082A9AB /* CopyFiles */,
+				098FFD8D255224DE0082A9AB /* Embed Libraries */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				098FFD70255224DE0082A9AB /* PBXTargetDependency */,
+			);
+			name = rt.resynth.job;
+			productName = generate_filters_headers;
+			productReference = 098FFD92255224DE0082A9AB /* rt.resynth.job */;
+			productType = "com.apple.product-type.tool";
+		};
+		09B01D4B25152F0A0068FCFD /* rt.resynth.ui */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 09B01D5825152F0A0068FCFD /* Build configuration list for PBXNativeTarget "rt.resynth.ui" */;
 			buildPhases = (
 				09B01D4E25152F0A0068FCFD /* Sources */,
 				09B01D5025152F0A0068FCFD /* Frameworks */,
@@ -1000,7 +1109,7 @@
 			dependencies = (
 				09B01D4C25152F0A0068FCFD /* PBXTargetDependency */,
 			);
-			name = rt.resynth;
+			name = rt.resynth.ui;
 			productName = generate_filters_headers;
 			productReference = 09B01D5B25152F0A0068FCFD /* rt.resynth */;
 			productType = "com.apple.product-type.tool";
@@ -1094,8 +1203,9 @@
 				09121CA71EABADB500BBC64B /* mod_wav */,
 				0951A5111EB62CBB00CE4A4E /* count_channels */,
 				093671C12514B84200620289 /* resynth */,
-				09B01D4B25152F0A0068FCFD /* rt.resynth */,
+				09B01D4B25152F0A0068FCFD /* rt.resynth.ui */,
 				0984329B2523B03300F0DF48 /* birds */,
+				098FFD6F255224DE0082A9AB /* rt.resynth.job */,
 			);
 		};
 /* End PBXProject section */
@@ -1238,11 +1348,19 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		098FFD72255224DE0082A9AB /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				098FFD96255225A00082A9AB /* unity.build.rt.resynth.job.cpp in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		09B01D4E25152F0A0068FCFD /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				09B01D5C25152F240068FCFD /* unity.build.rt.resynth.cpp in Sources */,
+				09B01D5C25152F240068FCFD /* unity.build.rt.resynth.ui.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -1304,6 +1422,11 @@
 			isa = PBXTargetDependency;
 			target = 09FF3F221E36EBBB00C81351 /* audio */;
 			targetProxy = 098474221E8059810014465E /* PBXContainerItemProxy */;
+		};
+		098FFD70255224DE0082A9AB /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 09FF3F221E36EBBB00C81351 /* audio */;
+			targetProxy = 098FFD71255224DE0082A9AB /* PBXContainerItemProxy */;
 		};
 		09B01D4C25152F0A0068FCFD /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
@@ -1449,6 +1572,62 @@
 			};
 			name = Release;
 		};
+		098FFD90255224DE0082A9AB /* Debug */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 099E06F21E36ECE50012348E /* osx.debug.xcconfig */;
+			buildSettings = {
+				HEADER_SEARCH_PATHS = (
+					"$(PROJECT__HEADER_SEARCH_PATHS)",
+					"\"$(PROJECT_DIR)/../tp.glm\"",
+					"$(PROJECT_DIR)/../wxWidgets-3.1.4/include",
+					"$(PROJECT_DIR)/../wxWidgets-3.1.4/build-cocoa-debug/lib/wx/include/osx_cocoa-unicode-3.1",
+				);
+				INFOPLIST_FILE = "rt.resynth copy2-Info.plist";
+				LIBRARY_SEARCH_PATHS = (
+					/usr/local/lib,
+					"/Users/Olivier/dev/wxWidgets-3.1.4/build-cocoa-debug/lib",
+					/usr/local/Cellar/portmidi/217_2/lib,
+				);
+				MACOSX_DEPLOYMENT_TARGET = 10.15;
+				OTHER_CFLAGS = (
+					"-D_FILE_OFFSET_BITS=64",
+					"-DWXUSINGDLL",
+					"-D__WXMAC__",
+					"-D__WXOSX__",
+					"-D__WXOSX_COCOA__",
+				);
+				PRODUCT_NAME = "$(TARGET_NAME)";
+			};
+			name = Debug;
+		};
+		098FFD91255224DE0082A9AB /* Release */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 099E06F31E36ECE50012348E /* osx.release.xcconfig */;
+			buildSettings = {
+				HEADER_SEARCH_PATHS = (
+					"$(PROJECT__HEADER_SEARCH_PATHS)",
+					"\"$(PROJECT_DIR)/../tp.glm\"",
+					"$(PROJECT_DIR)/../wxWidgets-3.1.4/include",
+					"$(PROJECT_DIR)/../wxWidgets-3.1.4/build-cocoa-debug/lib/wx/include/osx_cocoa-unicode-3.1",
+				);
+				INFOPLIST_FILE = "rt.resynth copy2-Info.plist";
+				LIBRARY_SEARCH_PATHS = (
+					/usr/local/lib,
+					"/Users/Olivier/dev/wxWidgets-3.1.4/build-cocoa-debug/lib",
+					/usr/local/Cellar/portmidi/217_2/lib,
+				);
+				MACOSX_DEPLOYMENT_TARGET = 10.15;
+				OTHER_CFLAGS = (
+					"-D_FILE_OFFSET_BITS=64",
+					"-DWXUSINGDLL",
+					"-D__WXMAC__",
+					"-D__WXOSX__",
+					"-D__WXOSX_COCOA__",
+				);
+				PRODUCT_NAME = "$(TARGET_NAME)";
+			};
+			name = Release;
+		};
 		09B01D5925152F0A0068FCFD /* Debug */ = {
 			isa = XCBuildConfiguration;
 			baseConfigurationReference = 099E06F21E36ECE50012348E /* osx.debug.xcconfig */;
@@ -1465,6 +1644,7 @@
 					"/Users/Olivier/dev/wxWidgets-3.1.4/build-cocoa-debug/lib",
 					/usr/local/Cellar/portmidi/217_2/lib,
 				);
+				MACOSX_DEPLOYMENT_TARGET = 10.15;
 				OTHER_CFLAGS = (
 					"-D_FILE_OFFSET_BITS=64",
 					"-DWXUSINGDLL",
@@ -1492,6 +1672,7 @@
 					"/Users/Olivier/dev/wxWidgets-3.1.4/build-cocoa-debug/lib",
 					/usr/local/Cellar/portmidi/217_2/lib,
 				);
+				MACOSX_DEPLOYMENT_TARGET = 10.15;
 				OTHER_CFLAGS = (
 					"-D_FILE_OFFSET_BITS=64",
 					"-DWXUSINGDLL",
@@ -1622,7 +1803,16 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		09B01D5825152F0A0068FCFD /* Build configuration list for PBXNativeTarget "rt.resynth" */ = {
+		098FFD8F255224DE0082A9AB /* Build configuration list for PBXNativeTarget "rt.resynth.job" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				098FFD90255224DE0082A9AB /* Debug */,
+				098FFD91255224DE0082A9AB /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		09B01D5825152F0A0068FCFD /* Build configuration list for PBXNativeTarget "rt.resynth.ui" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				09B01D5925152F0A0068FCFD /* Debug */,

@@ -2,7 +2,7 @@
 
 - when multiple keyboards play on the same midi instrument we can have sticky notes.
 NoteIdsGenerator could use a std::multimap to cope with this (handling simultaneous notes with the same key)
-or, to have better memori locality than std::multimap, and
+or, to have better memory locality than std::multimap, and
 since we'll never have more than say 100 notes at the same time we could use a vector.
 
 - make it possible to use the carrier as direct input to analysis.
@@ -39,7 +39,7 @@ Vocoder:
 
 - Do we need some low pass filtering on the band coefficients?
 
-- multilevel fft to have fast reactions for high frequencies, and better slower detetction of low frequencies
+- multilevel fft to have fast reactions for high frequencies, and better slower detection of low frequencies
 
 - https://www.soundonsound.com/techniques/introduction-esps-vocoders
 in one band, use white noise to make speech more intelligible

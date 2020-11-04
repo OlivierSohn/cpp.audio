@@ -149,28 +149,243 @@ inline void from_json(const json& j, Preset& p) {
   p.fromjson(j);
 }
 
+enum class Postprocessing {
+  None,
+  Limit
+};
 
-inline void readPresetFromFile(std::string const & str,
-                               Preset & preset) {
+inline std::ostream & operator <<(std::ostream & os, Postprocessing const& p) {
+  switch(p) {
+    case Postprocessing::None:
+      os << "none";
+      break;
+    case Postprocessing::Limit:
+      os << "limit";
+      break;
+  }
+  return os;
+}
+inline void from_string(std::string const & str, Postprocessing & p) {
+  if (str == "none") {
+    p = Postprocessing::None;
+  } else if(str == "limit") {
+    p = Postprocessing::Limit;
+  } else {
+    throw std::runtime_error("bad encoding");
+  }
+}
+
+class RtResynthOfflineJob;
+
+/*
+ Represents a job config for RtResynth.
+ */
+struct RtResynthOfflineJobConfig {
+  friend class RtResynthOfflineJob;
+  
+  void tojson(json& j) const {
+    std::ostringstream os_post;
+    os_post << post;
+    
+    j = json{
+      {"preset_file", preset_file},
+      {"input_voice_file", input_voice_file},
+      {"input_carrier_file", input_carrier_file},
+      {"output_file", output_file},
+      {"post", os_post.str()}
+    };
+  }
+  
+  void fromjson(const json& j) {
+    preset_file = j.at("preset_file");
+    input_voice_file = j.at("input_voice_file");
+    input_carrier_file = j.at("input_carrier_file");
+    output_file = j.at("output_file");
+    std::string str = j.at("post");
+    from_string(str, post);
+  }
+  
+private:
+  std::string preset_file;
+  Postprocessing post;
+  std::string input_voice_file, input_carrier_file;
+  std::string output_file;
+};
+
+inline void to_json(json& j, const RtResynthOfflineJobConfig& p) {
+  p.tojson(j);
+}
+
+inline void from_json(const json& j, RtResynthOfflineJobConfig& p) {
+  p.fromjson(j);
+}
+
+
+template<typename T>
+void readFromJsonFile(std::string const & str,
+                      T & obj) {
   json j;
   {
     std::ifstream file;
     file.open (str);
     file >> j;
   }
-  from_json(j, preset);
+  from_json(j, obj);
 }
 
-inline void writePresetToFile(std::string const & str,
-                              Preset const & preset) {
+template<typename T>
+void writeToJsonFile(std::string const & str,
+                     T const & obj) {
   std::ofstream file;
   file.open (str);
   
   json j;
-  to_json(j, preset);
+  to_json(j, obj);
   
   file << std::setw(2) << j << std::endl;
 }
+
+
+struct RtResynthOfflineJob {
+  using output_T = float; // TODO use double
+  
+  RtResynthOfflineJob(RtResynthOfflineJobConfig const & c)
+  : post(c.post) {
+    try {
+      readFromJsonFile(c.preset_file,
+                       preset);
+    } catch(std::exception const & e) {
+      std::cerr << "Reading preset file '" << c.preset_file << "': " << e.what() << std::endl;
+      throw;
+    }
+    
+    load_reader(c.input_voice_file,
+                input_voice_reader);
+    load_reader(c.input_carrier_file,
+                input_carrier_reader);
+    
+    if (input_voice_reader) {
+      sample_rate = input_voice_reader->getSampleRate();
+    }
+    if (input_carrier_reader) {
+      auto r = input_voice_reader->getSampleRate();
+      if (sample_rate && *sample_rate != r) {
+        throw std::runtime_error("sample rate mismatch between carrier and voice");
+      }
+      sample_rate = r;
+    }
+    if (!sample_rate) {
+      throw std::runtime_error("must havee at least one of carrier or voice");
+    }
+
+    make_writer(c.output_file,
+                output_writer);
+  }
+  
+  int get_samplerate() const {
+    return *sample_rate;
+  }
+  
+  bool has_more_carrier() const {
+    return input_carrier_reader && input_carrier_reader->HasMore();
+  }
+
+  bool has_more_voice() const {
+    return input_voice_reader && input_voice_reader->HasMore();
+  }
+
+  template<typename T>
+  void read_carrier(T & v) {
+    if (input_carrier_reader && input_carrier_reader->HasMore()) {
+      v = input_carrier_reader->ReadAsOneFloat<T>();
+    } else {
+      v = 0;
+    }
+  }
+
+  template<typename T>
+  void read_voice(T & v) {
+    if (input_voice_reader && input_voice_reader->HasMore()) {
+      v = input_voice_reader->ReadAsOneFloat<T>();
+    } else {
+      v = 0;
+    }
+  }
+  
+  int count_outputs() const {
+    Assert(output_writer);
+    return output_writer->count_channels();
+  }
+
+  void write_output(output_T * v, int nSamples) {
+    for (int i=0; i<nSamples; ++i) {
+      output_writer->writeSample(v[i]);
+    }
+  }
+
+  Preset const & getPreset() const {
+    return preset;
+  }
+  
+  Postprocessing getPostprocessing() const {
+    return post;
+  }
+
+private:
+  Preset preset;
+  Postprocessing post;
+  std::unique_ptr<WAVReader> input_carrier_reader;
+  std::unique_ptr<WAVReader> input_voice_reader;
+  std::unique_ptr<WAVWriter> output_writer;
+  std::optional<int> sample_rate;
+
+  void make_writer(std::string const & filename,
+                   std::unique_ptr<WAVWriter> & writer) {
+    if (filename.empty()) {
+      throw std::runtime_error("no output file");
+    }
+    std::filesystem::path p(filename);
+    
+    
+    auto header = pcm(WaveFormat::IEEE_FLOAT,
+                      *sample_rate,
+                      NChannels::TWO,
+                      AudioSample<output_T>::format);
+    
+    writer = std::make_unique<WAVWriter>(p.parent_path().native(),
+                                         p.filename(),
+                                         header);
+    
+    try {
+      writer->Initialize();
+    }
+    catch(std::exception const & e) {
+      throw std::runtime_error("failed to write wav file");
+    }
+  }
+  void load_reader(std::string const & filename,
+                   std::unique_ptr<WAVReader> & reader) {
+    if (filename.empty()) {
+      return;
+    }
+    std::filesystem::path p(filename);
+    
+    reader = std::make_unique<WAVReader>(p.parent_path().native(),
+                                         p.filename());
+    
+    try {
+      reader->Initialize();
+    }
+    catch(std::exception const & e) {
+      throw std::runtime_error("failed to read wav file '" + filename + "':" + e.what());
+    }
+    
+    if (reader->countChannels() != 1) {
+      throw std::runtime_error("single channel only");
+    }
+  }
+  
+};
 
 }
 
