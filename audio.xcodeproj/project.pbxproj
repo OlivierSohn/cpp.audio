@@ -511,7 +511,7 @@
 		09A8F2291E442C3A0071C141 /* soundengine.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = soundengine.cpp; path = source/soundengine.cpp; sourceTree = "<group>"; };
 		09B01D4025152EE10068FCFD /* unity.build.rt.resynth.ui.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = unity.build.rt.resynth.ui.cpp; path = source/unity.build.rt.resynth.ui.cpp; sourceTree = "<group>"; };
 		09B01D4A25152EE10068FCFD /* rt.resynth.lib.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = rt.resynth.lib.cpp; path = source/rt.resynth.lib.cpp; sourceTree = "<group>"; };
-		09B01D5B25152F0A0068FCFD /* rt.resynth */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = rt.resynth; sourceTree = BUILT_PRODUCTS_DIR; };
+		09B01D5B25152F0A0068FCFD /* rt.resynth */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; name = rt.resynth; path = rt.resynth.ui; sourceTree = BUILT_PRODUCTS_DIR; };
 		09B01D5D251534210068FCFD /* libportaudio_static.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libportaudio_static.a; path = "../portaudio-products/libportaudio_static.a"; sourceTree = "<group>"; };
 		09B01D5F251536DF0068FCFD /* libportaudio.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libportaudio.a; path = ../../../../usr/local/Cellar/portaudio/HEAD/lib/libportaudio.a; sourceTree = "<group>"; };
 		09B01D61251679BA0068FCFD /* events.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = events.cpp; path = source/events.cpp; sourceTree = "<group>"; };
@@ -1645,6 +1645,7 @@
 					/usr/local/Cellar/portmidi/217_2/lib,
 				);
 				MACOSX_DEPLOYMENT_TARGET = 10.15;
+				ONLY_ACTIVE_ARCH = YES;
 				OTHER_CFLAGS = (
 					"-D_FILE_OFFSET_BITS=64",
 					"-DWXUSINGDLL",
@@ -1673,6 +1674,7 @@
 					/usr/local/Cellar/portmidi/217_2/lib,
 				);
 				MACOSX_DEPLOYMENT_TARGET = 10.15;
+				ONLY_ACTIVE_ARCH = YES;
 				OTHER_CFLAGS = (
 					"-D_FILE_OFFSET_BITS=64",
 					"-DWXUSINGDLL",

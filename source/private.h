@@ -17,9 +17,11 @@ extern const fenv_t _FE_DFL_DISABLE_SSE_DENORMS_ENV;
 
 #else
 
+# if defined(__x86_64__)
 // on ios produces errors like "Use of undeclared identifier __builtin_ia32_emms"
-# if __has_include(<xmmintrin.h>)
+#  if __has_include(<xmmintrin.h>)
 #   include <xmmintrin.h>
+#  endif
 # endif
 
 #endif
