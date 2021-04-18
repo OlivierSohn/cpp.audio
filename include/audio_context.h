@@ -213,7 +213,7 @@ public:
     }
     return false;
   }
-
+    
   template<typename Algo>
   [[nodiscard]] bool playComputable(PackedRequestParams<nAudioOut> params,
                                     audioelement::FinalAudioElement<Algo> & e) {

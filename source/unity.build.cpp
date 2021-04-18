@@ -13,7 +13,9 @@
 # if TARGET_OS_IOS
 #  include "audio_platform_au.cpp"
 # else
-#  include "audio_platform_pa.cpp"
+#  ifndef __EMSCRIPTEN__
+#   include "audio_platform_pa.cpp"
+#  endif
 # endif
 #endif
 #include "audio_context.cpp"

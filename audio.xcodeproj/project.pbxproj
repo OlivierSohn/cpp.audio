@@ -98,7 +98,6 @@
 		098FFD8A255224DE0082A9AB /* libaudio.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 09FF3F231E36EBBB00C81351 /* libaudio.a */; };
 		098FFD8C255224DE0082A9AB /* Info.plist in CopyFiles */ = {isa = PBXBuildFile; fileRef = 09B01D9C25168CB40068FCFD /* Info.plist */; };
 		098FFD8E255224DE0082A9AB /* libportmidi.dylib in Embed Libraries */ = {isa = PBXBuildFile; fileRef = 099B6D22253CC419003E4929 /* libportmidi.dylib */; settings = {ATTRIBUTES = (CodeSignOnCopy, ); }; };
-		098FFD96255225A00082A9AB /* unity.build.rt.resynth.job.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 098FFD95255225A00082A9AB /* unity.build.rt.resynth.job.cpp */; };
 		099B6D23253CC419003E4929 /* libportmidi.dylib in Frameworks */ = {isa = PBXBuildFile; fileRef = 099B6D22253CC419003E4929 /* libportmidi.dylib */; };
 		099B6D24253CC419003E4929 /* libportmidi.dylib in Embed Libraries */ = {isa = PBXBuildFile; fileRef = 099B6D22253CC419003E4929 /* libportmidi.dylib */; settings = {ATTRIBUTES = (CodeSignOnCopy, ); }; };
 		099E06E11E36EC720012348E /* unity.build.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 099E06E01E36EC6D0012348E /* unity.build.cpp */; };
@@ -431,6 +430,7 @@
 		09432291252A2B0000C8B64E /* libwx_osx_cocoau_html-3.1.4.0.0.dylib */ = {isa = PBXFileReference; lastKnownFileType = "compiled.mach-o.dylib"; name = "libwx_osx_cocoau_html-3.1.4.0.0.dylib"; path = "../wxWidgets-3.1.4/build-cocoa-debug/lib/libwx_osx_cocoau_html-3.1.4.0.0.dylib"; sourceTree = "<group>"; };
 		09432292252A2B0000C8B64E /* libwx_osx_cocoau_core-3.1.4.0.0.dylib */ = {isa = PBXFileReference; lastKnownFileType = "compiled.mach-o.dylib"; name = "libwx_osx_cocoau_core-3.1.4.0.0.dylib"; path = "../wxWidgets-3.1.4/build-cocoa-debug/lib/libwx_osx_cocoau_core-3.1.4.0.0.dylib"; sourceTree = "<group>"; };
 		09432293252A2B0000C8B64E /* libwx_osx_cocoau_qa-3.1.4.0.0.dylib */ = {isa = PBXFileReference; lastKnownFileType = "compiled.mach-o.dylib"; name = "libwx_osx_cocoau_qa-3.1.4.0.0.dylib"; path = "../wxWidgets-3.1.4/build-cocoa-debug/lib/libwx_osx_cocoau_qa-3.1.4.0.0.dylib"; sourceTree = "<group>"; };
+		0947A77E262B8D9B00EED38C /* unity.build.birds.lib.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = unity.build.birds.lib.cpp; path = source/unity.build.birds.lib.cpp; sourceTree = "<group>"; };
 		094BFE3420B80D32001F1D81 /* audio_platform_au.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = audio_platform_au.h; path = include/audio_platform_au.h; sourceTree = "<group>"; };
 		094BFE3E20B80D8D001F1D81 /* audio_platforms.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = audio_platforms.h; path = include/audio_platforms.h; sourceTree = "<group>"; };
 		094BFE3F20B80DF7001F1D81 /* audio_platform_pa.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = audio_platform_pa.h; path = include/audio_platform_pa.h; sourceTree = "<group>"; };
@@ -454,7 +454,6 @@
 		096C6D631E9F860300389746 /* main.wir_2_wav.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = main.wir_2_wav.cpp; path = source/main.wir_2_wav.cpp; sourceTree = "<group>"; };
 		096C6D641E9F860300389746 /* unity.build.wir_2_wav.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = unity.build.wir_2_wav.cpp; path = source/unity.build.wir_2_wav.cpp; sourceTree = "<group>"; };
 		097D56B71E86D14000018F14 /* os.storage.xcodeproj */ = {isa = PBXFileReference; lastKnownFileType = "wrapper.pb-project"; name = os.storage.xcodeproj; path = /Users/Olivier/Dev/cpp.os.storage/os.storage.xcodeproj; sourceTree = "<absolute>"; };
-		097D56C71E86D42D00018F14 /* samples.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = samples.h; path = include/samples.h; sourceTree = "<group>"; };
 		097D56C81E86D42D00018F14 /* loudness_filter_coefficients_gen.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = loudness_filter_coefficients_gen.h; path = include/loudness_filter_coefficients_gen.h; sourceTree = "<group>"; };
 		097D56CC1E86DCA000018F14 /* CoreFoundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreFoundation.framework; path = System/Library/Frameworks/CoreFoundation.framework; sourceTree = SDKROOT; };
 		097D56CE1E86DCB600018F14 /* CoreGraphics.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreGraphics.framework; path = System/Library/Frameworks/CoreGraphics.framework; sourceTree = SDKROOT; };
@@ -479,7 +478,6 @@
 		098FFD92255224DE0082A9AB /* rt.resynth.job */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = rt.resynth.job; sourceTree = BUILT_PRODUCTS_DIR; };
 		098FFD93255224DE0082A9AB /* rt.resynth copy2-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; name = "rt.resynth copy2-Info.plist"; path = "/Users/Olivier/Dev/cpp.audio/rt.resynth copy2-Info.plist"; sourceTree = "<absolute>"; };
 		098FFD94255225480082A9AB /* unity.build.rt.resynth.lib.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = unity.build.rt.resynth.lib.cpp; path = source/unity.build.rt.resynth.lib.cpp; sourceTree = "<group>"; };
-		098FFD95255225A00082A9AB /* unity.build.rt.resynth.job.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = unity.build.rt.resynth.job.cpp; path = source/unity.build.rt.resynth.job.cpp; sourceTree = "<group>"; };
 		099B6CF6253CBF12003E4929 /* rt.resynth.lib.midi.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = rt.resynth.lib.midi.cpp; path = source/rt.resynth.lib.midi.cpp; sourceTree = "<group>"; };
 		099B6D22253CC419003E4929 /* libportmidi.dylib */ = {isa = PBXFileReference; lastKnownFileType = "compiled.mach-o.dylib"; name = libportmidi.dylib; path = ../../../../usr/local/Cellar/portmidi/217_2/lib/libportmidi.dylib; sourceTree = "<group>"; };
 		099B6E78253F0F2A003E4929 /* rt.resynth.ui.vocoder.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = rt.resynth.ui.vocoder.cpp; path = source/rt.resynth.ui.vocoder.cpp; sourceTree = "<group>"; };
@@ -767,8 +765,6 @@
 		099E06E21E36EC7F0012348E /* source */ = {
 			isa = PBXGroup;
 			children = (
-				098FFD95255225A00082A9AB /* unity.build.rt.resynth.job.cpp */,
-				098FFD94255225480082A9AB /* unity.build.rt.resynth.lib.cpp */,
 				09F16A8520B7168200555324 /* audio_context.cpp */,
 				094BFE4120B81A49001F1D81 /* audio_platform_au.cpp */,
 				094BFE4220B825A0001F1D81 /* audio_platform_pa.cpp */,
@@ -808,10 +804,12 @@
 				099E06DF1E36EC6D0012348E /* sound.cpp */,
 				09A8F2291E442C3A0071C141 /* soundengine.cpp */,
 				095C352A2523B0AA0079CC4D /* unity.build.birds.cpp */,
+				0947A77E262B8D9B00EED38C /* unity.build.birds.lib.cpp */,
 				099E06E01E36EC6D0012348E /* unity.build.cpp */,
 				098474071E8058EE0014465E /* unity.build.genheaders.cpp */,
 				093A24C81E9B8C47009874DF /* unity.build.joinnonzeros.cpp */,
 				093671B22514B7B600620289 /* unity.build.resynth.cpp */,
+				098FFD94255225480082A9AB /* unity.build.rt.resynth.lib.cpp */,
 				09B01D4025152EE10068FCFD /* unity.build.rt.resynth.ui.cpp */,
 				093A24E31E9B8D73009874DF /* unity.build.testfft.cpp */,
 				096C6D641E9F860300389746 /* unity.build.wir_2_wav.cpp */,
@@ -856,7 +854,6 @@
 				099E06E91E36EC920012348E /* public.h */,
 				099E06EA1E36EC920012348E /* request.h */,
 				093671D32514E2A300620289 /* resynth.hpp */,
-				097D56C71E86D42D00018F14 /* samples.h */,
 				09529DFD1E439F2700705B99 /* smoothparam.h */,
 				099E06EB1E36EC920012348E /* sound.defines.h */,
 				099E06EC1E36EC920012348E /* sound.functions.h */,
@@ -1352,7 +1349,6 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				098FFD96255225A00082A9AB /* unity.build.rt.resynth.job.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

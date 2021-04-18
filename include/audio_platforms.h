@@ -45,11 +45,12 @@ extern int wait_for_first_n_audio_cb_frames();
 struct AsyncWavWriter {
   static constexpr float queueCapacityInSecondsOfAudioSignal = 1.;
   
-  AsyncWavWriter(int nAudioChans, int sampleRate, std::string const & prefix)
+  AsyncWavWriter(int nAudioChans, int sampleRate, std::string const & prefix, std::optional<int> const maxSamples = {})
   : n_audio_chans(nAudioChans)
   , sample_rate(sampleRate)
   , queue(queueCapacityInSecondsOfAudioSignal * (sampleRate * nAudioChans))
-  , active(true) {
+  , active(true)
+  , m_maxSamples(maxSamples){
     thread = std::make_unique<std::thread>([this, prefix]() {
     auto rootDir = "/Users/Olivier/dev/hs.hamazed/";
 #if 0
@@ -91,10 +92,14 @@ struct AsyncWavWriter {
       LG(INFO, "Audio debug : opened '%s' in '%s' to write audio", filename.c_str(), rootDir);
     }
     
+    int countSamples = 0;
     while (true) {
       SAMPLE val;
       while (queue.try_pop(val)) {
         writer.writeSample(val);
+        ++countSamples;
+        if (m_maxSamples && *m_maxSamples < countSamples)
+          return;
       }
       if (!active) {
         break;
@@ -140,6 +145,7 @@ private:
   std::atomic_bool active;
   std::unique_ptr<std::thread> thread;
 
+  std::optional<int> m_maxSamples;
   int const n_audio_chans;
   int const sample_rate;
 };
