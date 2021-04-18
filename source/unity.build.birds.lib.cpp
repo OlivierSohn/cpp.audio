@@ -49,7 +49,9 @@ constexpr unsigned kBytesPerChannel = kRenderQuantumFrames * sizeof(float);
 
 struct Birds {
     Birds(int const sample_rate);
+    static int countPrograms() { return decltype(synth)::getPrograms().size(); }
 
+    void useProgram(int program_index);
     void process(uintptr_t inputBuffer, int nInputChannels, uintptr_t outputBuffer, int nOutputChannels);
 
     void teardown();
@@ -76,13 +78,21 @@ private:
 
     using Synth = audioelement::Voice<nAudioOut, audioEnginePolicy, mode>;
 
+    int const sample_rate;
     Synth synth;
+    std::optional<int> program;
     Stepper stepper;
     uint64_t nanos_per_audioelement_buffer;
 
 #if IMJ_DEBUG_AUDIO_OUT
     std::unique_ptr<AsyncWavWriter> async_wav_writer_out;
 #endif
+    
+    auto mk_note_id() {
+        static int64_t i = 0;
+        ++i;
+        return NoteId{i};
+    }
 };
 
 Birds::Birds(int const sample_rate)
@@ -92,6 +102,7 @@ Birds::Birds(int const sample_rate)
 , stepper(GlobalAudioLock<audioEnginePolicy>::get(),
           Synth::n_channels * 4 /* one shot */,
           1 /* a single compute is needed (global for the synth)*/)
+, sample_rate(sample_rate)
 {
 #if IMJ_DEBUG_AUDIO_OUT
     async_wav_writer_out = std::make_unique<AsyncWavWriter>(nAudioOut,
@@ -99,32 +110,34 @@ Birds::Birds(int const sample_rate)
                                                             "debug_audioout",
                                                             sample_rate * 3);
 #endif
-    auto mk_note_id = [] {
-        static int64_t i = 0;
-        ++i;
-        return NoteId{i};
-    };
-
     synth.initialize(stepper);
 
     auto & v = synth;
     v.initializeSlow(); // does something only the 1st time
+    v.set_loudness_compensation(.2f); // birds do not naturally emit loudness compensated frequencies!
+}
 
+/*
+ If the program index is different from the current program, a new note is triggered
+ */
+void Birds::useProgram(int program_index) {
+    program_index = std::min(program_index,
+                             synth.countPrograms()-1);
+    if (program && *program == program_index)
+        return;
+    program = program_index;
+    
     std::optional<NoteId> noteid;
-
-    const int program_index = std::min(6,
-                                       v.countPrograms()-1);
+    
     // for 7 (Light rain in a car) we use 1 ms per cb (filter order is 89 !!!).
     // for 6 (Light rain) we use 0.2 ms
-    v.useProgram(program_index); // keep it first as it reinitializes params
-    std::cout << "using program '" << v.getProgram(program_index).name << "'" << std::endl;
-
-    v.set_loudness_compensation(.2f); // birds do not naturally emit loudness compensated frequencies!
-
+    synth.useProgram(program_index); // keep it first as it reinitializes params
+    //std::cout << "using program '" << synth.getProgram(program_index).name << "'" << std::endl;
+    
     noteid = mk_note_id();
     float volume = 1.f;
     float frequency = 200.f;
-
+    
     auto const res  = synth.onEvent(sample_rate,
                                     mkNoteOn(*noteid,
                                              frequency,
@@ -132,7 +145,7 @@ Birds::Birds(int const sample_rate)
                                     stepper,
                                     stepper,
                                     {});
-    std::cout << *noteid << ": pitch " << frequency << " vol " << volume << " " << res << std::endl;
+    //std::cout << *noteid << ": pitch " << frequency << " vol " << volume << " " << res << std::endl;
 }
 
 void Birds::process(uintptr_t inputBuffer, int nInputChannels, uintptr_t outputBuffer, int nOutputChannels) {
@@ -168,6 +181,8 @@ using namespace imajuscule::audio;
 EMSCRIPTEN_BINDINGS(birdsModule) {
     class_<Birds>("Birds")
     .constructor<int const>()
+    .class_function("countPrograms", &Birds::countPrograms)
+    .function("useProgram", &Birds::useProgram)
     .function("process", &Birds::process, allow_raw_pointers())
     ;
 }

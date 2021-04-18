@@ -9,6 +9,16 @@ import { RENDER_QUANTUM_FRAMES, MAX_CHANNEL_COUNT, HeapAudioBuffer }
  * @extends AudioWorkletProcessor
  */
 class WASMBirdWorkletProcessor extends AudioWorkletProcessor {
+  static get parameterDescriptors () {
+    return [{
+      name: 'program',
+      defaultValue: 0,
+      minValue: 0,
+      maxValue: Module.Birds.countPrograms() - 1,
+      automationRate: 'k-rate'
+    }]
+  }
+
   /**
    * @constructor
    */
@@ -51,6 +61,7 @@ class WASMBirdWorkletProcessor extends AudioWorkletProcessor {
     for (let channel = 0; channel < inputChannelCount; ++channel) {
       this._heapInputBuffer.getChannelData(channel).set(input[channel]);
     }
+    this._kernel.useProgram(Math.round(parameters['program'][0]));
     this._kernel.process(this._heapInputBuffer.getHeapAddress(),
                          inputChannelCount,
                          this._heapOutputBuffer.getHeapAddress(),
