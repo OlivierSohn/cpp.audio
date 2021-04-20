@@ -15,6 +15,7 @@ emcc --bind \
      -s WASM=1 \
      -s BINARYEN_ASYNC_COMPILATION=0 \
      -s SINGLE_FILE=1 \
+     -s INITIAL_MEMORY=65536000 \
      -o $OUTPUT \
      $INPUT \
      -I ./include \
@@ -24,6 +25,7 @@ emcc --bind \
      -I /usr/local/Cellar/boost/1.65.1/include/ \
      -I ../cpp.algorithms/3rdparty/Sprout \
      -I ../cpp.algorithms/3rdparty/json/include \
+     -DNDEBUG \
      -std=c++17 \
      -fconstexpr-steps=100000000 \
      -fconstexpr-depth=1000
