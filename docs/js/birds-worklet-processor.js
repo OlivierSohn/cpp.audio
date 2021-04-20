@@ -14,7 +14,7 @@ class WASMBirdWorkletProcessor extends AudioWorkletProcessor {
       name: 'program',
       defaultValue: 0,
       minValue: 0,
-      maxValue: Module.Birds.countPrograms() - 1,
+      maxValue: Module.Birds.maxCountPrograms() - 1,
       automationRate: 'k-rate'
     }]
   }
@@ -22,8 +22,8 @@ class WASMBirdWorkletProcessor extends AudioWorkletProcessor {
   /**
    * @constructor
    */
-  constructor() {
-    super();
+  constructor(options) {
+    super(options);
 
     // Allocate the buffer for the heap access. Start with stereo, but it can
     // be expanded up to 32 channels.
@@ -31,8 +31,8 @@ class WASMBirdWorkletProcessor extends AudioWorkletProcessor {
                                                 2, MAX_CHANNEL_COUNT);
     this._heapOutputBuffer = new HeapAudioBuffer(Module, RENDER_QUANTUM_FRAMES,
                                                  2, MAX_CHANNEL_COUNT);
-
-    this._kernel = new Module.Birds(sampleRate);
+    let synthType = options.processorOptions.synthType
+    this._kernel = new Module.Birds(sampleRate, synthType);
   }
 
   /**

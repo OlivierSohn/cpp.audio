@@ -4,20 +4,33 @@
   <meta charset="utf-8">
   <title>Play sounds</title>
   <style>
-  p {
-    margin: 4px;
+  div {
+    margin: 0 auto;
+    width: 50%;
+    font-size: 16px;
+    font-weight: bolder;
+  }
+  button {
+    margin: 10px;
     font-size: 16px;
     font-weight: bolder;
   }
   .active {
-    background: green;
+    background: lightblue;
   }
   </style>
-  <script src="https://code.jquery.com/jquery-3.5.0.js"></script>
 </head>
 <body>
 
- <button onclick="onStartStop()" id="startStop">Start sound</button>
+ <div>
+  <button onclick="onStartStop(0)">Birds</button>
+  <button onclick="onStartStop(1)">Robots</button>
+  <button onclick="onStartStop(2)">Wind</button>
+ </div>
+
+ <div id="programDiv">
+ </div>
+
  <script src="js/birds.src.js"></script>
 
 </body>

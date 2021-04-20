@@ -1,19 +1,36 @@
 var audioContext
-onStartStop = async function() {
-  button = document.getElementById("startStop")
+var node
+var curSynthType
+
+removeButtons = function() {
+  let oldButtons = document.getElementsByClassName('.program')
+  while(oldButtons && oldButtons.length){
+    oldButtons[0].remove()
+  }
+}
+
+onStartStop = async function(synthType) {
+  removeButtons()
+  if(node) {
+    node.disconnect()
+    node = null
+  }
+  let sameSynth = false
+  if (curSynthType !== null && (curSynthType == synthType)) {
+    sameSynth = true
+  }
   if (audioContext)
   {
-    if (audioContext.state === "running"){
-      audioContext.suspend()
-      button.innerHTML = "Start sound"
-      let oldButtons = document.getElementsByClassName('.program')
-      while(oldButtons && oldButtons.length){
-        oldButtons[0].remove()
+    if (sameSynth)
+    {
+      if (audioContext.state === "running")
+      {
+        audioContext.suspend()
+        curSynthType = null
+        return
       }
-      return
     }
-    else
-      audioContext.resume()
+    audioContext.resume()
   }
   else {
     var AudioContext = window.AudioContext // Default
@@ -25,7 +42,7 @@ onStartStop = async function() {
       alert("Sorry, but the Web Audio API is not supported by your browser. Please, consider upgrading to the latest version or downloading Google Chrome or Mozilla Firefox");
     }
   }
-  button.innerHTML = "Stop sound"
+  curSynthType = synthType
 
   modname = 'birds-worklet-processor'
 
@@ -35,15 +52,22 @@ onStartStop = async function() {
     alert("Sorry, but your browser might not be supported. Please, consider using Google Chrome instead.");
     throw( error );
   }
-  const node = new AudioWorkletNode(audioContext, modname)
+  node = new AudioWorkletNode(audioContext, modname, {processorOptions:{'synthType':synthType}})
   const programParam = node.parameters.get('program')
 
+  let programCount = [
+    9,  // birds
+    2,  // robots
+    14 // wind
+   ]
+
+  var div = document.getElementById('programDiv');
   var activeBtn = null
   var i = Math.round(programParam.minValue);
-  var end=Math.round(programParam.maxValue);
+  var end=programCount[synthType]-1//Math.round(programParam.maxValue);
   for(; i <= end; ++i) {
     var btn = document.createElement('button')
-    btn.innerHTML = 'Program ' + i;
+    btn.innerHTML = 'Program ' + (i + 1);
     btn.classList.add('.program');
     (function () {
       var curBtn = btn
@@ -56,7 +80,7 @@ onStartStop = async function() {
         programParam.setValueAtTime(curI, audioContext.currentTime)
       };
     })();
-    document.body.appendChild(btn);
+    div.appendChild(btn)
     if (!activeBtn) {
       activeBtn = btn
     }
