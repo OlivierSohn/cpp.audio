@@ -219,8 +219,8 @@ private:
 
     Preset preset;
     savePresetFunc(preset);
-    writePresetToFile(saveFileDialog.GetPath().ToStdString(),
-                      preset);
+    writeToJsonFile(saveFileDialog.GetPath().ToStdString(),
+                    preset);
   }
 
   void OnLoadPreset(wxCommandEvent& event) {
@@ -245,8 +245,8 @@ private:
   void loadPreset(std::string const & str) {
     Preset preset;
     try {
-      readPresetFromFile(str,
-                         preset);
+      readFromJsonFile(str,
+                       preset);
     } catch (std::exception & e) {
       std::cerr << "readPresetFromFile '" << str << "':" << e.what() << std::endl;
       return;

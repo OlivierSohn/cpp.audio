@@ -15,8 +15,8 @@
             <BuildableReference
                BuildableIdentifier = "primary"
                BlueprintIdentifier = "09B01D4B25152F0A0068FCFD"
-               BuildableName = "rt.resynth"
-               BlueprintName = "rt.resynth"
+               BuildableName = "rt.resynth.ui"
+               BlueprintName = "rt.resynth.ui"
                ReferencedContainer = "container:audio.xcodeproj">
             </BuildableReference>
          </BuildActionEntry>
@@ -45,8 +45,8 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "09B01D4B25152F0A0068FCFD"
-            BuildableName = "rt.resynth"
-            BlueprintName = "rt.resynth"
+            BuildableName = "rt.resynth.ui"
+            BlueprintName = "rt.resynth.ui"
             ReferencedContainer = "container:audio.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
@@ -62,8 +62,8 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "09B01D4B25152F0A0068FCFD"
-            BuildableName = "rt.resynth"
-            BlueprintName = "rt.resynth"
+            BuildableName = "rt.resynth.ui"
+            BlueprintName = "rt.resynth.ui"
             ReferencedContainer = "container:audio.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>

@@ -192,7 +192,7 @@ struct Channels {
     
     return res;
   }
-  
+
   void closeAllChannels(int xfade) {
     LockFromNRT l(get_lock());
     enqueueOneShot([xfade](auto&chans, uint64_t){
@@ -390,7 +390,7 @@ private:
     }
     return res;
   }
-  
+
   void convert_to_autoclosing(uint8_t channel_id) {
     Assert(autoclosing_ids.size() < autoclosing_ids.capacity());
     // else logic error : some users closed manually some autoclosing channels

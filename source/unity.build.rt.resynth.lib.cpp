@@ -3,15 +3,6 @@
 //#define IMJ_LOG_MIDI 1
 //#define IMJ_DEBUG_VOCODER 1
 
-#include <mutex>
-#include <iostream>
-
-#include <wx/wxprec.h>
-#ifndef WX_PRECOMP
-# include <wx/wx.h>
-#endif
-#include <wx/dcbuffer.h>
-
 #include "public.h"
 
 #include "rt.resynth.lib.midi.cpp"
@@ -25,9 +16,3 @@
 #include "rt.resynth.lib.test.cpp"
 #include "rt.resynth.lib.params.cpp"
 #include "rt.resynth.lib.cpp"
-
-#include "rt.resynth.ui.params.cpp"
-#include "rt.resynth.ui.analysis.cpp"
-#include "rt.resynth.ui.vocoder.cpp"
-#include "rt.resynth.ui.autotune.cpp"
-#include "rt.resynth.ui.cpp"

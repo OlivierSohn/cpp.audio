@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Play sounds</title>
+  <style>
+  div {
+    margin: 0 auto;
+    width: 50%;
+    font-size: 16px;
+    font-weight: bolder;
+  }
+  button {
+    margin: 10px;
+    font-size: 16px;
+    font-weight: bolder;
+  }
+  .active {
+    background: lightblue;
+  }
+  </style>
+</head>
+<body>
+
+ <div>
+  <button onclick="onStartStop(0)">Birds</button>
+  <button onclick="onStartStop(1)">Robots</button>
+  <button onclick="onStartStop(2)">Wind</button>
+ </div>
+
+ <div id="programDiv">
+ </div>
+
+ <script src="js/birds.src.js"></script>
+
+</body>
+</html>

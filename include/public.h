@@ -40,8 +40,10 @@
 #  import <AudioToolbox/AudioToolbox.h>
 #  include "audio_platform_au.h"
 # else
-#  include "portaudio.h"
-#  include "audio_platform_pa.h"
+#  ifndef __EMSCRIPTEN__
+#   include "portaudio.h"
+#   include "audio_platform_pa.h"
+#  endif  // __EMSCRIPTEN__
 # endif
 #endif
 
