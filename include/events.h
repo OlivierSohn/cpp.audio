@@ -55,12 +55,12 @@ struct Event
   Event(EventType t, NoteId const & n)
   : type(t)
   , noteid(n) {}
-  
+
   EventType type;
-  
+
   // identifies the note, doesn't change during the lifetime of the note
   NoteId noteid;
-  
+
   union
   {
     NoteOnEvent noteOn;                ///< type == kNoteOnEvent
@@ -110,12 +110,12 @@ int getNextEventPosition(EventIterator it, EventIterator end) {
 struct IEventList
 {
   int getEventCount () const { return events.size(); }
-  
+
   Event const & getEvent (int32_t index) const {
     Assert(index < events.size());
     return events[index];
   }
-  
+
   std::vector<Event> events;
 };
 
@@ -127,7 +127,7 @@ enum class Iterator {
 
 struct EventIterator {
   using iterator = EventIterator;
-  
+
   EventIterator(IEventList * l, Iterator i)
   : list(l)
   , cur(0)
@@ -142,12 +142,12 @@ struct EventIterator {
       }
     }
   }
-  
+
   iterator& operator++() { // prefix increment
     ++cur;
     return *this;
   }
-  
+
   bool operator ==(iterator const & o) const {
     return list == o.list && cur == o.cur;
   }
@@ -186,7 +186,7 @@ struct MIDITimestampAndSource {
   uint64_t getSourceKey() const {
     return src_key;
   }
-  
+
 private:
   uint64_t time, src_key;
 };
@@ -194,7 +194,7 @@ private:
 /*
  Can be used to generate note ids for a synth where each physical key can only be pressed
  at most once at any given time, and is identified by 'Key'.
- 
+
  The idea is the following:
 
  For every note-on event, a new unique note id is created, and associated to that
@@ -206,12 +206,12 @@ private:
  a new note id is generated.
  */
 struct NoteIdsGenerator {
-  using Key = int;
-  
+  using Key = uint64_t;
+
   NoteIdsGenerator(int approx_max_simultaneous_chans)
   : noteids(approx_max_simultaneous_chans)
   {}
-  
+
   NoteIdsGenerator(NoteIdsGenerator const &) = delete;
   NoteIdsGenerator & operator = (NoteIdsGenerator const &) = delete;
   NoteIdsGenerator(NoteIdsGenerator &&) = delete;
@@ -227,29 +227,29 @@ struct NoteIdsGenerator {
     }
     return next;
   }
-  
+
   NoteId NoteChangeId(Key const key) {
     auto it = noteids.find(key);
     if (it == noteids.end()) {
       Assert(0); // a notechange must be preceeded by noteon, and must be before noteoff
-      return {-key};
+      return {-static_cast<int64_t>(key)};
     } else {
       return it->second;
     }
   }
-  
+
   NoteId NoteOffId(Key const key) {
     auto it = noteids.find(key);
     if (it == noteids.end()) {
       Assert(0); // a noteoff must be preceded by noteon
-      return {-key};
+      return {-static_cast<int64_t>(key)};
     } else {
       auto res = it->second;
       noteids.erase(it);
       return res;
     }
   }
-  
+
   auto begin() const { return noteids.begin(); }
   auto end() const { return noteids.end(); }
 
@@ -267,9 +267,12 @@ private:
 //     Typically, for a synth played via a midi keyboard it could be the midipitch, because in a midi keyboard,
 //       there is a physical constraint that prevents the same key to be pressed twice in a row without being released first.
 //   In the output, e.noteid.noteid is the noteid that uniquely identifies the played note among all notes played currently or in the past or in the future:
+// @param voice : used to group events. a noteoff or notechange can only correspond to a noteon of the same voice.
 inline void convertKeyToNoteId(NoteIdsGenerator & gen,
-                               Event & e) {
-  int const key = static_cast<int>(e.noteid.noteid);
+                               int voice, Event & e) {
+  uint64_t const key =
+    static_cast<uint64_t>(static_cast<uint32_t>(voice)) |
+    (static_cast<uint64_t>(static_cast<uint32_t>(e.noteid.noteid)) << 32ull);
   switch(e.type) {
     case EventType::NoteOn:
       e.noteid = gen.NoteOnId(key);
