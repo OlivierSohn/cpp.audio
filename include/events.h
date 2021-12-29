@@ -1,3 +1,4 @@
+#include <deque>
 
 namespace imajuscule::audio {
 
@@ -192,18 +193,11 @@ private:
 };
 
 /*
- Can be used to generate note ids for a synth where each physical key can only be pressed
- at most once at any given time, and is identified by 'Key'.
-
- The idea is the following:
-
- For every note-on event, a new unique note id is created, and associated to that
+ For every note-on event, a new unique NoteId is created, and associated to that
  key.
- Until a "note off" event for that key is sent, subsequent "note change" events
- for that same key will use the same noteid.
- The subsequent "note off" event will also use the same noteid, and remove the association
- between the key and the note id, so that on a subsequent note-on event for that key,
- a new note id is generated.
+ We can have multiple note on events for the same key. In that case:
+ - note off events will correspond to the _earliest_ note-on
+ - note change events will correspond to the _latest_ note-on
  */
 struct NoteIdsGenerator {
   using Key = uint64_t;
@@ -219,12 +213,8 @@ struct NoteIdsGenerator {
 
   NoteId NoteOnId(Key const key) {
     next.noteid++;
-    auto it = noteids.find(key);
-    if (it == noteids.end()) {
-      noteids.emplace(key, next);
-    } else {
-      it->second = next;
-    }
+    const auto res = noteids.try_emplace(key, std::deque<NoteId>{});
+    res.first->second.push_back(next);
     return next;
   }
 
@@ -233,9 +223,9 @@ struct NoteIdsGenerator {
     if (it == noteids.end()) {
       Assert(0); // a notechange must be preceeded by noteon, and must be before noteoff
       return {-static_cast<int64_t>(key)};
-    } else {
-      return it->second;
     }
+    Assert(!it->second.empty());
+    return it->second.back();
   }
 
   NoteId NoteOffId(Key const key) {
@@ -243,11 +233,14 @@ struct NoteIdsGenerator {
     if (it == noteids.end()) {
       Assert(0); // a noteoff must be preceded by noteon
       return {-static_cast<int64_t>(key)};
-    } else {
-      auto res = it->second;
-      noteids.erase(it);
-      return res;
     }
+    Assert(!it->second.empty());
+    const auto res = it->second.front();
+    if (it->second.size() == 1)
+      noteids.erase(it);
+    else
+      it->second.pop_front();
+    return res;
   }
 
   auto begin() const { return noteids.begin(); }
@@ -258,7 +251,7 @@ struct NoteIdsGenerator {
   }
 private:
   NoteId next{};
-  std::unordered_map<Key, NoteId> noteids;
+  std::unordered_map<Key, std::deque<NoteId>> noteids;
 };
 
 // @param e [in/out] :
