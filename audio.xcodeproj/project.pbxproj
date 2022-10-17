@@ -509,7 +509,7 @@
 		09A8F2291E442C3A0071C141 /* soundengine.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = soundengine.cpp; path = source/soundengine.cpp; sourceTree = "<group>"; };
 		09B01D4025152EE10068FCFD /* unity.build.rt.resynth.ui.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = unity.build.rt.resynth.ui.cpp; path = source/unity.build.rt.resynth.ui.cpp; sourceTree = "<group>"; };
 		09B01D4A25152EE10068FCFD /* rt.resynth.lib.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = rt.resynth.lib.cpp; path = source/rt.resynth.lib.cpp; sourceTree = "<group>"; };
-		09B01D5B25152F0A0068FCFD /* rt.resynth */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; name = rt.resynth; path = rt.resynth.ui; sourceTree = BUILT_PRODUCTS_DIR; };
+		09B01D5B25152F0A0068FCFD /* rt.resynth.ui */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = rt.resynth.ui; sourceTree = BUILT_PRODUCTS_DIR; };
 		09B01D5D251534210068FCFD /* libportaudio_static.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libportaudio_static.a; path = "../portaudio-products/libportaudio_static.a"; sourceTree = "<group>"; };
 		09B01D5F251536DF0068FCFD /* libportaudio.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libportaudio.a; path = ../../../../usr/local/Cellar/portaudio/HEAD/lib/libportaudio.a; sourceTree = "<group>"; };
 		09B01D61251679BA0068FCFD /* events.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = events.cpp; path = source/events.cpp; sourceTree = "<group>"; };
@@ -909,7 +909,7 @@
 				09121CBF1EABADB500BBC64B /* mod_wav */,
 				0951A5291EB62CBB00CE4A4E /* count_channels */,
 				093671D02514B84200620289 /* resynth */,
-				09B01D5B25152F0A0068FCFD /* rt.resynth */,
+				09B01D5B25152F0A0068FCFD /* rt.resynth.ui */,
 				098432AD2523B03300F0DF48 /* birds */,
 				098FFD92255224DE0082A9AB /* rt.resynth.job */,
 			);
@@ -1108,7 +1108,7 @@
 			);
 			name = rt.resynth.ui;
 			productName = generate_filters_headers;
-			productReference = 09B01D5B25152F0A0068FCFD /* rt.resynth */;
+			productReference = 09B01D5B25152F0A0068FCFD /* rt.resynth.ui */;
 			productType = "com.apple.product-type.tool";
 		};
 		09BA14851E3877BD00A05F83 /* audio.ios */ = {
