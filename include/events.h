@@ -35,6 +35,7 @@ struct NoteOffEvent
   float velocity;      ///< range [0.0, 1.0]
 };
 
+// identifies the note, doesn't change during the lifetime of the note
 struct NoteId {
   int64_t noteid;
 
