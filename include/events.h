@@ -1,3 +1,4 @@
+#include <deque>
 
 namespace imajuscule::audio {
 
@@ -55,12 +56,12 @@ struct Event
   Event(EventType t, NoteId const & n)
   : type(t)
   , noteid(n) {}
-  
+
   EventType type;
-  
+
   // identifies the note, doesn't change during the lifetime of the note
   NoteId noteid;
-  
+
   union
   {
     NoteOnEvent noteOn;                ///< type == kNoteOnEvent
@@ -110,12 +111,12 @@ int getNextEventPosition(EventIterator it, EventIterator end) {
 struct IEventList
 {
   int getEventCount () const { return events.size(); }
-  
+
   Event const & getEvent (int32_t index) const {
     Assert(index < events.size());
     return events[index];
   }
-  
+
   std::vector<Event> events;
 };
 
@@ -127,7 +128,7 @@ enum class Iterator {
 
 struct EventIterator {
   using iterator = EventIterator;
-  
+
   EventIterator(IEventList * l, Iterator i)
   : list(l)
   , cur(0)
@@ -142,12 +143,12 @@ struct EventIterator {
       }
     }
   }
-  
+
   iterator& operator++() { // prefix increment
     ++cur;
     return *this;
   }
-  
+
   bool operator ==(iterator const & o) const {
     return list == o.list && cur == o.cur;
   }
@@ -186,32 +187,25 @@ struct MIDITimestampAndSource {
   uint64_t getSourceKey() const {
     return src_key;
   }
-  
+
 private:
   uint64_t time, src_key;
 };
 
 /*
- Can be used to generate note ids for a synth where each physical key can only be pressed
- at most once at any given time, and is identified by 'Key'.
- 
- The idea is the following:
-
- For every note-on event, a new unique note id is created, and associated to that
+ For every note-on event, a new unique NoteId is created, and associated to that
  key.
- Until a "note off" event for that key is sent, subsequent "note change" events
- for that same key will use the same noteid.
- The subsequent "note off" event will also use the same noteid, and remove the association
- between the key and the note id, so that on a subsequent note-on event for that key,
- a new note id is generated.
+ We can have multiple note on events for the same key. In that case:
+ - note off events will correspond to the _earliest_ note-on
+ - note change events will correspond to the _latest_ note-on
  */
 struct NoteIdsGenerator {
-  using Key = int;
-  
+  using Key = uint64_t;
+
   NoteIdsGenerator(int approx_max_simultaneous_chans)
   : noteids(approx_max_simultaneous_chans)
   {}
-  
+
   NoteIdsGenerator(NoteIdsGenerator const &) = delete;
   NoteIdsGenerator & operator = (NoteIdsGenerator const &) = delete;
   NoteIdsGenerator(NoteIdsGenerator &&) = delete;
@@ -219,37 +213,36 @@ struct NoteIdsGenerator {
 
   NoteId NoteOnId(Key const key) {
     next.noteid++;
-    auto it = noteids.find(key);
-    if (it == noteids.end()) {
-      noteids.emplace(key, next);
-    } else {
-      it->second = next;
-    }
+    const auto res = noteids.try_emplace(key, std::deque<NoteId>{});
+    res.first->second.push_back(next);
     return next;
   }
-  
+
   NoteId NoteChangeId(Key const key) {
     auto it = noteids.find(key);
     if (it == noteids.end()) {
       Assert(0); // a notechange must be preceeded by noteon, and must be before noteoff
-      return {-key};
-    } else {
-      return it->second;
+      return {-static_cast<int64_t>(key)};
     }
+    Assert(!it->second.empty());
+    return it->second.back();
   }
-  
+
   NoteId NoteOffId(Key const key) {
     auto it = noteids.find(key);
     if (it == noteids.end()) {
       Assert(0); // a noteoff must be preceded by noteon
-      return {-key};
-    } else {
-      auto res = it->second;
-      noteids.erase(it);
-      return res;
+      return {-static_cast<int64_t>(key)};
     }
+    Assert(!it->second.empty());
+    const auto res = it->second.front();
+    if (it->second.size() == 1)
+      noteids.erase(it);
+    else
+      it->second.pop_front();
+    return res;
   }
-  
+
   auto begin() const { return noteids.begin(); }
   auto end() const { return noteids.end(); }
 
@@ -258,7 +251,7 @@ struct NoteIdsGenerator {
   }
 private:
   NoteId next{};
-  std::unordered_map<Key, NoteId> noteids;
+  std::unordered_map<Key, std::deque<NoteId>> noteids;
 };
 
 // @param e [in/out] :
@@ -267,9 +260,12 @@ private:
 //     Typically, for a synth played via a midi keyboard it could be the midipitch, because in a midi keyboard,
 //       there is a physical constraint that prevents the same key to be pressed twice in a row without being released first.
 //   In the output, e.noteid.noteid is the noteid that uniquely identifies the played note among all notes played currently or in the past or in the future:
+// @param voice : used to group events. a noteoff or notechange can only correspond to a noteon of the same voice.
 inline void convertKeyToNoteId(NoteIdsGenerator & gen,
-                               Event & e) {
-  int const key = static_cast<int>(e.noteid.noteid);
+                               int voice, Event & e) {
+  uint64_t const key =
+    static_cast<uint64_t>(static_cast<uint32_t>(voice)) |
+    (static_cast<uint64_t>(static_cast<uint32_t>(e.noteid.noteid)) << 32ull);
   switch(e.type) {
     case EventType::NoteOn:
       e.noteid = gen.NoteOnId(key);

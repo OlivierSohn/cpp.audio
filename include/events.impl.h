@@ -45,7 +45,8 @@ onEventResult playOneThing(int const sample_rate,
                            Midi const & midi,
                            Voice & v,
                            OutputData & out,
-                           Voicing const & b) {
+                           Voicing const & b,
+                           const NoteId note_id) {
 
   v.initializeSlow(); // does something only the 1st time
   v.useProgram(b.program); // keep it first as it reinitializes params
@@ -59,7 +60,7 @@ onEventResult playOneThing(int const sample_rate,
   v.set_loudness_compensation(.2f); // birds do not naturally emit loudness compensated frequencies!
 
   return v.onEvent(sample_rate,
-                   mkNoteOn(NoteId{b.midiPitch},
+                   mkNoteOn(note_id,
                             midi.midi_pitch_to_freq(b.midiPitch),
                             1.0),
                    out,
@@ -71,9 +72,9 @@ template<typename Voice, typename OutputData>
 onEventResult stopPlaying(int const sample_rate,
                           Voice & v,
                           OutputData & out,
-                          int16_t midiPitch) {
+                          NoteId note_id) {
   return v.onEvent(sample_rate,
-                   mkNoteOff(NoteId{midiPitch}),
+                   mkNoteOff(note_id),
                    out,
                    out,
                    {});
