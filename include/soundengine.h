@@ -158,7 +158,6 @@ namespace imajuscule::audio::audioelement {
         Assert(0);
       }
       float getAngleIncrementFrom() const {
-        Assert(0);
         return 0.f;
       }
       float getTo() const {
