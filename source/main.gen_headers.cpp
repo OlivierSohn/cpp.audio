@@ -4,7 +4,7 @@ namespace imajuscule {
     template<typename VEC>
     void add(float freq, VEC & normalized_frequencies, VEC & volumes) {
         using namespace imajuscule;
-        using namespace imajuscule::loudness;
+        using namespace audio::loudness;
 
         auto vol = equal_loudness_volume_from_freq(freq);
         auto normalized_f = freq / get_nyquist_frequency<typename VEC::value_type>();
@@ -45,7 +45,8 @@ void generateScript(int const sample_rate) {
     file << "pkg load signal" << std::endl << std::endl;
 
     std::vector<float> volumes, normalized_frequencies;
-    using namespace imajuscule::loudness;
+    using namespace imajuscule::audio::loudness;
+    using namespace imajuscule::audio;
 
     add(0.f, normalized_frequencies, volumes);
     add(freqs[0], normalized_frequencies, volumes);

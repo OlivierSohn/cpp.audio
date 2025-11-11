@@ -109,7 +109,9 @@ void birds(int const sample_rate) {
     if(noteid) {
       std::cout << "enter number to change program, or letter to play note, or 'q' to quit:" << std::endl;
       std::string str;
-      std::cin >> str;
+      do {
+        std::cin >> str;
+      } while(str.empty());
 
       std::cout << "pressed:" << str << std::endl;
       if (str == "q") {

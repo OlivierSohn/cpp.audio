@@ -278,22 +278,23 @@ private:
 
 
 /* The AHDSR envelope is like an ADSR envelope, except we allow to hold the value after the attack:
-
- | a |h| d |           |r|
- ---                                      < 1
- .   .
- .      .-------------                      < s
- .                     .
- ---                       -------------------  < 0
- ^                     ^ ^             ^
- |                     | envelopeDone1 envelopeDone2    <- state changes
- keyPressed            keyReleased                      <- state changes
- attacking                                              <- inner pressed state changes
- holding                                            <- inner pressed state changes
- decaying                                         <- inner pressed state changes
- sustaining                                    <- inner pressed state changes
-
- Attack, decay and release interpolations are configurable.
+ *
+ *
+ * | a |h| d |           |r|
+ *     ---                                      < 1
+ *    .   .
+ *   .      .-------------                      < s
+ *  .                     .
+ * ---                       -------------------  < 0
+ * ^                     ^ ^             ^
+ * |                     | envelopeDone1 envelopeDone2    <- state changes
+ * keyPressed            keyReleased                      <- state changes
+ * attacking                                              <- inner pressed state changes
+ *     holding                                            <- inner pressed state changes
+ *       decaying                                         <- inner pressed state changes
+ *          sustaining                                    <- inner pressed state changes
+ *
+ * Attack, decay and release interpolations are configurable.
 
  */
 struct AHDSR {

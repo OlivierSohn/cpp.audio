@@ -1,10 +1,11 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <Scheme
-   LastUpgradeVersion = "1200"
-   version = "1.3">
+   LastUpgradeVersion = "1600"
+   version = "1.7">
    <BuildAction
       parallelizeBuildables = "YES"
-      buildImplicitDependencies = "YES">
+      buildImplicitDependencies = "YES"
+      buildArchitectures = "Automatic">
       <BuildActionEntries>
          <BuildActionEntry
             buildForTesting = "YES"
@@ -14,9 +15,9 @@
             buildForAnalyzing = "YES">
             <BuildableReference
                BuildableIdentifier = "primary"
-               BlueprintIdentifier = "0984329B2523B03300F0DF48"
-               BuildableName = "birds"
-               BlueprintName = "birds"
+               BlueprintIdentifier = "093707CA2EC12B40009A4EEA"
+               BuildableName = "tune"
+               BlueprintName = "tune"
                ReferencedContainer = "container:audio.xcodeproj">
             </BuildableReference>
          </BuildActionEntry>
@@ -26,31 +27,27 @@
       buildConfiguration = "Debug"
       selectedDebuggerIdentifier = "Xcode.DebuggerFoundation.Debugger.LLDB"
       selectedLauncherIdentifier = "Xcode.DebuggerFoundation.Launcher.LLDB"
-      shouldUseLaunchSchemeArgsEnv = "YES">
-      <Testables>
-      </Testables>
+      shouldUseLaunchSchemeArgsEnv = "YES"
+      shouldAutocreateTestPlan = "YES">
    </TestAction>
    <LaunchAction
       buildConfiguration = "Release"
       selectedDebuggerIdentifier = "Xcode.DebuggerFoundation.Debugger.LLDB"
       selectedLauncherIdentifier = "Xcode.DebuggerFoundation.Launcher.LLDB"
-      enableASanStackUseAfterReturn = "YES"
-      disableMainThreadChecker = "YES"
       launchStyle = "0"
       useCustomWorkingDirectory = "NO"
       ignoresPersistentStateOnLaunch = "NO"
       debugDocumentVersioning = "YES"
       debugServiceExtension = "internal"
       allowLocationSimulation = "YES"
-      consoleMode = "0"
-      structuredConsoleMode = "2">
+      viewDebuggingEnabled = "No">
       <BuildableProductRunnable
          runnableDebuggingMode = "0">
          <BuildableReference
             BuildableIdentifier = "primary"
-            BlueprintIdentifier = "0984329B2523B03300F0DF48"
-            BuildableName = "birds"
-            BlueprintName = "birds"
+            BlueprintIdentifier = "093707CA2EC12B40009A4EEA"
+            BuildableName = "tune"
+            BlueprintName = "tune"
             ReferencedContainer = "container:audio.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
@@ -65,9 +62,9 @@
          runnableDebuggingMode = "0">
          <BuildableReference
             BuildableIdentifier = "primary"
-            BlueprintIdentifier = "0984329B2523B03300F0DF48"
-            BuildableName = "birds"
-            BlueprintName = "birds"
+            BlueprintIdentifier = "093707CA2EC12B40009A4EEA"
+            BuildableName = "tune"
+            BlueprintName = "tune"
             ReferencedContainer = "container:audio.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>

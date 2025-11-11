@@ -76,7 +76,7 @@ operator << (std::ostream & os, Note const & n) {
 
 inline constexpr
 int half_tones_distance(Note const & a,
-                               Note const & b) {
+                        Note const & b) {
   return
   static_cast<int>(to_underlying(b)) -
   static_cast<int>(to_underlying(a));
@@ -89,6 +89,7 @@ constexpr int A_pitch = 69;
 constexpr int ref_A_octave = 4;
 constexpr int max_audible_midi_pitch = 151; // 50 kHz
 
+// well-tempered note.
 struct NoteOctave {
   Note note;
   int octave;
@@ -129,7 +130,21 @@ struct NoteOctave {
   }
 };
 
+inline std::ostream &
+operator << (std::ostream & os, NoteOctave const & n) {
+  os << "(" << n.note << " " << n.octave << ")";
+  return os;
+}
 
+inline std::ostream &
+operator << (std::ostream & os, std::pair<NoteOctave, double> const & noteDev) {
+  // Writing the well-tempered note plus the deviation in cents
+  os << "(" << noteDev.first.note << noteDev.first.octave << " "
+  << static_cast<int>(100 * noteDev.second) << ")";
+  return os;
+}
+
+// returns the note (well-tempered) and the deviation in -0.5, 0.5
 inline std::pair<NoteOctave, double>
 midi_pitch_to_note_deviation(double const pitch) {
   double const pitch_from_ref_A = pitch - A_pitch;
@@ -190,7 +205,7 @@ struct Midi_ {
     int const num_halftones = NoteOctave{Note::La, ref_A_octave}.dist_halftones(note);
     return A_pitch + tuning_stretch_ * num_halftones;
   }
-
+  
   constexpr std::optional<double> frequency_to_midi_pitch(double const freq) const {
     return imajuscule::audio::frequency_to_midi_pitch<is_constexpr>(tuning_stretch_,
                                                                     freq);
@@ -203,7 +218,7 @@ struct Midi_ {
   constexpr double midi_pitch_to_freq(double pitch) const {
     return Ainterval_to_freq(pitch - A_pitch);
   }
-
+  
   constexpr double transpose_frequency(double const freq, int n) const {
     return freq * pow<is_constexpr>(half_tone_ratio_,
                                     static_cast<double>(n));
@@ -228,5 +243,200 @@ compute_harmonic_pitch_adds(Midi_<is_constexpr> const & midi) {
 
 using Midi = Midi_<Constexpr::No>;
 using ConstexprMidi = Midi_<Constexpr::Yes>;
+
+namespace well_tempered
+{
+constexpr auto c_minorScaleAsc = std::array<double, 7>{
+  0.,
+  2.,
+  3.,
+  5.,
+  7.,
+  8.,
+  10.
+};
+constexpr auto c_majorScaleAsc = std::array<double, 7>{
+  0.,
+  2.,
+  4.,
+  5.,
+  7.,
+  9.,
+  11.
+};
+}
+
+
+template<Constexpr C, size_t N>
+inline std::array<double, N> mkScaleFromFreqRatios(const std::array<double, N>& freqRatios)
+{
+  std::array<double, N> pitches{};
+  
+  for(size_t i=0; i<N; ++i)
+    pitches[i] = *frequency_to_midi_pitch<C>(1., freqRatios[i]);
+  
+  const auto offset = pitches[0];
+  for(size_t i=0; i<N; ++i)
+    pitches[i] -= offset;
+  
+  return pitches;
+}
+
+
+// harmonic overtone series:
+//
+// 1 = base
+// 2 = octave
+// 3 = octave + fifth
+// 4 = 2 octaves
+// 5 = 2 octaves + Major 3rd
+// 6 = 2 octaves + fifth
+// etc...
+
+namespace just
+{
+template<Constexpr C>
+inline std::array<double, 7> mkMajorScaleAsc()
+{
+  const std::array<double, 7> freqRatios{
+    1.,
+    9./8.,
+    5./4.,
+    4./3.,
+    3./2.,
+    5./3.,
+    15./8.
+  };
+  return mkScaleFromFreqRatios<C>(freqRatios);
+}
+}
+
+namespace pythagorean
+{
+template<Constexpr C>
+inline std::array<double, 7> mkMajorScaleAsc()
+{
+  const std::array<double, 7> freqRatios{
+    1.,
+    9./8.,
+    81./64.,
+    4./3.,
+    3./2.,
+    27./16.,
+    243./128.
+  };
+  return mkScaleFromFreqRatios<C>(freqRatios);
+}
+}
+
+// Designed for playing scales and arpegios on multiple octaves.
+//
+// Repeats the midi pitch sequence over multiple octaves,
+// first ascending then descending:
+//
+// for example if the sequence is 1, 2, 3 and the number of octaves is 2:
+//
+// 1      // starts ascending
+// 2
+// 3
+// 1 + 12
+// 2 + 12
+// 3 + 12
+// 1 + 24  // reached 2 octavtes, now will be desceding
+// 3 + 12
+// 2 + 12
+// 1 + 12
+// 3
+// 2
+// 1      // ascend again
+// 2
+// etc...
+struct MultiOctave {
+  MultiOctave(const double* midiPitchSeqBegin, const double* midiPitchSeqEnd, double refMidiPitch, int countOctaves)
+  : m_midiPitchSeqBegin(midiPitchSeqBegin)
+  , m_midiPitchSeqEnd(midiPitchSeqEnd)
+  , m_refMidiPitch(refMidiPitch)
+  , m_endOctave(countOctaves)
+  , m_nextPitch(midiPitchSeqBegin)
+  {}
+
+  double operator()()
+  {
+    if(m_endOctave <= 0)
+      // just return the base pitch
+      goto return_base;
+
+    if(m_asc)
+    {
+      // when we are ascending, m_nextPitch is the next pitch that will be played.
+      if(m_nextPitch < m_midiPitchSeqEnd)
+      {
+    return_regular_asc:
+        return m_refMidiPitch + (m_curOctave * num_halftones_per_octave) + *(m_nextPitch++);
+      }
+      else
+      {
+        // m_nextPitch == m_midiPitchSeqEnd
+        if(m_curOctave < m_endOctave)
+        {
+          ++m_curOctave;
+          if(m_curOctave < m_endOctave)
+          {
+            m_nextPitch = m_midiPitchSeqBegin;
+            goto return_regular_asc;
+          }
+          else
+          {
+            // m_curOctave == m_endOctave
+          return_base:
+            return m_refMidiPitch + (m_curOctave * num_halftones_per_octave) + *m_midiPitchSeqBegin;
+          }
+        }
+        else
+        {
+          // m_curOctave == m_endOctave
+          m_asc = false;
+          m_curOctave = m_endOctave - 1;
+        }
+      }
+    }
+
+    // m_asc == false
+    
+    // when we are descending, m_nextPitch is the previous pitch that was played.
+    if(m_nextPitch > m_midiPitchSeqBegin)
+    {
+  return_regular_desc:
+      return m_refMidiPitch + (m_curOctave * num_halftones_per_octave) + *(--m_nextPitch);
+    }
+    else
+    {
+      // m_nextPitch == m_midiPitchSeqBegin
+      if(m_curOctave > 0)
+      {
+        --m_curOctave;
+        m_nextPitch = m_midiPitchSeqEnd;
+        goto return_regular_desc;
+      }
+      else
+      {
+        // m_curOctave == 0
+        m_asc = true;
+        ++m_nextPitch; // because we have already played this.
+        goto return_regular_asc;
+      }
+    }
+  }
+
+private:
+  const double* m_midiPitchSeqBegin;
+  const double* m_midiPitchSeqEnd;
+  int m_endOctave;
+  double m_refMidiPitch;
+  
+  const double* m_nextPitch;
+  int m_curOctave = 0;
+  bool m_asc = true;
+};
 
 } // NS

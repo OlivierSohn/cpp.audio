@@ -1537,12 +1537,13 @@ void RtResynth::onInputMidiEvent(std::optional<uint64_t> const &time_ms,
                             MIDITimestampAndSource{time_nanos, to_underlying(MidiSource::MidiInput)});
   } else if (std::holds_alternative<midi::AllNotesOff>(e)) {
     // send explicit note-offs for every note currently playing
-    for (auto const & [key, note_id] : vocoder_carrier_noteids) {
-      vocoder_carrier.onEvent(sample_rate,
-                              mkNoteOff(note_id),
-                              stepper,
-                              stepper,
-                              {});
+    for (auto const & [key, note_ids] : vocoder_carrier_noteids) {
+      for(const auto& note_id : note_ids)
+        vocoder_carrier.onEvent(sample_rate,
+                                mkNoteOff(note_id),
+                                stepper,
+                                stepper,
+                                {});
     }
     vocoder_carrier_noteids.clear();
     vocoder_carrier.allNotesOff(stepper); // this is redundant, but... "just in case"
