@@ -79,10 +79,6 @@ private:
 } // NS audioelement
 
 
-// Scales time.
-static constexpr float timeScaleFactor = 0.09;
-
-
 // Helper class to play a sequence of notes using a pattern of indexes.
 //
 // We play the sequence of notes using the index pattern once,
@@ -182,6 +178,7 @@ struct AppTune
   {
     if(e == envelopeFile)
       return;
+    std::cout << "Using envelope " << e << std::endl;
     envelopeFile = e;
     m_lastWriteSynthFiles.reset();
   }
@@ -349,7 +346,7 @@ void AppTune::updateInitializerIfNeeded()
     e['d'] = 0;
     e['s'] = 0;
     e['r'] = 0;
-    const float constant = 100.f;
+    const float constant = 10.f;
     while (std::getline(file, str))
     {
       if(!str.empty())
@@ -357,15 +354,15 @@ void AppTune::updateInitializerIfNeeded()
     }
     return audioelement::AHDSR{
       // attack
-      ms_to_frames(timeScaleFactor * e['a']),
+      ms_to_frames(e['a']),
       itp::interpolation::LINEAR,
       // hold
-      ms_to_frames(timeScaleFactor * e['h']),
+      ms_to_frames(e['h']),
       // decay
-      ms_to_frames(timeScaleFactor * e['d']),
+      ms_to_frames(e['d']),
       itp::interpolation::EASE_OUT_CUBIC,
       // release
-      ms_to_frames(timeScaleFactor * e['r']),
+      ms_to_frames(e['r']),
       itp::interpolation::EASE_OUT_CUBIC,
       // sustain
       0.1f * e['s'] / constant
@@ -386,6 +383,7 @@ void AppTune::updateInitializerIfNeeded()
 
 Loop mkEvents(int countNotes)
 {
+  std::cout << "Generating " << countNotes << " notes" << std::endl;
   Midi m_midi;
   std::vector<std::pair<TimestampAndSource, Event>> events;
   
@@ -408,6 +406,8 @@ Loop mkEvents(int countNotes)
   auto shufflePattern = ShufflePattern{multiOctave, std::vector<size_t>{0, 2, 1, 3, 2, 4, 3, 2}};
   auto& pitchGen = shufflePattern;
     
+  // Scales time.
+  static constexpr float timeScaleFactor = 0.09;
   // Duration of a note
   static constexpr auto wait_after_note_on = std::chrono::milliseconds(static_cast<int>(timeScaleFactor * 800));
   // Pause length between consecutive notes
@@ -449,6 +449,7 @@ Loop mkEvents(int countNotes)
 
 Loop eventsFrom(std::filesystem::path const& scoreFile)
 {
+  std::cout << "Generating " << scoreFile << std::endl;
   std::ifstream file(scoreFile);
   
   Midi m_midi;
@@ -474,6 +475,8 @@ Loop eventsFrom(std::filesystem::path const& scoreFile)
       chars.emplace_back(str);
   }
   
+  // Scales time.
+  static constexpr float timeScaleFactor = 0.09;
   // Duration of a note
   static constexpr auto wait_after_note_on = std::chrono::milliseconds(static_cast<int>(timeScaleFactor * 800));
   // Pause length between consecutive notes
