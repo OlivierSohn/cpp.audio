@@ -1995,6 +1995,22 @@ struct FilterAlgo {
       return false;
     }
   }
+  
+  template <class U=AEAlgo,typename=std::enable_if_t<U::hasEnvelope>>
+  auto & getEnvelope() const {
+    return audio_element.getEnvelope();
+  }
+  
+  template <class U=AEAlgo,typename=std::enable_if_t<U::hasEnvelope>>
+  auto & editEnvelope() {
+    return audio_element.editEnvelope();
+  }
+
+  auto const & getOsc() const { return audio_element.getOsc(); }
+  auto       & getOsc()       { return audio_element.getOsc(); }
+
+  auto & getVolumeAdjustment() { return audio_element.getVolumeAdjustment(); }
+  auto const & getVolumeAdjustment() const { return audio_element.getVolumeAdjustment(); }
 
 private:
   AEAlgo audio_element;
@@ -2016,11 +2032,16 @@ public:
   }
 
   // Warning: setAngleIncrements and angleIncrements are not related,
-  //one opertaes on the filter, the other on the underlying oscillator
+  //one operates on the filter, the other on the underlying oscillator
 
   // sets the filter frequency
-  void setAngleIncrements(T v) {
+  void setFilterAngleIncrements(T v) {
     filter_.initWithAngleIncrement(v);
+  }
+
+  //sets the oscillator frequency
+  void setAngleIncrements(T v) {
+    audio_element.setAngleIncrements(v);
   }
   //returns the oscillator frequency
   T angleIncrements() const {
@@ -2038,7 +2059,9 @@ public:
   auto & get_element() const { return audio_element; }
   auto & filter() { return filter_; }
 
-  void setLoudnessParams(int sample_rate, int low_index, float log_ratio, float loudness_level) {}
+  void setLoudnessParams(int sample_rate, int low_index, float log_ratio, float loudness_level) {
+    audio_element.setLoudnessParams(sample_rate, low_index, log_ratio, loudness_level);
+  }
 };
 
 template<typename T, int ORDER>
@@ -2248,8 +2271,8 @@ protected:
 
 
   void doSetAngleIncrements(std::array<T, 2> incs) {
-    getHP().setAngleIncrements(incs[low_index]);
-    getLP().setAngleIncrements(incs[high_index]);
+    getHP().setFilterAngleIncrements(incs[low_index]);
+    getLP().setFilterAngleIncrements(incs[high_index]);
   }
 };
 
