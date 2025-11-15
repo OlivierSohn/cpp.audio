@@ -173,9 +173,18 @@ enum class HandleNoteOff {
   No // for bird/robot/wind
 };
 
+// Whether a small delay will be added to account for Jitter
+// of the time source (for example it will happen if midi events are sent over
+// the network).
+enum class TryAccountForTimeSourceJitter{
+  Yes,
+  No
+};
+
 template<
 int nOuts,
 typename AE,
+TryAccountForTimeSourceJitter Jitter,
 SynchronizePhase Sync,
 DefaultStartPhase Phase,
 HandleNoteOff handle_note_off,
@@ -190,7 +199,7 @@ struct ImplCRTP : public Base {
   using Element = AE;
   struct ElemMidiDelay {
     Element elem;
-    Optional<MIDITimestampAndSource> midiDelay;
+    Optional<TimestampAndSource> midiTimeDelay;
     float angle_increments; // based on infos in "noteon" and "notechange" events, _not_ taking pitchwheel into account
   };
 
@@ -369,7 +378,7 @@ public:
                         Event const & e,
                         Out & out,
                         Chans & chans,
-                        std::optional<MIDITimestampAndSource> const & maybeMidiTimeAndSource)
+                        std::optional<TimestampAndSource> const & maybeTimeAndSource)
   {
     switch(e.type) {
       case EventType::NoteOn:
@@ -445,7 +454,7 @@ public:
           chans.enqueueOneShot([this,
                                 &c,
                                 sample_rate,
-                                maybeMidiTimeAndSource
+                                maybeTimeAndSource
                                 // pannedVol, // TODO how to handle panning? systematic use of Panner<>?
                                 ]
                                (auto &, uint64_t curTimeNanos){
@@ -460,49 +469,54 @@ public:
 
             setPhase<Sync, Phase>(c, channels);
 
-            if(maybeMidiTimeAndSource) {
+            if(maybeTimeAndSource) {
               Assert(curTimeNanos);
-              auto srcKey = maybeMidiTimeAndSource->getSourceKey();
-              uint64_t midiTimeNanos = maybeMidiTimeAndSource->getNanosTime();
-
-              /*
-               * We introduce an artificial MIDI delay to avoid jitter.
-               */
-
-              auto & mayDelay = midiDelays()[srcKey];
+              auto srcKey = maybeTimeAndSource->getSourceKey();
+              uint64_t midiTimeNanos = maybeTimeAndSource->getNanosTime();
+              uint64_t delayNanos{};
+              if constexpr (Jitter == TryAccountForTimeSourceJitter::Yes)
               {
-                auto const margin = maxMIDIJitter();
-                uint64_t const candidateDelay = margin + (curTimeNanos - midiTimeNanos);
-                if(!mayDelay) {
-                  mayDelay = candidateDelay;
-                } else {
-                  // a delay is already registered.
-                  if(cyclic_unsigned_dist(candidateDelay, *mayDelay) > 2 * (margin + 100000)) {
-                    // The change is significant enough, so we apply the change.
-                    // The previous delay was maybe determined based
-                    // on events that were generated while the program was starting,
-                    // hence their timings were off.
+                /*
+                 * We introduce an artificial delay to avoid jitter.
+                 */
+                
+                auto & mayDelay = midiDelays()[srcKey];
+                {
+                  auto const margin = maxMIDIJitter();
+                  uint64_t const candidateDelay = margin + (curTimeNanos - midiTimeNanos);
+                  if(!mayDelay) {
                     mayDelay = candidateDelay;
+                  } else {
+                    // a delay is already registered.
+                    if(cyclic_unsigned_dist(candidateDelay, *mayDelay) > 2 * (margin + 100000)) {
+                      // The change is significant enough, so we apply the change.
+                      // The previous delay was maybe determined based
+                      // on events that were generated while the program was starting,
+                      // hence their timings were off.
+                      mayDelay = candidateDelay;
+                    }
                   }
                 }
+                delayNanos = *mayDelay;
               }
-              auto const delayNanos = *mayDelay;
 
               uint64_t const targetNanos = midiTimeNanos + delayNanos;
 
               if(targetNanos < curTimeNanos) {
                 // we're late.
+                // Note: to avoid this case when the events are sent over the network for example,
+                //       the caller can use TryPreventTimeSourceJitter::Yes.
                 c.elem.editEnvelope().onKeyPressed(0);
-                c.midiDelay = {{delayNanos + (curTimeNanos - targetNanos), srcKey}};
+                c.midiTimeDelay = {{delayNanos + (curTimeNanos - targetNanos), srcKey}};
               } else {
                 // we're on time.
                 c.elem.editEnvelope().onKeyPressed(nanoseconds_to_frames(targetNanos-curTimeNanos,
                                                                          sample_rate));
-                c.midiDelay = {{delayNanos, srcKey}};
+                c.midiTimeDelay = {{delayNanos, srcKey}};
               }
             } else {
               c.elem.editEnvelope().onKeyPressed(0);
-              c.midiDelay = {};
+              c.midiTimeDelay = {};
             }
           });
         }
@@ -522,22 +536,22 @@ public:
         chans.enqueueOneShot([this,
                               noteid = e.noteid,
                               sample_rate,
-                              maybeMidiTimeAndSource](auto &, uint64_t curTimeNanos){
+                              maybeTimeAndSource](auto &, uint64_t curTimeNanos){
           for(auto &i : firsts(channels)) { // TODO this is linear complexity in number of channels, can we do constant complexity with a unordered_map? Is it better? (we have not so many channels so we need to benchamark...)
             if (!i || *i != noteid) {
               continue;
             }
             auto & c = channels.corresponding(i);
 
-            if(maybeMidiTimeAndSource) {
+            if(maybeTimeAndSource) {
               Assert(curTimeNanos);
               Assert(c.midiDelay);
 
-              auto d = *c.midiDelay;
+              auto d = *c.midiTimeDelay;
 
-              Assert(d.getSourceKey() == maybeMidiTimeAndSource->getSourceKey());
+              Assert(d.getSourceKey() == maybeTimeAndSource->getSourceKey());
 
-              uint64_t targetNanos = maybeMidiTimeAndSource->getNanosTime() + d.getNanosTime();
+              uint64_t targetNanos = maybeTimeAndSource->getNanosTime() + d.getNanosTime();
 
               auto delay = (targetNanos < curTimeNanos) ? 0 : nanoseconds_to_frames(targetNanos-curTimeNanos,
                                                                                     sample_rate);
@@ -553,7 +567,8 @@ public:
             return;
           }
           // The corresponding noteOn was skipped,
-          // because too many notes were being played at the same time
+          // because too many notes were being played at the same time.
+          // TODO: add a "note skipped" flag, or counter, for observability.
         });
       }
         break;

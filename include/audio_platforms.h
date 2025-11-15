@@ -12,8 +12,16 @@ enum class Features {
   InAndOut
 };
 
+enum class TimeSource {
+  // Time is defined by MIDI.
+  MIDI,
+
+  // Time is incremented each time the context callback is called.
+  Monotonic
+};
+
 // for output:
-template<AudioPlatform A, Features F>
+template<AudioPlatform A, Features F, TimeSource Time>
 struct Context;
 
 // for input:
@@ -21,7 +29,7 @@ template<AudioPlatform A>
 struct AudioInput;
 
 // for input and output in the same stream
-template<AudioPlatform A>
+template<AudioPlatform A, TimeSource Time>
 struct FullDuplexContext;
 
 // output callback:

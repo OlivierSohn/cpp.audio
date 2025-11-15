@@ -23,8 +23,8 @@ struct iOSOutputData { // TODO could that be part of Context ?
   std::vector<SAMPLE> buf;
 };
 
-template<Features Feat>
-struct Context <AudioPlatform::AudioUnits, Feat> {
+template<Features Feat, TimeSource Time>
+struct Context <AudioPlatform::AudioUnits, Feat, Time> {
   
   AudioUnit const & getAudioUnit() const {
     return audioUnit_out;

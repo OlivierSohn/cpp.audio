@@ -24,6 +24,7 @@ namespace imajuscule::audio::sine {
   template<
     int nOuts,
     typename AE,
+    TryAccountForTimeSourceJitter Jitter,
     SynchronizePhase Sync,
     DefaultStartPhase Phase,
     HandleNoteOff handle_note_off,
@@ -33,6 +34,7 @@ namespace imajuscule::audio::sine {
   using Synth = ImplCRTP <
     nOuts,
     AE,
+    Jitter,
     Sync,
     Phase,
     handle_note_off,

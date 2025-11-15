@@ -68,8 +68,7 @@ public:
 
   void step(SAMPLE *outputBuffer,
             int nFrames,
-            uint64_t const tNanos,
-            uint64_t const nanos_per_audioelement_buffer) {
+            uint64_t const tNanos) {
     LockFromRT l(_lock.lock());
 
     oneShots.dequeueAll([this, tNanos](auto & f) {
@@ -77,8 +76,6 @@ public:
     });
 
     post.declareBlockSize(nFrames);
-
-    auto t = tNanos;
 
     double precisionBuffer[max_n_frames_per_loop * nOuts];
     while(nFrames > 0) {
@@ -111,7 +108,6 @@ public:
         *outputBuffer = static_cast<SAMPLE>(precisionBuffer[i]);
       }
       nFrames -= max_n_frames_per_loop;
-      t += nanos_per_audioelement_buffer;
     }
   }
 

@@ -180,13 +180,29 @@ constexpr uint64_t secondsToNanos(PaTime t) {
   return static_cast<uint64_t>(0.5 + t * 1e9);
 }
 
-constexpr uint64_t noTime = std::numeric_limits<uint64_t>::min();
 
+template <TimeSource Time>
+uint64_t getCurrentTimeNanos(uint64_t countFrames, double sampleRate, const PaStreamCallbackTimeInfo* timeInfo)
+{
+  if constexpr (Time == TimeSource::MIDI)
+  {
+    Assert(timeInfo);
+    if(likely(timeInfo)) {
+      // on osx, it seems the outputBufferDacTime value is incorrect, see traces of analyzeTime.
+      // the error becomes large (sometimes 5 samples offset) with the UA Apollo x4 soundcard
+      return secondsToNanos(timeInfo->outputBufferDacTime);
+    }
+    return 0; // then, MIDI synchronization will not work.
+  }
+  else
+  {
+    return static_cast<uint64_t>(countFrames * nanos_per_frame<double>(sampleRate));
+  }
+}
 
-
-template <Features F>
-struct Context<AudioPlatform::PortAudio, F> {
-  using MeT = Context<AudioPlatform::PortAudio, F>;
+template <Features F, TimeSource Time>
+struct Context<AudioPlatform::PortAudio, F, Time> {
+  using MeT = Context<AudioPlatform::PortAudio, F, Time>;
   
   int getSampleRate() const {
     Assert(sample_rate_);
@@ -208,6 +224,8 @@ struct Context<AudioPlatform::PortAudio, F> {
   bool Initialized() const {
     return bInitialized;
   }
+  
+  uint64_t getCountFrames() const { return m_countFrames.load(std::memory_order_relaxed); }
 private:
   std::optional<int> sample_rate_;
   std::optional<double> output_latency_seconds;
@@ -215,7 +233,8 @@ private:
   PlayF playFunc;
   bool bInitialized = false;
   PaStream *stream = nullptr;
-  
+  std::atomic<uint64_t> m_countFrames{};
+
 #if IMJ_DEBUG_AUDIO_OUT
   std::unique_ptr<AsyncWavWriter> async_wav_writer_out;
   int writer_idx = 0;
@@ -231,7 +250,7 @@ public:
   }
 private:
 #endif
-  
+
   static int audiooutCallback(const void *inputBuffer,
                               void *outputBuffer,
                               unsigned long numFrames,
@@ -264,23 +283,20 @@ private:
     n_audio_cb_frames.store(static_cast<int>(numFrames),
                             std::memory_order_relaxed);
     
-    Assert(timeInfo);
-    uint64_t tNanos = [timeInfo]() -> uint64_t {
-      if(likely(timeInfo)) {
-        // on osx, it seems the outputBufferDacTime value is incorrect, see traces of analyzeTime.
-        // the error becomes large (sometimes 5 samples offset) with the UA Apollo x4 soundcard
-        return secondsToNanos(timeInfo->outputBufferDacTime);
-      }
-      return noTime; // then, MIDI synchronizatin will not work.
-    }();
-    
+    auto countFrames = This->m_countFrames.load(std::memory_order_relaxed);
+    const uint64_t tNanos = getCurrentTimeNanos<Time>(countFrames, static_cast<double>(*This->sample_rate_), timeInfo);
+    This->m_countFrames.store(numFrames + countFrames, std::memory_order_relaxed);
+
 #ifndef NDEBUG
 # ifndef IMJ_LOG_AUDIO_TIME // when we have a callback that takes too long to exectute, analyzeTime(...) will detect a problem, so to avoid gaving too much of these logs, when IMJ_LOG_AUDIO_TIME is on, we deactivate analyzeTime
     Assert(This->sample_rate_);
-    analyzeTime(tNanos,
-                static_cast<int>(numFrames),
-                *This->sample_rate_,
-                This->asyncLogger());
+    if constexpr (Time == TimeSource::MIDI)
+    {
+      analyzeTime(tNanos,
+                  static_cast<int>(numFrames),
+                  *This->sample_rate_,
+                  This->asyncLogger());
+    }
 # endif
 #endif
     
@@ -458,9 +474,9 @@ public:
   }
 };
 
-template<>
-struct FullDuplexContext<AudioPlatform::PortAudio> {
-  using MeT = FullDuplexContext<AudioPlatform::PortAudio>;
+template<TimeSource Time>
+struct FullDuplexContext<AudioPlatform::PortAudio, Time> {
+  using MeT = FullDuplexContext<AudioPlatform::PortAudio, Time>;
   
   int getSampleRate() const {
     Assert(sample_rate_);
@@ -488,8 +504,9 @@ struct FullDuplexContext<AudioPlatform::PortAudio> {
     return bInitialized;
   }
 
+  uint64_t getCountFrames() const { return m_countFrames.load(std::memory_order_relaxed); }
 private:
-  std::optional<int> sample_rate_;
+  std::optional<int> sample_rate_; // frames / seconds
   std::optional<double> output_latency_seconds;
   std::optional<double> input_latency_seconds;
 
@@ -498,7 +515,8 @@ private:
 
   bool bInitialized = false;
   PaStream *stream = nullptr;
-  
+  std::atomic<uint64_t> m_countFrames{};
+
 #if IMJ_DEBUG_AUDIO_OUT
   std::unique_ptr<AsyncWavWriter> async_wav_writer_out;
   int writer_out_idx = 0;
@@ -551,23 +569,20 @@ private:
     n_audio_cb_frames.store(static_cast<int>(numFrames),
                             std::memory_order_relaxed);
     
-    Assert(timeInfo);
-    uint64_t tNanos = [timeInfo]() -> uint64_t {
-      if(likely(timeInfo)) {
-        // on osx, it seems the outputBufferDacTime value is incorrect, see traces of analyzeTime.
-        // the error becomes large (sometimes 5 samples offset) with the UA Apollo x4 soundcard
-        return secondsToNanos(timeInfo->outputBufferDacTime);
-      }
-      return noTime; // then, MIDI synchronizatin will not work.
-    }();
-    
+    auto countFrames = This->m_countFrames.load(std::memory_order_relaxed);
+    const uint64_t tNanos = getCurrentTimeNanos<Time>(countFrames, static_cast<double>(*This->sample_rate_), timeInfo);
+    This->m_countFrames.store(numFrames + countFrames, std::memory_order_relaxed);
+
 #ifndef NDEBUG
 # ifndef IMJ_LOG_AUDIO_TIME // when we have a callback that takes too long to exectute, analyzeTime(...) will detect a problem, so to avoid having too much of these logs, when IMJ_LOG_AUDIO_TIME is on, we deactivate analyzeTime
     Assert(This->sample_rate_);
-    analyzeTime(tNanos,
-                static_cast<int>(numFrames),
-                *This->sample_rate_,
-                This->asyncLogger());
+    if constexpr (Time == TimeSource::MIDI)
+    {
+      analyzeTime(tNanos,
+                  static_cast<int>(numFrames),
+                  *This->sample_rate_,
+                  This->asyncLogger());
+    }
 # endif
 #endif
     

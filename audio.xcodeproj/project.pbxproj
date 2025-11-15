@@ -438,7 +438,13 @@
 		093707DD2EC12B40009A4EEA /* birds copy-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; name = "birds copy-Info.plist"; path = "/Users/Olivier/Dev/cpp.audio/birds copy-Info.plist"; sourceTree = "<absolute>"; };
 		093707DE2EC12BB4009A4EEA /* main.tune.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = main.tune.cpp; path = source/main.tune.cpp; sourceTree = "<group>"; };
 		093707DF2EC12BB4009A4EEA /* unity.build.tune.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = unity.build.tune.cpp; path = source/unity.build.tune.cpp; sourceTree = "<group>"; };
-		093707E12EC2B207009A4EEA /* Harmonics.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = Harmonics.txt; sourceTree = "<group>"; };
+		093707E82EC7E312009A4EEA /* Phrase.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = Phrase.txt; sourceTree = "<group>"; };
+		093707E92EC7E312009A4EEA /* StrangeBots.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = StrangeBots.txt; sourceTree = "<group>"; };
+		093707EB2EC7E35A009A4EEA /* Harmonics.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = Harmonics.txt; sourceTree = "<group>"; };
+		093707ED2EC7EB4F009A4EEA /* ZeroEnvelope.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = ZeroEnvelope.txt; sourceTree = "<group>"; };
+		093707EE2EC7ECB5009A4EEA /* Envelope.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = Envelope.txt; sourceTree = "<group>"; };
+		093707EF2EC7ECF4009A4EEA /* Phrase2.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = Phrase2.txt; sourceTree = "<group>"; };
+		093707F02EC7F7D4009A4EEA /* HarmonicsSimple.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = HarmonicsSimple.txt; sourceTree = "<group>"; };
 		093A24C21E9B8BE8009874DF /* wav_join_nonzeros */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = wav_join_nonzeros; sourceTree = BUILT_PRODUCTS_DIR; };
 		093A24C81E9B8C47009874DF /* unity.build.joinnonzeros.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = unity.build.joinnonzeros.cpp; path = source/unity.build.joinnonzeros.cpp; sourceTree = "<group>"; };
 		093A24E11E9B8CC3009874DF /* test_fft */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = test_fft; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -745,6 +751,27 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		093707EA2EC7E312009A4EEA /* scores */ = {
+			isa = PBXGroup;
+			children = (
+				093707E82EC7E312009A4EEA /* Phrase.txt */,
+				093707EF2EC7ECF4009A4EEA /* Phrase2.txt */,
+				093707E92EC7E312009A4EEA /* StrangeBots.txt */,
+			);
+			path = scores;
+			sourceTree = "<group>";
+		};
+		093707EC2EC7E35A009A4EEA /* synth */ = {
+			isa = PBXGroup;
+			children = (
+				093707ED2EC7EB4F009A4EEA /* ZeroEnvelope.txt */,
+				093707EE2EC7ECB5009A4EEA /* Envelope.txt */,
+				093707EB2EC7E35A009A4EEA /* Harmonics.txt */,
+				093707F02EC7F7D4009A4EEA /* HarmonicsSimple.txt */,
+			);
+			path = synth;
+			sourceTree = "<group>";
+		};
 		0967E4BE208E539D004B488E /* Products */ = {
 			isa = PBXGroup;
 			children = (
@@ -838,7 +865,6 @@
 				097DBE0C2531DFB300AFFD0E /* rt.resynth.lib.locked.data.cpp */,
 				093315D82539D4A20033E23A /* rt.resynth.lib.metaqueue.cpp */,
 				099B6CF6253CBF12003E4929 /* rt.resynth.lib.midi.cpp */,
-				093707E12EC2B207009A4EEA /* Harmonics.txt */,
 				09C6D69D254B0BBF008EDE7C /* rt.resynth.lib.params.cpp */,
 				099B7051253FA6FE003E4929 /* rt.resynth.lib.periodicfft.cpp */,
 				093315E42539D5F70033E23A /* rt.resynth.lib.pubsub.cpp */,
@@ -935,6 +961,8 @@
 		09FF3F1A1E36EBBB00C81351 = {
 			isa = PBXGroup;
 			children = (
+				093707EC2EC7E35A009A4EEA /* synth */,
+				093707EA2EC7E312009A4EEA /* scores */,
 				09B01D9C25168CB40068FCFD /* Info.plist */,
 				098474181E8059600014465E /* dependencies */,
 				099E06F81E36ECFC0012348E /* xcode.config */,

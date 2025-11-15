@@ -4,8 +4,6 @@ Analyse d'un enregistrement pour la justesse, pour voir les tendances que j'ai.
 
 Analyse en temps reel de la justesse?
 
-
-
 #endif
 
 namespace imajuscule::audio {
@@ -19,11 +17,11 @@ VolumeAdjusted<
 //Enveloped
 MultiEnveloped
 <
-  //FreqCtrl_<
-    SineOscillatorAlgo<T, eNormalizePolicy::FAST>
-    //, InterpolatedFreq<T>
-  //>
-  , AHDSREnvelope<Atomicity::Yes, T, EnvelopeRelease::WaitForKeyRelease>
+//FreqCtrl_<
+SineOscillatorAlgo<T, eNormalizePolicy::FAST>
+//, InterpolatedFreq<T>
+//>
+, AHDSREnvelope<Atomicity::Yes, T, EnvelopeRelease::WaitForKeyRelease>
 >
 >
 //>
@@ -33,9 +31,9 @@ MultiEnveloped
 template<typename T>
 struct TuneElementInitializer {
   TuneElementInitializer(int const sample_rate,
-                            int const stride,
-                            float const stereo_spread,
-                            audioelement::AHDSR const & a,
+                         int const stride,
+                         float const stereo_spread,
+                         audioelement::AHDSR const & a,
                          std::vector<harmonicProperties_t> harmonics)
   : sample_rate(sample_rate)
   , stride(stride)
@@ -80,6 +78,16 @@ private:
 
 } // NS audioelement
 
+
+// Scales time.
+static constexpr float timeScaleFactor = 0.09;
+
+
+// Helper class to play a sequence of notes using a pattern of indexes.
+//
+// We play the sequence of notes using the index pattern once,
+// then we increment all indexes,
+// then repeat.
 template<typename PitchGen>
 struct ShufflePattern{
   ShufflePattern(PitchGen & gen, std::vector<size_t> pattern)
@@ -91,11 +99,11 @@ struct ShufflePattern{
       maxIndex = std::max(maxIndex, i);
     m_nextValues.resize(maxIndex + 1);
     m_patternIndex = m_pattern.size();
-
+    
     for(auto & val : m_nextValues)
       val = m_gen();
   }
-
+  
   double operator()() {
     if(m_patternIndex >= m_pattern.size())
     {
@@ -105,7 +113,7 @@ struct ShufflePattern{
     }
     return m_nextValues[m_pattern[m_patternIndex++]];
   }
-
+  
 private:
   PitchGen& m_gen;
   std::vector<double> m_nextValues;
@@ -113,35 +121,191 @@ private:
   size_t m_patternIndex{};
 };
 
-void tune(int const sample_rate) {
-  auto mk_note_id = [] {
-    static int64_t i = 0;
-    ++i;
-    return NoteId{i};
-  };
 
-  auto ms_to_frames = [=](float ms){
-    return audio::ms_to_frames(ms, sample_rate);
-  };
+// Helper class to generate a slight pitch drift over time,
+// mimicking what can happen on the cello when we don't play
+// any open string for a long time.
+struct PitchDrifter
+{
+  static constexpr auto constantDrift =
+  //0.05
+  //0.01
+  //0.02
+  0
+  ;
 
+  float operator()(float pitch)
+  {
+    pitchDrift += constantDrift;
+    return pitchDrift + pitch;
+  }
+
+private:
+  float pitchDrift = 0.f;
+};
+
+using Events = std::vector<std::pair<TimestampAndSource, Event>>;
+struct Loop
+{
+  Loop(Events && e, uint64_t lNanos)
+  : events(std::move(e))
+  , lengthNanos(lNanos)
+  {}
+
+  Events events;
+  uint64_t lengthNanos{};
+};
+
+Loop mkEvents(int countNotes = 100);
+Loop eventsFrom(std::filesystem::path const&);
+
+static NoteId mk_note_id() {
+  static int64_t i = 0;
+  ++i;
+  return NoteId{i};
+}
+
+// Main class.
+struct AppTune
+{
+  AppTune();
+  ~AppTune();
+
+  void setHarmonicsFile(std::filesystem::path e)
+  {
+    if(e == harmonicsFile)
+      return;
+    harmonicsFile = e;
+    m_lastWriteSynthFiles.reset();
+  }
+  void setEnvelopeFile(std::filesystem::path e)
+  {
+    if(e == envelopeFile)
+      return;
+    envelopeFile = e;
+    m_lastWriteSynthFiles.reset();
+  }
+
+  void playEvents(Loop && loop, uint64_t countLoops = 1000);
+
+private:
+
+  // This file defines the harmonics of the synthesizer.
+  //
+  // The following syntax is used in this file:
+  //
+  // ....   // 1st harmonic has a relative weight 4
+  //        // no 2nd harmonic
+  // .      // 3rd harmonic has a relative weight 1
+  // ...    // 4th harmonic has a relative weight 3
+  std::filesystem::path harmonicsFile{"/Users/Olivier/Dev/cpp.audio/Synth/Harmonics.txt"};
+  
+  // This file defines the envelope of the synthesizer.
+  //
+  // The following syntax is used in this file:
+  // A .
+  // H ..
+  // D ....
+  // S ...
+  // R ...
+  std::filesystem::path envelopeFile{"/Users/Olivier/Dev/cpp.audio/Synth/Envelope.txt"};
+
+  static constexpr int m_sampleRate{96000};
   static constexpr int nAudioOut = 2;
-
+  
   static constexpr int nVoices = 128;
 
   using Synth = sine::Synth <
   nAudioOut,
   audioelement::TuneElement<double>,
+  TryAccountForTimeSourceJitter::No,
   SynchronizePhase::Yes,
   DefaultStartPhase::Zero,
   HandleNoteOff::Yes,
   nVoices,
   audioelement::TuneElementInitializer<double>>;
   
-  Synth synth;
+  static constexpr auto audioEnginePolicy = AudioOutPolicy::MasterLockFree;
   
-  std::filesystem::path harmonicsFile{"/Users/Olivier/Dev/cpp.audio/Harmonics.txt"};
+  using Ctxt = Context<
+  AudioPlatform::PortAudio,
+  Features::JustOut,
+  // This monotonic time ensures that the audio played will not depend on thread scheduler timing.
+  TimeSource::Monotonic
+  >;
   
-  std::filesystem::file_time_type lastWriteHarmonics = std::filesystem::last_write_time(harmonicsFile);
+  using Stepper = SimpleAudioOutContext<
+  nAudioOut,
+  audioEnginePolicy
+  >;
+  
+  
+  Ctxt m_ctxt;
+  Synth m_synth;
+  Stepper m_stepper;
+    
+  // Represents the min time of the harmonics/envelope files that were
+  // last used to produce the AE initializer.
+  std::optional<std::filesystem::file_time_type> m_lastWriteSynthFiles;
+  
+  void updateInitializerIfNeeded();
+
+  auto ms_to_frames (float ms){
+    return audio::ms_to_frames(ms, m_sampleRate);
+  }
+};
+
+AppTune::AppTune()
+: m_stepper(GlobalAudioLock<audioEnginePolicy>::get(),
+            Synth::n_channels * 4 /* one shot */,
+            1 /* a single compute is needed (global for the synth)*/)
+{
+  m_synth.initialize(m_stepper);
+
+  if (!m_ctxt.doInit(0.008,
+                     m_sampleRate,
+                     nAudioOut,
+                     [this]
+                     (SAMPLE *outputBuffer,
+                      int nFrames,
+                      uint64_t const tNanos){
+    m_stepper.step(outputBuffer,
+                   nFrames,
+                   tNanos);
+  })) {
+    throw std::runtime_error("ctxt init failed");
+  }
+
+  // I guess we need this wait because it could take some time for the audio callback to be
+  // up and running.
+  std::this_thread::sleep_for(std::chrono::seconds(1));
+}
+
+AppTune::~AppTune()
+{
+  m_synth.finalize(m_stepper);
+  
+  // We sleep so that the audio produced during finalization has a chance to be played
+  // (taking into account the delay between when the audio is written in the buffer
+  //  and when the audio is actually played in the speakers).
+
+  std::this_thread::sleep_for(std::chrono::milliseconds(250));
+  
+  m_ctxt.doTearDown();
+}
+
+
+void AppTune::updateInitializerIfNeeded()
+{
+  {
+    const std::filesystem::file_time_type newLastWriteHarmonics =
+    std::min(std::filesystem::last_write_time(harmonicsFile), std::filesystem::last_write_time(envelopeFile));
+    if(m_lastWriteSynthFiles.has_value() && newLastWriteHarmonics < *m_lastWriteSynthFiles)
+      // No need to updatem the files have not changed since last time the initializer has been updated.
+      return;
+    // This initializer update will affect any note that has not started yet.
+    m_lastWriteSynthFiles = newLastWriteHarmonics;
+  }
 
   auto mkHarmonics = [&]()
   {
@@ -174,176 +338,303 @@ void tune(int const sample_rate) {
       });
     return res;
   };
-
-  float pitchDrift = 0.f;
-  constexpr auto constantDrift =
-  //0.05
-  //0.01
-  //0.02
-  0
-  ;
-  auto withPitchDrift = [&](float pitch)
-  {
-    pitchDrift += constantDrift;
-    return pitchDrift + pitch;
-  };
-
-  Midi midi;
   
-  constexpr auto& scale = well_tempered::c_minorScaleAsc;
+  auto mkEnvelope = [&]()
+  {
+    std::ifstream file(envelopeFile);
+    std::string str;
+    std::map<char, int> e;
+    e['a'] = 0;
+    e['h'] = 0;
+    e['d'] = 0;
+    e['s'] = 0;
+    e['r'] = 0;
+    const float constant = 100.f;
+    while (std::getline(file, str))
+    {
+      if(!str.empty())
+        e[tolower(str[0])] = constant * std::count(str.begin(), str.end(), '.');
+    }
+    return audioelement::AHDSR{
+      // attack
+      ms_to_frames(timeScaleFactor * e['a']),
+      itp::interpolation::LINEAR,
+      // hold
+      ms_to_frames(timeScaleFactor * e['h']),
+      // decay
+      ms_to_frames(timeScaleFactor * e['d']),
+      itp::interpolation::EASE_OUT_CUBIC,
+      // release
+      ms_to_frames(timeScaleFactor * e['r']),
+      itp::interpolation::EASE_OUT_CUBIC,
+      // sustain
+      0.1f * e['s'] / constant
+    };
+  };
+  std::vector<harmonicProperties_t> harmonics = mkHarmonics();
+  audioelement::AHDSR env = mkEnvelope();
+  
+  auto initializer = audioelement::TuneElementInitializer<double>{
+    m_sampleRate,
+    1, // not used,
+    0., // not used,
+    env,
+    harmonics
+  };
+  m_synth.setSynchronousElementInitializer(initializer);
+}
+
+Loop mkEvents(int countNotes)
+{
+  Midi m_midi;
+  std::vector<std::pair<TimestampAndSource, Event>> events;
+  
+  PitchDrifter withPitchDrift;
+
+  //constexpr auto& scale = well_tempered::c_minorScaleAsc;
   //constexpr auto& scale = well_tempered::c_majorScaleAsc;
   //const auto scale = just::mkMajorScaleAsc<Constexpr::Yes>();
-  //const auto scale = pythagorean::mkMajorScaleAsc<Constexpr::Yes>();
-
+  const auto scale = pythagorean::mkMajorScaleAsc<Constexpr::Yes>();
+  
   const int countOctaves = 2;
   MultiOctave multiOctave{
     scale.begin(),
     scale.end(),
-    midi.get_pitch(NoteOctave{Note::La, 2}),
+    m_midi.get_pitch(NoteOctave{Note::La, 2}),
     countOctaves
   };
   
   //auto& pitchGen = multiOctave;
   auto shufflePattern = ShufflePattern{multiOctave, std::vector<size_t>{0, 2, 1, 3, 2, 4, 3, 2}};
   auto& pitchGen = shufflePattern;
+    
+  // Duration of a note
+  static constexpr auto wait_after_note_on = std::chrono::milliseconds(static_cast<int>(timeScaleFactor * 800));
+  // Pause length between consecutive notes
+  static constexpr auto wait_after_note_off = std::chrono::milliseconds(static_cast<int>(timeScaleFactor * 300));
 
   const float volume = 1.f;
-  
-  float timeScaleFactor = 0.09;
-  
-  const auto wait_after_note_off = std::chrono::milliseconds(static_cast<int>(timeScaleFactor * 300));
-  const auto wait_after_note_on = std::chrono::milliseconds(static_cast<int>(timeScaleFactor * 800));
-    
-  auto updateInitializer = [&]()
+
+  uint64_t curTimeNanos{};
+  for(int i=0; i<countNotes; ++i)
   {
-    std::vector<harmonicProperties_t> harmonics = mkHarmonics();
-    
-    auto initializer = audioelement::TuneElementInitializer<double>{
-      sample_rate,
-      1, // not used,
-      0., // not used,
-      // Todo read from JSON interactively
-      audioelement::AHDSR{
-        // attack
-        ms_to_frames(timeScaleFactor * 150),
-        itp::interpolation::LINEAR,
-        // hold
-        ms_to_frames(timeScaleFactor * 0),
-        // decay
-        ms_to_frames(timeScaleFactor * 150),
-        itp::interpolation::EASE_OUT_CUBIC,
-        // release
-        ms_to_frames(timeScaleFactor * 500),
-        itp::interpolation::EASE_OUT_CUBIC,
-        // sustain
-        0.6
-      },
-      harmonics
-    };
-    synth.setSynchronousElementInitializer(initializer);
-  };
-
-  static constexpr auto audioEnginePolicy = AudioOutPolicy::MasterLockFree;
-
-  using Ctxt = Context<
-  AudioPlatform::PortAudio,
-  Features::JustOut
-  >;
-  
-  using Stepper = SimpleAudioOutContext<
-  nAudioOut,
-  audioEnginePolicy
-  >;
-
-  Ctxt ctxt;
-  Stepper stepper(GlobalAudioLock<audioEnginePolicy>::get(),
-                  Synth::n_channels * 4 /* one shot */,
-                  1 /* a single compute is needed (global for the synth)*/);
-  
-  if (!ctxt.doInit(0.008,
-                   sample_rate,
-                   nAudioOut,
-                   [&stepper,
-                    nanos_per_audioelement_buffer = static_cast<uint64_t>(0.5f +
-                                                                          audio::nanos_per_frame<float>(sample_rate) *
-                                                                          static_cast<float>(audio::audioelement::n_frames_per_buffer))]
-                   (SAMPLE *outputBuffer,
-                          int nFrames,
-                          uint64_t const tNanos){
-    stepper.step(outputBuffer,
-                 nFrames,
-                 tNanos,
-                 nanos_per_audioelement_buffer);
-  })) {
-    throw std::runtime_error("ctxt init failed");
-  }
-
-  synth.initialize(stepper);
-  
-  updateInitializer();
-
-  std::this_thread::sleep_for(std::chrono::milliseconds(1000));
-
-  std::optional<NoteId> noteid;
-
-  std::optional<double> prevMidiPitch;
-
-  while(true) {
-
-    if(noteid) {
-
-      auto res = synth.onEvent(sample_rate,
-                               mkNoteOff(*noteid),
-                               stepper,
-                               stepper,
-                               {});
-      // std::cout << "XXX " << *noteid << " " << res << std::endl;
-      noteid.reset();
-      std::this_thread::sleep_for(wait_after_note_off);
-  
-    }
-
-    const float midiPitch = withPitchDrift(pitchGen());
-    const float frequency = midi.midi_pitch_to_freq(midiPitch);
-    noteid = mk_note_id();
-    auto const res  = synth.onEvent(sample_rate,
-                                    mkNoteOn(*noteid,
-                                             frequency,
-                                             volume),
-                                    stepper,
-                                    stepper,
-                                    {});
-
-
-#if 0
-    const auto noteWithDeviation = midi_pitch_to_note_deviation(midiPitch);
-    std::cout << *noteid << ": " << frequency << " Hz (" << midiPitch << " " <<
-    noteWithDeviation << " "
-    //<< (prevMidiPitch.has_value() ? (midiPitch - *prevMidiPitch) : 0.) << ") "
-    << res << std::endl;
-#endif
-
-    prevMidiPitch = midiPitch;
-    
-    std::filesystem::file_time_type newLastWriteHarmonics = std::filesystem::last_write_time(harmonicsFile);
-    if(newLastWriteHarmonics > lastWriteHarmonics)
+    const auto noteid = mk_note_id();
     {
-      updateInitializer();
-      lastWriteHarmonics = newLastWriteHarmonics;
+      const float midiPitch = withPitchDrift(pitchGen());
+      const float frequency = m_midi.midi_pitch_to_freq(midiPitch);
+      
+      // if needed we could generate the string below, and print it when we
+      // schedule the note to be played
+      // so that the user visualizes the pitch deviation.
+#if 0
+      const auto noteWithDeviation = midi_pitch_to_note_deviation(midiPitch);
+      std::cout << *noteid << ": " << frequency << " Hz (" << midiPitch << " " <<
+      noteWithDeviation << " "
+      //<< (prevMidiPitch.has_value() ? (midiPitch - *prevMidiPitch) : 0.) << ") "
+      << res << std::endl;
+#endif
+      events.emplace_back(TimestampAndSource{curTimeNanos, 0},
+                          mkNoteOn(noteid,
+                                   frequency,
+                                   volume));
     }
-    std::this_thread::sleep_for(wait_after_note_on);
+    curTimeNanos += std::chrono::duration_cast<std::chrono::nanoseconds>(wait_after_note_on).count();
+    events.emplace_back(TimestampAndSource{curTimeNanos, 0},
+                        mkNoteOff(noteid));
+    curTimeNanos += std::chrono::duration_cast<std::chrono::nanoseconds>(wait_after_note_off).count();
   }
+  
+  return Loop{std::move(events), curTimeNanos};
+}
 
-  synth.finalize(stepper);
+Loop eventsFrom(std::filesystem::path const& scoreFile)
+{
+  std::ifstream file(scoreFile);
+  
+  Midi m_midi;
+  std::vector<std::pair<TimestampAndSource, Event>> events;
+  
+  // 0  Do
+  // 1  Do#
+  // 2  Re
+  // 3  Re#
+  // 4  Mi
+  // 5  Fa
+  // 6  Fa#
+  // 7  Sol
+  // 8  Sol#
+  // 9  La
+  // A  La#
+  // B  Si
+  
+  std::vector<std::string> chars;
+  {
+    std::string str;
+    while (std::getline(file, str))
+      chars.emplace_back(str);
+  }
+  
+  // Duration of a note
+  static constexpr auto wait_after_note_on = std::chrono::milliseconds(static_cast<int>(timeScaleFactor * 800));
+  // Pause length between consecutive notes
+  static constexpr auto wait_after_note_off = std::chrono::milliseconds(static_cast<int>(timeScaleFactor * 300));
+  
+  const float volume = 1.f / std::max(1ul, chars.size());
+  
+  uint64_t maxCurTimeNanos{};
+  
+  uint64_t voice{};
+  for(const auto & str : chars)
+  {
+    uint64_t curTimeNanos{};
+    for(auto c : str)
+    {
+      const auto noteid = mk_note_id();
+      const auto semitones = [=]()
+      {
+        if(c >= '0' && c <= '9')
+          return c - '0';
+        return 10 + c - 'A';
+      }();
+      
+      const float midiPitch = semitones + A_pitch + 3;
+      const float frequency = m_midi.midi_pitch_to_freq(midiPitch);
+      events.emplace_back(TimestampAndSource{curTimeNanos, voice},
+                          mkNoteOn(noteid,
+                                   frequency,
+                                   volume));
+      curTimeNanos += std::chrono::duration_cast<std::chrono::nanoseconds>(wait_after_note_on).count();
+      events.emplace_back(TimestampAndSource{curTimeNanos, voice},
+                          mkNoteOff(noteid));
+      curTimeNanos += std::chrono::duration_cast<std::chrono::nanoseconds>(wait_after_note_off).count();
+    }
+    maxCurTimeNanos = std::max(maxCurTimeNanos, curTimeNanos);
+    ++voice;
+  }
+  return {std::move(events), maxCurTimeNanos};
+}
 
-  std::this_thread::sleep_for(wait_after_note_on); // so that the audio produced during finalization has a chance to be played
+void AppTune::playEvents(Loop && loop, uint64_t countLoops)
+{
+  if(!countLoops)
+    return;
 
-  ctxt.doTearDown();
+  auto & events = loop.events;
+  std::sort(events.begin(), events.end(), [](const auto & t1, const auto & t2){ return t1.first.getNanosTime() < t2.first.getNanosTime(); });
+  
+  // Use a delay of one second
+  constexpr uint64_t bufferNanos{static_cast<uint64_t>(1e9)};
+  
+  {
+    const uint64_t ctxtCurTimeNanos = nanos_per_frame<double>(m_sampleRate) * m_ctxt.getCountFrames();
+
+    // This is the offset we need to apply to events if we want them to start playing right away.
+    // We add one second to that so that audio won't depend on thread scheduling.
+    const uint64_t offsetTimeNanos = ctxtCurTimeNanos + bufferNanos;
+    
+    for(auto&[time, _]:events)
+      time.offsetNanosTime(offsetTimeNanos);
+  }
+  
+  std::optional<uint64_t> lastCtxtScheduleTimeNanos;
+  for(size_t firstIndex=0, sz = events.size();;)
+  {
+    size_t count_yields{};
+  retry:
+    
+    updateInitializerIfNeeded();
+    
+    const uint64_t ctxtCurTimeNanos = nanos_per_frame<double>(m_sampleRate) * m_ctxt.getCountFrames();
+
+    if(firstIndex < sz)
+    {
+      // Try to schedule events that need to be played during the next "bufferNanos" time.
+      
+      auto endIndex = firstIndex;
+      for(;endIndex < sz; ++endIndex)
+      {
+        if(events[endIndex].first.getNanosTime() >= ctxtCurTimeNanos + bufferNanos)
+          break;
+      }
+      
+      if(firstIndex != endIndex)
+      {
+        // std::cout << endIndex - firstIndex << " " << count_yields << std::endl;
+        for(; firstIndex != endIndex; ++firstIndex)
+          auto const res = m_synth.onEvent(m_sampleRate,
+                                           events[firstIndex].second,
+                                           m_stepper,
+                                           m_stepper,
+                                           events[firstIndex].first);
+        lastCtxtScheduleTimeNanos = ctxtCurTimeNanos;
+        continue;
+      }
+      else
+      {
+        // There are remaining events in this iteration of the loop but we cannot schedule them yet.        
+      }
+    }
+    else
+    {
+      // All events in this iteration of the loop have been scheduled.
+
+      // Some notes may not have started being played yet, eventhough they are scheduled.
+      // These notes may start being played up to "bufferNanos" in the future.
+      
+      if(countLoops && --countLoops)
+      {
+        firstIndex = 0;
+        for(auto&[time, _]:events)
+          time.offsetNanosTime(loop.lengthNanos);
+        goto retry;
+      }
+      else if(!lastCtxtScheduleTimeNanos.has_value() || ((*lastCtxtScheduleTimeNanos + 2*bufferNanos) < ctxtCurTimeNanos))
+      {
+        // By now, all notes of the loop iteration have started (and stopped).
+        break;
+      }
+    }
+    
+    ++count_yields;
+    std::this_thread::yield();
+    goto retry;
+  }
+  
+  // All notes have started (and stopped) but some envelope tails may still be active.
+
+  while(!m_synth.allEnvelopesFinished())
+    std::this_thread::yield();
 }
 
 } // NS
 
 int main() {
-  imajuscule::audio::tune(96000);
+  using Events = imajuscule::audio::Events;
+  
+  auto a = imajuscule::audio::AppTune{};
+  
+  const std::filesystem::path env{"/Users/Olivier/Dev/cpp.audio/Synth/Envelope.txt"};
+
+  // The ZeroEnvelope file produces drum sounds.
+  const std::filesystem::path zeroEnv{"/Users/Olivier/Dev/cpp.audio/Synth/ZeroEnvelope.txt"};
+
+  const std::filesystem::path harSimple{"/Users/Olivier/Dev/cpp.audio/Synth/HarmonicsSimple.txt"};
+  a.setHarmonicsFile(harSimple);
+  a.playEvents(imajuscule::audio::eventsFrom("/Users/Olivier/Dev/cpp.audio/Scores/StrangeBots.txt"), 2);
+
+  a.playEvents(imajuscule::audio::mkEvents(500), 1);
+
+  {
+    //a.setEnvelopeFile(zeroEnv);
+    a.playEvents(imajuscule::audio::eventsFrom("/Users/Olivier/Dev/cpp.audio/Scores/Phrase2.txt"), 4);
+
+    a.playEvents(imajuscule::audio::eventsFrom("/Users/Olivier/Dev/cpp.audio/Scores/Phrase.txt"), 4);
+    a.playEvents(imajuscule::audio::eventsFrom("/Users/Olivier/Dev/cpp.audio/Scores/StrangeBots.txt"), 4);
+    a.playEvents(imajuscule::audio::mkEvents(500), 1);
+
+  }
+
+  
+  
   return 0;
 }

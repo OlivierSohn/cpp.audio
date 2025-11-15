@@ -201,6 +201,7 @@ constexpr int nAudioOut = 2;
 using Synth = sine::Synth <
 nAudioOut
 , audioelement::ResynthElement<double>
+, TryAccountForTimeSourceJitter::No
 , SynchronizePhase::Yes
 , DefaultStartPhase::Random
 , HandleNoteOff::Yes
@@ -211,6 +212,7 @@ nAudioOut
 using SynthVocoderCarier = sine::Synth <
 1 // mono
 , audioelement::VocoderCarrierElement<double>
+, TryAccountForTimeSourceJitter::No
 , SynchronizePhase::Yes
 , DefaultStartPhase::Random
 , HandleNoteOff::Yes
@@ -222,11 +224,13 @@ constexpr auto audioEnginePolicy = AudioOutPolicy::MasterLockFree;
 
 using Ctxt = Context<
 AudioPlatform::PortAudio,
-Features::InAndOut
+Features::InAndOut,
+TimeSource::Monotonic
 >;
 
 using FullDuplexCtxt = FullDuplexContext<
-AudioPlatform::PortAudio
+AudioPlatform::PortAudio,
+TimeSource::MIDI
 >;
 
 using Stepper = SimpleAudioOutContext<
@@ -261,7 +265,7 @@ inline
 void synthesize_sounds(Midi const & midi,
                        int64_t const analysis_frame_idx,
                        int const sample_rate,
-                       MIDITimestampAndSource const & miditime,
+                       TimestampAndSource const & miditime,
                        int const future_stride,
                        float const gain_analysis,
                        float const stereo_spread,
@@ -1031,7 +1035,11 @@ private:
   std::atomic_bool preset_autosave_thread_active;
   std::unique_ptr<std::thread> preset_autosave_thread;
   
-  uint64_t analysis_frames_counter = 0;
+  // TODO think about the initialization of this value.
+  // It should probably be m_countFrames of the used context +
+  // the count of frames corresponding to a reasonable delay
+  // such that we have good timing in the audio output.
+  uint64_t analysis_frames_counter = 100000;
   
   RtResynthOfflineJob * job = nullptr;
 
@@ -1050,7 +1058,7 @@ private:
   void analyze_until_input_starvation();
   
   void step (std::vector<FreqMag<double>> const & fs,
-             MIDITimestampAndSource const & miditime,
+             TimestampAndSource const & miditime,
              int const future_stride);
   
   std::function<std::optional<float>(float const)>
@@ -1152,7 +1160,7 @@ RtResynth::RtResynth(Mode runmode,
         }
       });
       
-      // generate the static sounbBuffer for noises, to avoid a delay on the first played note
+      // generate the static soundBuffer for noises, to avoid a delay on the first played note
       getPinkNoise(sample_rate);
       getPinkNoiseAbsMean(sample_rate);
       getWhiteNoise(sample_rate);
@@ -1283,17 +1291,13 @@ RecordF RtResynth::input_func_with_direct_input() {
 }
 
 PlayF RtResynth::output_func() {
-  return [this,
-          nanos_per_audioelement_buffer = static_cast<uint64_t>(0.5f +
-                                                                audio::nanos_per_frame<float>(sample_rate) *
-                                                                static_cast<float>(audio::audioelement::n_frames_per_buffer))]
+  return [this]
   (SAMPLE *outputBuffer,
    int nFrames,
    uint64_t const tNanos){
     stepper.step(outputBuffer,
                  nFrames,
-                 tNanos,
-                 nanos_per_audioelement_buffer);
+                 tNanos);
   };
 }
 
@@ -1430,6 +1434,8 @@ RtResynth::init() {
     if (run_mode == Mode::Realtime) {
       thread_resynth_active = true;
       thread_resynth = std::make_unique<std::thread>([this](){
+        // TODO we should probably initialize analysis_frames_counter
+        // based on m_countFrames of the used context + a reasonable delay (one second?)?
         while (thread_resynth_active) {
           analyze_until_input_starvation();
           std::this_thread::yield(); // should we sleep?
@@ -1524,7 +1530,7 @@ void RtResynth::onInputMidiEvent(std::optional<uint64_t> const &time_ms,
                                      on.velocity / 127.f),
                             stepper,
                             stepper,
-                            MIDITimestampAndSource{time_nanos, to_underlying(MidiSource::MidiInput)});
+                            TimestampAndSource{time_nanos, to_underlying(MidiSource::MidiInput)});
   } else if (std::holds_alternative<midi::NoteOff>(e)) {
     Assert(time_ms); // the only case we have no time is for AllNotesOff
     // Portmidi time is in milliseconds, we convert it to nanoseconds.
@@ -1534,7 +1540,7 @@ void RtResynth::onInputMidiEvent(std::optional<uint64_t> const &time_ms,
                             mkNoteOff(vocoder_carrier_noteids.NoteOffId(off.key)),
                             stepper,
                             stepper,
-                            MIDITimestampAndSource{time_nanos, to_underlying(MidiSource::MidiInput)});
+                            TimestampAndSource{time_nanos, to_underlying(MidiSource::MidiInput)});
   } else if (std::holds_alternative<midi::AllNotesOff>(e)) {
     // send explicit note-offs for every note currently playing
     for (auto const & [key, note_ids] : vocoder_carrier_noteids) {
@@ -1599,7 +1605,9 @@ void RtResynth::init_analysis() {
         profiling::ThreadCPUTimer timer(dt);
         
         step(freqmags,
-             MIDITimestampAndSource((analysis_frames_counter + local_count_dropped_input_frames) * nanos_per_frame,
+             TimestampAndSource(run_mode == Mode::Realtime
+                                ? 0 // to have the sound played as fast as possible.
+                                : ((analysis_frames_counter + local_count_dropped_input_frames) * nanos_per_frame),
                                     to_underlying(MidiSource::Analysis)),
              window_center_stride); // we pass the future stride, on purpose
       }
@@ -1660,7 +1668,7 @@ void RtResynth::analyze_until_input_starvation() {
 
 void
 RtResynth::step (std::vector<FreqMag<double>> const & fs,
-                 MIDITimestampAndSource const & miditime,
+                 TimestampAndSource const & miditime,
                  int const future_stride) {
   ++analysis_frame_idx;
   

@@ -175,12 +175,16 @@ struct EventIteratorFor<IEventList> {
   using type = EventIterator;
 };
 
-struct MIDITimestampAndSource {
-  MIDITimestampAndSource(uint64_t t,
+struct TimestampAndSource {
+  TimestampAndSource(uint64_t t,
                          uint64_t sourceKey)
   : time(t)
   , src_key(sourceKey)
   {}
+
+  void offsetNanosTime(uint64_t offset) {
+    time += offset;
+  }
 
   uint64_t getNanosTime() const {
     return time;
@@ -188,9 +192,21 @@ struct MIDITimestampAndSource {
   uint64_t getSourceKey() const {
     return src_key;
   }
+  
+  auto operator<(const TimestampAndSource& other) const
+  {
+    return std::tie(time, src_key) < std::tie(other.time, other.src_key);
+  }
+  auto operator==(const TimestampAndSource& other) const
+  {
+    return std::tie(time, src_key) == std::tie(other.time, other.src_key);
+  }
 
 private:
-  uint64_t time, src_key;
+  // nanoseconds (either MIDI time or a monotonic time, depending on TimeSource of Context).
+  uint64_t time;
+
+  uint64_t src_key;
 };
 
 /*
@@ -259,7 +275,7 @@ private:
 //   In the input, e.noteid.noteid is the key that uniquely identifies the played note among all currently played notes.
 //     It must fit in the values of an int.
 //     Typically, for a synth played via a midi keyboard it could be the midipitch, because in a midi keyboard,
-//       there is a physical constraint that prevents the same key to be pressed twice in a row without being released first.
+//       there is a physical constraint that prevents the same key from being pressed twice in a row without being released first.
 //   In the output, e.noteid.noteid is the noteid that uniquely identifies the played note among all notes played currently or in the past or in the future:
 // @param voice : used to group events. a noteoff or notechange can only correspond to a noteon of the same voice.
 inline void convertKeyToNoteId(NoteIdsGenerator & gen,

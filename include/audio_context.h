@@ -72,15 +72,15 @@ bool useConvolutionReverb(int const sample_rate,
 
 constexpr int xfade_on_close = 5000; // in samples
 
-template <typename Stepper, Features Feat, AudioPlatform AUP >
-struct AudioOutContext : public Context<AUP, Feat> {
+template <typename Stepper, Features Feat, AudioPlatform AUP, TimeSource Time>
+struct AudioOutContext : public Context<AUP, Feat, Time> {
   static constexpr auto nAudioOut = Stepper::nOuts;
   static constexpr auto policy = Stepper::policy;
   using LockFromRT = typename Stepper::LockFromRT;
   using LockFromNRT = typename Stepper::LockFromNRT;
   using Request = typename Stepper::Request;
   using Volumes = typename Stepper::ChannelsT::Volumes;
-  using Base = Context<AUP, Feat>;
+  using Base = Context<AUP, Feat, Time>;
   using Base::doInit;
   using Base::doTearDown;
 

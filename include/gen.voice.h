@@ -1100,6 +1100,8 @@ namespace imajuscule::audio::voice {
       audioelement::VolumeAdjusted<
         audioelement::SoundEngine<MODE, nAudioOut, getAtomicity<outPolicy>(), Logger>
       >,
+      // Maybe in the future we will need to parametrize this:
+      TryAccountForTimeSourceJitter::No,
       SynchronizePhase::No, // TODO Yes when MODE uses no sweep?
       DefaultStartPhase::Zero, // TODO Randomize when MODE uses no sweep?
       handleNoteOff,
