@@ -660,7 +660,7 @@ Loop moduloPitch(Loop && l)
   Midi midi;
 
   const double minPitch = 50.;
-  const double maxPitch = 70.;
+  const double maxPitch = 80.;
 
   for(auto & [_, e] : l.events)
   {
@@ -708,10 +708,14 @@ int main() {
   {
     a.setEnvelopeFile(env);
     
-    // maybe we need a low pass filter instead of moduloPitch?
-
-    // maybe we need the ability to modulo inside playEvents via a callback lambda
-    // that modifies the event on the fly before scheduling it?
+    // When writing the score files it is easy to use midi pitches that are way off,
+    // given the experimental nature of the grammar...
+    //
+    // This is as-designed, to allow for more creativity by breaking from
+    // the usual ways in which music is traditionally written.
+    //
+    // moduloPitch is a way to reduce the range of generated pitches.
+    // It is an approach somewhat complementary to low-pass filtering.
 
     a.playEvents(moduloPitch(eventsFrom(scores / "Phrase.txt")), 4);
     a.playEvents(eventsFrom(scores / "Phrase.txt"), 4);
