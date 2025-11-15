@@ -621,28 +621,32 @@ void AppTune::playEvents(Loop && loop, uint64_t countLoops)
 } // NS
 
 int main() {
-  using Events = imajuscule::audio::Events;
-  
-  auto a = imajuscule::audio::AppTune{};
-  
-  const std::filesystem::path env{"/Users/Olivier/Dev/cpp.audio/Synth/Envelope.txt"};
+  using namespace imajuscule::audio;
+  using namespace std::filesystem;
 
+  auto a = AppTune{};
+  
+  const auto synth = path{"/Users/Olivier/Dev/cpp.audio/Synth/"};
+  const auto scores = path{"/Users/Olivier/Dev/cpp.audio/Scores/"};
+  
   // The ZeroEnvelope file produces drum sounds.
-  const std::filesystem::path zeroEnv{"/Users/Olivier/Dev/cpp.audio/Synth/ZeroEnvelope.txt"};
+  const path zeroEnv{synth / "EnvelopeZero.txt"};
+  const path fastEnv{synth / "EnvelopeFast.txt"};
+  const path slowEnv{synth / "EnvelopeSlow.txt"};
 
-  const std::filesystem::path harSimple{"/Users/Olivier/Dev/cpp.audio/Synth/HarmonicsSimple.txt"};
+  const path harSimple{synth / "HarmonicsSimple.txt"};
 
-  //a.setHarmonicsFile(harSimple);
-  
-  a.playEvents(imajuscule::audio::mkEvents(10), 1);
+  a.setHarmonicsFile(harSimple);
 
-  a.setEnvelopeFile(zeroEnv);
-
-  a.playEvents(imajuscule::audio::eventsFrom("/Users/Olivier/Dev/cpp.audio/Scores/Phrase2.txt"), 4);
-  a.playEvents(imajuscule::audio::eventsFrom("/Users/Olivier/Dev/cpp.audio/Scores/Phrase.txt"), 4);
-  a.playEvents(imajuscule::audio::eventsFrom("/Users/Olivier/Dev/cpp.audio/Scores/StrangeBots.txt"), 4);
-
-  a.playEvents(imajuscule::audio::mkEvents(500), 1);
-  
+  for(auto const &env : {zeroEnv, fastEnv, slowEnv})
+  {
+    a.setEnvelopeFile(env);
+    
+    a.playEvents(eventsFrom(scores / "Phrase2.txt"), 4);
+    a.playEvents(eventsFrom(scores / "Phrase.txt"), 4);
+    a.playEvents(eventsFrom(scores / "StrangeBots.txt"), 4);
+    
+    a.playEvents(mkEvents(250), 1);
+  }
   return 0;
 }
