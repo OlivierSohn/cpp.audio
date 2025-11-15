@@ -525,6 +525,12 @@ void AppTune::playEvents(Loop && loop, uint64_t countLoops)
   // Use a delay of one second
   constexpr uint64_t bufferNanos{static_cast<uint64_t>(1e9)};
   
+  // The first noteId that is not used.
+  // This assumes that noteids are small contiguous integers which is the case here.
+  int64_t endNoteId{};
+  for(auto&[_, event]:events)
+    endNoteId = std::max(event.noteid.noteid + 1l, endNoteId);
+
   {
     const uint64_t ctxtCurTimeNanos = nanos_per_frame<double>(m_sampleRate) * m_ctxt.getCountFrames();
 
@@ -584,8 +590,14 @@ void AppTune::playEvents(Loop && loop, uint64_t countLoops)
       if(countLoops && --countLoops)
       {
         firstIndex = 0;
-        for(auto&[time, _]:events)
+        for(auto&[time, event]:events)
+        {
           time.offsetNanosTime(loop.lengthNanos);
+          // we offset the noteids otherwise some noteoff events may be ignored.
+          // when we have several noteon and noteoff
+          // events in the queue for the same noteid.
+          event.offsetNoteId(endNoteId);
+        }
         goto retry;
       }
       else if(!lastCtxtScheduleTimeNanos.has_value() || ((*lastCtxtScheduleTimeNanos + 2*bufferNanos) < ctxtCurTimeNanos))
@@ -619,22 +631,18 @@ int main() {
   const std::filesystem::path zeroEnv{"/Users/Olivier/Dev/cpp.audio/Synth/ZeroEnvelope.txt"};
 
   const std::filesystem::path harSimple{"/Users/Olivier/Dev/cpp.audio/Synth/HarmonicsSimple.txt"};
-  a.setHarmonicsFile(harSimple);
-  a.playEvents(imajuscule::audio::eventsFrom("/Users/Olivier/Dev/cpp.audio/Scores/StrangeBots.txt"), 2);
+
+  //a.setHarmonicsFile(harSimple);
+  
+  a.playEvents(imajuscule::audio::mkEvents(10), 1);
+
+  a.setEnvelopeFile(zeroEnv);
+
+  a.playEvents(imajuscule::audio::eventsFrom("/Users/Olivier/Dev/cpp.audio/Scores/Phrase2.txt"), 4);
+  a.playEvents(imajuscule::audio::eventsFrom("/Users/Olivier/Dev/cpp.audio/Scores/Phrase.txt"), 4);
+  a.playEvents(imajuscule::audio::eventsFrom("/Users/Olivier/Dev/cpp.audio/Scores/StrangeBots.txt"), 4);
 
   a.playEvents(imajuscule::audio::mkEvents(500), 1);
-
-  {
-    //a.setEnvelopeFile(zeroEnv);
-    a.playEvents(imajuscule::audio::eventsFrom("/Users/Olivier/Dev/cpp.audio/Scores/Phrase2.txt"), 4);
-
-    a.playEvents(imajuscule::audio::eventsFrom("/Users/Olivier/Dev/cpp.audio/Scores/Phrase.txt"), 4);
-    a.playEvents(imajuscule::audio::eventsFrom("/Users/Olivier/Dev/cpp.audio/Scores/StrangeBots.txt"), 4);
-    a.playEvents(imajuscule::audio::mkEvents(500), 1);
-
-  }
-
-  
   
   return 0;
 }

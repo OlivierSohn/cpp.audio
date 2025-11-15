@@ -62,6 +62,14 @@ struct Event
 
   // identifies the note, doesn't change during the lifetime of the note
   NoteId noteid;
+  
+  // When we reuse the same events in a loop
+  // we need to change the ids otherwise the noteon noteoff logic
+  // breaks and some noteoff events may be ignored.
+  void offsetNoteId(int64_t offset)
+  {
+    noteid.noteid += offset;
+  }
 
   union
   {

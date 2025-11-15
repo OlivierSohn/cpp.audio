@@ -545,7 +545,7 @@ public:
 
             if(maybeTimeAndSource) {
               Assert(curTimeNanos);
-              Assert(c.midiDelay);
+              Assert(c.midiTimeDelay);
 
               auto d = *c.midiTimeDelay;
 
@@ -558,10 +558,21 @@ public:
               if(c.elem.getEnvelope().canHandleExplicitKeyReleaseNow(delay)) {
                 c.elem.editEnvelope().onKeyReleased(delay);
               }
+              else{
+                // This can happen when for the same note id, we schedule
+                // several noteon and noteoff ahead of time.
+                // The workaround is to use different note ids.
+              }
             } else {
-              Assert(!c.midiDelay);
+              Assert(!c.midiTimeDelay);
               if(c.elem.getEnvelope().canHandleExplicitKeyReleaseNow(0)) {
                 c.elem.editEnvelope().onKeyReleased(0);
+              }
+              else
+              {
+                // This can happen when for the same note id, we schedule
+                // several noteon and noteoff ahead of time.
+                // The workaround is to use different note ids.
               }
             }
             return;

@@ -813,7 +813,7 @@ private:
   FPT _topValue = static_cast<T>(0); // the value when the key was released
   EnvelopeStateAcquisition<A> stateAcquisition;
   int32_t counter = 0;
-  // counter stores the neagted last 'onKeyPressed' delay.
+  // counter stores the negated last 'onKeyPressed' delay.
   // It is incremented at each step. The actual release happens when it is 0.
   int32_t currentReleaseDelay = -1;
   // 'currentDelay' stores the last 'onKeyReleased' delay.
