@@ -274,7 +274,6 @@ struct SqMagFftOperation {
     Assert(0 == window_size % 2);
     int const fft_length = get_fft_length_for(window_size,
                                               zero_padding_factor);
-    Assert(fft_length <= work_vector_signal.capacity());
     reserve_no_shrink(work_vector_signal,
                       fft_length);
     reserve_no_shrink(work_vector_freqs,

@@ -199,7 +199,10 @@ struct ImplCRTP : public Base {
   using Element = AE;
   struct ElemMidiDelay {
     Element elem;
+    
+    // Used for TryAccountForTimeSourceJitter::Yes only.
     Optional<TimestampAndSource> midiTimeDelay;
+
     float angle_increments; // based on infos in "noteon" and "notechange" events, _not_ taking pitchwheel into account
   };
 
@@ -507,16 +510,19 @@ public:
                 // Note: to avoid this case when the events are sent over the network for example,
                 //       the caller can use TryPreventTimeSourceJitter::Yes.
                 c.elem.editEnvelope().onKeyPressed(0);
-                c.midiTimeDelay = {{delayNanos + (curTimeNanos - targetNanos), srcKey}};
+                if constexpr (Jitter == TryAccountForTimeSourceJitter::Yes)
+                  c.midiTimeDelay = {{delayNanos + (curTimeNanos - targetNanos), srcKey}};
               } else {
                 // we're on time.
                 c.elem.editEnvelope().onKeyPressed(nanoseconds_to_frames(targetNanos-curTimeNanos,
                                                                          sample_rate));
-                c.midiTimeDelay = {{delayNanos, srcKey}};
+                if constexpr (Jitter == TryAccountForTimeSourceJitter::Yes)
+                  c.midiTimeDelay = {{delayNanos, srcKey}};
               }
             } else {
               c.elem.editEnvelope().onKeyPressed(0);
-              c.midiTimeDelay = {};
+              if constexpr (Jitter == TryAccountForTimeSourceJitter::Yes)
+                c.midiTimeDelay.reset();
             }
           });
         }
@@ -545,14 +551,17 @@ public:
 
             if(maybeTimeAndSource) {
               Assert(curTimeNanos);
-              Assert(c.midiTimeDelay);
-
-              auto d = *c.midiTimeDelay;
-
-              Assert(d.getSourceKey() == maybeTimeAndSource->getSourceKey());
-
-              uint64_t targetNanos = maybeTimeAndSource->getNanosTime() + d.getNanosTime();
-
+              uint64_t delayNanos{};
+              if constexpr (Jitter == TryAccountForTimeSourceJitter::Yes)
+              {
+                Assert(c.midiTimeDelay);
+                auto d = *c.midiTimeDelay;
+                delayNanos = d.getNanosTime();
+                
+                Assert(d.getSourceKey() == maybeTimeAndSource->getSourceKey());
+              }
+              const uint64_t targetNanos = maybeTimeAndSource->getNanosTime() + delayNanos;
+              
               auto delay = (targetNanos < curTimeNanos) ? 0 : nanoseconds_to_frames(targetNanos-curTimeNanos,
                                                                                     sample_rate);
               if(c.elem.getEnvelope().canHandleExplicitKeyReleaseNow(delay)) {
@@ -590,8 +599,7 @@ public:
           typename Out::LockFromNRT L(out.get_lock());
           chans.enqueueOneShot([this,
                                 e,
-                                sample_rate](auto &,
-                                                                                                                   uint64_t){
+                                sample_rate](auto &, uint64_t){
             for(auto &i : firsts(channels)) {
               if (!i || *i != e.noteid) {
                 continue;

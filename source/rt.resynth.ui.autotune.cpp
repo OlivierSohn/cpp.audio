@@ -16,6 +16,19 @@ struct Autotune {
 wxSizer * mkAutotuneSizer(wxWindow * parent,
                           Autotune const & a,
                           std::vector<UpdateFunc> & update_param) {
+  // Sizer hierarchy:
+  //
+  // global_sizer  V       // wxStaticBoxSizer
+  //   sizer_config  H
+  //   sizer_vert    V     // wxStaticBoxSizer
+  //     sizer_horiz      H
+  //       sizer_chord      V  // wxStaticBoxSizer
+  //   sizer_horiz2  H
+  //     sizer_root       V    // wxStaticBoxSizer
+  //     filtering_sizer  V
+  //
+  // It is important that elements added to a wxStaticBoxSizer are owned by the corresponding static box.
+
   wxStaticBoxSizer * global_sizer = new wxStaticBoxSizer(wxVERTICAL,
                                                          parent,
                                                          "");
@@ -23,20 +36,20 @@ wxSizer * mkAutotuneSizer(wxWindow * parent,
 
   {
     wxStaticBoxSizer * sizer_vert = new wxStaticBoxSizer(wxVERTICAL,
-                                                         parent,
+                                                         global_sizer->GetStaticBox(),
                                                          "");
     
     wxBoxSizer * sizer_config = new wxBoxSizer(wxHORIZONTAL);
     wxBoxSizer * sizer_horiz = new wxBoxSizer(wxHORIZONTAL);
     wxBoxSizer * sizer_horiz2 = new wxBoxSizer(wxHORIZONTAL);
     wxStaticBoxSizer * sizer_root = new wxStaticBoxSizer(wxVERTICAL,
-                                                         parent,
+                                                         global_sizer->GetStaticBox(),
                                                          "Root note");
     wxStaticBoxSizer * sizer_chord = new wxStaticBoxSizer(wxVERTICAL,
-                                                          parent,
+                                                          sizer_vert->GetStaticBox(),
                                                           "Chord");
     auto filtering_sizer = new wxStaticBoxSizer(wxVERTICAL,
-                                                parent,
+                                                global_sizer->GetStaticBox(),
                                                 "Filtering");
     sizer_vert->GetStaticBox()->SetBackgroundColour(autotune_bg_color2);
     sizer_vert->GetStaticBox()->SetForegroundColour(color_slider_label_2);
@@ -49,43 +62,43 @@ wxSizer * mkAutotuneSizer(wxWindow * parent,
     filtering_sizer->GetStaticBox()->SetForegroundColour(color_slider_label_2);
 
         
-    wxSizer * scale_type = createChoice(parent,
+    wxSizer * scale_type = createChoice(sizer_vert->GetStaticBox(),
                                         a.scale_type,
                                         color_slider_label_2,
                                         ChoiceType::RadioBoxV,
                                         &update_param);
-    wxSizer * chord_freqs = createChoice(parent,
+    wxSizer * chord_freqs = createChoice(sizer_chord->GetStaticBox(),
                                          a.chord_frequencies,
                                          color_slider_label_2,
                                          ChoiceType::RadioBoxH,
                                          &update_param);
     
-    wxSizer * chord = createCombination(parent,
+    wxSizer * chord = createCombination(sizer_chord->GetStaticBox(),
                                         a.chord,
                                         color_slider_label_2,
                                         CombinationType::CheckBoxH,
                                         update_param);
     
-    wxSizer * intervals = createIntSlider(parent,
+    wxSizer * intervals = createIntSlider(sizer_vert->GetStaticBox(),
                                           a.intervals_size,
                                           color_slider_label_2,
                                           update_param);
     
-    wxSizer * root_note = createChoice(parent,
+    wxSizer * root_note = createChoice(sizer_root->GetStaticBox(),
                                        a.root_note,
                                        color_slider_label_2,
                                        ChoiceType::RadioBoxH,
                                        &update_param);
-    wxSizer * root_note_transpose = createIntSlider(parent,
+    wxSizer * root_note_transpose = createIntSlider(sizer_root->GetStaticBox(),
                                                     a.root_note_transpose,
                                                     color_slider_label_2,
                                                     update_param);
 
-    wxSizer * max_pitch = createIntSlider(parent,
+    wxSizer * max_pitch = createIntSlider(filtering_sizer->GetStaticBox(),
                                           a.max_pitch,
                                           color_slider_label_2,
                                           update_param);
-    wxSizer * pitch_tolerance = createFloatSlider(parent,
+    wxSizer * pitch_tolerance = createFloatSlider(filtering_sizer->GetStaticBox(),
                                                   a.pitch_tolerance,
                                                   color_slider_label_2,
                                                   update_param);
@@ -164,14 +177,14 @@ wxSizer * mkAutotuneSizer(wxWindow * parent,
       }
     };
     
-    wxSizer * type = createChoice(parent,
+    wxSizer * type = createChoice(global_sizer->GetStaticBox(),
                                   a.type,
                                   color_slider_label_2,
                                   ChoiceType::RadioBoxH,
                                   &update_param,
                                   update);
 
-    wxCheckBox * use = createCheckBox(parent,
+    wxCheckBox * use = createCheckBox(global_sizer->GetStaticBox(),
                                       a.use,
                                       color_slider_label_2,
                                       update_param,

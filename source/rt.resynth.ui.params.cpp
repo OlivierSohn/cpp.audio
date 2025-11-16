@@ -355,6 +355,10 @@ wxBoxSizer * createCombination(wxWindow * parent,
     values.emplace_back(os.str());
   }
   
+  wxStaticBoxSizer * stat_box_sizer = new wxStaticBoxSizer((combination_type == CombinationType::CheckBoxH) ? wxHORIZONTAL: wxVERTICAL,
+                                                           parent,
+                                                           param.name);
+
   auto inner_sizer = new wxBoxSizer((combination_type == CombinationType::CheckBoxH) ? wxHORIZONTAL : wxVERTICAL);
   
   std::vector<wxCheckBox*> checkboxes;
@@ -363,7 +367,7 @@ wxBoxSizer * createCombination(wxWindow * parent,
   int idx = 0;
   for (auto const & label : values) {
     T const enum_value = static_cast<T>(idx);
-    wxCheckBox * checkbox = new wxCheckBox(parent,
+    wxCheckBox * checkbox = new wxCheckBox(stat_box_sizer->GetStaticBox(),
                                            wxWindow::NewControlId(),
                                            label);
     checkboxes.push_back(checkbox);
@@ -378,9 +382,6 @@ wxBoxSizer * createCombination(wxWindow * parent,
         wxALL);
     ++idx;
   }
-  wxStaticBoxSizer * stat_box_sizer = new wxStaticBoxSizer((combination_type == CombinationType::CheckBoxH) ? wxHORIZONTAL: wxVERTICAL,
-                                                           parent,
-                                                           param.name);
   stat_box_sizer->GetStaticBox()->SetForegroundColour(label_color);
   Add(inner_sizer,
       stat_box_sizer,
@@ -570,7 +571,7 @@ wxBoxSizer * createSlider(wxWindow * parent,
           param.set(candidate);
         }
         if (value_label) {
-          value_label->SetLabel(T_to_string(candidate));
+          value_label->SetValue(T_to_string(candidate));
           value_label->GetParent()->Layout();
           value_label->SetForegroundColour(value_unchanged_color);
         }
@@ -591,7 +592,7 @@ wxBoxSizer * createSlider(wxWindow * parent,
                                   std::min(max_int_value,
                                            static_cast<int>(T_value_to_int_value(candidate)))));
         if (value_label) {
-          value_label->SetLabel(T_to_string(candidate));
+          value_label->SetValue(T_to_string(candidate));
           value_label->GetParent()->Layout();
           value_label->SetForegroundColour(value_unchanged_color);
         }

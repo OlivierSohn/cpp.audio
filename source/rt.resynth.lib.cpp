@@ -265,7 +265,7 @@ inline
 void synthesize_sounds(Midi const & midi,
                        int64_t const analysis_frame_idx,
                        int const sample_rate,
-                       TimestampAndSource const & miditime,
+                       std::optional<TimestampAndSource> const & miditime,
                        int const future_stride,
                        float const gain_analysis,
                        float const stereo_spread,
@@ -1058,7 +1058,7 @@ private:
   void analyze_until_input_starvation();
   
   void step (std::vector<FreqMag<double>> const & fs,
-             TimestampAndSource const & miditime,
+             std::optional<TimestampAndSource> const & miditime,
              int const future_stride);
   
   std::function<std::optional<float>(float const)>
@@ -1605,10 +1605,11 @@ void RtResynth::init_analysis() {
         profiling::ThreadCPUTimer timer(dt);
         
         step(freqmags,
-             TimestampAndSource(run_mode == Mode::Realtime
-                                ? 0 // to have the sound played as fast as possible.
-                                : ((analysis_frames_counter + local_count_dropped_input_frames) * nanos_per_frame),
-                                    to_underlying(MidiSource::Analysis)),
+             run_mode == Mode::Realtime
+             // to have the sound played as fast as possible.
+             ? std::nullopt
+             : std::optional{TimestampAndSource((analysis_frames_counter + local_count_dropped_input_frames) * nanos_per_frame,
+                                   to_underlying(MidiSource::Analysis))},
              window_center_stride); // we pass the future stride, on purpose
       }
       if (dt) duration_step_seconds = dt->count() / 1000000.;
@@ -1668,7 +1669,7 @@ void RtResynth::analyze_until_input_starvation() {
 
 void
 RtResynth::step (std::vector<FreqMag<double>> const & fs,
-                 TimestampAndSource const & miditime,
+                 std::optional<TimestampAndSource> const & miditime,
                  int const future_stride) {
   ++analysis_frame_idx;
   
