@@ -210,6 +210,9 @@ void autotune_pitches(int const max_pitch,
     std::optional<float> transformedPitch;
     if (pv.midipitch <= max_pitch) {
       transformedPitch = pitch_transform(pv.midipitch);
+      if(transformedPitch.has_value() && *transformedPitch > max_pitch)
+        // This is to keep output sorted
+        transformedPitch = pv.midipitch;
     } else {
       transformedPitch = pv.midipitch;
     }

@@ -2,18 +2,27 @@ namespace imajuscule::audio::rtresynth {
 
 using UpdateFunc = std::function<void(void)>;
 
-constexpr int default_border = 2;
-
+struct Border{
+  explicit Border(int border): border(border) {}
+  int border;
+};
+struct Flag{
+  explicit Flag(int flags): flags(flags) {}
+  int flags;
+};
+enum class CanShrink{Yes, No};
 template<typename T, typename U>
 void Add(T * widget,
          U * sizer,
-         int proportion = 1,
-         int flag = wxALL | wxEXPAND, // cannot mix wxEXPAND with wxALIGN***
-         int border = default_border) {
+         Flag flag = Flag{wxALL | wxEXPAND}, // cannot mix wxEXPAND with wxALIGN***
+         Border border = Border{1},
+         CanShrink canShrink = CanShrink::No
+         ) {
   sizer->Add(widget,
-             proportion,
-             flag,
-             border);
+             /*proportion, 0 means cannot resize (cannot shrink)*/
+             canShrink == CanShrink::No ? 0 : 1,
+             flag.flags,
+             border.border);
 }
 
 template<typename F>
@@ -251,8 +260,7 @@ wxBoxSizer * createChoice(wxWindow * parent,
         first = false;
         Add(radio,
             inner_sizer,
-            0,
-            wxALL);
+            Flag{wxALL});
         ++idx;
       }
       wxStaticBoxSizer * stat_box_sizer = new wxStaticBoxSizer((choice_type == ChoiceType::RadioBoxH) ? wxHORIZONTAL: wxVERTICAL,
@@ -261,11 +269,12 @@ wxBoxSizer * createChoice(wxWindow * parent,
       stat_box_sizer->GetStaticBox()->SetForegroundColour(label_color);
       Add(inner_sizer,
           stat_box_sizer,
-          0,
-          0); // no border
+          Flag{0},
+          Border{0});
       Add(stat_box_sizer,
           global_sizer,
-          0);
+          Flag{0},
+          Border{0});
       
       // not all choices need to update when a preset is loaded
       if (update_on_new_preset) {
@@ -305,12 +314,12 @@ wxBoxSizer * createChoice(wxWindow * parent,
       
       Add(label,
           global_sizer,
-          0,
-          wxALL | wxALIGN_CENTER);
+          Flag{wxALL | wxALIGN_CENTER},
+          Border{0});
       Add(combo_box,
           global_sizer,
-          0,
-          wxALL | wxALIGN_CENTER);
+          Flag{wxALL | wxALIGN_CENTER},
+          Border{0});
       
       if(update_on_new_preset) {
         update_on_new_preset->emplace_back([&param, combo_box, onNewValue](){
@@ -378,15 +387,13 @@ wxBoxSizer * createCombination(wxWindow * parent,
     checkbox->SetValue(param.enabled(enum_value));
     Add(checkbox,
         inner_sizer,
-        0,
-        wxALL);
+        Flag{wxALL});
     ++idx;
   }
   stat_box_sizer->GetStaticBox()->SetForegroundColour(label_color);
   Add(inner_sizer,
       stat_box_sizer,
-      0,
-      0); // no border
+      Flag{0});
   
   updates.emplace_back([checkboxes, &param](){
     int idx = 0;
@@ -459,16 +466,17 @@ wxBoxSizer * createSlider(wxWindow * parent,
   int const current_int_value = std::max(min_int_value,
                                          std::min(max_int_value,
                                                   static_cast<int>(T_value_to_int_value(current_T_value))));
+  
   auto slider = new wxSlider(parent,
                              wxWindow::NewControlId(),
                              current_int_value,
                              min_int_value,
                              max_int_value,
                              wxDefaultPosition,
-                             wxDefaultSize,
+                             wxSize{-1, 3},
                              wxSL_HORIZONTAL,
                              wxDefaultValidator);
-  
+
   auto global_sizer = new wxBoxSizer(wxVERTICAL);
   
   {
@@ -511,24 +519,20 @@ wxBoxSizer * createSlider(wxWindow * parent,
       
       Add(label,
           title_sizer,
-          0,
-          wxALL | wxALIGN_CENTER);
+          Flag{wxALL | wxALIGN_CENTER});
       if (value_label) {
         Add(value_label,
             title_sizer,
-            0,
-            wxALL | wxALIGN_CENTER);
+            Flag{wxALL | wxALIGN_CENTER});
       }
       if (show_label) {
         Add(show_label,
             title_sizer,
-            0,
-            wxALL | wxALIGN_CENTER);
+            Flag{wxALL | wxALIGN_CENTER});
       }
       Add(unit_label,
           title_sizer,
-          0,
-          wxALL | wxALIGN_CENTER);
+          Flag{wxALL | wxALIGN_CENTER});
       
       if (value_label) {
         value_label->Bind(wxEVT_TEXT_ENTER,
@@ -603,8 +607,8 @@ wxBoxSizer * createSlider(wxWindow * parent,
     }
     Add(title_sizer,
         global_sizer,
-        0,
-        wxALL | wxALIGN_CENTER);
+        Flag{wxALL | wxALIGN_CENTER},
+        Border{0});
   }
   {
     auto slider_sizer = new wxBoxSizer(wxHORIZONTAL);
@@ -625,21 +629,18 @@ wxBoxSizer * createSlider(wxWindow * parent,
       
       Add(minText,
           slider_sizer,
-          0,
-          wxALL | wxALIGN_CENTER);
+          Flag{wxALL | wxALIGN_CENTER});
       Add(slider,
           slider_sizer,
-          0,
-          wxALL | wxALIGN_CENTER);
+          Flag{wxALL | wxALIGN_CENTER});
       Add(maxText,
           slider_sizer,
-          0,
-          wxALL | wxALIGN_CENTER);
+          Flag{wxALL | wxALIGN_CENTER});
     }
     Add(slider_sizer,
         global_sizer,
-        0,
-        wxALL | wxALIGN_CENTER);
+        Flag{wxALL | wxALIGN_CENTER},
+        Border{0});
   }
 
   return global_sizer;
@@ -719,12 +720,10 @@ createPollParamUI(wxWindow * parent,
   value->SetForegroundColour(dark_grey);
   Add(label,
       sizer,
-      0,
-      wxALL | wxALIGN_CENTER);
+      Flag{wxALL | wxALIGN_CENTER});
   Add(value,
       sizer,
-      0,
-      wxALL | wxALIGN_CENTER);
+      Flag{wxALL | wxALIGN_CENTER});
   return {sizer, value};
 }
 

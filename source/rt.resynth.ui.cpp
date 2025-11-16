@@ -34,6 +34,8 @@ public:
   , savePresetFunc(save)
   , loadPresetFunc(load)
   {
+    SetFont(GetFont().Scale(0.8));
+
     update_param.reserve(200);
     
     pitch_ui = new PitchWindow(this, Orientation::Horizontal, pitch_func);
@@ -90,13 +92,11 @@ public:
                                 label_color,
                                 update_param),
               sliders_sizer2,
-              0,
-              wxALL | wxALIGN_CENTER);
+              Flag{wxALL | wxALIGN_CENTER});
         }
         Add(sliders_sizer2,
             sizer,
-            0,
-            wxALL | wxALIGN_CENTER);
+            Flag{wxALL | wxALIGN_CENTER});
       }
     };
 
@@ -112,8 +112,7 @@ public:
                                    nullptr);
     Add(midi_sizer,
         env_sizer,
-        0,
-        wxALL | wxALIGN_CENTER);
+        Flag{wxALL | wxALIGN_CENTER});
 
     make_params_sizer(params_envelope,
                       wxVERTICAL,
@@ -133,15 +132,18 @@ public:
     make_params_sizer(params_after_autotune,
                       wxHORIZONTAL,
                       sliders_sizer);
+
     Add(pitch_ui,
         sliders_sizer,
-        0,
-        wxALL | wxEXPAND);
+        Flag{wxALL | wxEXPAND},
+        Border{1},
+        CanShrink::Yes);
     Add(vocoder_ui,
         sliders_sizer,
-        0,
-        wxALL | wxEXPAND);
-
+        Flag{wxALL | wxEXPAND},
+        Border{1},
+        CanShrink::Yes);
+     
     auto poll_params_sizer = new wxBoxSizer(wxVERTICAL);
     {
       for (auto const & params: poll_params) {
@@ -152,28 +154,23 @@ public:
           poll_params_ui.emplace_back(param, value);
           Add(sizer,
               poll_params_sizer,
-              0,
-              wxALL | wxALIGN_CENTER);
+              Flag{wxALL | wxALIGN_CENTER});
         }
       }
     }
     
     Add(sliders_sizer,
         global_sizer,
-        0,
-        wxALL | wxALIGN_CENTER);
+        Flag{wxALL | wxALIGN_CENTER});
     Add(env_sizer,
         global_sizer,
-        0,
-        wxALL | wxALIGN_CENTER);
+        Flag{wxALL | wxALIGN_CENTER});
     Add(vocoder_sizer,
         global_sizer,
-        0,
-        wxALL | wxALIGN_CENTER);
+        Flag{wxALL | wxALIGN_CENTER});
     Add(poll_params_sizer,
         global_sizer,
-        0,
-        wxALL | wxALIGN_CENTER);
+        Flag{wxALL | wxALIGN_CENTER});
 
     SetSizerAndFit(global_sizer);
 
