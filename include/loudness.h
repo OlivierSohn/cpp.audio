@@ -40,9 +40,9 @@ constexpr std::array<float,n_freq> freqs {{
 
 // we interpolate in pitch space, instead of frequency space
 
-constexpr std::array<float, n_freq> create_pitches() {
+constexpr std::array<MidiPitch, n_freq> create_pitches() {
   constexpr ConstexprMidi midi;
-  std::array<float, n_freq> res{};
+  std::array<MidiPitch, n_freq> res;
   int idx = 0;
   for(auto const & f : freqs) {
     res[idx] = *midi.frequency_to_midi_pitch(f);
@@ -51,7 +51,7 @@ constexpr std::array<float, n_freq> create_pitches() {
   return res;
 }
 
-constexpr std::array<float, n_freq> pitches = create_pitches();
+constexpr std::array<MidiPitch, n_freq> pitches = create_pitches();
 
 constexpr std::array<float,n_freq> alpha_f_ {{
   .532f,
@@ -152,9 +152,10 @@ constexpr std::array<float,n_freq> Tf_ {{
 // returns pair<index, ratio>, where:
 // . ratio is the proportion of "index",
 // . 1-ratio is the proportion of "index-1"
+template<typename T>
 static inline std::pair<int, float>
-closest(std::array<float,n_freq> const & arr,
-        float const value) {
+closest(std::array<T,n_freq> const & arr,
+        T const value) {
   auto min_ = 0;
   auto max_ = n_freq-1;
   do {
@@ -227,8 +228,9 @@ constexpr int phons_to_index(T level) {
   return i;
 }
 
-static inline float equal_loudness_volume_db(std::array<float,n_freq> const & arr,
-                                             float value,
+template<typename T>
+static inline float equal_loudness_volume_db(std::array<T,n_freq> const & arr,
+                                             T value,
                                              int level) {
   auto const [i, ratio] = closest(arr, value);
 
@@ -252,8 +254,9 @@ T db_to_amplitude(T const db, T const max_db, T const log_ratio) {
                   log_ratio * (db-max_db)/20.f);
 }
 
-static inline float equal_loudness_volume_generic(std::array<float, n_freq> const & arr,
-                                                  float value,
+template<typename T>
+static inline float equal_loudness_volume_generic(std::array<T, n_freq> const & arr,
+                                                  T value,
                                                   int index_freq_ref = 0,
                                                   float log_ratio = 1.f,
                                                   float level = LN_default) {
@@ -270,7 +273,7 @@ static inline float equal_loudness_volume_generic(std::array<float, n_freq> cons
 static inline float equal_loudness_volume_from_freq(float freq, int index_freq_ref = 0, float log_ratio = 1.f, float level = LN_default) {
   return equal_loudness_volume_generic(freqs, freq, index_freq_ref, log_ratio, level);
 }
-static inline float equal_loudness_volume_from_pitch(float pitch, int index_freq_ref = 0, float log_ratio = 1.f, float level = LN_default) {
+static inline float equal_loudness_volume_from_pitch(MidiPitch pitch, int index_freq_ref = 0, float log_ratio = 1.f, float level = LN_default) {
   return equal_loudness_volume_generic(pitches, pitch, index_freq_ref, log_ratio, level);
 }
 }

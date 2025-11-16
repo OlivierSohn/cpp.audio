@@ -760,7 +760,7 @@ struct MyApp : public wxApp {
       0,
       150,
       [](int pitch) {
-        auto [noteoctave, deviation] = midi_pitch_to_note_deviation(pitch);
+        auto [noteoctave, deviation] = midi_pitch_to_note_deviation(MidiPitch(pitch));
         Assert(deviation == 0.);
         std::ostringstream os;
         os << noteoctave.note << noteoctave.octave;

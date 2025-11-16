@@ -17,11 +17,11 @@ inline void testAutotune() {
     Midi const midi;
 
     NoteOctave const note{Note::Fad, 4};
-    double const pitch = midi.get_pitch(note);
+    MidiPitch const pitch = midi.get_pitch(note);
     
-    double const expected_autotune_pitch = midi.get_pitch({Note::Sol, 4});
+    MidiPitch const expected_autotune_pitch = midi.get_pitch({Note::Sol, 4});
 
-    double const autotuned_pitch =
+    MidiPitch const autotuned_pitch =
     msp.closest_pitch(midi.get_pitch({Note::Do, 4}),
                       pitch);
     Assert(std::abs(expected_autotune_pitch - autotuned_pitch) < 0.0001);

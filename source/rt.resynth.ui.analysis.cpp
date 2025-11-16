@@ -85,8 +85,8 @@ private:
   const wxColor color_pitch_note_on{255, 255, 255};
   const wxColor color_pitch_note_on_dropped{255, 0, 0};
   
-  static constexpr float max_pitch = 163; // 100000 Hz
-  static constexpr float min_pitch = 0;   //      8 Hz
+  static constexpr MidiPitch max_pitch{163.}; // 100000 Hz
+  static constexpr MidiPitch min_pitch{0.};   //      8 Hz
   static constexpr double vol_min = 0.00001;
   static constexpr double log_vol_min = sprout::log(vol_min);
   static constexpr double inv_log_vol_min = 1. / log_vol_min;
@@ -111,7 +111,7 @@ private:
 
     auto pitch_to_height = [this,
                             height_pitches = (orientation == Orientation::Vertical) ? sz.y : sz.x]
-    (float pitch) -> float {
+    (MidiPitch pitch) -> float {
       float ratio = (pitch - min_pitch) / (max_pitch - min_pitch);
       if(orientation == Orientation::Vertical) {
         return (1.f - ratio) * height_pitches;

@@ -90,67 +90,6 @@ private:
 } // NS audioelement
 
 
-// Helper class to play a sequence of notes using a pattern of indexes.
-//
-// We play the sequence of notes using the index pattern once,
-// then we increment all indexes,
-// then repeat.
-template<typename PitchGen>
-struct ShufflePattern{
-  ShufflePattern(PitchGen & gen, std::vector<size_t> pattern)
-  : m_pattern(std::move(pattern))
-  , m_gen(gen)
-  {
-    auto maxIndex = 0ul;
-    for(size_t i : m_pattern)
-      maxIndex = std::max(maxIndex, i);
-    m_nextValues.resize(maxIndex + 1);
-    m_patternIndex = m_pattern.size();
-    
-    for(auto & val : m_nextValues)
-      val = m_gen();
-  }
-  
-  double operator()() {
-    if(m_patternIndex >= m_pattern.size())
-    {
-      m_patternIndex = 0;
-      std::rotate(m_nextValues.begin(), m_nextValues.begin() + 1, m_nextValues.end());
-      m_nextValues.back() = m_gen();
-    }
-    return m_nextValues[m_pattern[m_patternIndex++]];
-  }
-  
-private:
-  PitchGen& m_gen;
-  std::vector<double> m_nextValues;
-  std::vector<size_t> m_pattern;
-  size_t m_patternIndex{};
-};
-
-
-// Helper class to generate a slight pitch drift over time,
-// mimicking what can happen on the cello when we don't play
-// any open string for a long time.
-struct PitchDrifter
-{
-  static constexpr auto constantDrift =
-  //0.05
-  //0.01
-  //0.02
-  0
-  ;
-  
-  float operator()(float pitch)
-  {
-    pitchDrift += constantDrift;
-    return pitchDrift + pitch;
-  }
-  
-private:
-  float pitchDrift = 0.f;
-};
-
 using Events = std::vector<std::pair<TimestampAndSource, Event>>;
 struct Loop
 {
@@ -421,18 +360,27 @@ Loop mkEvents(int countNotes)
   Midi m_midi;
   std::vector<std::pair<TimestampAndSource, Event>> events;
   
-  PitchDrifter withPitchDrift;
   
-  //constexpr auto& scale = well_tempered::c_minorScaleAsc;
-  //constexpr auto& scale = well_tempered::c_majorScaleAsc;
-  //const auto scale = just::mkMajorScaleAsc<Constexpr::Yes>();
-  const auto scale = pythagorean::mkMajorScaleAsc<Constexpr::Yes>();
+  static constexpr auto constantDrift =
+  //0.05
+  //0.01
+  //0.02
+  0
+  ;
+  PitchDrifter withPitchDrift(constantDrift);
   
+  const MidiPitch rootPitch = m_midi.get_pitch(NoteOctave{Note::La, 2});
+
+  //constexpr auto& scaleOffsets = well_tempered::c_minorScaleAsc;
+  //constexpr auto& scaleOffsets = well_tempered::c_majorScaleAsc;
+  //const auto scaleOffsets = just::mkMajorScaleAsc<Constexpr::Yes>();
+  const auto scaleOffsets = pythagorean::mkMajorScaleAsc<Constexpr::Yes>();
+
+  const auto scale = toMidiPitches(rootPitch, scaleOffsets);
   const int countOctaves = 2;
   MultiOctave multiOctave{
     scale.begin(),
     scale.end(),
-    m_midi.get_pitch(NoteOctave{Note::La, 2}),
     countOctaves
   };
   
@@ -454,7 +402,7 @@ Loop mkEvents(int countNotes)
   {
     const auto noteid = mk_note_id();
     {
-      const float midiPitch = withPitchDrift(pitchGen());
+      const MidiPitch midiPitch = withPitchDrift(pitchGen());
       const float frequency = m_midi.midi_pitch_to_freq(midiPitch);
       
       // if needed we could generate the string below, and print it when we
@@ -481,33 +429,83 @@ Loop mkEvents(int countNotes)
   return Loop{std::move(events), curTimeNanos};
 }
 
-Loop eventsFrom(std::filesystem::path const& scoreFile)
+// ConsecutivePitches is a list of consecutive pitches.
+struct ConsecutivePitches
 {
+  std::vector<MidiPitch> m_pitches;
+};
+
+// a Score is a list of voices playing simultaneously.
+struct Score
+{
+  std::vector<ConsecutivePitches> m_voices;  
+};
+
+// "Simple ascii" pitches encoding is intentionally made somewhat obscure so that
+// when you write a character you have little idea what pitch you are going to get.
+// This way melodies created with it are varied and surprising.
+//
+// One benefit of this encoding is that it takes a single character to create a note.
+// So notes vertically aligned in a simple fixed-width text editor will play simultaneously.
+//
+// ## Description
+//
+// C5 (Do5) is the reference "zero" pitch
+//
+// ## Numeric characters
+//
+// 0  Do
+// 1  Do#
+// 2  Re
+// 3  Re#
+// 4  Mi
+// 5  Fa
+// 6  Fa#
+// 7  Sol
+// 8  Sol#
+// 9  La
+// A  La#
+// B  Si
+//
+// ## Non-numeric characters
+//
+// pitch = Do5 + 10 + c - 'A'
+Score readScoreFromSimpleAsciiPitchesEncoding(std::filesystem::path const& scoreFile)
+{
+  Score score;
+
   std::cout << "Generating " << scoreFile << std::endl;
   std::ifstream file(scoreFile);
-  
-  Midi m_midi;
-  std::vector<std::pair<TimestampAndSource, Event>> events;
-  
-  // 0  Do
-  // 1  Do#
-  // 2  Re
-  // 3  Re#
-  // 4  Mi
-  // 5  Fa
-  // 6  Fa#
-  // 7  Sol
-  // 8  Sol#
-  // 9  La
-  // A  La#
-  // B  Si
-  
+
   std::vector<std::string> chars;
   {
     std::string str;
     while (std::getline(file, str))
       chars.emplace_back(str);
   }
+  for(const auto & str : chars)
+  {
+    score.m_voices.emplace_back();
+    for(auto c : str)
+    {
+      const auto semitones = [=]()
+      {
+        if(c >= '0' && c <= '9')
+          return c - '0';
+        return 10 + c - 'A';
+      }();
+      
+      const auto midiPitch = A_pitch + semitones + 3;
+      score.m_voices.back().m_pitches.push_back(midiPitch);
+    }
+  }  
+  return score;
+}
+
+Loop loopFromScore(Score const & score)
+{
+  Midi m_midi;
+  std::vector<std::pair<TimestampAndSource, Event>> events;
   
   // Scales time.
   static constexpr float timeScaleFactor = 0.09;
@@ -516,25 +514,17 @@ Loop eventsFrom(std::filesystem::path const& scoreFile)
   // Pause length between consecutive notes
   static constexpr auto wait_after_note_off = std::chrono::milliseconds(static_cast<int>(timeScaleFactor * 300));
   
-  const float volume = 1.f / std::max(1ul, chars.size());
+  const float volume = 1.f / std::max(1ul, score.m_voices.size());
   
   uint64_t maxCurTimeNanos{};
   
   uint64_t voice{};
-  for(const auto & str : chars)
+  for(const auto & consecutivePitches : score.m_voices)
   {
     uint64_t curTimeNanos{};
-    for(auto c : str)
+    for(auto midiPitch : consecutivePitches.m_pitches)
     {
       const auto noteid = mk_note_id();
-      const auto semitones = [=]()
-      {
-        if(c >= '0' && c <= '9')
-          return c - '0';
-        return 10 + c - 'A';
-      }();
-      
-      const float midiPitch = semitones + A_pitch + 3;
       const float frequency = m_midi.midi_pitch_to_freq(midiPitch);
       events.emplace_back(TimestampAndSource{curTimeNanos, voice},
                           mkNoteOn(noteid,
@@ -549,6 +539,13 @@ Loop eventsFrom(std::filesystem::path const& scoreFile)
     ++voice;
   }
   return {std::move(events), maxCurTimeNanos};
+}
+
+Loop eventsFrom(std::filesystem::path const& scoreFile)
+{  
+  const Score score = readScoreFromSimpleAsciiPitchesEncoding(scoreFile);
+  
+  return loopFromScore(score);
 }
 
 void AppTune::playEvents(Loop && loop, uint64_t countLoops)
@@ -658,9 +655,9 @@ void AppTune::playEvents(Loop && loop, uint64_t countLoops)
 Loop moduloPitch(Loop && l)
 {
   Midi midi;
-
-  const double minPitch = 50.;
-  const double maxPitch = 80.;
+  
+  constexpr MidiPitch minPitch{50.};
+  constexpr MidiPitch maxPitch{80.};
 
   for(auto & [_, e] : l.events)
   {

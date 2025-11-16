@@ -61,7 +61,7 @@ onEventResult playOneThing(int const sample_rate,
 
   return v.onEvent(sample_rate,
                    mkNoteOn(note_id,
-                            midi.midi_pitch_to_freq(b.midiPitch),
+                            midi.midi_pitch_to_freq(MidiPitch(b.midiPitch)),
                             1.0),
                    out,
                    out,

@@ -3,7 +3,7 @@ namespace imajuscule::audio::rtresynth {
 constexpr float pitch_epsilon = 0.0001f;
 
 struct PitchVolume {
-  float midipitch;
+  MidiPitch midipitch;
   double volume;
 };
 
@@ -21,7 +21,7 @@ inline void frequencies_to_pitches(Midi const & midi,
 #endif
     if (auto pitch = midi.frequency_to_midi_pitch(f.freq)) {
       res.push_back({
-        static_cast<float>(*pitch),
+        *pitch,
         DbToMag<double>()(f.mag_db)
       });
     }
@@ -40,8 +40,8 @@ enum class VolumeReductionMethod{
 };
 
 class PitchInterval {
-  float min_pitch, max_pitch;
-  float maxVolumePitch;
+  MidiPitch min_pitch, max_pitch;
+  MidiPitch maxVolumePitch;
   double maxVolume{};
   double sumProductsPitchVolume{};
   double sumVolumes{};
@@ -55,10 +55,10 @@ public:
     aggregate(pv);
   }
   
-  float minPitch() const {
+  MidiPitch minPitch() const {
     return min_pitch;
   }
-  float maxPitch() const {
+  MidiPitch maxPitch() const {
     return max_pitch;
   }
   
@@ -70,15 +70,15 @@ public:
     aggregate(pv);
   }
   
-  float getPitch(PitchReductionMethod m) const {
+  MidiPitch getPitch(PitchReductionMethod m) const {
     switch(m) {
       case PitchReductionMethod::IntervalCenter:
-        return 0.5 * (min_pitch + max_pitch);
+        return MidiPitch{0.5 * (min_pitch.get() + max_pitch.get())};
       case PitchReductionMethod::MaxVolume:
         return maxVolumePitch;
       case PitchReductionMethod::PonderateByVolume:
         Assert(sumVolumes);
-        return sumProductsPitchVolume / sumVolumes;
+        return MidiPitch{sumProductsPitchVolume / sumVolumes};
     }
   }
   
@@ -94,7 +94,7 @@ public:
 private:
   void aggregate(PitchVolume const & pv) {
     sumVolumes += pv.volume;
-    sumProductsPitchVolume += pv.midipitch * pv.volume;
+    sumProductsPitchVolume += pv.midipitch.get() * pv.volume;
     
     if (maxVolume < pv.volume) {
       maxVolume = pv.volume;
@@ -105,7 +105,7 @@ private:
 
 
 template<typename T>
-T diameter(T a, T b, T c) {
+auto diameter(T a, T b, T c) {
   return std::max({a, b, c}) - std::min({a, b, c});
 }
 
@@ -132,7 +132,7 @@ void aggregate_pitches(double const nearby_distance_tones,
   
   std::optional<PitchInterval> cur;
 #ifndef NDEBUG
-  float pitch = std::numeric_limits<float>::lowest();
+  MidiPitch pitch{std::numeric_limits<float>::lowest()};
   int idx = -1;
 #endif
   for (auto const & pv : pitch_volumes) {
@@ -189,7 +189,7 @@ void reduce_pitches(PitchReductionMethod const pitch_method,
 // Pitches above 'max_pitch' will be played but not autotuned.
 // Pitches with a distance from closest allowed pitch bigger than 'pitch_tolerance' will not be played.
 template<typename Autotune>
-void autotune_pitches(int const max_pitch,
+void autotune_pitches(MidiPitch const max_pitch,
                       float const pitch_tolerance,
                       Autotune pitch_transform,
                       // invariant : ordered by pitch
@@ -200,14 +200,14 @@ void autotune_pitches(int const max_pitch,
   reserve_no_shrink(output,
                     input.size());
 #ifndef NDEBUG
-  float pitch = std::numeric_limits<float>::lowest();
+  MidiPitch pitch{std::numeric_limits<float>::lowest()};
 #endif
   for (auto const & pv : input) {
 #ifndef NDEBUG
     Assert(pitch < pv.midipitch); // verify invariant
     pitch = pv.midipitch;
 #endif
-    std::optional<float> transformedPitch;
+    std::optional<MidiPitch> transformedPitch;
     if (pv.midipitch <= max_pitch) {
       transformedPitch = pitch_transform(pv.midipitch);
       if(transformedPitch.has_value() && *transformedPitch > max_pitch)
@@ -238,7 +238,7 @@ struct PlayedNote {
   NoteId noteid;
   
   // the current midi_pitch
-  double midi_pitch;
+  MidiPitch midi_pitch;
   
   // the current frequency
   float cur_freq;
@@ -271,12 +271,12 @@ void track_pitches(double const max_track_pitches,
   
   int idx = -1;
 #ifndef NDEBUG
-  float pitch2 = std::numeric_limits<float>::lowest();
+  MidiPitch pitch2{std::numeric_limits<float>::lowest()};
   for (auto const & p : played_pitches) {
     Assert(pitch2 <= p.midi_pitch);
     pitch2 = p.midi_pitch;
   }
-  float pitch = std::numeric_limits<float>::lowest();
+  MidiPitch pitch{std::numeric_limits<float>::lowest()};
 #endif
   auto const begin = played_pitches.begin();
   auto it = played_pitches.begin();
@@ -322,7 +322,7 @@ harmonize_pitches(float const harmonize_amount,
 #ifndef NDEBUG
   // verify invariant
   {
-    float pitch = std::numeric_limits<float>::lowest();
+    MidiPitch pitch{std::numeric_limits<float>::lowest()};
     for (auto const & pv : pitches) {
       Assert(pitch < pv.midipitch);
       pitch = pv.midipitch;
@@ -335,7 +335,7 @@ harmonize_pitches(float const harmonize_amount,
   int const sz = static_cast<int>(pitches.size());
   for (int i=0; i<sz; ++i) {
     PitchVolume const & p = pitches[i];
-    float const harmonized_pitch = p.midipitch + harmonize_amount;
+    MidiPitch const harmonized_pitch = p.midipitch + harmonize_amount;
     PitchVolume * closest = find_closest_pitch(harmonized_pitch,
                                                pitches,
                                                [](PitchVolume const & pv){ return pv.midipitch; });
@@ -361,7 +361,7 @@ harmonize_pitches(float const harmonize_amount,
 #ifndef NDEBUG
   // verify invariant
   {
-    float pitch = std::numeric_limits<float>::lowest();
+    MidiPitch pitch{std::numeric_limits<float>::lowest()};
     for (auto const & pv : pitches) {
       Assert(pitch < pv.midipitch);
       pitch = pv.midipitch;
@@ -384,7 +384,7 @@ order_pitches_by_perceived_loudness(F perceived_loudness,
                     new_pitches.size());
   
 #ifndef NDEBUG
-  float pitch = std::numeric_limits<float>::lowest();
+  MidiPitch pitch{std::numeric_limits<float>::lowest()};
 #endif
   
   for (auto const & pv : new_pitches) {
@@ -448,7 +448,7 @@ void print(std::vector<PlayedNote> const & played_pitches) {
   };
   std::optional<PitchCount> pc;
   for (auto const & played : played_pitches) {
-    int const pitch_idx = static_cast<int>(0.5f + played.midi_pitch);
+    int const pitch_idx = static_cast<int>(0.5f + played.midi_pitch.get());
     if (pc) {
       if (pc->pitch_idx == pitch_idx) {
         ++pc->count;

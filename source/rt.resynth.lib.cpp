@@ -316,7 +316,7 @@ void synthesize_sounds(Midi const & midi,
   for (int idx : autotuned_pitches_idx_sorted_by_perceived_loudness) {
     std::optional<int> const & pitch_change = pitch_changes[idx];
     
-    double const new_pitch = autotuned_pitches[idx].midipitch;
+    MidiPitch const new_pitch = autotuned_pitches[idx].midipitch;
     float const new_freq = midi.midi_pitch_to_freq(new_pitch);
     
     // Divide by reduceUnadjustedVolumes because in our case eventhough the oscillator is not adjusted wrt loudness,
@@ -1003,7 +1003,7 @@ private:
   
   cyclic<float> output_delay;
   
-  std::vector<float> allowed_pitches;
+  std::vector<MidiPitch> allowed_pitches;
   
   int64_t next_noteid = 0;
   
@@ -1061,7 +1061,7 @@ private:
              std::optional<TimestampAndSource> const & miditime,
              int const future_stride);
   
-  std::function<std::optional<float>(float const)>
+  std::function<std::optional<MidiPitch>(MidiPitch const)>
   mkAutotuneFunction();
   
   void onInputMidiEvent(std::optional<uint64_t> const & time_ms,
@@ -1111,7 +1111,7 @@ RtResynth::RtResynth(Mode runmode,
   pitch_changes.reserve(200);
   continue_playing.reserve(200);
   
-  allowed_pitches.reserve(2*max_audible_midi_pitch);
+  allowed_pitches.reserve(2*max_audible_midi_pitch.get());
 
   init_post(p);
   
@@ -1526,7 +1526,7 @@ void RtResynth::onInputMidiEvent(std::optional<uint64_t> const &time_ms,
     Assert(on.velocity);
     vocoder_carrier.onEvent(sample_rate,
                             mkNoteOn(vocoder_carrier_noteids.NoteOnId(on.key),
-                                     midi.midi_pitch_to_freq(on.key),
+                                     midi.midi_pitch_to_freq(MidiPitch(on.key)),
                                      on.velocity / 127.f),
                             stepper,
                             stepper,
@@ -1694,7 +1694,7 @@ RtResynth::step (std::vector<FreqMag<double>> const & fs,
                     pitches_tmp,
                     reduced_pitches);
   
-  autotune_pitches(autotune_max_pitch.load(),
+  autotune_pitches(MidiPitch(autotune_max_pitch.load()),
                    autotune_tolerance_pitches,
                    mkAutotuneFunction(),
                    reduced_pitches,
@@ -1758,10 +1758,10 @@ RtResynth::step (std::vector<FreqMag<double>> const & fs,
   sort_by_current_pitch(played_pitches);
 }
 
-std::function<std::optional<float>(float const)>
+std::function<std::optional<MidiPitch>(MidiPitch const)>
 RtResynth::mkAutotuneFunction() {
   if (!use_autotune) {
-    return [](float const v) -> std::optional<float> {return {v};};
+    return [](MidiPitch const v) -> std::optional<MidiPitch> {return {v};};
   }
   switch(autotune_type) {
     case AutotuneType::Chord:
@@ -1773,9 +1773,9 @@ RtResynth::mkAutotuneFunction() {
       }
       offset += autotune_root_note_halftones_transpose;
       // the lowest bit is C4+offset
-      int constexpr C_pitch = A_pitch + half_tones_distance(Note::La,
+      MidiPitch constexpr C_pitch = A_pitch + half_tones_distance(Note::La,
                                                             Note::Do) + num_halftones_per_octave;
-      int const root_pitch = offset + C_pitch;
+      MidiPitch const root_pitch = C_pitch + offset;
       std::bitset<64> const chord{autotune_bit_chord.load()};
       allowed_pitches.clear();
       
@@ -1805,9 +1805,9 @@ RtResynth::mkAutotuneFunction() {
             for (int i=0, sz = static_cast<int>(chord.size()); i < sz; ++i) {
               if (chord[i]) {
                 // positive harmonic
-                allowed_pitches.push_back(harmonic_pitch_add[harmo] + root_pitch + i);
+                allowed_pitches.push_back(root_pitch + harmonic_pitch_add[harmo] + i);
                 // negative harmonic
-                allowed_pitches.push_back(-harmonic_pitch_add[harmo] + root_pitch + i);
+                allowed_pitches.push_back(root_pitch - harmonic_pitch_add[harmo] + i);
               }
             }
           }
@@ -1818,8 +1818,8 @@ RtResynth::mkAutotuneFunction() {
       std::sort(allowed_pitches.begin(),
                 allowed_pitches.end());
       
-      return [this](float const pitch)-> std::optional<float> {
-        if (float * p = find_closest_pitch(pitch, allowed_pitches, [](float p){ return p; })) {
+      return [this](MidiPitch const pitch)-> std::optional<MidiPitch> {
+        if (MidiPitch * p = find_closest_pitch(pitch, allowed_pitches, [](MidiPitch p){ return p; })) {
           return *p;
         }
         return {};
@@ -1827,21 +1827,25 @@ RtResynth::mkAutotuneFunction() {
     }
     case AutotuneType::FixedSizeIntervals:
     {
-      int offset = half_tones_distance(Note::Do,
-                                       autotune_musical_scale_root_note);
-      if (offset < 0) {
-        offset += num_halftones_per_octave;
-      }
-      offset += autotune_root_note_halftones_transpose;
+      const MidiPitch offset = [&]()
+      {
+        int o = half_tones_distance(Note::Do,
+                                         autotune_musical_scale_root_note);
+        if (o < 0) {
+          o += num_halftones_per_octave;
+        }
+        return MidiPitch(o + autotune_root_note_halftones_transpose); 
+      }();
+
       allowed_pitches.clear();
       allowed_pitches.push_back(offset);
       int const factor = autotune_factor.load();
       Assert(factor >= 0);
       if (factor) {
-        for (int val = offset - factor; val > 0; val -= factor) {
+        for (MidiPitch val = offset - factor; val > MidiPitch{0.}; val -= factor) {
           allowed_pitches.push_back(val);
         }
-        for (int val = offset + factor; val < max_audible_midi_pitch; val += factor) {
+        for (MidiPitch val = offset + factor; val < max_audible_midi_pitch; val += factor) {
           allowed_pitches.push_back(val);
         }
       }
@@ -1849,8 +1853,8 @@ RtResynth::mkAutotuneFunction() {
       std::sort(allowed_pitches.begin(),
                 allowed_pitches.end());
       
-      return [this](double pitch)-> std::optional<float> {
-        if (float * p = find_closest_pitch(pitch, allowed_pitches, [](float p){ return p; })) {
+      return [this](MidiPitch pitch) -> std::optional<MidiPitch> {
+        if (MidiPitch * p = find_closest_pitch(pitch, allowed_pitches, [](MidiPitch p){ return p; })) {
           return *p;
         }
         return {};
@@ -1862,8 +1866,8 @@ RtResynth::mkAutotuneFunction() {
               root_pitch = A_pitch +
               autotune_root_note_halftones_transpose +
               half_tones_distance(Note::La,
-                                  autotune_musical_scale_root_note)](float const pitch) {
-        return scale->closest_pitch<float>(root_pitch, pitch);
+                                  autotune_musical_scale_root_note)](MidiPitch const pitch) -> std::optional<MidiPitch> {
+        return scale->closest_pitch(root_pitch, pitch);
       };
   }
 }

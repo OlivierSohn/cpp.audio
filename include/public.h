@@ -16,6 +16,8 @@
 #include "audio_platforms.h"
 
 #include "midi.h"
+#include "scales.h"
+#include "pitch_generators.h"
 
 #include "sound.functions.h"
 #include "stereo.h"

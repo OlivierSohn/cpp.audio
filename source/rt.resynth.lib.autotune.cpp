@@ -73,15 +73,15 @@ inline std::ostream & operator << (std::ostream & os, AutotuneChordFrequencies t
   return os;
 }
 
-template<typename T>
-std::vector<T>
-make_equidistant_pitches(std::vector<T> const & pitches) {
-  std::vector<T> res;
+inline
+std::vector<double>
+make_equidistant_pitches(std::vector<double> const & pitches) {
+  std::vector<double> res;
   int const sz = static_cast<int>(pitches.size());
   Assert(sz > 1);
   res.reserve(sz - 1);
   for (int i = 0; i < (sz-1); ++i) {
-    res.push_back(0.5 * (pitches[i] + pitches[i+1]));
+    res.emplace_back(0.5 * (pitches[i] + pitches[i+1]));
   }
   return res;
 }
@@ -91,6 +91,38 @@ struct MusicalScalePitches {
   : pitches(all_pitches)
   , equidistant_pitches(make_equidistant_pitches(all_pitches)) {}
   
+  MidiPitch closest_pitch (MidiPitch const root_pitch,
+                           MidiPitch const pitch) const
+  {
+    // translate pitch to the right octave
+    double const half_tones_dist = pitch - root_pitch;
+    double const octave_dist = half_tones_dist / num_halftones_per_octave;
+    int octaves_translation;
+    // static_cast from floating point to integral rounds towards zero
+    if (octave_dist >= 0.) {
+      octaves_translation = static_cast<int>(octave_dist);
+    } else {
+      octaves_translation = static_cast<int>(octave_dist) - 1;
+    }
+    
+    MidiPitch const translated_pitch = pitch - (octaves_translation * num_halftones_per_octave);
+    
+    Assert(translated_pitch >= root_pitch);
+    Assert(translated_pitch < root_pitch + num_halftones_per_octave);
+    
+    double const relative_translated_pitch = translated_pitch - root_pitch;
+    
+    Assert(relative_translated_pitch >= 0.);
+    Assert(relative_translated_pitch < num_halftones_per_octave);
+    
+    double const offset = distance_to(relative_translated_pitch);
+    return pitch - offset;
+  }
+
+private:
+  std::vector<double> pitches; // the first element is the root (0.) and the last is the root at the next octave (12.)
+  std::vector<double> equidistant_pitches;
+
   double distance_to(double const relative_translated_pitch) const {
     Assert(relative_translated_pitch >= 0.);
     Assert(relative_translated_pitch < num_halftones_per_octave);
@@ -107,39 +139,6 @@ struct MusicalScalePitches {
     }
     return relative_translated_pitch - pitches[i];
   }
-
-  template<typename T>
-  T closest_pitch (T const root_pitch,
-                   T const pitch) const
-  {
-    // translate pitch to the right octave
-    T const half_tones_dist = pitch - root_pitch;
-    T const octave_dist = half_tones_dist / num_halftones_per_octave;
-    int octaves_translation;
-    // static_cast from floating point to integral rounds towards zero
-    if (octave_dist >= 0.) {
-      octaves_translation = static_cast<int>(octave_dist);
-    } else {
-      octaves_translation = static_cast<int>(octave_dist) - 1;
-    }
-    
-    T const translated_pitch = pitch - octaves_translation * num_halftones_per_octave;
-    
-    Assert(translated_pitch >= root_pitch);
-    Assert(translated_pitch < root_pitch + num_halftones_per_octave);
-    
-    T const relative_translated_pitch = translated_pitch - root_pitch;
-    
-    Assert(relative_translated_pitch >= 0.);
-    Assert(relative_translated_pitch < num_halftones_per_octave);
-    
-    T const offset = distance_to(relative_translated_pitch);
-    return pitch - offset;
-  }
-
-private:
-  std::vector<double> pitches; // the first element is the root (0.) and the last is the root at the next octave (12.)
-  std::vector<double> equidistant_pitches;
 };
 
 const MusicalScalePitches major_scale{{
@@ -188,7 +187,7 @@ inline MusicalScalePitches const & getMusicalScale(MusicalScaleMode const t) {
 
 // precondition : pitches are ordered wrt 'get_pitch'
 template<typename T, typename F>
-T* find_closest_pitch(float const pitch,
+T* find_closest_pitch(MidiPitch const pitch,
                       std::vector<T> & pitches,
                       F && get_pitch) {
   auto const begin = pitches.begin();
@@ -199,7 +198,7 @@ T* find_closest_pitch(float const pitch,
   auto lb = std::lower_bound(begin,
                              end,
                              pitch,
-                             [get_pitch](T const & a, float comp_pitch){
+                             [get_pitch](T const & a, MidiPitch comp_pitch){
     return get_pitch(a) < comp_pitch;
   });
   if (lb == end) {
