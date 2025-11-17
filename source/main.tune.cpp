@@ -436,12 +436,17 @@ char encodePitchAsSimpleAscii(MidiPitch p)
   return semitones + 'A' - 10;
 }
 
+MidiPitch decodePitchFromBinaryStatEncoding(size_t c)
+{
+  return MidiPitch{A_pitch - 24 + c + 3};
+}
+
 Score readScoreFromSimpleAsciiPitchesEncoding(std::filesystem::path const& scoreFile)
 {
   Score score;
 
-  std::cout << "Generating " << scoreFile << std::endl;
-  std::ifstream file(scoreFile);
+  std::cout << "Reading " << scoreFile << std::endl;
+  std::ifstream file(scoreFile, std::ios::in);
 
   std::vector<std::string> chars;
   {
@@ -455,6 +460,135 @@ Score readScoreFromSimpleAsciiPitchesEncoding(std::filesystem::path const& score
     for(auto c : str)
       score.m_voices.back().m_pitches.push_back(decodePitchFromSimpleAsciiEncoding(c));
   }  
+  return score;
+}
+
+struct ByteHistogram
+{
+  // Ordered from most frequent to least frequent
+  //
+  // Only contains existing bytes.
+  std::vector<size_t> v;
+};
+
+struct FileStats
+{
+  FileStats() : m_byteFreq(256, 0) {}
+  
+  void feed(uint8_t c)
+  {
+    ++m_byteFreq[c];
+  }
+    
+  ByteHistogram mkHistogram() const
+  {
+    std::vector<size_t> v(m_byteFreq.size());
+    std::iota(v.begin(), v.end(), 0);
+    
+    std::sort(v.begin(), v.end(), [&](size_t a, size_t b){ return m_byteFreq[a] > m_byteFreq[b];});
+    
+    for(size_t i=0; i<v.size(); ++i)
+      if(!m_byteFreq[v[i]])
+      {
+        v.resize(i);
+        break;
+      }
+
+    return ByteHistogram{std::move(v)};    
+  }
+
+  void show(std::ostream& os, const ByteHistogram& hist) const
+  {    
+    for(auto i : hist.v)
+    {
+      std::cout << std::setfill(' ') << std::setw(3) << i << " " << m_byteFreq[i] << std::endl;
+    }
+  }
+private:
+  std::vector<size_t> m_byteFreq;
+};
+
+// Infinitely iterates (ascending) a byte range
+struct CyclicByteRangeIterator
+{
+  CyclicByteRangeIterator(uint8_t min=0, uint8_t max=1)
+  : m_min(min)
+  , m_max(max)
+  , m_nextVal(min)
+  {}
+
+  uint8_t operator()()
+  {
+    auto v = m_nextVal;
+    if(m_nextVal == m_max)
+      m_nextVal = m_min;
+    else
+      ++m_nextVal;
+    return v;    
+  }
+private:
+  uint8_t m_min;
+  uint8_t m_max;
+  uint8_t m_nextVal;
+};
+
+Score readScoreFromBinaryPitchesEncoding(std::filesystem::path const& scoreBinaryFile)
+{  
+  std::cout << "Reading binary " << scoreBinaryFile << std::endl;
+
+  // Read file a first time to gather stats
+
+  FileStats stats;
+  std::ifstream file(scoreBinaryFile, std::ios::binary | std::ios::in);
+
+  {
+    uint8_t c;
+    for(;;)
+    {
+      file.read(reinterpret_cast<char*>(&c), 1);
+      if(file.fail())
+        break;
+      stats.feed(c);
+    }
+  }
+
+  // compute byte to MidiPitch Mapping
+
+  auto hist = stats.mkHistogram();
+  
+  // If a small number of bytes occur very often,
+  // mapping a byte to a single MidiPitch would produce a boring melody.
+  
+  // So we map each byte to the same range of MidiPitches
+  // to have some variations in the produced melody.
+
+  // Note that since all bytes use the same logic,
+  // this could be a vector<CyclicByteRangeIterator> of size 256.
+  std::map<uint8_t, CyclicByteRangeIterator> byteToByteIterator;
+  for(size_t i=0; i<hist.v.size(); ++i)
+  {
+    byteToByteIterator[hist.v[i]] = CyclicByteRangeIterator(static_cast<uint8_t>(0), static_cast<uint8_t>(48));
+  }
+
+  Score score;
+  stats.show(std::cout, hist);
+
+  {
+    score.m_voices.emplace_back();
+    
+    file.clear();
+    file.seekg(0, std::ios::beg);
+    uint8_t c;
+    int i{};
+    for(;;)
+    {
+      file.read(reinterpret_cast<char*>(&c), 1);
+      if(file.fail())
+        break;
+      score.m_voices.back().m_pitches.push_back(decodePitchFromBinaryStatEncoding(byteToByteIterator[c]()));
+    }
+  }
+
   return score;
 }
 
@@ -572,6 +706,13 @@ Loop mkEvents(int countNotes)
 Loop eventsFrom(std::filesystem::path const& scoreFile)
 {
   const Score score = readScoreFromSimpleAsciiPitchesEncoding(scoreFile);
+  
+  return loopFromScore(score);
+}
+
+Loop eventsFromBinary(std::filesystem::path const& scoreFile)
+{
+  const Score score = readScoreFromBinaryPitchesEncoding(scoreFile);
   
   return loopFromScore(score);
 }
@@ -740,7 +881,7 @@ int main() {
 
   a.setHarmonicsFile(harSimple);
 
-  for(auto const &env : {zeroEnv, fastEnv, slowEnv})
+  for(auto const &env : {slowEnv, zeroEnv, fastEnv})
   {
     a.setEnvelopeFile(env);
     
@@ -752,13 +893,18 @@ int main() {
     //
     // moduloPitch is a way to reduce the range of generated pitches.
     // It is an approach somewhat complementary to low-pass filtering.
-
-    a.playEvents(moduloPitch(eventsFrom(scores / "Phrase.txt")), 4);
+    const auto file = "/Users/Olivier/Downloads/IMSLP874967-PMLP1036212-Feuillard_La_Technique_du_Violoncelle_Vol.4.pdf";
+    a.playEvents(eventsFromBinary(file), 1);
+    a.playEvents(moduloPitch(eventsFromBinary(file)), 1);
+    a.playEvents(eventsFromBinary(scores / "Phrase.txt"), 1);
+    a.playEvents(moduloPitch(eventsFromBinary(scores / "Phrase.txt")), 1);
     a.playEvents(eventsFrom(scores / "Phrase.txt"), 4);
-    a.playEvents(moduloPitch(eventsFrom(scores / "Phrase2.txt")), 4);
-    a.playEvents(eventsFrom(scores / "Phrase2.txt"), 4);
+    a.playEvents(moduloPitch(eventsFrom(scores / "Phrase.txt")), 4);
+
     a.playEvents(moduloPitch(eventsFrom(scores / "StrangeBots.txt")), 4);
     a.playEvents(eventsFrom(scores / "StrangeBots.txt"), 4);
+    a.playEvents(moduloPitch(eventsFrom(scores / "Phrase2.txt")), 4);
+    a.playEvents(eventsFrom(scores / "Phrase2.txt"), 4);
     
     a.playEvents(moduloPitch(mkEvents(250)), 1);
     a.playEvents(mkEvents(250), 1);
