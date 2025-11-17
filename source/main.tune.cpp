@@ -192,7 +192,11 @@ private:
   Ctxt m_ctxt;
   Synth m_synth;
   Stepper m_stepper;
-  
+
+  std::atomic<size_t> m_countCinChars{};
+  std::atomic_bool m_runCinListener{true};
+  std::thread m_cinListener;
+
   // Represents the min time of the harmonics/envelope files that were
   // last used to produce the AE initializer.
   std::optional<std::filesystem::file_time_type> m_lastWriteSynthFiles;
@@ -208,6 +212,21 @@ AppTune::AppTune()
 : m_stepper(GlobalAudioLock<audioEnginePolicy>::get(),
             Synth::n_channels * 4 /* one shot */,
             1 /* a single compute is needed (global for the synth)*/)
+, m_cinListener{[&]()
+  {
+    std::string str;
+    while(m_runCinListener)
+    {
+      try
+      {
+        std::cin >> str;
+        if(!str.empty())
+          m_countCinChars += str.size();
+      }
+      catch(std::exception const&)
+      {}
+    }
+  }}
 {
   m_synth.initialize(m_stepper);
   
@@ -241,6 +260,9 @@ AppTune::~AppTune()
   std::this_thread::sleep_for(std::chrono::milliseconds(250));
   
   m_ctxt.doTearDown();
+  
+  m_runCinListener = false;
+  m_cinListener.join();
 }
 
 
@@ -354,81 +376,6 @@ void AppTune::updateInitializerIfNeeded()
   m_synth.setSynchronousElementInitializer(initializer);
 }
 
-Loop mkEvents(int countNotes)
-{
-  std::cout << "Generating " << countNotes << " notes" << std::endl;
-  Midi m_midi;
-  std::vector<std::pair<TimestampAndSource, Event>> events;
-  
-  
-  static constexpr auto constantDrift =
-  //0.05
-  //0.01
-  //0.02
-  0
-  ;
-  PitchDrifter withPitchDrift(constantDrift);
-  
-  const MidiPitch rootPitch = m_midi.get_pitch(NoteOctave{Note::La, 2});
-
-  //constexpr auto& scaleOffsets = well_tempered::c_minorScaleAsc;
-  //constexpr auto& scaleOffsets = well_tempered::c_majorScaleAsc;
-  //const auto scaleOffsets = just::mkMajorScaleAsc<Constexpr::Yes>();
-  const auto scaleOffsets = pythagorean::mkMajorScaleAsc<Constexpr::Yes>();
-
-  const auto scale = toMidiPitches(rootPitch, scaleOffsets);
-  const int countOctaves = 2;
-  MultiOctave multiOctave{
-    scale.begin(),
-    scale.end(),
-    countOctaves
-  };
-  
-  //auto& pitchGen = multiOctave;
-  auto shufflePattern = ShufflePattern{multiOctave, std::vector<size_t>{0, 2, 1, 3, 2, 4, 3, 2}};
-  auto& pitchGen = shufflePattern;
-  
-  // Scales time.
-  static constexpr float timeScaleFactor = 0.09;
-  // Duration of a note
-  static constexpr auto wait_after_note_on = std::chrono::milliseconds(static_cast<int>(timeScaleFactor * 800));
-  // Pause length between consecutive notes
-  static constexpr auto wait_after_note_off = std::chrono::milliseconds(static_cast<int>(timeScaleFactor * 300));
-  
-  const float volume = 1.f;
-  
-  uint64_t curTimeNanos{};
-  for(int i=0; i<countNotes; ++i)
-  {
-    const auto noteid = mk_note_id();
-    {
-      const MidiPitch midiPitch = withPitchDrift(pitchGen());
-      const float frequency = m_midi.midi_pitch_to_freq(midiPitch);
-      
-      // if needed we could generate the string below, and print it when we
-      // schedule the note to be played
-      // so that the user visualizes the pitch deviation.
-#if 0
-      const auto noteWithDeviation = midi_pitch_to_note_deviation(midiPitch);
-      std::cout << *noteid << ": " << frequency << " Hz (" << midiPitch << " " <<
-      noteWithDeviation << " "
-      //<< (prevMidiPitch.has_value() ? (midiPitch - *prevMidiPitch) : 0.) << ") "
-      << res << std::endl;
-#endif
-      events.emplace_back(TimestampAndSource{curTimeNanos, 0},
-                          mkNoteOn(noteid,
-                                   frequency,
-                                   volume));
-    }
-    curTimeNanos += std::chrono::duration_cast<std::chrono::nanoseconds>(wait_after_note_on).count();
-    events.emplace_back(TimestampAndSource{curTimeNanos, 0},
-                        mkNoteOff(noteid));
-    curTimeNanos += std::chrono::duration_cast<std::chrono::nanoseconds>(wait_after_note_off).count();
-  }
-  
-  return Loop{std::move(events), curTimeNanos};
-}
-
 // ConsecutivePitches is a list of consecutive pitches.
 struct ConsecutivePitches
 {
@@ -470,6 +417,25 @@ struct Score
 // ## Non-numeric characters
 //
 // pitch = Do5 + 10 + c - 'A'
+MidiPitch decodePitchFromSimpleAsciiEncoding(char c)
+{
+  const auto semitones = [=]()
+  {
+    if(c >= '0' && c <= '9')
+      return c - '0';
+    return 10 + c - 'A';
+  }();
+  
+  return A_pitch + semitones + 3;  
+}
+char encodePitchAsSimpleAscii(MidiPitch p)
+{
+  const int semitones = static_cast<int>(p - A_pitch - 3. + 0.5);
+  if(semitones >= 0 && semitones <= 9)
+    return '0' + semitones;
+  return semitones + 'A' - 10;
+}
+
 Score readScoreFromSimpleAsciiPitchesEncoding(std::filesystem::path const& scoreFile)
 {
   Score score;
@@ -487,20 +453,72 @@ Score readScoreFromSimpleAsciiPitchesEncoding(std::filesystem::path const& score
   {
     score.m_voices.emplace_back();
     for(auto c : str)
-    {
-      const auto semitones = [=]()
-      {
-        if(c >= '0' && c <= '9')
-          return c - '0';
-        return 10 + c - 'A';
-      }();
-      
-      const auto midiPitch = A_pitch + semitones + 3;
-      score.m_voices.back().m_pitches.push_back(midiPitch);
-    }
+      score.m_voices.back().m_pitches.push_back(decodePitchFromSimpleAsciiEncoding(c));
   }  
   return score;
 }
+
+bool writeScoreInSimpleAsciiPitchesEncoding(Score const & score, std::filesystem::path const& scoreFile)
+{
+  if(std::filesystem::exists(scoreFile))
+    return false;
+  
+  std::ofstream f(scoreFile);
+  for(const auto & voice : score.m_voices)
+  {
+    for(const auto & pitch : voice.m_pitches)
+      f << encodePitchAsSimpleAscii(pitch);
+    f << std::endl;
+  }
+  return true;   
+}
+
+Score mkScore(int countNotes)
+{
+  Score score;
+
+  std::cout << "Generating " << countNotes << " notes" << std::endl;
+  Midi m_midi;
+    
+  
+  score.m_voices.emplace_back();
+
+  static constexpr auto constantDrift =
+  //0.05
+  //0.01
+  //0.02
+  0
+  ;
+  PitchDrifter withPitchDrift(constantDrift);
+  
+  const MidiPitch rootPitch = m_midi.get_pitch(NoteOctave{Note::La, 2});
+  
+  //constexpr auto& scaleOffsets = well_tempered::c_minorScaleAsc;
+  //constexpr auto& scaleOffsets = well_tempered::c_majorScaleAsc;
+  //const auto scaleOffsets = just::mkMajorScaleAsc<Constexpr::Yes>();
+  const auto scaleOffsets = pythagorean::mkMajorScaleAsc<Constexpr::Yes>();
+  
+  const auto scale = toMidiPitches(rootPitch, scaleOffsets);
+  const int countOctaves = 2;
+  MultiOctave multiOctave{
+    scale.begin(),
+    scale.end(),
+    countOctaves
+  };
+  
+  //auto& pitchGen = multiOctave;
+  auto shufflePattern = ShufflePattern{multiOctave, std::vector<size_t>{0, 2, 1, 3, 2, 4, 3, 2}};
+  auto& pitchGen = shufflePattern;
+  
+  for(int i=0; i<countNotes; ++i)
+  {
+    const MidiPitch midiPitch = withPitchDrift(pitchGen());
+    score.m_voices.back().m_pitches.push_back(midiPitch);
+  }
+  
+  return score;
+}
+
 
 Loop loopFromScore(Score const & score)
 {
@@ -541,8 +559,18 @@ Loop loopFromScore(Score const & score)
   return {std::move(events), maxCurTimeNanos};
 }
 
+const auto synth = std::filesystem::path{"/Users/Olivier/Dev/cpp.audio/Synth/"};
+const auto scores = std::filesystem::path{"/Users/Olivier/Dev/cpp.audio/Scores/"};
+
+Loop mkEvents(int countNotes)
+{
+  const Score score = mkScore(countNotes);
+  writeScoreInSimpleAsciiPitchesEncoding(score, scores/("test" + std::to_string(countNotes) + ".txt"));
+  return loopFromScore(score);  
+}
+
 Loop eventsFrom(std::filesystem::path const& scoreFile)
-{  
+{
   const Score score = readScoreFromSimpleAsciiPitchesEncoding(scoreFile);
   
   return loopFromScore(score);
@@ -552,7 +580,13 @@ void AppTune::playEvents(Loop && loop, uint64_t countLoops)
 {
   if(!countLoops)
     return;
-  
+
+  auto countCinChars = m_countCinChars.load(std::memory_order_relaxed);
+  auto must_interrupt = [&]()
+  {
+    return countCinChars != m_countCinChars.load(std::memory_order_relaxed);
+  };
+
   auto & events = loop.events;
   std::sort(events.begin(), events.end(), [](const auto & t1, const auto & t2){ return t1.first.getNanosTime() < t2.first.getNanosTime(); });
   
@@ -581,7 +615,13 @@ void AppTune::playEvents(Loop && loop, uint64_t countLoops)
   {
     size_t count_yields{};
   retry:
-    
+  
+    if(must_interrupt())
+    {
+      m_synth.allNotesOff(m_stepper);
+      break;
+    }
+
     updateInitializerIfNeeded();
     
     const uint64_t ctxtCurTimeNanos = nanos_per_frame<double>(m_sampleRate) * m_ctxt.getCountFrames();
@@ -649,7 +689,9 @@ void AppTune::playEvents(Loop && loop, uint64_t countLoops)
   // All notes have started (and stopped) but some envelope tails may still be active.
   
   while(!m_synth.allEnvelopesFinished())
+  {
     std::this_thread::yield();
+  }
 }
 
 Loop moduloPitch(Loop && l)
@@ -688,10 +730,7 @@ int main() {
   using namespace std::filesystem;
 
   auto a = AppTune{};
-  
-  const auto synth = path{"/Users/Olivier/Dev/cpp.audio/Synth/"};
-  const auto scores = path{"/Users/Olivier/Dev/cpp.audio/Scores/"};
-  
+    
   // The ZeroEnvelope file produces drum sounds.
   const path zeroEnv{synth / "EnvelopeZero.txt"};
   const path fastEnv{synth / "EnvelopeFast.txt"};
