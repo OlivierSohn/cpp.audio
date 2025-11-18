@@ -94,15 +94,18 @@ using Events = std::vector<std::pair<TimestampAndSource, Event>>;
 
 struct LoopOffsets
 {
-  uint64_t eventTimeOffsetNanos{};
+  TimeNanos eventTimeOffsetNanos{};
   uint64_t eventNoteIdOffset{};    
 };
 
 struct Loop
 {
-  // The loop starts at time zero hence times of events are zero-based.
+  // The loop starts at time zero.
+  static constexpr TimeNanos c_refTime{0};
+
+  // The loop starts at time zero, hence times of events are zero-based.
   // The time of an event is offset in 'instantiateEvent' when we schedule the event to be played.
-  Loop(Events && e, uint64_t lengthNanos)
+  Loop(Events && e, DurationNanos lengthNanos)
   : events(std::move(e))
   , m_lengthNanos(lengthNanos)
   {
@@ -132,7 +135,7 @@ struct Loop
   {
     auto event = events[eventIndex];
     event.second.offsetNoteId(offsets.eventNoteIdOffset);
-    event.first.offsetNanosTime(offsets.eventTimeOffsetNanos);
+    event.first.offsetNanosTime(DurationNanos{offsets.eventTimeOffsetNanos.get()});
     return event;
   }
 
@@ -145,7 +148,7 @@ private:
   // invariant : sorted by first.getNanosTime().
   Events events;
 
-  uint64_t m_lengthNanos{};
+  DurationNanos m_lengthNanos{};
   
   int64_t m_maxNoteId;
 };
@@ -154,6 +157,97 @@ static NoteId mk_note_id() {
   static int64_t i = 0;
   ++i;
   return NoteId{i};
+}
+
+enum class StreamStatus{OK, EndOfStream};
+
+struct EventStream
+{
+  virtual ~EventStream() = default;
+
+  // This is called at least once before materializeNextEvents.
+  //
+  // can be called multiple times to restart the stream.
+  virtual void startStream(TimeNanos refTime) = 0;
+
+  // Stops the stream.
+  // May be called multiple times.
+  virtual void stopStream() = 0;
+  
+  // startStream will be called before this method to give the reference "start" time.
+  //
+  // materializes events that have not yet been materialized yet and that will occur up to maxTime.
+  //
+  // For convenience, it is ok to materialize more events (i.e some events that would occur after maxTime).
+  //
+  // Calling materializeNextEvents after StreamStatus::EndOfStream
+  // has been returned is undefined behaviour, unless startStream has been called since.
+  virtual StreamStatus materializeNextEvents(Events & events, TimeNanos maxTime) = 0;
+};
+
+struct LoopEventStream : public EventStream
+{
+  LoopEventStream(Loop && loop, uint64_t countLoops = 1000)
+  : m_loop(std::move(loop))
+  , m_countRemainingIterations(countLoops)
+  {
+    m_sz = m_loop.countEvents();
+  }
+  
+private:
+  void startStream(TimeNanos refTime) override
+  {
+    m_offsets = {};
+    m_offsets.eventTimeOffsetNanos = refTime;
+
+    m_firstIndex = 0;
+  }
+  void stopStream() override
+  {
+  }
+
+public:
+  StreamStatus materializeNextEvents(Events & events, TimeNanos maxTime) override;
+
+private:
+  Loop m_loop;
+  LoopOffsets m_offsets;
+  int m_countRemainingIterations;
+  size_t m_firstIndex{};
+  size_t m_sz{};
+};
+
+StreamStatus
+LoopEventStream::materializeNextEvents(Events & events, TimeNanos maxTime)
+{
+  if(m_sz == 0)
+    return StreamStatus::EndOfStream;
+
+  bool newIteration{};
+  
+  if(m_firstIndex >= m_sz)
+  {
+    // All events of this iteration of the loop have been materialized.
+    m_firstIndex = 0;
+    --m_countRemainingIterations;
+    newIteration = true;
+  }
+
+  if(m_countRemainingIterations <= 0)
+    // All iterations of the loop have been materialized.
+    return StreamStatus::EndOfStream;
+
+  if(newIteration)
+    m_loop.updateOffsetsForNextIteration(m_offsets);
+  
+  for(;m_firstIndex < m_sz; ++m_firstIndex)
+  {
+    const auto event = m_loop.instantiateEvent(m_firstIndex, m_offsets);
+    if(event.first.getNanosTime() >= maxTime)
+      break;
+    events.push_back(event);
+  }
+  return StreamStatus::OK;
 }
 
 // Main class.
@@ -178,8 +272,14 @@ struct AppTune
     m_lastWriteSynthFiles.reset();
   }
   
-  void playLoop(const Loop & loop, uint64_t countLoops = 1000);
-  
+  void playEventStream(EventStream & stream);
+
+  void playLoop(Loop && loop, uint64_t countLoops = 1000)
+  {
+    auto stream = LoopEventStream(std::move(loop), countLoops);
+    playEventStream(stream);
+  }
+
 private:
   
   // This file defines the harmonics of the synthesizer.
@@ -281,7 +381,7 @@ AppTune::AppTune()
                      [this]
                      (SAMPLE *outputBuffer,
                       int nFrames,
-                      uint64_t const tNanos){
+                      TimeNanos const tNanos){
     m_stepper.step(outputBuffer,
                    nFrames,
                    tNanos);
@@ -1164,29 +1264,29 @@ Loop loopFromScore(Score const & score, const LoopTiming& timing)
 
   const float volume = 1.f / std::max(1ul, score.m_voices.size());
   
-  uint64_t maxCurTimeNanos{};
+  DurationNanos maxCurDurationNanos{};
   
   uint64_t voice{};
   for(const auto & consecutivePitches : score.m_voices)
   {
-    uint64_t curTimeNanos{};
+    DurationNanos curDurationNanos{};
     for(auto midiPitch : consecutivePitches.m_pitches)
     {
       const auto noteid = mk_note_id();
       const float frequency = m_midi.midi_pitch_to_freq(midiPitch);
-      events.emplace_back(TimestampAndSource{curTimeNanos, voice},
+      events.emplace_back(TimestampAndSource{Loop::c_refTime + curDurationNanos, voice},
                           mkNoteOn(noteid,
                                    frequency,
                                    volume));
-      curTimeNanos += std::chrono::duration_cast<std::chrono::nanoseconds>(wait_after_note_on).count();
-      events.emplace_back(TimestampAndSource{curTimeNanos, voice},
+      curDurationNanos += wait_after_note_on;
+      events.emplace_back(TimestampAndSource{Loop::c_refTime + curDurationNanos, voice},
                           mkNoteOff(noteid));
-      curTimeNanos += std::chrono::duration_cast<std::chrono::nanoseconds>(wait_after_note_off).count();
+      curDurationNanos += wait_after_note_off;
     }
-    maxCurTimeNanos = std::max(maxCurTimeNanos, curTimeNanos);
+    maxCurDurationNanos = std::max(maxCurDurationNanos, curDurationNanos);
     ++voice;
   }
-  return {std::move(events), maxCurTimeNanos};
+  return {std::move(events), maxCurDurationNanos};
 }
 
 const auto synth = std::filesystem::path{"/Users/Olivier/Dev/cpp.audio/Synth/"};
@@ -1213,106 +1313,71 @@ Loop loopFromBinary(std::filesystem::path const& scoreFile, LoopTiming loopTimin
   return loopFromScore(score, loopTiming);
 }
 
-void AppTune::playLoop(const Loop & loop, uint64_t countLoops)
+void AppTune::playEventStream(EventStream& stream)
 {
-  if(!countLoops)
-    return;
-
   auto countCinChars = m_countCinChars.load(std::memory_order_relaxed);
   auto must_interrupt = [&]()
   {
     return countCinChars != m_countCinChars.load(std::memory_order_relaxed);
   };
-
-  LoopOffsets offsets{};
   
   // Use a delay of one second
-  constexpr uint64_t bufferNanos{static_cast<uint64_t>(1e9)};
+  constexpr DurationNanos bufferNanos{static_cast<uint64_t>(1e9)};
   {
-    const uint64_t ctxtCurTimeNanos = nanos_per_frame<double>(m_sampleRate) * m_ctxt.getCountFrames();
-    
-    // By convention, the Loop starts at time 0, i.e times of events in a Loop are zero-based.
-    //
-    // When playing the events of the loop, we need to offset the event times.
-    //
     // This is the offset we need to apply to events if we want them to start playing right away.
-    // We add one second to that so that audio won't depend on thread scheduling.
-    offsets.eventTimeOffsetNanos = ctxtCurTimeNanos + bufferNanos;
+    const TimeNanos ctxtCurTimeNanos(nanos_per_frame<double>(m_sampleRate) * m_ctxt.getCountFrames());
+
+    // To ensure that the rythm of events will be ok, we add one second to that    
+    // so that audio won't depend on thread scheduling.
+    stream.startStream(ctxtCurTimeNanos + bufferNanos);
   }
   
-  std::optional<uint64_t> lastCtxtScheduleTimeNanos;
-  for(size_t firstIndex=0, sz = loop.countEvents();;)
+  Events events;
+  for(;;)
   {
     size_t count_yields{};
   retry:
   
     if(must_interrupt())
     {
+      stream.stopStream();
       m_synth.allNotesOff(m_stepper);
       break;
     }
 
     updateInitializerIfNeeded();
     
-    const uint64_t ctxtCurTimeNanos = nanos_per_frame<double>(m_sampleRate) * m_ctxt.getCountFrames();
+    const TimeNanos ctxtCurTimeNanos(nanos_per_frame<double>(m_sampleRate) * m_ctxt.getCountFrames());
     
-    if(firstIndex < sz)
-    {
-      // Try to schedule events that need to be played during the next "bufferNanos" time.
-      
-      auto endIndex = firstIndex;
-      for(;endIndex < sz; ++endIndex)
-      {
-        if(loop.instantiateEvent(endIndex, offsets).first.getNanosTime() >= ctxtCurTimeNanos + bufferNanos)
-          break;
-      }
-      
-      if(firstIndex != endIndex)
-      {
-        // std::cout << endIndex - firstIndex << " " << count_yields << std::endl;
-        for(; firstIndex != endIndex; ++firstIndex)
-        {
-          const auto event = loop.instantiateEvent(firstIndex, offsets);
-          auto const res = m_synth.onEvent(m_sampleRate,
-                                           event.second,
-                                           m_stepper,
-                                           m_stepper,
-                                           event.first);
-        }
-        lastCtxtScheduleTimeNanos = ctxtCurTimeNanos;
-        continue;
-      }
-      else
-      {
-        // There are remaining events in this iteration of the loop but we cannot schedule them yet.        
-      }
-    }
-    else
-    {
-      // All events in this iteration of the loop have been scheduled.
-      
-      // Some notes may not have started being played yet, eventhough they are scheduled.
-      // These notes may start being played up to "bufferNanos" in the future.
-      
-      if(countLoops && --countLoops)
-      {
-        firstIndex = 0;
-
-        loop.updateOffsetsForNextIteration(offsets);
-        goto retry;
-      }
-      else if(!lastCtxtScheduleTimeNanos.has_value() || ((*lastCtxtScheduleTimeNanos + 2*bufferNanos) < ctxtCurTimeNanos))
-      {
-        // By now, all notes of the loop iteration have started (and stopped).
-        break;
-      }
-    }
+    // Materialize events that have not been materialized yet and need
+    // to be played during the next "bufferNanos" time.
+    events.clear();
+    auto streamRes = stream.materializeNextEvents(events, ctxtCurTimeNanos + bufferNanos);
     
+    if(!events.empty())
+    {
+      for(const auto & event : events)
+      {
+        auto const res = m_synth.onEvent(m_sampleRate,
+                                         event.second,
+                                         m_stepper,
+                                         m_stepper,
+                                         event.first);
+      }
+      continue;
+    }
+    else if(streamRes == StreamStatus::EndOfStream)
+    {
+      break;
+    }
+      
     ++count_yields;
     std::this_thread::yield();
     goto retry;
   }
-  
+
+  stream.stopStream();
+
   // All notes have started (and stopped) but some envelope tails may still be active.
   
   while(!m_synth.allEnvelopesFinished())
@@ -1375,6 +1440,8 @@ int main() {
     a.setEnvelopeFile(env);
 
     const auto file = "/Users/Olivier/Downloads/IMSLP874967-PMLP1036212-Feuillard_La_Technique_du_Violoncelle_Vol.4.pdf";
+    // TODO: use an event stream for reading binary.
+    // TODO: display in real time the cyclic pitch iterators.    
     a.playLoop(loopFromBinary(file), 1);
     a.playLoop(moduloPitch(loopFromBinary(file)), 1);
     a.playLoop(loopFromBinary(scores / "Phrase.txt"), 1);

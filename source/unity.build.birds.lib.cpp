@@ -88,7 +88,7 @@ private:
     std::optional<int> program;
     std::optional<NoteId> noteid;
     Stepper stepper;
-    uint64_t nanos_per_audioelement_buffer;
+    DurationNanos nanos_per_audioelement_buffer;
 
 #if IMJ_DEBUG_AUDIO_OUT
     std::unique_ptr<AsyncWavWriter> async_wav_writer_out;
@@ -204,7 +204,7 @@ void BirdsImpl<mode>::process(uintptr_t inputBuffer, int nInputChannels, uintptr
         if (i==0) {
             stepper.step(reinterpret_cast<float*>(outputBuffer),
                          kRenderQuantumFrames,
-                         -1, // tNanos, only used for MIDI (?)
+                         TimeNanos(-1), // todo: can we pass 0 in constructor?
                          nanos_per_audioelement_buffer);
 #if IMJ_DEBUG_AUDIO_OUT
             async_wav_writer_out->sync_feed_frames(reinterpret_cast<float*>(outputBuffer),

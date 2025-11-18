@@ -176,13 +176,13 @@ private:
 };
 #endif
 
-constexpr uint64_t secondsToNanos(PaTime t) {
-  return static_cast<uint64_t>(0.5 + t * 1e9);
+constexpr TimeNanos secondsToNanos(PaTime t) {
+  return TimeNanos{static_cast<uint64_t>(0.5 + t * 1e9)};
 }
 
 
 template <TimeSource Time>
-uint64_t getCurrentTimeNanos(uint64_t countFrames, double sampleRate, const PaStreamCallbackTimeInfo* timeInfo)
+TimeNanos getCurrentTimeNanos(uint64_t countFrames, double sampleRate, const PaStreamCallbackTimeInfo* timeInfo)
 {
   if constexpr (Time == TimeSource::MIDI)
   {
@@ -192,11 +192,11 @@ uint64_t getCurrentTimeNanos(uint64_t countFrames, double sampleRate, const PaSt
       // the error becomes large (sometimes 5 samples offset) with the UA Apollo x4 soundcard
       return secondsToNanos(timeInfo->outputBufferDacTime);
     }
-    return 0; // then, MIDI synchronization will not work.
+    return TimeNanos{0}; // then, MIDI synchronization will not work.
   }
   else
   {
-    return static_cast<uint64_t>(countFrames * nanos_per_frame<double>(sampleRate));
+    return TimeNanos{static_cast<uint64_t>(countFrames * nanos_per_frame<double>(sampleRate))};
   }
 }
 
@@ -284,7 +284,7 @@ private:
                             std::memory_order_relaxed);
     
     auto countFrames = This->m_countFrames.load(std::memory_order_relaxed);
-    const uint64_t tNanos = getCurrentTimeNanos<Time>(countFrames, static_cast<double>(*This->sample_rate_), timeInfo);
+    const TimeNanos tNanos = getCurrentTimeNanos<Time>(countFrames, static_cast<double>(*This->sample_rate_), timeInfo);
     This->m_countFrames.store(numFrames + countFrames, std::memory_order_relaxed);
 
 #ifndef NDEBUG
@@ -570,7 +570,7 @@ private:
                             std::memory_order_relaxed);
     
     auto countFrames = This->m_countFrames.load(std::memory_order_relaxed);
-    const uint64_t tNanos = getCurrentTimeNanos<Time>(countFrames, static_cast<double>(*This->sample_rate_), timeInfo);
+    const TimeNanos tNanos = getCurrentTimeNanos<Time>(countFrames, static_cast<double>(*This->sample_rate_), timeInfo);
     This->m_countFrames.store(numFrames + countFrames, std::memory_order_relaxed);
 
 #ifndef NDEBUG

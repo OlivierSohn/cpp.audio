@@ -1294,7 +1294,7 @@ PlayF RtResynth::output_func() {
   return [this]
   (SAMPLE *outputBuffer,
    int nFrames,
-   uint64_t const tNanos){
+   TimeNanos const tNanos){
     stepper.step(outputBuffer,
                  nFrames,
                  tNanos);

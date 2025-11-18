@@ -120,9 +120,9 @@ static inline Phase mkNonDeterministicPhase() { return Phase{false,{}}; }
 
 
 // key = source, value = maybe delay
-std::unordered_map<uint64_t, std::optional<uint64_t>> & midiDelays();
+std::unordered_map<uint64_t, std::optional<DurationNanos>> & midiDelays();
 
-uint64_t & maxMIDIJitter();
+DurationNanos & maxMIDIJitter();
 
 template<SynchronizePhase Sync, DefaultStartPhase Phase, typename ElementMidi, typename CS>
 void setPhase(ElementMidi & e, CS & cs)
@@ -460,7 +460,7 @@ public:
                                 maybeTimeAndSource
                                 // pannedVol, // TODO how to handle panning? systematic use of Panner<>?
                                 ]
-                               (auto &, uint64_t curTimeNanos){
+                               (auto &, TimeNanos curTimeNanos){
             // TODO take get_gain() into account globally, when writing the out audio buffer for this synth
 
             // we issue this call to make sure that the 'tryAcquire' effect will be visible in this thread.
@@ -473,10 +473,9 @@ public:
             setPhase<Sync, Phase>(c, channels);
 
             if(maybeTimeAndSource) {
-              Assert(curTimeNanos);
               auto srcKey = maybeTimeAndSource->getSourceKey();
-              uint64_t midiTimeNanos = maybeTimeAndSource->getNanosTime();
-              uint64_t delayNanos{};
+              TimeNanos midiTimeNanos = maybeTimeAndSource->getNanosTime();
+              DurationNanos delayNanos{};
               if constexpr (Jitter == TryAccountForTimeSourceJitter::Yes)
               {
                 /*
@@ -486,12 +485,12 @@ public:
                 auto & mayDelay = midiDelays()[srcKey];
                 {
                   auto const margin = maxMIDIJitter();
-                  uint64_t const candidateDelay = margin + (curTimeNanos - midiTimeNanos);
+                  DurationNanos const candidateDelay = margin + (curTimeNanos - midiTimeNanos);
                   if(!mayDelay) {
                     mayDelay = candidateDelay;
                   } else {
                     // a delay is already registered.
-                    if(cyclic_unsigned_dist(candidateDelay, *mayDelay) > 2 * (margin + 100000)) {
+                    if(cyclic_unsigned_dist(candidateDelay.get(), mayDelay->get()) > 2 * (margin.get() + 100000)) {
                       // The change is significant enough, so we apply the change.
                       // The previous delay was maybe determined based
                       // on events that were generated while the program was starting,
@@ -503,7 +502,7 @@ public:
                 delayNanos = *mayDelay;
               }
 
-              uint64_t const targetNanos = midiTimeNanos + delayNanos;
+              TimeNanos const targetNanos = midiTimeNanos + delayNanos;
 
               if(targetNanos < curTimeNanos) {
                 // we're late.
@@ -542,7 +541,7 @@ public:
         chans.enqueueOneShot([this,
                               noteid = e.noteid,
                               sample_rate,
-                              maybeTimeAndSource](auto &, uint64_t curTimeNanos){
+                              maybeTimeAndSource](auto &, TimeNanos curTimeNanos){
           for(auto &i : firsts(channels)) { // TODO this is linear complexity in number of channels, can we do constant complexity with a unordered_map? Is it better? (we have not so many channels so we need to benchamark...)
             if (!i || *i != noteid) {
               continue;
@@ -550,8 +549,7 @@ public:
             auto & c = channels.corresponding(i);
 
             if(maybeTimeAndSource) {
-              Assert(curTimeNanos);
-              uint64_t delayNanos{};
+              DurationNanos delayNanos{};
               if constexpr (Jitter == TryAccountForTimeSourceJitter::Yes)
               {
                 Assert(c.midiTimeDelay);
@@ -560,7 +558,7 @@ public:
                 
                 Assert(d.getSourceKey() == maybeTimeAndSource->getSourceKey());
               }
-              const uint64_t targetNanos = maybeTimeAndSource->getNanosTime() + delayNanos;
+              const TimeNanos targetNanos = maybeTimeAndSource->getNanosTime() + delayNanos;
               
               auto delay = (targetNanos < curTimeNanos) ? 0 : nanoseconds_to_frames(targetNanos-curTimeNanos,
                                                                                     sample_rate);
@@ -599,7 +597,7 @@ public:
           typename Out::LockFromNRT L(out.get_lock());
           chans.enqueueOneShot([this,
                                 e,
-                                sample_rate](auto &, uint64_t){
+                                sample_rate](auto &, TimeNanos){
             for(auto &i : firsts(channels)) {
               if (!i || *i != e.noteid) {
                 continue;

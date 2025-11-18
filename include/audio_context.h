@@ -158,12 +158,12 @@ public:
                sample_rate,
                nAudioOut,
                [this,
-                nanos_per_audioelement_buffer = static_cast<uint64_t>(0.5f +
-                                                                      audio::nanos_per_frame<float>(sample_rate) *
-                                                                      static_cast<float>(audio::audioelement::n_frames_per_buffer))]
+                nanos_per_audioelement_buffer = DurationNanos{static_cast<uint64_t>(0.5f +
+                                                                                    audio::nanos_per_frame<float>(sample_rate) *
+                                                                                    static_cast<float>(audio::audioelement::n_frames_per_buffer))}]
                (SAMPLE *outputBuffer,
                 int nFrames,
-                uint64_t const tNanos){
+                TimeNanos const tNanos){
       stepper.step(outputBuffer,
                    nFrames,
                    tNanos,

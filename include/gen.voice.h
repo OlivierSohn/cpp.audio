@@ -1173,7 +1173,7 @@ namespace imajuscule::audio::voice {
         // ... not more than the buffer
         nFramesToProcess = std::min<int>(nFramesToProcess, n_frames_interleaved);
 
-        out.step(&interleaved[0], nFramesToProcess, 0, 0);
+        out.step(&interleaved[0], nFramesToProcess, TimeNanos{}, DurationNanos{});
 
         for(auto c = 0; c < nFramesToProcess; ++c) {
           for(unsigned int i=0; i<nAudioOut; ++i) {

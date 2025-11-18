@@ -368,7 +368,7 @@ struct Compute {
   }
   double * buf;
   int const n;
-  uint64_t const t;
+  audio::TimeNanos const t;
 };
 }
 
@@ -491,8 +491,8 @@ public:
 
   void step(SAMPLE *outputBuffer,
             int nFrames,
-            uint64_t const tNanos,
-            uint64_t const nanos_per_audioelement_buffer) {
+            audio::TimeNanos const tNanos,
+            audio::DurationNanos const nanos_per_audioelement_buffer) {
     /*
      static bool first(true);
      if(first) {
@@ -581,7 +581,7 @@ public:
 
 private:
 
-  void consume_buffers(double * outputBuffer, int const nFrames, uint64_t const tNanos) {
+  void consume_buffers(double * outputBuffer, int const nFrames, audio::TimeNanos const tNanos) {
 
     struct ComputeFunctor {
       double * buffer;

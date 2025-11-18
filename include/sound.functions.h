@@ -18,8 +18,8 @@ namespace imajuscule::audio {
     return static_cast<T>(1e3) / sample_rate;
   };
 
-  constexpr int32_t nanoseconds_to_frames(uint64_t ns, int sample_rate) {
-    float v = 0.5f + sample_rate_nanoseconds<float>(sample_rate) * static_cast<float>(ns);
+  constexpr int32_t nanoseconds_to_frames(DurationNanos ns, int sample_rate) {
+    float v = 0.5f + sample_rate_nanoseconds<float>(sample_rate) * static_cast<float>(ns.get());
     Assert(v >= 0.f);
     Assert(v < static_cast<float>(std::numeric_limits<int32_t>::max()));
     return static_cast<int32_t>(v);

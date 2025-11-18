@@ -183,18 +183,19 @@ struct EventIteratorFor<IEventList> {
   using type = EventIterator;
 };
 
+
 struct TimestampAndSource {
-  TimestampAndSource(uint64_t t,
+  TimestampAndSource(TimeNanos t,
                          uint64_t sourceKey)
   : time(t)
   , src_key(sourceKey)
   {}
 
-  void offsetNanosTime(uint64_t offset) {
+  void offsetNanosTime(DurationNanos offset) {
     time += offset;
   }
 
-  uint64_t getNanosTime() const {
+  TimeNanos getNanosTime() const {
     return time;
   }
   uint64_t getSourceKey() const {
@@ -212,7 +213,7 @@ struct TimestampAndSource {
 
 private:
   // nanoseconds (either MIDI time or a monotonic time, depending on TimeSource of Context).
-  uint64_t time;
+  TimeNanos time;
 
   uint64_t src_key;
 };

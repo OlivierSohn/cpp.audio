@@ -18,7 +18,7 @@ struct SimpleAudioOutContext   {
    * The function is executed once, and then removed from the queue.
    */
   using OneShotFunc = folly::Function<void(MeT &
-                                           , const uint64_t // the time of the start of the buffer that will be computed.
+                                           , const TimeNanos // the time of the start of the buffer that will be computed.
                                            )>;
 
   using ComputeFunc = folly::Function<bool(double *, // buffer
@@ -68,7 +68,7 @@ public:
 
   void step(SAMPLE *outputBuffer,
             int nFrames,
-            uint64_t const tNanos) {
+            TimeNanos const tNanos) {
     LockFromRT l(_lock.lock());
 
     oneShots.dequeueAll([this, tNanos](auto & f) {

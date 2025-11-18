@@ -27,14 +27,14 @@ struct Channels {
    * The function is executed once, and then removed from the queue.
    */
   using OneShotFunc = folly::Function<void(Channels &
-                                           , const uint64_t // the time of the start of the buffer that will be computed.
+                                           , const TimeNanos // the time of the start of the buffer that will be computed.
                                            )>;
   
   /*
    * returns false when the lambda can be removed
    */
   using ComputeFunc = folly::Function<bool(const int  // the number of frames to compute
-                                           , const uint64_t // the time of the first frame
+                                           , const TimeNanos // the time of the first frame
                                            )>;
   
   Channels() : _lock(GlobalAudioLock<policy>::get()) {
@@ -117,7 +117,7 @@ struct Channels {
   
   void toVolume(uint8_t channel_id, float volume, int nSteps) {
     LockFromNRT l(get_lock());
-    enqueueOneShot([channel_id, volume, nSteps](auto&chans, uint64_t){
+    enqueueOneShot([channel_id, volume, nSteps](auto&chans, TimeNanos){
       chans.editChannel(channel_id).toVolume(volume, nSteps);
     });
   }
@@ -140,7 +140,7 @@ struct Channels {
     auto & c = editChannel(params.channel_id);
     if(reserveAndLock<canRealloc>(1,c.edit_requests(),l)) {
       static_assert(sizeof(PackedRequestParams<nAudioOut>) <= 8, "so that the lambda captures are <= 16 bytes");
-      enqueueOneShot([&e,params](auto&chans, uint64_t){
+      enqueueOneShot([&e,params](auto&chans, TimeNanos){
         // error is ignored
         auto & c = chans.editChannel(params.channel_id);
         chans.playComputableNoLock(c, e.fCompute(), Request{&e.buffer->buffer[0], {params.volumes}, params.count_frames });
@@ -195,7 +195,7 @@ struct Channels {
 
   void closeAllChannels(int xfade) {
     LockFromNRT l(get_lock());
-    enqueueOneShot([xfade](auto&chans, uint64_t){
+    enqueueOneShot([xfade](auto&chans, TimeNanos){
       if(!xfade) {
         chans.channels.clear();
       }
@@ -319,7 +319,7 @@ struct Channels {
   /*
    * Called from the audio realtime thread.
    */
-  void run_computes(int const nFrames, uint64_t const tNanos) {
+  void run_computes(int const nFrames, TimeNanos const tNanos) {
     int nRemoved(0);
     
     nRemoved += oneShots.dequeueAll([this, tNanos](auto & f) {

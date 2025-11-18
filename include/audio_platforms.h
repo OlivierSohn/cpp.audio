@@ -32,10 +32,71 @@ struct AudioInput;
 template<AudioPlatform A, TimeSource Time>
 struct FullDuplexContext;
 
+
+struct DurationNanos
+{
+  constexpr explicit DurationNanos(uint64_t t = 0)
+  : nanos(t)
+  {}
+  constexpr uint64_t get() const {return nanos;}
+  
+  friend constexpr bool operator <(DurationNanos a, DurationNanos b)
+  {
+    return a.get() < b.get();
+  }
+  template<typename Duration>
+  constexpr DurationNanos & operator +=(const Duration& d) {
+    nanos += std::chrono::duration_cast<std::chrono::nanoseconds>(d).count();
+    return *this;
+  }
+private:
+  uint64_t nanos;  
+};
+struct TimeNanos
+{
+  constexpr explicit TimeNanos(uint64_t t = 0)
+  : nanos(t)
+  {}
+  constexpr uint64_t get() const {return nanos;}
+  
+  constexpr TimeNanos & operator +=(DurationNanos d) {
+    nanos += d.get();
+    return *this;
+  }
+  friend constexpr bool operator <(TimeNanos a, TimeNanos b)
+  {
+    return a.get() < b.get();
+  }
+  friend constexpr bool operator >=(TimeNanos a, TimeNanos b)
+  {
+    return a.get() >= b.get();
+  }
+  friend constexpr bool operator ==(TimeNanos a, TimeNanos b)
+  {
+    return a.get() == b.get();
+  }
+private:
+  uint64_t nanos;  
+};
+constexpr TimeNanos operator +(TimeNanos a, DurationNanos b)
+{
+  return TimeNanos{a.get() + b.get()};
+}
+constexpr DurationNanos operator -(TimeNanos a, TimeNanos b)
+{
+  Assert(a >= b);
+  return DurationNanos{a.get() - b.get()};
+}
+constexpr DurationNanos operator +(DurationNanos a, DurationNanos b)
+{
+  return DurationNanos{a.get() + b.get()};
+}
+
+
 // output callback:
 using PlayF = std::function<void(SAMPLE *,
                                  int,
-                                 uint64_t const)>;
+                                 TimeNanos const)>;
 // input callback:
 // Note that we could use PlayF for input too, but there is currently no use case where we need the time of inputs
 using RecordF = std::function<void(const SAMPLE*,

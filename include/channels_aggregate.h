@@ -26,7 +26,7 @@ namespace imajuscule {
         cXInf.forEach([&f] (auto & c) { c.forEach(f); });
       }
 
-      void run_computes(int nFrames, uint64_t tNanos) {
+      void run_computes(int nFrames, TimeNanos tNanos) {
         cX.forEach(   [nFrames, tNanos] (auto & c) { c.run_computes(nFrames, tNanos); });
         cNoX.forEach( [nFrames, tNanos] (auto & c) { c.run_computes(nFrames, tNanos); });
         cXInf.forEach([nFrames, tNanos] (auto & c) { c.run_computes(nFrames, tNanos); });

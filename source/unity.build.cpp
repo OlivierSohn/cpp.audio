@@ -26,8 +26,8 @@ namespace imajuscule::audio {
       each client should use the same delays for the same sources,
       plus a per-client global offset.
   */
-  std::unordered_map<uint64_t, std::optional<uint64_t>> & midiDelays() {
-    static std::unordered_map<uint64_t, std::optional<uint64_t>> m(100);
+  std::unordered_map<uint64_t, std::optional<DurationNanos>> & midiDelays() {
+    static std::unordered_map<uint64_t, std::optional<DurationNanos>> m(100);
     return m;
   }
 
@@ -37,8 +37,8 @@ namespace imajuscule::audio {
   *  - network characteristics
   *  - etc...
   */
-  uint64_t & maxMIDIJitter() {
-    static uint64_t v = 0;
+  DurationNanos & maxMIDIJitter() {
+    static DurationNanos v(0);
     return v;
   }
 
