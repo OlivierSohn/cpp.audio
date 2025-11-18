@@ -63,6 +63,11 @@ struct TimeNanos
     nanos += d.get();
     return *this;
   }
+  template<typename Duration>
+  constexpr TimeNanos & operator +=(const Duration& d) {
+    nanos += std::chrono::duration_cast<std::chrono::nanoseconds>(d).count();
+    return *this;
+  }
   friend constexpr bool operator <(TimeNanos a, TimeNanos b)
   {
     return a.get() < b.get();
