@@ -719,6 +719,9 @@ private:
 // Whether the CyclicByteRangeIterator(s) are reinitialized when we start a new range
 enum class ReinitCycleAtRangeBoundary{Yes, No};
 
+// Whether all cycles start at the same locations (min value of the cycle)
+enum class UniformCycleInitialization{Yes, No};
+
 // If a small number of bytes occur very often in the file,
 // mapping a byte to a single MidiPitch would produce a boring melody.
 //
@@ -728,7 +731,8 @@ struct MidiPitchStreamFromBinary
 {
   MidiPitchStreamFromBinary(std::filesystem::path const& scoreBinaryFile,
                             ByteRangesIterator ranges,
-                            ReinitCycleAtRangeBoundary r);
+                            ReinitCycleAtRangeBoundary r,
+                            UniformCycleInitialization u);
   
   std::optional<MidiPitch> operator()();
   
@@ -738,16 +742,18 @@ private:
   std::optional<ByteRangeIterator> m_curRange;
   std::vector<CyclicByteRangeIterator> m_byteToByteIterator;
   ReinitCycleAtRangeBoundary m_reinitCycleAtRangeBoundary;
-  
+  UniformCycleInitialization m_uniformCycleInitialization;
   void reinitCycles();
 };
 
 MidiPitchStreamFromBinary::MidiPitchStreamFromBinary(std::filesystem::path const& scoreBinaryFile,
                                                      ByteRangesIterator ranges,
-                                                     ReinitCycleAtRangeBoundary r)
+                                                     ReinitCycleAtRangeBoundary r,
+                                                     UniformCycleInitialization u)
 : m_file(scoreBinaryFile, std::ios::binary | std::ios::in)
 , m_ranges(std::move(ranges))
 , m_reinitCycleAtRangeBoundary(r)
+, m_uniformCycleInitialization(u)
 {
   std::cout << "Reading binary " << scoreBinaryFile << std::endl;
   
@@ -758,6 +764,14 @@ void MidiPitchStreamFromBinary::reinitCycles()
 {
   m_byteToByteIterator.clear();
   m_byteToByteIterator.resize(256, CyclicByteRangeIterator(static_cast<uint8_t>(0), static_cast<uint8_t>(48)));
+  if(m_uniformCycleInitialization == UniformCycleInitialization::No)
+  {
+    for(size_t i = 1; i<m_byteToByteIterator.size(); ++i)
+    {
+      for(size_t j=0; j<i; ++j)
+        m_byteToByteIterator[i]();
+    }
+  }
 }
 
 std::optional<MidiPitch>
@@ -805,7 +819,7 @@ next_range:
 
 Score readScoreFromBinaryPitchesEncoding(std::filesystem::path const& scoreBinaryFile, LoopTiming loopTiming)
 {
-  const size_t batchSize = 100;
+  const size_t batchSize = 10000;
   const auto note_period = loopTiming.note_period();  
   const auto period_batch = note_period * batchSize;
   std::cout << "One batch corresponds to " << std::chrono::duration_cast<std::chrono::seconds>(period_batch).count() << " seconds" << std::endl;
@@ -821,25 +835,54 @@ Score readScoreFromBinaryPitchesEncoding(std::filesystem::path const& scoreBinar
     std::cout << std::endl;
   }
 
-  std::vector<ByteRange> byteRangesByByteMaxFreq;
-  for (auto it = batchesByMaxFreq.rbegin(); it != batchesByMaxFreq.rend(); it++)
+  
+  std::vector<std::pair<BatchKey, ByteRange>> notBoringFirst, boringFirst;
+  auto tryUseBatch = [&](const BatchKey& key, const std::vector<size_t>& batchIndexes, std::vector<std::pair<BatchKey, ByteRange>>& res)
   {
-    const auto maxFreq = it->first.maxByteFreq;
-    // Skip batches that do not have enough "changes"
-    if(maxFreq > 0.1 * batchSize)
-      continue;
-    const auto maxRepetitions = it->first.maxConsecutiveBytes;
-    if(maxRepetitions > batchSize/10.)
-      continue;
-    for(auto batchIndex : it->second)
+    const auto maxFreq = key.maxByteFreq;
+    // Skip batches that are too "boring" i.e
+    // - some notes are too frequent, or
+    // - at least one note is consecutively repeated too many times
+    if(maxFreq > 0.1 * batchSize) // works well for batchSize = 100
+      return;
+    const auto maxRepetitions = key.maxConsecutiveBytes;
+    // It could be simpler to ignore long repetitions when reading the file,
+    // i.e build a set<ByteRange> of bytes to skip and ignore those when reading later on.
+    if(maxRepetitions > batchSize/10.)  // works well for batchSize = 100
+      return;
+    for(auto batchIndex : batchIndexes)
     {
       // Todo: it could be interesting to include prev/next batches as well if they are not included?
       // Todo: it could be interesting to merge consecutive batches if they are all "interesting" enough.
-      byteRangesByByteMaxFreq.push_back(
-      ByteRange{
+      res.emplace_back(key,
+                       ByteRange{
         batchIndex * batchSize,
         (batchIndex+1) * batchSize
       });
+    }
+  };
+  for (auto it = batchesByMaxFreq.rbegin(); it != batchesByMaxFreq.rend(); it++)
+    tryUseBatch(it->first, it->second, notBoringFirst);
+  for (auto it = batchesByMaxFreq.begin(); it != batchesByMaxFreq.end(); it++)
+    tryUseBatch(it->first, it->second, boringFirst);
+
+  std::vector<ByteRange> byteRangesByByteMaxFreq;
+  for(size_t i=0; i<std::max(notBoringFirst.size(), boringFirst.size()); ++i)
+  {
+    if(i<notBoringFirst.size())
+    {
+      auto batchKey = notBoringFirst[i].first;
+      // for Feuillard4,
+      // with batchSize = 10000,
+      // the batch: maxByteFreq=138, maxConsecutiveBytes=11
+      // works really well.
+      std::cout << batchKey.maxByteFreq << ", " << batchKey.maxConsecutiveBytes << std::endl;
+      byteRangesByByteMaxFreq.push_back(notBoringFirst[i].second);
+    }
+    if(i<boringFirst.size())
+    {
+      // alternating not boring with boring doesn't work
+      //byteRangesByByteMaxFreq.push_back(boringFirst[i].second);
     }
   }
 
@@ -847,7 +890,15 @@ Score readScoreFromBinaryPitchesEncoding(std::filesystem::path const& scoreBinar
  
   auto stream = MidiPitchStreamFromBinary(scoreBinaryFile,
                                           ByteRangesIterator{std::move(byteRangesByByteMaxFreq)},
-                                          ReinitCycleAtRangeBoundary::No);
+                                          ReinitCycleAtRangeBoundary::No,
+                                          // when we use batches that are not "boring",
+                                          // UniformCycleInitialization::Yes is good:
+                                          // this way, we see a long term progression of the music from
+                                          // quite uniform to quite varied.
+                                          // with UniformCycleInitialization::No the music feels much more
+                                          // "random" from the start so it is harder for the listener to
+                                          // hear a progression in the unfolding of the music.
+                                          UniformCycleInitialization::Yes);
 
   score.m_voices.emplace_back();
   while(auto pitch = stream())
