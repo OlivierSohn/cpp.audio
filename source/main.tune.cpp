@@ -102,9 +102,6 @@ struct Loop
   uint64_t lengthNanos{};
 };
 
-Loop mkEvents(int countNotes = 100);
-Loop eventsFrom(std::filesystem::path const&);
-
 static NoteId mk_note_id() {
   static int64_t i = 0;
   ++i;
@@ -478,6 +475,25 @@ struct FileStats
   void feed(uint8_t c)
   {
     ++m_byteFreq[c];
+    if(m_prevByte.has_value())
+    {
+      if(*m_prevByte == c)
+      {
+        ++m_curConsecutiveBytes;
+        m_maxConsecutiveBytes = std::max(m_maxConsecutiveBytes, m_curConsecutiveBytes);        
+      }
+      else
+      {
+        m_maxConsecutiveBytes = std::max(m_maxConsecutiveBytes, m_curConsecutiveBytes);
+        m_curConsecutiveBytes = 1;
+      }
+    }
+    else
+    {
+      ++m_curConsecutiveBytes;
+      m_maxConsecutiveBytes = std::max(m_maxConsecutiveBytes, m_curConsecutiveBytes);      
+    }
+    m_prevByte = c;
   }
     
   ByteHistogram mkHistogram() const
@@ -504,8 +520,15 @@ struct FileStats
       std::cout << std::setfill(' ') << std::setw(3) << i << " " << m_byteFreq[i] << std::endl;
     }
   }
+  
+  size_t getFreq(size_t i) const { return m_byteFreq[i]; }
+  
+  size_t getMaxConsecutiveBytes() const { return m_maxConsecutiveBytes; }
 private:
   std::vector<size_t> m_byteFreq;
+  std::optional<uint8_t> m_prevByte;
+  size_t m_curConsecutiveBytes{};
+  size_t m_maxConsecutiveBytes{};
 };
 
 // Infinitely iterates (ascending) a byte range
@@ -532,61 +555,304 @@ private:
   uint8_t m_nextVal;
 };
 
-Score readScoreFromBinaryPitchesEncoding(std::filesystem::path const& scoreBinaryFile)
-{  
-  std::cout << "Reading binary " << scoreBinaryFile << std::endl;
 
-  // Read file a first time to gather stats
+// Defines the timing for converting a stream of midi pitches (in a Score) to a Loop.
+struct LoopTiming
+{
+  LoopTiming(float timeScaleFactor = 0.09)
+  : m_timeScaleFactor(timeScaleFactor)
+  {}
+  
+  // Duration between note on and note off of the same note.
+  auto wait_after_note_on() const
+  {
+    return std::chrono::milliseconds(static_cast<int>(m_timeScaleFactor * 800));
+  }
+  // Duration between note off of previous note and note on of next note.
+  auto wait_after_note_off() const
+  {
+    return std::chrono::milliseconds(static_cast<int>(m_timeScaleFactor * 300));
+  }
+  
+  auto note_period() const { return wait_after_note_on() + wait_after_note_off(); }
+  
+private:
+  float m_timeScaleFactor;
+};
 
-  FileStats stats;
+struct BatchKey
+{
+  // the maximum byte frequence.
+  size_t maxByteFreq{};
+
+  // the maximum number of consecutive bytes that are the same.
+  size_t maxConsecutiveBytes{};
+  
+  bool operator == (const BatchKey& o) const
+  {
+    return std::tie(maxByteFreq, maxConsecutiveBytes) == std::tie(o.maxByteFreq, o.maxConsecutiveBytes);
+  }
+  bool operator < (const BatchKey& o) const
+  {
+    return std::tie(maxByteFreq, maxConsecutiveBytes) < std::tie(o.maxByteFreq, o.maxConsecutiveBytes);
+  }
+};
+
+std::map<BatchKey, std::vector<size_t>>
+statsFromBinary(std::ostream& os, std::filesystem::path const& scoreBinaryFile, const size_t batchSize)
+{
+  os << "Stats of binary " << scoreBinaryFile << std::endl;
+
   std::ifstream file(scoreBinaryFile, std::ios::binary | std::ios::in);
 
+  size_t sz{};
   {
-    uint8_t c;
-    for(;;)
+    FileStats stats;
     {
-      file.read(reinterpret_cast<char*>(&c), 1);
-      if(file.fail())
-        break;
-      stats.feed(c);
+      uint8_t c;
+      for(;;)
+      {
+        file.read(reinterpret_cast<char*>(&c), 1);
+        if(file.fail())
+          break;
+        stats.feed(c);
+        ++sz;
+      }
+    }
+    const auto hist = stats.mkHistogram();  
+    os << "- Global stats" << std::endl;
+    stats.show(os, hist);
+  }
+
+  std::map<BatchKey, std::vector<size_t>> batchesByMaxFreq;
+  const size_t countbatches = 1 + ((sz-1) / batchSize);
+  {
+    file.clear();
+    file.seekg(0, std::ios::beg);
+    
+    for(size_t batchIndex{0};batchIndex < countbatches; ++batchIndex)
+    {
+      FileStats stats;
+      {
+        uint8_t c;
+        for(size_t i=0;i<batchSize;++i)
+        {
+          file.read(reinterpret_cast<char*>(&c), 1);
+          if(file.fail())
+            break;
+          stats.feed(c);
+        }        
+      }
+      const auto hist = stats.mkHistogram();
+      
+      // Given the way we convert byte sequences to pitches,
+      // the music will be "interesting" when there is some structure
+      // i.e the byte distribution is not uniform:
+      // - few bytes have large frequencies
+      // - many bytes have small frequencies.
+
+      const auto maxFreq = stats.getFreq(hist.v.front());
+      batchesByMaxFreq[BatchKey{maxFreq, stats.getMaxConsecutiveBytes()}].push_back(batchIndex);
+
+      //const auto countFreq = hist.v.size();
+      //os << "batch " << (batchIndex + 1) << '/' << countbatches << " ";
+      //os << countFreq << " maxFreq:" << maxFreq << std::endl;
+      //os << "- stats of batch " << (batchIndex + 1) << '/' << countbatches << std::endl;
+      //stats.show(os, hist);
+    }
+  }
+  return batchesByMaxFreq;
+}
+
+struct ByteRange {
+  size_t m_beginIndex;
+  size_t m_endIndex;
+};
+
+
+struct ByteRangeIterator
+{
+  ByteRangeIterator(ByteRange range)
+  : m_range(range)
+  {
+    m_nextIndex = m_range.m_beginIndex;
+  }
+  
+  std::optional<size_t> operator()()
+  {
+    auto res = m_nextIndex;
+    if(res >= m_range.m_endIndex)
+      return std::nullopt;
+    ++m_nextIndex;
+    return res;
+  }
+  
+private:
+  ByteRange m_range;
+  size_t m_nextIndex;
+};
+
+struct ByteRangesIterator
+{
+  ByteRangesIterator(std::vector<ByteRange> ranges)
+  : m_ranges(std::move(ranges))
+  {
+    m_it = m_ranges.begin();
+  }
+
+  std::optional<ByteRange> operator()()
+  {
+    auto it = m_it;
+    if(m_it != m_ranges.end())
+      ++m_it;
+    if(it != m_ranges.end())
+      return *it;
+    else
+      return std::nullopt;      
+  }
+
+private:
+  std::vector<ByteRange> m_ranges;
+  std::vector<ByteRange>::iterator m_it;
+};
+
+// Whether the CyclicByteRangeIterator(s) are reinitialized when we start a new range
+enum class ReinitCycleAtRangeBoundary{Yes, No};
+
+// If a small number of bytes occur very often in the file,
+// mapping a byte to a single MidiPitch would produce a boring melody.
+//
+// So we map each byte to the same range of MidiPitches
+// to have some variations in the produced melody.
+struct MidiPitchStreamFromBinary
+{
+  MidiPitchStreamFromBinary(std::filesystem::path const& scoreBinaryFile,
+                            ByteRangesIterator ranges,
+                            ReinitCycleAtRangeBoundary r);
+  
+  std::optional<MidiPitch> operator()();
+  
+private:
+  std::ifstream m_file;
+  ByteRangesIterator m_ranges;
+  std::optional<ByteRangeIterator> m_curRange;
+  std::vector<CyclicByteRangeIterator> m_byteToByteIterator;
+  ReinitCycleAtRangeBoundary m_reinitCycleAtRangeBoundary;
+  
+  void reinitCycles();
+};
+
+MidiPitchStreamFromBinary::MidiPitchStreamFromBinary(std::filesystem::path const& scoreBinaryFile,
+                                                     ByteRangesIterator ranges,
+                                                     ReinitCycleAtRangeBoundary r)
+: m_file(scoreBinaryFile, std::ios::binary | std::ios::in)
+, m_ranges(std::move(ranges))
+, m_reinitCycleAtRangeBoundary(r)
+{
+  std::cout << "Reading binary " << scoreBinaryFile << std::endl;
+  
+  reinitCycles();
+}
+
+void MidiPitchStreamFromBinary::reinitCycles()
+{
+  m_byteToByteIterator.clear();
+  m_byteToByteIterator.resize(256, CyclicByteRangeIterator(static_cast<uint8_t>(0), static_cast<uint8_t>(48)));
+}
+
+std::optional<MidiPitch>
+MidiPitchStreamFromBinary::operator()()
+{
+  if(m_curRange.has_value())
+  {
+    if((*m_curRange)())
+    {
+    return_read:
+      uint8_t c;
+      m_file.read(reinterpret_cast<char*>(&c), 1);
+      if(m_file.fail())
+        // Should not occur, means one byte rage is too large for the file.
+        return std::nullopt;
+      return decodePitchFromBinaryStatEncoding(m_byteToByteIterator[c]());        
     }
   }
 
-  // compute byte to MidiPitch Mapping
-
-  auto hist = stats.mkHistogram();
-  
-  // If a small number of bytes occur very often,
-  // mapping a byte to a single MidiPitch would produce a boring melody.
-  
-  // So we map each byte to the same range of MidiPitches
-  // to have some variations in the produced melody.
-
-  // Note that since all bytes use the same logic,
-  // this could be a vector<CyclicByteRangeIterator> of size 256.
-  std::map<uint8_t, CyclicByteRangeIterator> byteToByteIterator;
-  for(size_t i=0; i<hist.v.size(); ++i)
+next_range:
+  // the current range is finished.
+  m_curRange = m_ranges();
+  if(!m_curRange.has_value())
   {
-    byteToByteIterator[hist.v[i]] = CyclicByteRangeIterator(static_cast<uint8_t>(0), static_cast<uint8_t>(48));
+    // we are done, all ranges have been visited.
+    return std::nullopt;
+  }
+  else if(const auto beginIndex = (*m_curRange)())
+  {
+    // the new range is non-empty 
+    m_file.seekg(*beginIndex);
+    if(m_file.fail())
+      // Should not occur, means the range was too large for the file.
+      return std::nullopt;
+    if(m_reinitCycleAtRangeBoundary == ReinitCycleAtRangeBoundary::Yes)
+      reinitCycles();
+    goto return_read;
+  }
+  else
+  {
+    // the new range was empty.
+    goto next_range;
+  }
+}
+
+Score readScoreFromBinaryPitchesEncoding(std::filesystem::path const& scoreBinaryFile, LoopTiming loopTiming)
+{
+  const size_t batchSize = 100;
+  const auto note_period = loopTiming.note_period();  
+  const auto period_batch = note_period * batchSize;
+  std::cout << "One batch corresponds to " << std::chrono::duration_cast<std::chrono::seconds>(period_batch).count() << " seconds" << std::endl;
+
+  auto batchesByMaxFreq = statsFromBinary(std::cout, scoreBinaryFile, batchSize);
+
+  std::cout << "# Batches by max freq / max consecutive bytes:" << std::endl;
+  for(const auto &[batchKey, batches] : batchesByMaxFreq)
+  {
+    std::cout << batchKey.maxByteFreq << ", " << batchKey.maxConsecutiveBytes << ":" << batches.size();
+    //for(const auto batchIndex : batches)
+    //  std::cout << batchIndex << " ";
+    std::cout << std::endl;
+  }
+
+  std::vector<ByteRange> byteRangesByByteMaxFreq;
+  for (auto it = batchesByMaxFreq.rbegin(); it != batchesByMaxFreq.rend(); it++)
+  {
+    const auto maxFreq = it->first.maxByteFreq;
+    // Skip batches that do not have enough "changes"
+    if(maxFreq > 0.1 * batchSize)
+      continue;
+    const auto maxRepetitions = it->first.maxConsecutiveBytes;
+    if(maxRepetitions > batchSize/10.)
+      continue;
+    for(auto batchIndex : it->second)
+    {
+      // Todo: it could be interesting to include prev/next batches as well if they are not included?
+      // Todo: it could be interesting to merge consecutive batches if they are all "interesting" enough.
+      byteRangesByByteMaxFreq.push_back(
+      ByteRange{
+        batchIndex * batchSize,
+        (batchIndex+1) * batchSize
+      });
+    }
   }
 
   Score score;
-  stats.show(std::cout, hist);
+ 
+  auto stream = MidiPitchStreamFromBinary(scoreBinaryFile,
+                                          ByteRangesIterator{std::move(byteRangesByByteMaxFreq)},
+                                          ReinitCycleAtRangeBoundary::No);
 
+  score.m_voices.emplace_back();
+  while(auto pitch = stream())
   {
-    score.m_voices.emplace_back();
-    
-    file.clear();
-    file.seekg(0, std::ios::beg);
-    uint8_t c;
-    int i{};
-    for(;;)
-    {
-      file.read(reinterpret_cast<char*>(&c), 1);
-      if(file.fail())
-        break;
-      score.m_voices.back().m_pitches.push_back(decodePitchFromBinaryStatEncoding(byteToByteIterator[c]()));
-    }
+    score.m_voices.back().m_pitches.push_back(*pitch);
   }
 
   return score;
@@ -653,19 +919,14 @@ Score mkScore(int countNotes)
   return score;
 }
 
-
-Loop loopFromScore(Score const & score)
+Loop loopFromScore(Score const & score, const LoopTiming& timing)
 {
   Midi m_midi;
   std::vector<std::pair<TimestampAndSource, Event>> events;
-  
-  // Scales time.
-  static constexpr float timeScaleFactor = 0.09;
-  // Duration of a note
-  static constexpr auto wait_after_note_on = std::chrono::milliseconds(static_cast<int>(timeScaleFactor * 800));
-  // Pause length between consecutive notes
-  static constexpr auto wait_after_note_off = std::chrono::milliseconds(static_cast<int>(timeScaleFactor * 300));
-  
+    
+  const auto wait_after_note_on = timing.wait_after_note_on();
+  const auto wait_after_note_off = timing.wait_after_note_off();
+
   const float volume = 1.f / std::max(1ul, score.m_voices.size());
   
   uint64_t maxCurTimeNanos{};
@@ -696,25 +957,25 @@ Loop loopFromScore(Score const & score)
 const auto synth = std::filesystem::path{"/Users/Olivier/Dev/cpp.audio/Synth/"};
 const auto scores = std::filesystem::path{"/Users/Olivier/Dev/cpp.audio/Scores/"};
 
-Loop mkEvents(int countNotes)
+Loop mkEvents(int countNotes, LoopTiming loopTiming = {})
 {
   const Score score = mkScore(countNotes);
   writeScoreInSimpleAsciiPitchesEncoding(score, scores/("test" + std::to_string(countNotes) + ".txt"));
-  return loopFromScore(score);  
+  return loopFromScore(score, loopTiming);  
 }
 
-Loop eventsFrom(std::filesystem::path const& scoreFile)
+Loop eventsFrom(std::filesystem::path const& scoreFile, LoopTiming loopTiming = {})
 {
   const Score score = readScoreFromSimpleAsciiPitchesEncoding(scoreFile);
   
-  return loopFromScore(score);
+  return loopFromScore(score, loopTiming);
 }
 
-Loop eventsFromBinary(std::filesystem::path const& scoreFile)
+Loop eventsFromBinary(std::filesystem::path const& scoreFile, LoopTiming loopTiming = {})
 {
-  const Score score = readScoreFromBinaryPitchesEncoding(scoreFile);
+  const Score score = readScoreFromBinaryPitchesEncoding(scoreFile, loopTiming);
   
-  return loopFromScore(score);
+  return loopFromScore(score, loopTiming);
 }
 
 void AppTune::playEvents(Loop && loop, uint64_t countLoops)
