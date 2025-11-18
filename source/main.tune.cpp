@@ -91,15 +91,63 @@ private:
 
 
 using Events = std::vector<std::pair<TimestampAndSource, Event>>;
+
+struct LoopOffsets
+{
+  uint64_t eventTimeOffsetNanos{};
+  uint64_t eventNoteIdOffset{};    
+};
+
 struct Loop
 {
-  Loop(Events && e, uint64_t lNanos)
+  // The loop starts at time zero hence times of events are zero-based.
+  // The time of an event is offset in 'instantiateEvent' when we schedule the event to be played.
+  Loop(Events && e, uint64_t lengthNanos)
   : events(std::move(e))
-  , lengthNanos(lNanos)
-  {}
+  , m_lengthNanos(lengthNanos)
+  {
+    std::sort(events.begin(), events.end(), [](const auto & t1, const auto & t2){ return t1.first.getNanosTime() < t2.first.getNanosTime(); });
+    
+    m_maxNoteId = 0;
+    for(const auto&[_, event]:events)
+      m_maxNoteId = std::max(event.noteid.noteid, m_maxNoteId);
+  }
+
+  // Update the LoopOffsets to start playing the next iteration of the loop.
+  void updateOffsetsForNextIteration(LoopOffsets& offsets) const
+  {
+    // The first noteId that is not used.
+    // This assumes that noteids are small contiguous integers which is the case here.
+    const int64_t endNoteId = m_maxNoteId + 1l;
+
+    // we offset the noteids otherwise some noteoff events may be ignored.
+    // when we have several noteon and noteoff
+    // events in the queue for the same noteid.
+    offsets.eventNoteIdOffset += endNoteId;
+
+    offsets.eventTimeOffsetNanos += m_lengthNanos;    
+  }
   
+  std::pair<TimestampAndSource, Event> instantiateEvent(size_t eventIndex, const LoopOffsets& offsets) const
+  {
+    auto event = events[eventIndex];
+    event.second.offsetNoteId(offsets.eventNoteIdOffset);
+    event.first.offsetNanosTime(offsets.eventTimeOffsetNanos);
+    return event;
+  }
+
+  size_t countEvents() const { return events.size(); }
+  Event& mutEvent(size_t index) { return events[index].second; }
+
+  const Events& getEvents() const { return events; }
+    
+private:
+  // invariant : sorted by first.getNanosTime().
   Events events;
-  uint64_t lengthNanos{};
+
+  uint64_t m_lengthNanos{};
+  
+  int64_t m_maxNoteId;
 };
 
 static NoteId mk_note_id() {
@@ -130,7 +178,7 @@ struct AppTune
     m_lastWriteSynthFiles.reset();
   }
   
-  void playEvents(Loop && loop, uint64_t countLoops = 1000);
+  void playLoop(const Loop & loop, uint64_t countLoops = 1000);
   
 private:
   
@@ -941,23 +989,23 @@ next_range:
   }
 }
 
-Score readScoreFromBinaryPitchesEncoding(std::filesystem::path const& scoreBinaryFile, LoopTiming loopTiming)
+MidiPitchStreamFromBinary streamFromBinaryPitchesEncoding(std::filesystem::path const& scoreBinaryFile, LoopTiming loopTiming)
 {
   const size_t batchSize = 10000;
   const auto maxConsecutiveBytes = MaxConsecutiveBytes{11};
-
+  
   const auto note_period = loopTiming.note_period();  
   const auto period_batch = note_period * batchSize;
   std::cout << "One batch corresponds to " << std::chrono::duration_cast<std::chrono::seconds>(period_batch).count() << " seconds" << std::endl;
   
   auto batchesByMaxFreq = statsFromBinary(std::cout, scoreBinaryFile, batchSize, maxConsecutiveBytes);
-
+  
   std::cout << "# Batches by max freq / max consecutive bytes:" << std::endl;
   for(const auto &[batchKey, batches] : batchesByMaxFreq)
   {
     std::cout << batchKey.maxByteFreq << ", " << batchKey.maxConsecutiveBytes << ":" << batches.size() << std::endl;
   }
-
+  
   
   std::vector<std::pair<BatchKey, ByteRange>> notBoringFirst, boringFirst;
   auto tryUseBatch = [&](const BatchKey& key, const std::vector<Batch>& batches, std::vector<std::pair<BatchKey, ByteRange>>& res)
@@ -993,7 +1041,7 @@ Score readScoreFromBinaryPitchesEncoding(std::filesystem::path const& scoreBinar
     tryUseBatch(it->first, it->second, notBoringFirst);
   for (auto it = batchesByMaxFreq.begin(); it != batchesByMaxFreq.end(); it++)
     tryUseBatch(it->first, it->second, boringFirst);
-
+  
   std::vector<ByteRange> byteRangesByByteMaxFreq;
   for(size_t i=0; i<std::max(notBoringFirst.size(), boringFirst.size()); ++i)
   {
@@ -1013,10 +1061,8 @@ Score readScoreFromBinaryPitchesEncoding(std::filesystem::path const& scoreBinar
       //byteRangesByByteMaxFreq.push_back(boringFirst[i].second);
     }
   }
-
-  Score score;
- 
-  auto stream = MidiPitchStreamFromBinary(scoreBinaryFile,
+  
+  return MidiPitchStreamFromBinary(scoreBinaryFile,
                                           ByteRangesIterator{std::move(byteRangesByByteMaxFreq)},
                                           ReinitCycleAtRangeBoundary::No,
                                           // when we use batches that are not "boring",
@@ -1027,14 +1073,24 @@ Score readScoreFromBinaryPitchesEncoding(std::filesystem::path const& scoreBinar
                                           // "random" from the start so it is harder for the listener to
                                           // hear a progression in the unfolding of the music.
                                           UniformCycleInitialization::Yes);
+}
 
+template<typename Stream>
+Score scoreFromStream(Stream& stream)
+{
+  Score score;
   score.m_voices.emplace_back();
-  while(auto pitch = stream())
+  while(std::optional<MidiPitch> pitch = stream())
   {
     score.m_voices.back().m_pitches.push_back(*pitch);
   }
-
   return score;
+}
+
+Score readScoreFromBinaryPitchesEncoding(std::filesystem::path const& scoreBinaryFile, LoopTiming loopTiming)
+{
+  auto stream = streamFromBinaryPitchesEncoding(scoreBinaryFile, loopTiming);
+  return scoreFromStream(stream);
 }
 
 bool writeScoreInSimpleAsciiPitchesEncoding(Score const & score, std::filesystem::path const& scoreFile)
@@ -1143,21 +1199,21 @@ Loop mkEvents(int countNotes, LoopTiming loopTiming = {})
   return loopFromScore(score, loopTiming);  
 }
 
-Loop eventsFrom(std::filesystem::path const& scoreFile, LoopTiming loopTiming = {})
+Loop loopFromAscii(std::filesystem::path const& scoreFile, LoopTiming loopTiming = {})
 {
   const Score score = readScoreFromSimpleAsciiPitchesEncoding(scoreFile);
   
   return loopFromScore(score, loopTiming);
 }
 
-Loop eventsFromBinary(std::filesystem::path const& scoreFile, LoopTiming loopTiming = {})
+Loop loopFromBinary(std::filesystem::path const& scoreFile, LoopTiming loopTiming = {})
 {
   const Score score = readScoreFromBinaryPitchesEncoding(scoreFile, loopTiming);
   
   return loopFromScore(score, loopTiming);
 }
 
-void AppTune::playEvents(Loop && loop, uint64_t countLoops)
+void AppTune::playLoop(const Loop & loop, uint64_t countLoops)
 {
   if(!countLoops)
     return;
@@ -1168,31 +1224,24 @@ void AppTune::playEvents(Loop && loop, uint64_t countLoops)
     return countCinChars != m_countCinChars.load(std::memory_order_relaxed);
   };
 
-  auto & events = loop.events;
-  std::sort(events.begin(), events.end(), [](const auto & t1, const auto & t2){ return t1.first.getNanosTime() < t2.first.getNanosTime(); });
+  LoopOffsets offsets{};
   
   // Use a delay of one second
   constexpr uint64_t bufferNanos{static_cast<uint64_t>(1e9)};
-  
-  // The first noteId that is not used.
-  // This assumes that noteids are small contiguous integers which is the case here.
-  int64_t endNoteId{};
-  for(auto&[_, event]:events)
-    endNoteId = std::max(event.noteid.noteid + 1l, endNoteId);
-  
   {
     const uint64_t ctxtCurTimeNanos = nanos_per_frame<double>(m_sampleRate) * m_ctxt.getCountFrames();
     
+    // By convention, the Loop starts at time 0, i.e times of events in a Loop are zero-based.
+    //
+    // When playing the events of the loop, we need to offset the event times.
+    //
     // This is the offset we need to apply to events if we want them to start playing right away.
     // We add one second to that so that audio won't depend on thread scheduling.
-    const uint64_t offsetTimeNanos = ctxtCurTimeNanos + bufferNanos;
-    
-    for(auto&[time, _]:events)
-      time.offsetNanosTime(offsetTimeNanos);
+    offsets.eventTimeOffsetNanos = ctxtCurTimeNanos + bufferNanos;
   }
   
   std::optional<uint64_t> lastCtxtScheduleTimeNanos;
-  for(size_t firstIndex=0, sz = events.size();;)
+  for(size_t firstIndex=0, sz = loop.countEvents();;)
   {
     size_t count_yields{};
   retry:
@@ -1214,7 +1263,7 @@ void AppTune::playEvents(Loop && loop, uint64_t countLoops)
       auto endIndex = firstIndex;
       for(;endIndex < sz; ++endIndex)
       {
-        if(events[endIndex].first.getNanosTime() >= ctxtCurTimeNanos + bufferNanos)
+        if(loop.instantiateEvent(endIndex, offsets).first.getNanosTime() >= ctxtCurTimeNanos + bufferNanos)
           break;
       }
       
@@ -1222,11 +1271,14 @@ void AppTune::playEvents(Loop && loop, uint64_t countLoops)
       {
         // std::cout << endIndex - firstIndex << " " << count_yields << std::endl;
         for(; firstIndex != endIndex; ++firstIndex)
+        {
+          const auto event = loop.instantiateEvent(firstIndex, offsets);
           auto const res = m_synth.onEvent(m_sampleRate,
-                                           events[firstIndex].second,
+                                           event.second,
                                            m_stepper,
                                            m_stepper,
-                                           events[firstIndex].first);
+                                           event.first);
+        }
         lastCtxtScheduleTimeNanos = ctxtCurTimeNanos;
         continue;
       }
@@ -1245,14 +1297,8 @@ void AppTune::playEvents(Loop && loop, uint64_t countLoops)
       if(countLoops && --countLoops)
       {
         firstIndex = 0;
-        for(auto&[time, event]:events)
-        {
-          time.offsetNanosTime(loop.lengthNanos);
-          // we offset the noteids otherwise some noteoff events may be ignored.
-          // when we have several noteon and noteoff
-          // events in the queue for the same noteid.
-          event.offsetNoteId(endNoteId);
-        }
+
+        loop.updateOffsetsForNextIteration(offsets);
         goto retry;
       }
       else if(!lastCtxtScheduleTimeNanos.has_value() || ((*lastCtxtScheduleTimeNanos + 2*bufferNanos) < ctxtCurTimeNanos))
@@ -1275,6 +1321,8 @@ void AppTune::playEvents(Loop && loop, uint64_t countLoops)
   }
 }
 
+// moduloPitch is a way to reduce the range of generated pitches.
+// It is an approach somewhat complementary to low-pass filtering.
 Loop moduloPitch(Loop && l)
 {
   Midi midi;
@@ -1282,8 +1330,9 @@ Loop moduloPitch(Loop && l)
   constexpr MidiPitch minPitch{50.};
   constexpr MidiPitch maxPitch{80.};
 
-  for(auto & [_, e] : l.events)
+  for(size_t i=0, sz = l.countEvents(); i<sz; ++i)
   {
+    auto & e = l.mutEvent(i);
     switch(e.type)
     {
       case EventType::NoteOn:
@@ -1324,30 +1373,22 @@ int main() {
   for(auto const &env : {slowEnv, zeroEnv, fastEnv})
   {
     a.setEnvelopeFile(env);
-    
-    // When writing the score files it is easy to use midi pitches that are way off,
-    // given the experimental nature of the grammar...
-    //
-    // This is as-designed, to allow for more creativity by breaking from
-    // the usual ways in which music is traditionally written.
-    //
-    // moduloPitch is a way to reduce the range of generated pitches.
-    // It is an approach somewhat complementary to low-pass filtering.
-    const auto file = "/Users/Olivier/Downloads/IMSLP874967-PMLP1036212-Feuillard_La_Technique_du_Violoncelle_Vol.4.pdf";
-    a.playEvents(eventsFromBinary(file), 1);
-    a.playEvents(moduloPitch(eventsFromBinary(file)), 1);
-    a.playEvents(eventsFromBinary(scores / "Phrase.txt"), 1);
-    a.playEvents(moduloPitch(eventsFromBinary(scores / "Phrase.txt")), 1);
-    a.playEvents(eventsFrom(scores / "Phrase.txt"), 4);
-    a.playEvents(moduloPitch(eventsFrom(scores / "Phrase.txt")), 4);
 
-    a.playEvents(moduloPitch(eventsFrom(scores / "StrangeBots.txt")), 4);
-    a.playEvents(eventsFrom(scores / "StrangeBots.txt"), 4);
-    a.playEvents(moduloPitch(eventsFrom(scores / "Phrase2.txt")), 4);
-    a.playEvents(eventsFrom(scores / "Phrase2.txt"), 4);
+    const auto file = "/Users/Olivier/Downloads/IMSLP874967-PMLP1036212-Feuillard_La_Technique_du_Violoncelle_Vol.4.pdf";
+    a.playLoop(loopFromBinary(file), 1);
+    a.playLoop(moduloPitch(loopFromBinary(file)), 1);
+    a.playLoop(loopFromBinary(scores / "Phrase.txt"), 1);
+    a.playLoop(moduloPitch(loopFromBinary(scores / "Phrase.txt")), 1);
+
+    a.playLoop(loopFromAscii(scores / "Phrase.txt"), 4);
+    a.playLoop(moduloPitch(loopFromAscii(scores / "Phrase.txt")), 4);
+    a.playLoop(moduloPitch(loopFromAscii(scores / "StrangeBots.txt")), 4);
+    a.playLoop(loopFromAscii(scores / "StrangeBots.txt"), 4);
+    a.playLoop(moduloPitch(loopFromAscii(scores / "Phrase2.txt")), 4);
+    a.playLoop(loopFromAscii(scores / "Phrase2.txt"), 4);
     
-    a.playEvents(moduloPitch(mkEvents(250)), 1);
-    a.playEvents(mkEvents(250), 1);
+    a.playLoop(moduloPitch(mkEvents(250)), 1);
+    a.playLoop(mkEvents(250), 1);
   }
   return 0;
 }
