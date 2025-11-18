@@ -524,6 +524,8 @@ struct FileStats
   size_t getFreq(size_t i) const { return m_byteFreq[i]; }
   
   size_t getMaxConsecutiveBytes() const { return m_maxConsecutiveBytes; }
+  size_t getCurConsecutiveBytes() const { return m_curConsecutiveBytes; }
+
 private:
   std::vector<size_t> m_byteFreq;
   std::optional<uint8_t> m_prevByte;
@@ -598,75 +600,39 @@ struct BatchKey
   }
 };
 
-std::map<BatchKey, std::vector<size_t>>
-statsFromBinary(std::ostream& os, std::filesystem::path const& scoreBinaryFile, const size_t batchSize)
+struct ByteRange
 {
-  os << "Stats of binary " << scoreBinaryFile << std::endl;
-
-  std::ifstream file(scoreBinaryFile, std::ios::binary | std::ios::in);
-
-  size_t sz{};
-  {
-    FileStats stats;
-    {
-      uint8_t c;
-      for(;;)
-      {
-        file.read(reinterpret_cast<char*>(&c), 1);
-        if(file.fail())
-          break;
-        stats.feed(c);
-        ++sz;
-      }
-    }
-    const auto hist = stats.mkHistogram();  
-    os << "- Global stats" << std::endl;
-    stats.show(os, hist);
-  }
-
-  std::map<BatchKey, std::vector<size_t>> batchesByMaxFreq;
-  const size_t countbatches = 1 + ((sz-1) / batchSize);
-  {
-    file.clear();
-    file.seekg(0, std::ios::beg);
-    
-    for(size_t batchIndex{0};batchIndex < countbatches; ++batchIndex)
-    {
-      FileStats stats;
-      {
-        uint8_t c;
-        for(size_t i=0;i<batchSize;++i)
-        {
-          file.read(reinterpret_cast<char*>(&c), 1);
-          if(file.fail())
-            break;
-          stats.feed(c);
-        }        
-      }
-      const auto hist = stats.mkHistogram();
-      
-      // Given the way we convert byte sequences to pitches,
-      // the music will be "interesting" when there is some structure
-      // i.e the byte distribution is not uniform:
-      // - few bytes have large frequencies
-      // - many bytes have small frequencies.
-
-      const auto maxFreq = stats.getFreq(hist.v.front());
-      batchesByMaxFreq[BatchKey{maxFreq, stats.getMaxConsecutiveBytes()}].push_back(batchIndex);
-
-      //const auto countFreq = hist.v.size();
-      //os << "batch " << (batchIndex + 1) << '/' << countbatches << " ";
-      //os << countFreq << " maxFreq:" << maxFreq << std::endl;
-      //os << "- stats of batch " << (batchIndex + 1) << '/' << countbatches << std::endl;
-      //stats.show(os, hist);
-    }
-  }
-  return batchesByMaxFreq;
-}
-
-struct ByteRange {
   size_t m_beginIndex;
   size_t m_endIndex;
+  
+  bool operator == (const ByteRange& o) const
+  {
+    return std::tie(m_beginIndex, m_endIndex) == std::tie(o.m_beginIndex, o.m_endIndex);
+  }
+  bool operator < (const ByteRange& o) const
+  {
+    return std::tie(m_beginIndex, m_endIndex) < std::tie(o.m_beginIndex, o.m_endIndex);
+  }
+};
+
+// A single batch can correspond to multiple ranges: to 
+// avoid having too may repetitions of the same byte we
+// skip some bytes.
+struct Batch
+{
+  std::vector<ByteRange> ranges;
+};
+
+std::map<BatchKey, std::vector<Batch>> batchesByMaxFreq;
+
+struct MaxConsecutiveBytes{
+  MaxConsecutiveBytes(size_t m)
+  : max(m)
+  {}
+  size_t get() const { return max; }
+
+private:
+  size_t max;
 };
 
 
@@ -699,7 +665,7 @@ struct ByteRangesIterator
   {
     m_it = m_ranges.begin();
   }
-
+  
   std::optional<ByteRange> operator()()
   {
     auto it = m_it;
@@ -710,11 +676,169 @@ struct ByteRangesIterator
     else
       return std::nullopt;      
   }
-
+  
 private:
   std::vector<ByteRange> m_ranges;
   std::vector<ByteRange>::iterator m_it;
 };
+
+// Helper to know whether bytes nust be skipped.
+struct SkipBytes
+{
+  SkipBytes(std::vector<ByteRange> skipBytes)
+  : m_skipBytes(std::move(skipBytes))
+  {
+    computeNextSkipped();
+  }
+
+  // The caller must guarantee that this method will be called with strictly increasing idx values.
+  bool operator()(size_t idx)
+  {
+    if(m_nextSkipped.has_value())
+    {
+      if(*m_nextSkipped != idx)
+      {
+        return false;
+      }
+      computeNextSkipped();
+      return true;
+    }
+    return false;
+  }
+
+private:
+  ByteRangesIterator m_skipBytes;
+  std::optional<ByteRangeIterator> m_curSkippedRange;
+  std::optional<size_t> m_nextSkipped;
+  
+  void computeNextSkipped()
+  {
+    m_nextSkipped.reset();
+    if(!m_curSkippedRange.has_value())
+    {
+    next_range:
+      m_curSkippedRange = m_skipBytes();
+    }
+    if(!m_curSkippedRange.has_value())
+      return;
+    m_nextSkipped = (*m_curSkippedRange)();
+    if(!m_nextSkipped.has_value())
+    {
+      goto next_range;
+    }
+  }
+};
+
+std::map<BatchKey, std::vector<Batch>>
+statsFromBinary(std::ostream& os,
+                std::filesystem::path const& scoreBinaryFile,
+                const size_t batchSize,
+                const MaxConsecutiveBytes maxConsecutiveBytes)
+{
+  os << "Stats of binary " << scoreBinaryFile << std::endl;
+
+  std::ifstream file(scoreBinaryFile, std::ios::binary | std::ios::in);
+
+  // These byte ranges should be skipped, they correspond to repetitions
+  // of the same byte.
+
+  std::vector<ByteRange> skipBytes;
+
+  size_t sz{};
+  {
+    FileStats stats;
+    size_t countBytesSkipped{};
+    {
+      ByteRange * curBytesSkipped{nullptr}; 
+      
+      uint8_t c;
+      for(;;)
+      {
+        file.read(reinterpret_cast<char*>(&c), 1);
+        if(file.fail())
+          break;
+        stats.feed(c);
+        if(stats.getCurConsecutiveBytes() > maxConsecutiveBytes.get())
+        {
+          if(!curBytesSkipped)
+          {
+            skipBytes.push_back(ByteRange{sz, sz});
+            curBytesSkipped = &skipBytes.back();
+          }
+          ++(curBytesSkipped->m_endIndex);
+          ++countBytesSkipped;
+        }
+        else
+        {
+          curBytesSkipped = nullptr;
+        }
+        ++sz;
+      }
+      sz -= countBytesSkipped;
+    }
+    const auto hist = stats.mkHistogram();  
+    os << "- Global stats" << std::endl;
+    stats.show(os, hist);
+  }
+
+  auto skip = SkipBytes(std::move(skipBytes));
+
+  std::map<BatchKey, std::vector<Batch>> batchesByMaxFreq;
+  const size_t countbatches = 1 + ((sz-1) / batchSize);
+  {
+    file.clear();
+    file.seekg(0, std::ios::beg);
+    
+    size_t byteIdx{};
+
+    for(size_t batchIndex{0};batchIndex < countbatches; ++batchIndex)
+    {
+      Batch batch;
+
+      FileStats stats;
+      {
+        uint8_t c;
+        for(size_t i=0;i<batchSize;++i)
+        {        
+        nextByte:
+          file.read(reinterpret_cast<char*>(&c), 1);
+          if(file.fail())
+            break;
+          const auto candidateByteIdx = byteIdx++;
+          if(skip(candidateByteIdx))
+          {
+            goto nextByte;
+          }
+          if(batch.ranges.empty() || (batch.ranges.back().m_endIndex != candidateByteIdx))
+          {
+            // new range
+            batch.ranges.push_back(ByteRange{candidateByteIdx, candidateByteIdx});                            
+          }
+          ++batch.ranges.back().m_endIndex;
+          stats.feed(c);          
+        }
+      }
+      const auto hist = stats.mkHistogram();
+      
+      // Given the way we convert byte sequences to pitches,
+      // the music will be "interesting" when there is some structure
+      // i.e the byte distribution is not uniform:
+      // - few bytes have large frequencies
+      // - many bytes have small frequencies.
+
+      const auto maxFreq = stats.getFreq(hist.v.front());
+      batchesByMaxFreq[BatchKey{maxFreq, stats.getMaxConsecutiveBytes()}].push_back(batch);
+
+      //const auto countFreq = hist.v.size();
+      //os << "batch " << (batchIndex + 1) << '/' << countbatches << " ";
+      //os << countFreq << " maxFreq:" << maxFreq << std::endl;
+      //os << "- stats of batch " << (batchIndex + 1) << '/' << countbatches << std::endl;
+      //stats.show(os, hist);
+    }
+  }
+  return batchesByMaxFreq;
+}
+
 
 // Whether the CyclicByteRangeIterator(s) are reinitialized when we start a new range
 enum class ReinitCycleAtRangeBoundary{Yes, No};
@@ -820,45 +944,49 @@ next_range:
 Score readScoreFromBinaryPitchesEncoding(std::filesystem::path const& scoreBinaryFile, LoopTiming loopTiming)
 {
   const size_t batchSize = 10000;
+  const auto maxConsecutiveBytes = MaxConsecutiveBytes{11};
+
   const auto note_period = loopTiming.note_period();  
   const auto period_batch = note_period * batchSize;
   std::cout << "One batch corresponds to " << std::chrono::duration_cast<std::chrono::seconds>(period_batch).count() << " seconds" << std::endl;
-
-  auto batchesByMaxFreq = statsFromBinary(std::cout, scoreBinaryFile, batchSize);
+  
+  auto batchesByMaxFreq = statsFromBinary(std::cout, scoreBinaryFile, batchSize, maxConsecutiveBytes);
 
   std::cout << "# Batches by max freq / max consecutive bytes:" << std::endl;
   for(const auto &[batchKey, batches] : batchesByMaxFreq)
   {
-    std::cout << batchKey.maxByteFreq << ", " << batchKey.maxConsecutiveBytes << ":" << batches.size();
-    //for(const auto batchIndex : batches)
-    //  std::cout << batchIndex << " ";
-    std::cout << std::endl;
+    std::cout << batchKey.maxByteFreq << ", " << batchKey.maxConsecutiveBytes << ":" << batches.size() << std::endl;
   }
 
   
   std::vector<std::pair<BatchKey, ByteRange>> notBoringFirst, boringFirst;
-  auto tryUseBatch = [&](const BatchKey& key, const std::vector<size_t>& batchIndexes, std::vector<std::pair<BatchKey, ByteRange>>& res)
+  auto tryUseBatch = [&](const BatchKey& key, const std::vector<Batch>& batches, std::vector<std::pair<BatchKey, ByteRange>>& res)
   {
     const auto maxFreq = key.maxByteFreq;
     // Skip batches that are too "boring" i.e
     // - some notes are too frequent, or
     // - at least one note is consecutively repeated too many times
-    if(maxFreq > 0.1 * batchSize) // works well for batchSize = 100
+    //
+    // Note: the multiplicative constant was modified from 0.1 to 0.03
+    // to select the interesting batch of Feuillard.
+    // Ideally we should investigate why
+    // the first select Feuillard with 0.1 sounds "boring"
+    // and why the one selected for 0.03 is "interesting"
+    // and deduce a new criteria for batch selection.
+    // 
+    // My intuition is that the batch size 10000 is so large (corresponds to 1000 seconds of audio)
+    // that the global statistics of the batch are maybe not representative of the beginning of the batch.
+    //
+    // It would also be interesting to actually understand what kind of data is encoded in each batch:
+    // for the Feuillard pdf do we have a contiguous portion of an image in each batch?
+    if(maxFreq > 0.03 * batchSize)
       return;
-    const auto maxRepetitions = key.maxConsecutiveBytes;
-    // It could be simpler to ignore long repetitions when reading the file,
-    // i.e build a set<ByteRange> of bytes to skip and ignore those when reading later on.
-    if(maxRepetitions > batchSize/10.)  // works well for batchSize = 100
-      return;
-    for(auto batchIndex : batchIndexes)
+    for(const auto& batch : batches)
     {
       // Todo: it could be interesting to include prev/next batches as well if they are not included?
       // Todo: it could be interesting to merge consecutive batches if they are all "interesting" enough.
-      res.emplace_back(key,
-                       ByteRange{
-        batchIndex * batchSize,
-        (batchIndex+1) * batchSize
-      });
+      for(const auto & range : batch.ranges)
+        res.emplace_back(key, range);
     }
   };
   for (auto it = batchesByMaxFreq.rbegin(); it != batchesByMaxFreq.rend(); it++)
