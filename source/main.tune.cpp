@@ -181,7 +181,7 @@ struct EventStream
   // For convenience, it is ok to materialize more events (i.e some events that would occur after maxTime).
   //
   // Calling materializeNextEvents after StreamStatus::EndOfStream
-  // has been returned is undefined behaviour, unless startStream has been called since.
+  // will return StreamStatus::EndOfStream until startStream is called.
   virtual StreamStatus materializeNextEvents(Events & events, TimeNanos maxTime) = 0;
 };
 
@@ -894,12 +894,28 @@ EventStreamFromBinary::materializeNextEvents(Events & events, TimeNanos maxTime)
   return StreamStatus::OK;
 }
 
-// Main class.
-struct AppTune
+constexpr int nAudioOut = 2;
+constexpr int m_sampleRate{96000};      
+auto ms_to_frames (float ms){
+  return audio::ms_to_frames(ms, m_sampleRate);
+}
+
+struct SynthDef
 {
-  AppTune();
-  ~AppTune();
-  
+  static constexpr int nVoices = 128;
+
+  using Synth = sine::Synth <
+  nAudioOut,
+  audioelement::TuneElement<double>,
+  TryAccountForTimeSourceJitter::No,
+  SynchronizePhase::Yes,
+  DefaultStartPhase::Zero,
+  HandleNoteOff::Yes,
+  nVoices,
+  audioelement::TuneElementInitializer<double>>;
+
+  void updateInitializerIfNeeded();
+
   void setHarmonicsFile(std::filesystem::path e)
   {
     if(e == harmonicsFile)
@@ -915,16 +931,6 @@ struct AppTune
     envelopeFile = e;
     m_lastWriteSynthFiles.reset();
   }
-  
-  void playEventStream(EventStream & stream);
-
-  void playLoop(Loop && loop, uint64_t countLoops = 1000)
-  {
-    auto stream = LoopEventStream(std::move(loop), countLoops);
-    playEventStream(stream);
-  }
-
-private:
   
   // This file defines the harmonics of the synthesizer.
   //
@@ -948,20 +954,32 @@ private:
   
   std::filesystem::path lowPassFile{"/Users/Olivier/Dev/cpp.audio/Synth/LowPass.txt"};
   
-  static constexpr int m_sampleRate{96000};
-  static constexpr int nAudioOut = 2;
+  // Represents the min time of the harmonics/envelope files that were
+  // last used to produce the AE initializer.
+  std::optional<std::filesystem::file_time_type> m_lastWriteSynthFiles;
   
-  static constexpr int nVoices = 128;
+  Synth m_synth;    
+};
+
+
+// Main class.
+struct AppTune
+{
+  AppTune(size_t countSynths);
+  ~AppTune();
   
-  using Synth = sine::Synth <
-  nAudioOut,
-  audioelement::TuneElement<double>,
-  TryAccountForTimeSourceJitter::No,
-  SynchronizePhase::Yes,
-  DefaultStartPhase::Zero,
-  HandleNoteOff::Yes,
-  nVoices,
-  audioelement::TuneElementInitializer<double>>;
+  void playEventStreams(std::vector<std::unique_ptr<EventStream>>& streams);
+
+  void playLoop(Loop && loop, uint64_t countLoops = 1000)
+  {
+    std::unique_ptr<EventStream> stream = std::make_unique<LoopEventStream>(std::move(loop), countLoops);
+    std::vector<std::unique_ptr<EventStream>> streams;
+    streams.push_back(std::move(stream));
+    playEventStreams(streams);
+  }
+  
+  SynthDef& synth(size_t i) {return m_synths[i];}
+private:
   
   static constexpr auto audioEnginePolicy = AudioOutPolicy::MasterLockFree;
   
@@ -977,30 +995,26 @@ private:
   audioEnginePolicy
   >;
   
-  
   Ctxt m_ctxt;
-  Synth m_synth;
   Stepper m_stepper;
+  std::vector<SynthDef> m_synths;
 
   std::atomic<size_t> m_countCinChars{};
   std::atomic_bool m_runCinListener{true};
   std::thread m_cinListener;
-
-  // Represents the min time of the harmonics/envelope files that were
-  // last used to produce the AE initializer.
-  std::optional<std::filesystem::file_time_type> m_lastWriteSynthFiles;
   
-  void updateInitializerIfNeeded();
+  void updateInitializersIfNeeded();
   
-  auto ms_to_frames (float ms){
-    return audio::ms_to_frames(ms, m_sampleRate);
+  void allNotesOff() {
+    for(auto & s : m_synths)
+      s.m_synth.allNotesOff(m_stepper);
   }
 };
 
-AppTune::AppTune()
+AppTune::AppTune(size_t countSynths)
 : m_stepper(GlobalAudioLock<audioEnginePolicy>::get(),
-            Synth::n_channels * 4 /* one shot */,
-            1 /* a single compute is needed (global for the synth)*/)
+            countSynths * SynthDef::Synth::n_channels * 4 /* one shot */,
+            countSynths * 1 /* a single compute is needed per synth*/)
 , m_cinListener{[&]()
   {
     std::string str;
@@ -1016,8 +1030,10 @@ AppTune::AppTune()
       {}
     }
   }}
+, m_synths(countSynths)
 {
-  m_synth.initialize(m_stepper);
+  for(auto & synth : m_synths)
+    synth.m_synth.initialize(m_stepper);
   
   if (!m_ctxt.doInit(0.008,
                      m_sampleRate,
@@ -1040,7 +1056,8 @@ AppTune::AppTune()
 
 AppTune::~AppTune()
 {
-  m_synth.finalize(m_stepper);
+  for(auto & synth : m_synths)
+    synth.m_synth.finalize(m_stepper);
   
   // We sleep so that the audio produced during finalization has a chance to be played
   // (taking into account the delay between when the audio is written in the buffer
@@ -1054,8 +1071,13 @@ AppTune::~AppTune()
   m_cinListener.join();
 }
 
+void AppTune::updateInitializersIfNeeded()
+{
+  for(auto & s : m_synths)
+    s.updateInitializerIfNeeded();
+}
 
-void AppTune::updateInitializerIfNeeded()
+void SynthDef::updateInitializerIfNeeded()
 {
   {
     const std::filesystem::file_time_type newLastWriteHarmonics =
@@ -1449,7 +1471,11 @@ Loop loopFromBinary(std::filesystem::path const& scoreFile, Polyphony countVoice
   return loopFromScore(score, loopTiming);
 }
 
-void AppTune::playEventStream(EventStream& stream)
+
+// Should we have one stream per synth, or one stream for all synths?
+// one stream per synth feels more modular.
+// one stream can do polyphony within the same synth.
+void AppTune::playEventStreams(std::vector<std::unique_ptr<EventStream>>& streams)
 {
   auto countCinChars = m_countCinChars.load(std::memory_order_relaxed);
   auto must_interrupt = [&]()
@@ -1465,9 +1491,14 @@ void AppTune::playEventStream(EventStream& stream)
 
     // To ensure that the rythm of events will be ok, we add one second to that    
     // so that audio won't depend on thread scheduling.
-    stream.startStream(ctxtCurTimeNanos + bufferNanos);
+    for(auto & stream : streams)
+      stream->startStream(ctxtCurTimeNanos + bufferNanos);
   }
-  
+
+  const auto sz = streams.size();
+  if(sz > m_synths.size())
+    throw std::logic_error("too many streams");
+
   Events events;
   for(;;)
   {
@@ -1476,50 +1507,60 @@ void AppTune::playEventStream(EventStream& stream)
   
     if(must_interrupt())
     {
-      stream.stopStream();
-      m_synth.allNotesOff(m_stepper);
+      for(auto & stream : streams)
+        stream->stopStream();
+      allNotesOff();
       break;
     }
 
-    updateInitializerIfNeeded();
+    updateInitializersIfNeeded();
     
     const TimeNanos ctxtCurTimeNanos(nanos_per_frame<double>(m_sampleRate) * m_ctxt.getCountFrames());
     
-    // Materialize events that have not been materialized yet and need
-    // to be played during the next "bufferNanos" time.
-    events.clear();
-    auto streamRes = stream.materializeNextEvents(events, ctxtCurTimeNanos + bufferNanos);
-    
-    if(!events.empty())
+    size_t countEOS{};
+    for(size_t i=0; i<sz; ++i)
     {
-      for(const auto & event : events)
+      // Materialize events that have not been materialized yet and need
+      // to be played during the next "bufferNanos" time.
+      events.clear();
+      auto streamRes = streams[i]->materializeNextEvents(events, ctxtCurTimeNanos + bufferNanos);
+      
+      if(!events.empty())
       {
-        auto const res = m_synth.onEvent(m_sampleRate,
-                                         event.second,
-                                         m_stepper,
-                                         m_stepper,
-                                         event.first);
+        for(const auto & event : events)
+        {
+          auto const res = m_synths[i].m_synth.onEvent(m_sampleRate,
+                                           event.second,
+                                           m_stepper,
+                                           m_stepper,
+                                           event.first);
+        }
+        continue;
       }
-      continue;
+      else if(streamRes == StreamStatus::EndOfStream)
+      {
+        countEOS;
+      }
     }
-    else if(streamRes == StreamStatus::EndOfStream)
-    {
+    
+    if(countEOS == sz)
       break;
-    }
       
     ++count_yields;
     std::this_thread::yield();
     goto retry;
   }
 
-  stream.stopStream();
+  for(auto & stream : streams)
+    stream->stopStream();
 
   // All notes have started (and stopped) but some envelope tails may still be active.
   
-  while(!m_synth.allEnvelopesFinished())
-  {
-    std::this_thread::yield();
-  }
+  for(auto & synth : m_synths)
+    while(!synth.m_synth.allEnvelopesFinished())
+    {
+      std::this_thread::yield();
+    }
 }
 
 // moduloPitch is a way to reduce the range of generated pitches.
@@ -1560,7 +1601,8 @@ int main() {
   using namespace imajuscule::audio;
   using namespace std::filesystem;
 
-  auto a = AppTune{};
+  const size_t countSynths{2};
+  auto a = AppTune{countSynths};
     
   // The ZeroEnvelope file produces drum sounds.
   const path zeroEnv{synth / "EnvelopeZero.txt"};
@@ -1569,17 +1611,22 @@ int main() {
 
   const path harSimple{synth / "HarmonicsSimple.txt"};
 
-  a.setHarmonicsFile(harSimple);
+  a.synth(0).setHarmonicsFile(harSimple);
 
   for(auto const &env : {slowEnv, zeroEnv, fastEnv})
   {
-    a.setEnvelopeFile(env);
+    a.synth(0).setEnvelopeFile(env);
 
     const auto file = "/Users/Olivier/Downloads/IMSLP874967-PMLP1036212-Feuillard_La_Technique_du_Violoncelle_Vol.4.pdf";
 
     const auto timing = EventsTiming{};
     auto stream = toEventStream(streamFromBinaryPitchesEncoding(file, timing, Polyphony{1}), timing);
-    a.playEventStream(*stream);
+    const auto timing2 = EventsTiming{0.18};
+    auto stream2 = toEventStream(streamFromBinaryPitchesEncoding(file, timing2, Polyphony{1}), timing2);
+    std::vector<std::unique_ptr<EventStream>> streams;
+    streams.push_back(std::move(stream));
+    streams.push_back(std::move(stream2));
+    a.playEventStreams(streams);
 
     a.playLoop(moduloPitch(loopFromBinary(file, Polyphony{1})), 1);
 
