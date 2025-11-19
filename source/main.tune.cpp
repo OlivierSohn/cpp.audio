@@ -508,9 +508,14 @@ struct ByteRangesIterator
   ByteRangesIterator(std::vector<ByteRange> ranges)
   : m_ranges(std::move(ranges))
   {
-    m_it = m_ranges.begin();
+    restart();
   }
   
+  void restart()
+  {
+    m_it = m_ranges.begin();    
+  }
+
   std::optional<ByteRange> operator()()
   {
     auto it = m_it;
@@ -684,6 +689,15 @@ statsFromBinary(std::ostream& os,
   return batchesByMaxFreq;
 }
 
+struct Polyphony
+{
+  Polyphony(size_t c)
+  : count(c)
+  {}
+  size_t get() const { return count;}
+private:
+  size_t count;
+};
 
 // Whether the CyclicByteRangeIterator(s) are reinitialized when we start a new range
 enum class ReinitCycleAtRangeBoundary{Yes, No};
@@ -701,17 +715,21 @@ struct MidiPitchStreamFromBinary
   MidiPitchStreamFromBinary(std::filesystem::path const& scoreBinaryFile,
                             ByteRangesIterator ranges,
                             ReinitCycleAtRangeBoundary r,
-                            UniformCycleInitialization u);
+                            UniformCycleInitialization u,
+                            Polyphony countVoices);
   
+  size_t countVoices() const { return m_byteToByteIterator.size(); }
+
   void restart();
 
-  std::optional<MidiPitch> operator()();
+  std::optional<MidiPitch> operator()(size_t voiceIndex);
   
 private:
   std::ifstream m_file;
   ByteRangesIterator m_ranges;
   std::optional<ByteRangeIterator> m_curRange;
-  std::vector<CyclicByteRangeIterator> m_byteToByteIterator;
+  // one vector per voice
+  std::vector<std::vector<CyclicByteRangeIterator>> m_byteToByteIterator;
   ReinitCycleAtRangeBoundary m_reinitCycleAtRangeBoundary;
   UniformCycleInitialization m_uniformCycleInitialization;
   void reinitCycles();
@@ -720,11 +738,13 @@ private:
 MidiPitchStreamFromBinary::MidiPitchStreamFromBinary(std::filesystem::path const& scoreBinaryFile,
                                                      ByteRangesIterator ranges,
                                                      ReinitCycleAtRangeBoundary r,
-                                                     UniformCycleInitialization u)
+                                                     UniformCycleInitialization u,
+                                                     Polyphony countVoices)
 : m_file(scoreBinaryFile, std::ios::binary | std::ios::in)
 , m_ranges(std::move(ranges))
 , m_reinitCycleAtRangeBoundary(r)
 , m_uniformCycleInitialization(u)
+, m_byteToByteIterator(countVoices.get())
 {
   std::cout << "Reading binary " << scoreBinaryFile << std::endl;
   
@@ -738,24 +758,30 @@ MidiPitchStreamFromBinary::restart()
   m_file.seekg(0, std::ios::beg);
   
   reinitCycles();
+  
+  m_curRange.reset();
+  m_ranges.restart();
 }
 
 void MidiPitchStreamFromBinary::reinitCycles()
 {
-  m_byteToByteIterator.clear();
-  m_byteToByteIterator.resize(256, CyclicByteRangeIterator(static_cast<uint8_t>(0), static_cast<uint8_t>(48)));
-  if(m_uniformCycleInitialization == UniformCycleInitialization::No)
+  for(auto & iterators : m_byteToByteIterator)
   {
-    for(size_t i = 1; i<m_byteToByteIterator.size(); ++i)
+    iterators.clear();
+    iterators.resize(256, CyclicByteRangeIterator(static_cast<uint8_t>(0), static_cast<uint8_t>(48)));
+    if(m_uniformCycleInitialization == UniformCycleInitialization::No)
     {
-      for(size_t j=0; j<i; ++j)
-        m_byteToByteIterator[i]();
+      for(size_t i = 1; i<iterators.size(); ++i)
+      {
+        for(size_t j=0; j<i; ++j)
+          iterators[i]();
+      }
     }
   }
 }
 
 std::optional<MidiPitch>
-MidiPitchStreamFromBinary::operator()()
+MidiPitchStreamFromBinary::operator()(size_t voiceIndex)
 {
   if(m_curRange.has_value())
   {
@@ -765,9 +791,11 @@ MidiPitchStreamFromBinary::operator()()
       uint8_t c;
       m_file.read(reinterpret_cast<char*>(&c), 1);
       if(m_file.fail())
-        // Should not occur, means one byte rage is too large for the file.
+        // Should not occur, means one byte range is too large for the file.
         return std::nullopt;
-      return decodePitchFromBinaryStatEncoding(m_byteToByteIterator[c]());        
+      //std::cout << static_cast<int>(c) << ' ';
+      //std::cout << c;
+      return decodePitchFromBinaryStatEncoding(m_byteToByteIterator[voiceIndex][c]());        
     }
   }
   
@@ -782,6 +810,7 @@ next_range:
   else if(const auto beginIndex = (*m_curRange)())
   {
     // the new range is non-empty 
+    //std::cout << "start reading at " << *beginIndex << std::endl;
     m_file.seekg(*beginIndex);
     if(m_file.fail())
       // Should not occur, means the range was too large for the file.
@@ -803,12 +832,16 @@ struct EventStreamFromBinary : public EventStream
   : m_midiPitchStreamFromBinary(std::move(midiPitchStreamFromBinary))
   , m_timing(timing)
   {
+    m_countVoices = m_midiPitchStreamFromBinary.countVoices();
+    m_volume = m_countVoices ? (1.f/m_countVoices) : 1.f;
+    m_nextEventTime.resize(m_countVoices);
   }
   
 private:
   void startStream(TimeNanos refTime) override
   {
-    m_nextEventTime = refTime;
+    for(auto & t : m_nextEventTime)
+      t = refTime;
     m_midiPitchStreamFromBinary.restart();
   }
   void stopStream() override
@@ -820,35 +853,44 @@ public:
   
 private:
   MidiPitchStreamFromBinary m_midiPitchStreamFromBinary;
-  TimeNanos m_nextEventTime;
+  size_t m_countVoices;
+  // one per voice
+  std::vector<TimeNanos> m_nextEventTime;
   EventsTiming m_timing;
   Midi m_midi;
+  float m_volume;
 };
 
 StreamStatus
 EventStreamFromBinary::materializeNextEvents(Events & events, TimeNanos maxTime)
 {
-  constexpr int voice{0};
-  constexpr float volume{1.f};
-  while(m_nextEventTime < maxTime)
+  size_t countEOS{};
+  for(size_t voice=0; voice<m_countVoices; ++voice)
   {
-    const auto midiPitch = m_midiPitchStreamFromBinary();
-    if(!midiPitch.has_value())
-      return StreamStatus::EndOfStream;
-
-    const auto noteid = mk_note_id();
-    const float frequency = m_midi.midi_pitch_to_freq(*midiPitch);
-    events.emplace_back(TimestampAndSource{m_nextEventTime, voice},
-                        mkNoteOn(noteid,
-                                 frequency,
-                                 volume));
-    m_nextEventTime += m_timing.wait_after_note_on();
-    events.emplace_back(TimestampAndSource{m_nextEventTime, voice},
-                        mkNoteOff(noteid));
-    m_nextEventTime += m_timing.wait_after_note_off();
-    
+    auto & nextEventTime = m_nextEventTime[voice];
+    while(nextEventTime < maxTime)
+    {
+      const auto midiPitch = m_midiPitchStreamFromBinary(voice);
+      if(!midiPitch.has_value())
+      {
+        ++countEOS;
+        break;
+      }
+      
+      const auto noteid = mk_note_id();
+      const float frequency = m_midi.midi_pitch_to_freq(*midiPitch);
+      events.emplace_back(TimestampAndSource{nextEventTime, voice},
+                          mkNoteOn(noteid,
+                                   frequency,
+                                   m_volume));
+      nextEventTime += m_timing.wait_after_note_on();
+      events.emplace_back(TimestampAndSource{nextEventTime, voice},
+                          mkNoteOff(noteid));
+      nextEventTime += m_timing.wait_after_note_off();
+    }
   }
-
+  if(countEOS == m_countVoices)
+    return StreamStatus::EndOfStream;
   return StreamStatus::OK;
 }
 
@@ -1157,7 +1199,7 @@ Score readScoreFromSimpleAsciiPitchesEncoding(std::filesystem::path const& score
   return score;
 }
 
-MidiPitchStreamFromBinary streamFromBinaryPitchesEncoding(std::filesystem::path const& scoreBinaryFile, EventsTiming loopTiming)
+MidiPitchStreamFromBinary streamFromBinaryPitchesEncoding(std::filesystem::path const& scoreBinaryFile, EventsTiming loopTiming, Polyphony countVoices)
 {
   const size_t batchSize = 10000;
   const auto maxConsecutiveBytes = MaxConsecutiveBytes{11};
@@ -1240,7 +1282,8 @@ MidiPitchStreamFromBinary streamFromBinaryPitchesEncoding(std::filesystem::path 
                                    // with UniformCycleInitialization::No the music feels much more
                                    // "random" from the start so it is harder for the listener to
                                    // hear a progression in the unfolding of the music.
-                                   UniformCycleInitialization::Yes);
+                                   UniformCycleInitialization::Yes,
+                                   countVoices);
 }
 
 std::unique_ptr<EventStream> toEventStream(MidiPitchStreamFromBinary && s, EventsTiming loopTiming)
@@ -1259,11 +1302,31 @@ Score scoreFromStream(Stream& stream)
   }
   return score;
 }
-
-Score readScoreFromBinaryPitchesEncoding(std::filesystem::path const& scoreBinaryFile, EventsTiming loopTiming)
+template<typename Stream>
+Score scoreFromStream(Stream& stream, Polyphony countVoices)
 {
-  auto stream = streamFromBinaryPitchesEncoding(scoreBinaryFile, loopTiming);
-  return scoreFromStream(stream);
+  Score score;
+  score.m_voices.resize(countVoices.get());
+  for(;;)
+  {
+    size_t countEOS{};
+    for(size_t voice=0; voice<countVoices.get(); ++voice)
+    {
+      if(std::optional<MidiPitch> pitch = stream(voice))
+        score.m_voices[voice].m_pitches.push_back(*pitch);
+      else
+        ++countEOS;
+    }
+    if(countEOS == countVoices.get())
+      break;
+  }
+  return score;
+}
+
+Score readScoreFromBinaryPitchesEncoding(std::filesystem::path const& scoreBinaryFile, EventsTiming loopTiming, Polyphony countVoices)
+{
+  auto stream = streamFromBinaryPitchesEncoding(scoreBinaryFile, loopTiming, countVoices);
+  return scoreFromStream(stream, countVoices);
 }
 
 bool writeScoreInSimpleAsciiPitchesEncoding(Score const & score, std::filesystem::path const& scoreFile)
@@ -1379,9 +1442,9 @@ Loop loopFromAscii(std::filesystem::path const& scoreFile, EventsTiming loopTimi
   return loopFromScore(score, loopTiming);
 }
 
-Loop loopFromBinary(std::filesystem::path const& scoreFile, EventsTiming loopTiming = {})
+Loop loopFromBinary(std::filesystem::path const& scoreFile, Polyphony countVoices, EventsTiming loopTiming = {})
 {
-  const Score score = readScoreFromBinaryPitchesEncoding(scoreFile, loopTiming);
+  const Score score = readScoreFromBinaryPitchesEncoding(scoreFile, loopTiming, countVoices);
   
   return loopFromScore(score, loopTiming);
 }
@@ -1513,17 +1576,15 @@ int main() {
     a.setEnvelopeFile(env);
 
     const auto file = "/Users/Olivier/Downloads/IMSLP874967-PMLP1036212-Feuillard_La_Technique_du_Violoncelle_Vol.4.pdf";
-    // TODO: use an event stream for reading binary.
-    // TODO: display in real time the cyclic pitch iterators.    
 
     const auto timing = EventsTiming{};
-    auto stream = toEventStream(streamFromBinaryPitchesEncoding(file, timing), timing);
+    auto stream = toEventStream(streamFromBinaryPitchesEncoding(file, timing, Polyphony{1}), timing);
     a.playEventStream(*stream);
 
-    a.playLoop(moduloPitch(loopFromBinary(file)), 1);
+    a.playLoop(moduloPitch(loopFromBinary(file, Polyphony{1})), 1);
 
-    a.playLoop(loopFromBinary(scores / "Phrase.txt"), 1);
-    a.playLoop(moduloPitch(loopFromBinary(scores / "Phrase.txt")), 1);
+    a.playLoop(loopFromBinary(scores / "Phrase.txt", Polyphony{1}), 1);
+    a.playLoop(moduloPitch(loopFromBinary(scores / "Phrase.txt", Polyphony{1})), 1);
 
     a.playLoop(loopFromAscii(scores / "Phrase.txt"), 4);
     a.playLoop(moduloPitch(loopFromAscii(scores / "Phrase.txt")), 4);
