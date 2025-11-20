@@ -506,6 +506,7 @@
 		093708022EC941BD009A4EEA /* libwx_osx_cocoau_adv-3.3.1.0.0.dylib */ = {isa = PBXFileReference; lastKnownFileType = "compiled.mach-o.dylib"; name = "libwx_osx_cocoau_adv-3.3.1.0.0.dylib"; path = "../wxWidgets-3.3.1/build-cocoa-debug/lib/libwx_osx_cocoau_adv-3.3.1.0.0.dylib"; sourceTree = "<group>"; };
 		093708262ECA0634009A4EEA /* scales.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = scales.h; path = include/scales.h; sourceTree = "<group>"; };
 		093708272ECA063E009A4EEA /* pitch_generators.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = pitch_generators.h; path = include/pitch_generators.h; sourceTree = "<group>"; };
+		093708342ECE7F27009A4EEA /* EnvelopeFastFun.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = EnvelopeFastFun.txt; sourceTree = "<group>"; };
 		093A24C21E9B8BE8009874DF /* wav_join_nonzeros */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = wav_join_nonzeros; sourceTree = BUILT_PRODUCTS_DIR; };
 		093A24C81E9B8C47009874DF /* unity.build.joinnonzeros.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = unity.build.joinnonzeros.cpp; path = source/unity.build.joinnonzeros.cpp; sourceTree = "<group>"; };
 		093A24E11E9B8CC3009874DF /* test_fft */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = test_fft; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -835,6 +836,7 @@
 			isa = PBXGroup;
 			children = (
 				093707ED2EC7EB4F009A4EEA /* EnvelopeZero.txt */,
+				093708342ECE7F27009A4EEA /* EnvelopeFastFun.txt */,
 				093707F22EC81CDD009A4EEA /* LowPass.txt */,
 				093707F12EC80BD0009A4EEA /* EnvelopeFast.txt */,
 				093707EE2EC7ECB5009A4EEA /* EnvelopeSlow.txt */,

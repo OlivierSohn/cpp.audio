@@ -1,5 +1,7 @@
 #if 0
 
+Sampler le violoncelle pour utiliser les samples dans le pdf feuillard.
+
 Analyse d'un enregistrement pour la justesse, pour voir les tendances que j'ai.
 
 Analyse en temps reel de la justesse?
@@ -1539,7 +1541,7 @@ void AppTune::playEventStreams(std::vector<std::unique_ptr<EventStream>>& stream
       }
       else if(streamRes == StreamStatus::EndOfStream)
       {
-        countEOS;
+        countEOS++;
       }
     }
     
@@ -1607,41 +1609,55 @@ int main() {
   // The ZeroEnvelope file produces drum sounds.
   const path zeroEnv{synth / "EnvelopeZero.txt"};
   const path fastEnv{synth / "EnvelopeFast.txt"};
+  const path fastFunEnv{synth / "EnvelopeFastFun.txt"};
   const path slowEnv{synth / "EnvelopeSlow.txt"};
 
   const path harSimple{synth / "HarmonicsSimple.txt"};
 
   a.synth(0).setHarmonicsFile(harSimple);
 
-  for(auto const &env : {slowEnv, zeroEnv, fastEnv})
+  for(auto const &env : {zeroEnv, fastFunEnv})
   {
     a.synth(0).setEnvelopeFile(env);
 
     const auto file = "/Users/Olivier/Downloads/IMSLP874967-PMLP1036212-Feuillard_La_Technique_du_Violoncelle_Vol.4.pdf";
 
-    const auto timing = EventsTiming{};
-    auto stream = toEventStream(streamFromBinaryPitchesEncoding(file, timing, Polyphony{1}), timing);
+    const auto timing1 = EventsTiming{0.09};
+    auto stream1 = toEventStream(streamFromBinaryPitchesEncoding(file, timing1, Polyphony{1}), timing1);
     const auto timing2 = EventsTiming{0.18};
     auto stream2 = toEventStream(streamFromBinaryPitchesEncoding(file, timing2, Polyphony{1}), timing2);
+    // ^^ With:
+    //              polyphony  speed
+    // - stream1    1          2
+    // - stream2    1          1
+    //
+    // Both stream play the same melody but one plays at half speed,
+    // which results in interesting patterns.
+    
+    // ^^ With:
+    //              polyphony  speed
+    // - stream1    1          2   
+    // - stream2    2          1
+    //
+    // The "slow" stream (stream2) plays simultaneously the 2 notes
+    // that the fast stream (stream1) plays in sequence.
+    
     std::vector<std::unique_ptr<EventStream>> streams;
-    streams.push_back(std::move(stream));
+    streams.push_back(std::move(stream1));
     streams.push_back(std::move(stream2));
     a.playEventStreams(streams);
-
+/*
     a.playLoop(moduloPitch(loopFromBinary(file, Polyphony{1})), 1);
 
     a.playLoop(loopFromBinary(scores / "Phrase.txt", Polyphony{1}), 1);
     a.playLoop(moduloPitch(loopFromBinary(scores / "Phrase.txt", Polyphony{1})), 1);
 
     a.playLoop(loopFromAscii(scores / "Phrase.txt"), 4);
-    a.playLoop(moduloPitch(loopFromAscii(scores / "Phrase.txt")), 4);
-    a.playLoop(moduloPitch(loopFromAscii(scores / "StrangeBots.txt")), 4);
     a.playLoop(loopFromAscii(scores / "StrangeBots.txt"), 4);
-    a.playLoop(moduloPitch(loopFromAscii(scores / "Phrase2.txt")), 4);
     a.playLoop(loopFromAscii(scores / "Phrase2.txt"), 4);
     
-    a.playLoop(moduloPitch(mkEvents(250)), 1);
     a.playLoop(mkEvents(250), 1);
+ */
   }
   return 0;
 }
