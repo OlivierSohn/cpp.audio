@@ -28,7 +28,8 @@ void birds(int const sample_rate) {
 
   using Ctxt = Context<
   AudioPlatform::PortAudio,
-  Features::JustOut
+  Features::JustOut,
+  TimeSource::Monotonic
   >;
   
   using Stepper = SimpleAudioOutContext<
@@ -60,8 +61,7 @@ void birds(int const sample_rate) {
                           TimeNanos const tNanos){
     stepper.step(outputBuffer,
                  nFrames,
-                 tNanos,
-                 nanos_per_audioelement_buffer);
+                 tNanos);
   })) {
     throw std::runtime_error("ctxt init failed");
   }

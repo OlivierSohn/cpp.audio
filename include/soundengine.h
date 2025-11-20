@@ -369,7 +369,7 @@ namespace imajuscule::audio::audioelement {
         }
       }
 
-      void setAngle(FPT a) {
+      void setStartAngle(FPT a) {
         start_angle = a;
       }
 
@@ -785,7 +785,7 @@ namespace imajuscule::audio::audioelement {
         new_ramp->getVolumeAdjustment().getOsc().getAlgo().getCtrl() = new_spec->get();
         new_ramp->forgetPastSignals();
         new_ramp->set_sample_rate(sample_rate);
-        new_ramp->setAngle(start_angle);
+        new_ramp->setStartAngle(start_angle);
         new_ramp->getVolumeAdjustment().setVolumeTarget(new_spec->volume());
         new_ramp->editEnvelope().setAHDSR(AHDSR{xfade_len, itp::LINEAR,0,0, itp::LINEAR,xfade_len,itp::LINEAR,1.}, sample_rate);
         if(!new_ramp->editEnvelope().tryAcquire()) {

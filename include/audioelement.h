@@ -199,8 +199,8 @@ struct Enveloped {
     algo.step();
   }
 
-  void setAngle(FPT a) {
-    algo.setAngle(a);
+  void setStartAngle(FPT a) {
+    algo.setStartAngle(a);
   }
   FPT angle() const { return algo.angle(); }
 
@@ -573,9 +573,9 @@ struct MultiEnveloped {
   auto       & getOsc()       { return *this; }
   auto const & getOsc() const { return *this; }
 
-  void setAngle(FPT a) {
+  void setStartAngle(FPT a) {
     forEachIndexedHarmonic([a](int i, auto & algo, auto const & property) {
-      algo.setAngle(property.phase + harmonic_angle(i,a));
+      algo.setStartAngle(property.phase + harmonic_angle(i,a));
     });
   }
 
@@ -1143,8 +1143,8 @@ struct BaseVolumeAdjusted {
     osc.setFiltersOrder(order);
   }
 
-  void setAngle(T ai) {
-    osc.setAngle(ai);
+  void setStartAngle(T ai) {
+    osc.setStartAngle(ai);
   }
 
   void synchronizeAngles(MeT const & other) {
@@ -1316,8 +1316,8 @@ struct StereoPanned {
     return algo.angleIncrements();
   }
 
-  void setAngle(FPT a) {
-    algo.setAngle(a);
+  void setStartAngle(FPT a) {
+    algo.setStartAngle(a);
   }
 
   void setLoudnessParams(int sample_rate, int low_index, float log_ratio, float loudness_level) {
@@ -1382,10 +1382,10 @@ struct Phased {
   }
 
   void synchronizeAngles(MeT const & other) {
-    setAngle(other.angle_);
+    setStartAngle(other.angle_);
   }
 
-  void setAngle( T angle ) {
+  void setStartAngle( T angle ) {
     angle_ = phaseToNormalForm(angle);
   }
 
@@ -1492,7 +1492,7 @@ struct soundBufferWrapperAlgo {
   void setLoudnessParams(int sample_rate, int low_index, float log_ratio, float loudness_level) {}
   void setAngleIncrements(T ai) {}
   T angleIncrements() const { return F_GET_BUFFER().getAngleIncrements(); }
-  void setAngle(T a) {
+  void setStartAngle(T a) {
     Assert(sb);
     // a is between -1 and 1
     Assert(a <= 1.);
@@ -1803,9 +1803,9 @@ public:
     });
   }
 
-  void setAngle(T v) {
+  void setStartAngle(T v) {
     for_each(aes, [v](auto & ae) {
-      ae.setAngle(v);
+      ae.setStartAngle(v);
     });
   }
 
@@ -1901,9 +1901,9 @@ public:
     });
   }
 
-  void setAngle(T v) {
+  void setStartAngle(T v) {
     for_each(aes, [v](auto & ae) {
-      ae.setAngle(v);
+      ae.setStartAngle(v);
     });
   }
 
@@ -2047,8 +2047,8 @@ public:
   T angleIncrements() const {
     return audio_element.angleIncrements();
   }
-  void setAngle(T a) {
-    audio_element.setAngle(a);
+  void setStartAngle(T a) {
+    audio_element.setStartAngle(a);
   }
 
   T imag() const {
@@ -2109,8 +2109,8 @@ public:
   T angleIncrements() const {
     return cascade.angleIncrements();
   }
-  void setAngle(T a) {
-    cascade.setAngle(a);
+  void setStartAngle(T a) {
+    cascade.setStartAngle(a);
   }
 
   bool isEnvelopeFinished() const {
@@ -2172,9 +2172,9 @@ public:
     return std::min(lp.angleIncrements(),
                     hp.angleIncrements());
   }
-  void setAngle(T a) {
-    lp.setAngle(a);
-    hp.setAngle(a);
+  void setStartAngle(T a) {
+    lp.setStartAngle(a);
+    hp.setStartAngle(a);
   }
 
 private:
@@ -2359,7 +2359,7 @@ struct SineOscillatorAlgo {
     cur = other.cur;
   }
 
-  void setAngle(T f) {
+  void setStartAngle(T f) {
     cur = polar(static_cast<T>(M_PI)*f);
   }
   void setAngleIncrements(T f) {
@@ -3036,8 +3036,8 @@ struct FreqCtrl_ {
   }
 
   T angle() const { return osc.angle(); }
-  void setAngle(T a) {
-    osc.setAngle(a);
+  void setStartAngle(T a) {
+    osc.setStartAngle(a);
   }
   void synchronizeAngles(MeT const & other) {
     osc.synchronizeAngles(other.osc);
@@ -3160,11 +3160,11 @@ struct RingModulationAlgo {
   void set(T angle_increments1, T angle_increments2, bool reset = true) {
     osc1.setAngleIncrements(angle_increments1);
     if(reset) {
-      osc1.setAngle(0.f);
+      osc1.setStartAngle(0.f);
     }
     osc2.setAngleIncrements(angle_increments2);
     if(reset) {
-      osc1.setAngle(0.f);
+      osc1.setStartAngle(0.f);
     }
   }
 

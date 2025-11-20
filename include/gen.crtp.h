@@ -147,9 +147,9 @@ void setPhase(ElementMidi & e, CS & cs)
     }
   }
   if constexpr (Phase == DefaultStartPhase::Zero) {
-    thisAlgo.getOsc().setAngle(0);
+    thisAlgo.getOsc().setStartAngle(0);
   } else if constexpr (Phase == DefaultStartPhase::Random) {
-    thisAlgo.getOsc().setAngle(std::uniform_real_distribution<float>{-1.f, 1.f}(mersenne<SEEDED::Yes>()));
+    thisAlgo.getOsc().setStartAngle(std::uniform_real_distribution<float>{-1.f, 1.f}(mersenne<SEEDED::Yes>()));
   } else {
     Assert(0);
   }
@@ -203,7 +203,9 @@ struct ImplCRTP : public Base {
     // Used for TryAccountForTimeSourceJitter::Yes only.
     Optional<TimestampAndSource> midiTimeDelay;
 
-    float angle_increments; // based on infos in "noteon" and "notechange" events, _not_ taking pitchwheel into account
+    // Based on infos in "noteon" and "notechange" events, _not_ taking pitchwheel into account.
+    // Modified and read in real-time thread.
+    float ref_angle_increments;
   };
 
 private:
@@ -323,7 +325,7 @@ public:
                           mult](auto &, auto){
       for(auto & c : seconds(channels)) {
         if (c.elem.getEnvelope().isEnvelopeRTActive()) {
-          c.elem.setAngleIncrements(c.angle_increments * mult);
+          c.elem.setAngleIncrements(c.ref_angle_increments * mult);
         }
       }
     });
@@ -422,10 +424,6 @@ public:
         c.elem.set_sample_rate(sample_rate);
         c.elem.getVolumeAdjustment().setVolumeTarget(Element::baseVolume * e.noteOn.velocity);
 
-        // Don't take 'last_angle_increment_multiplier' into account here
-        c.angle_increments = freq_to_angle_increment(e.noteOn.frequency,
-                                                     sample_rate);
-
         // TODO merge notions of 'synchronous_element_initializer' and 'setupAudioElement'
 
         // called before setupAudioElement so that we can setup before setting the angle increment in setupAudioElement
@@ -456,9 +454,11 @@ public:
 
           chans.enqueueOneShot([this,
                                 &c,
+                                // Don't take 'last_angle_increment_multiplier' into account here
+                                ref_angle_increments = freq_to_angle_increment(e.noteOn.frequency,
+                                                                               sample_rate),
                                 sample_rate,
                                 maybeTimeAndSource
-                                // pannedVol, // TODO how to handle panning? systematic use of Panner<>?
                                 ]
                                (auto &, TimeNanos curTimeNanos){
             // TODO take get_gain() into account globally, when writing the out audio buffer for this synth
@@ -469,6 +469,8 @@ public:
               ++count_acquire_race_errors;
               return;
             }
+
+            c.ref_angle_increments = ref_angle_increments;
 
             setPhase<Sync, Phase>(c, channels);
 
@@ -593,20 +595,23 @@ public:
       case EventType::NoteChange:
       {
         MIDI_LG(INFO, "change %d", e.noteid.noteid);
+        const auto angleIncrements = freq_to_angle_increment(e.noteChange.changed_frequency,
+                                                             sample_rate);
+        const auto angleIncrementsMult = angleIncrements * last_angle_increment_multiplier;
         {
           typename Out::LockFromNRT L(out.get_lock());
           chans.enqueueOneShot([this,
                                 e,
-                                sample_rate](auto &, TimeNanos){
+                                angleIncrements,
+                                angleIncrementsMult](auto &, TimeNanos){
             for(auto &i : firsts(channels)) {
               if (!i || *i != e.noteid) {
                 continue;
               }
               auto & c = channels.corresponding(i);
               c.elem.getVolumeAdjustment().setVolumeTarget(Element::baseVolume * e.noteChange.changed_velocity);
-              c.angle_increments = freq_to_angle_increment(e.noteChange.changed_frequency,
-                                                           sample_rate);
-              c.elem.setAngleIncrements(c.angle_increments);
+              c.elem.setAngleIncrements(angleIncrementsMult);
+              c.ref_angle_increments = angleIncrements;
             }
           });
         }

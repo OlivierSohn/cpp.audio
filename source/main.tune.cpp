@@ -1,7 +1,14 @@
 #if 0
 
 Sampler le violoncelle pour utiliser les samples dans le pdf feuillard.
+- sons courts, piano.
 
+creer un audioelement qui permet d'associer un sample a un pitch (angle increment).
+
+currently audioelements are controlled by angle increment (not frequency, not pitch)
+there is a notion of startAngle which will not apply to the sampler (rather applies to oscillators).
+
+  
 Analyse d'un enregistrement pour la justesse, pour voir les tendances que j'ai.
 
 Analyse en temps reel de la justesse?
@@ -17,7 +24,7 @@ using TuneElement =
 //StereoPanned<
 LowPassAlgo<
 VolumeAdjusted<
-//Enveloped
+//LoudnessVolumeAdjusted<
 MultiEnveloped
 <
 //FreqCtrl_<

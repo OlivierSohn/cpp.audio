@@ -1214,7 +1214,7 @@ RtResynth::RtResynth(RtResynthOfflineJob & j)
     float output[nAudioOut];
     output_f(output,
              1,
-             static_cast<uint64_t>(nanoseconds_increment * frame));
+             TimeNanos{static_cast<uint64_t>(nanoseconds_increment * frame)});
     ++frame;
     
     j.write_output(output,
@@ -1521,7 +1521,7 @@ void RtResynth::onInputMidiEvent(std::optional<uint64_t> const &time_ms,
   if (std::holds_alternative<midi::NoteOn>(e)) {
     Assert(time_ms); // the only case we have no time is for AllNotesOff
     // Portmidi time is in milliseconds, we convert it to nanoseconds.
-    uint64_t const time_nanos = 1000000 * *time_ms;
+    TimeNanos const time_nanos(1000000 * *time_ms);
     midi::NoteOn const & on = std::get<midi::NoteOn>(e);
     Assert(on.velocity);
     vocoder_carrier.onEvent(sample_rate,
@@ -1534,7 +1534,7 @@ void RtResynth::onInputMidiEvent(std::optional<uint64_t> const &time_ms,
   } else if (std::holds_alternative<midi::NoteOff>(e)) {
     Assert(time_ms); // the only case we have no time is for AllNotesOff
     // Portmidi time is in milliseconds, we convert it to nanoseconds.
-    uint64_t const time_nanos = 1000000 * *time_ms;
+    TimeNanos const time_nanos(1000000 * *time_ms);
     midi::NoteOff const & off = std::get<midi::NoteOff>(e);
     vocoder_carrier.onEvent(sample_rate,
                             mkNoteOff(vocoder_carrier_noteids.NoteOffId(off.key)),
@@ -1608,7 +1608,7 @@ void RtResynth::init_analysis() {
              run_mode == Mode::Realtime
              // to have the sound played as fast as possible.
              ? std::nullopt
-             : std::optional{TimestampAndSource((analysis_frames_counter + local_count_dropped_input_frames) * nanos_per_frame,
+             : std::optional{TimestampAndSource(TimeNanos((analysis_frames_counter + local_count_dropped_input_frames) * nanos_per_frame),
                                    to_underlying(MidiSource::Analysis))},
              window_center_stride); // we pass the future stride, on purpose
       }
