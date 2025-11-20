@@ -1083,11 +1083,11 @@ void SynthDef::updateInitializerIfNeeded()
 {
   {
     const std::filesystem::file_time_type newLastWriteHarmonics =
-    std::min(std::min(std::filesystem::last_write_time(harmonicsFile),
+    std::max(std::max(std::filesystem::last_write_time(harmonicsFile),
              std::filesystem::last_write_time(envelopeFile)),
              std::filesystem::last_write_time(lowPassFile));
-    if(m_lastWriteSynthFiles.has_value() && newLastWriteHarmonics < *m_lastWriteSynthFiles)
-      // No need to updatem the files have not changed since last time the initializer has been updated.
+    if(m_lastWriteSynthFiles.has_value() && newLastWriteHarmonics <= *m_lastWriteSynthFiles)
+      // No need to update, the files have not changed since last time the initializer has been updated.
       return;
     // This initializer update will affect any note that has not started yet.
     m_lastWriteSynthFiles = newLastWriteHarmonics;
