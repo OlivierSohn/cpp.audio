@@ -349,7 +349,7 @@ private:
     
     auto header = pcm(WaveFormat::IEEE_FLOAT,
                       *sample_rate,
-                      NChannels::TWO,
+                      CountChannels{2},
                       AudioSample<output_T>::format);
     
     writer = std::make_unique<WAVWriter>(p.parent_path().native(),

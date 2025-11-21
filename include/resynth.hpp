@@ -29,7 +29,7 @@ void resynth(std::vector<DeducedNote<T>> const & notes,
   auto wave_format = WaveFormat::IEEE_FLOAT;
   auto header = pcm(wave_format,
                     sampling_rate,
-                    NChannels::ONE,
+                    CountChannels{1},
                     AudioSample<double>::format);
 
   WAVWriter writer(path_wav, header);

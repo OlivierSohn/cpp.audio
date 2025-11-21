@@ -225,7 +225,14 @@ struct Enveloped {
   }
 
   FPT real() const { return algo.real() * env.value(); }
-  FPT imag() const { return algo.imag() * env.value(); }
+
+  template<int C = count_channels>
+  std::enable_if_t<(C == 1), FPT>
+  imag() const { return algo.imag() * env.value(); }
+
+  template<int C = count_channels>
+  std::enable_if_t<(C > 1), FPT>
+  imag(int i) const { return algo.imag(i) * env.value(); }
 
   auto const & getOsc() const { return algo.getOsc(); }
   auto       & getOsc()       { return algo.getOsc(); }
@@ -916,7 +923,7 @@ struct AHDSREnvelopeBase : public WithMinChangeDuration<ZeroAttack> {
   void setAHDSR(AHDSR const & s, int const sample_rate) {
     int32_t const min_dt = this->normalizedMinDt(sample_rate);
 
-    Assert(min_dt > 0);
+    Assert(min_dt > 0 || ZeroAttack == AllowZeroAttack::Yes);
 
     bool const hasDecay = s.sustain < 0.999999;
 
@@ -3251,13 +3258,15 @@ using RingModulation = FinalAudioElement<RingModulationAlgo<A1,A2>>;
 
 
 
-template<typename T>
+// For mono samples, use CountChannels==1
+// For stereo samples, use CountChannels==2 (samples are interlaced)
+template<typename T, int CountChannels>
 struct SamplerAlgo {
-  using MeT = SamplerAlgo<T>;
+  using MeT = SamplerAlgo<T, CountChannels>;
   static constexpr auto hasEnvelope = false;
   static constexpr auto isMonoHarmonic = true;
   static constexpr auto baseVolume = reduceUnadjustedVolumes;
-  static constexpr int count_channels = 1;
+  static constexpr int count_channels = CountChannels;
   
   using Tr = NumTraits<T>;
   using FPT = T;
@@ -3316,7 +3325,9 @@ struct SamplerAlgo {
     ++m_sampleProgress;
   }
   
-  T imag() const {
+  template<int C = count_channels>
+  std::enable_if_t<(C == 1), T>
+  imag() const {
     if(m_sampleProgress < 0)
       return 0.;
     if(m_sample && m_sampleProgress < m_sample->size())
@@ -3326,6 +3337,19 @@ struct SamplerAlgo {
     return 0.;
   }
 
+  template<int C = count_channels>
+  std::enable_if_t<(C > 1), T>
+  imag(int i) const {
+    if(m_sampleProgress < 0)
+      return 0.;
+    const int64_t sampleIndex = (count_channels * m_sampleProgress) + i;
+    if(m_sample && sampleIndex < m_sample->size())
+    {
+      return (*m_sample)[sampleIndex];
+    }
+    return 0.;
+  }
+  
   T angle() const {
     Assert(0); // TODO (?)
     return 0.;

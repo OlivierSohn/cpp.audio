@@ -43,7 +43,7 @@ void testDeduceNotes() {
                                                            half_window,
                                                            window_center_stride,
                                                            zero_padding_factor,
-                                                           0.05776226504);
+                                                           AlmostFrequency::c_diffHalfToneApartLog2Freqs);
   
   // formula in http://support.ircam.fr/docs/AudioSculpt/3.0/co/Window%20Size.html
   // uses 5 as constant factor

@@ -102,7 +102,8 @@ private:
   std::vector<harmonicProperties_t> m_harmonics;
 };
 
-
+// Use stereo samples.
+constexpr int countSamplerChannels{2};
 
 // TODO: later, find a way to artificially make the sample longer to play long notes.
 template <typename T>
@@ -113,7 +114,7 @@ using TuneSamplerElement =
 VolumeAdjusted<
 Enveloped <
 //FreqCtrl_<
-audioelement::SamplerAlgo<T>
+audioelement::SamplerAlgo<T, countSamplerChannels>
 //, InterpolatedFreq<T>
 , AHDSREnvelope<Atomicity::Yes, T, EnvelopeRelease::WaitForKeyRelease, AllowZeroAttack::Yes>
 >
@@ -1120,9 +1121,303 @@ struct SamplerSynthDef : public SynthDef
   SamplerSynth m_synth;    
 };
 
-std::map<double, std::vector<double>> readSamples()
+struct SampleRange
 {
-  auto folder = std::filesystem::path{"/Users/Olivier/Music/Samples"};
+  int32_t firstFrame;
+  // last frame is included.
+  int32_t lastFrame;
+  
+  int32_t getLength() const { return lastFrame - firstFrame + 1; }
+};
+
+struct SampleRanges
+{
+  // invariant: ranges are not overlapping.
+  // invariant: ranges are ordered by increasing frame location.
+  std::vector<SampleRange> ranges;
+};
+
+// Returns the union of ranges 'rangeA' and 'rangeB'.
+SampleRanges unionRanges(const SampleRanges& rangeA, const SampleRanges& rangeB)
+{
+  std::vector<SampleRange> res;
+  auto onRange = [&](SampleRange r)
+  {
+    if(res.empty() || (res.back().lastFrame < r.firstFrame))
+      res.push_back(r);
+    else
+    {
+      res.back().lastFrame = std::max(res.back().lastFrame, r.lastFrame);
+    }
+  };
+
+  auto a = rangeA.ranges.begin();
+  auto b = rangeB.ranges.begin();
+  for(;;)
+  {
+    if(a != rangeA.ranges.end() && b != rangeB.ranges.end())
+    {
+      if(a->firstFrame < b->firstFrame)
+        onRange(*a++);
+      else
+        onRange(*b++);
+    }
+    else if(a != rangeA.ranges.end())
+    {
+      onRange(*a++);      
+    }
+    else if(b != rangeB.ranges.end())
+    {
+      onRange(*b++);      
+    }
+    else
+      break;
+  }
+
+  return SampleRanges{std::move(res)};
+}
+
+SampleRanges unionRanges(const std::vector<SampleRanges>& ranges)
+{
+  SampleRanges res;
+  if(!ranges.empty())
+  {
+    res = ranges[0];
+    for(size_t i=1; i<ranges.size(); ++i)
+    {
+      res = unionRanges(ranges[i], res);
+    }
+  }
+  return res;
+}
+
+// Algorithm to find valid sample ranges:
+//
+// - find the start of a range using find_relevant_start_relaxed(abs_relevant_level=0.1, sliding_avg_size=15).
+// - find the end of a range using
+//   - fwd until signal (sliding average of absolute) is lower than 0.02 for a duration of at least "lookahead".
+//   - from first location where signal started to be low, fwd until (sliding average of absolute) increases again.
+SampleRanges
+computeSampleRanges(const std::vector<double>& signal,
+                    int const slidingAvgFrameCount,
+                    const int32_t lookAheadFrameCount)
+{
+  SampleRanges res;
+  
+  auto it = signal.begin();
+  auto end = signal.end();
+  
+  const double noise_level = compute_noise_floor(it, end, lookAheadFrameCount);
+  
+  const float maxSoundAmplitudeEnd = noise_level * 3.;
+  const float minSoundAmplitudeStart = noise_level * 3.;
+
+  for(;it != end;)
+  {
+    it = find_relevant_start_relaxed(it, end, minSoundAmplitudeStart, slidingAvgFrameCount);
+    if(it == end)
+      break;
+    // by now 'it' is the start of the sample range.
+    
+    const int32_t startFrame(static_cast<int32_t>(std::distance(signal.begin(), it)));
+    it = find_relevant_end_relaxed(it, end, maxSoundAmplitudeEnd, slidingAvgFrameCount, lookAheadFrameCount);
+    
+    int32_t lastFrame = static_cast<int32_t>(std::distance(signal.begin(), it));
+    if(it == end)
+      lastFrame -= 1;
+    if(lastFrame > startFrame)
+      res.ranges.push_back(SampleRange{startFrame, lastFrame});
+  }
+  return res;
+}
+
+SampleRanges removeShortRanges(const int32_t minSampleFrameCount, SampleRanges const & r)
+{
+  SampleRanges res;
+  for(const auto & ra : r.ranges)
+    if(ra.getLength() >= minSampleFrameCount)  
+      res.ranges.push_back(ra);
+  return res;
+}
+
+// Modifies an interlaced sample in case the channel count is not as expected.
+//
+// countSourceChannels : count of channels in |interlaced| as input.
+// countTargetChannels : count of channels in |interlaced| as output.
+void interlacedAdaptChannelCount(int countSourceChannels, int countTargetChannels, std::vector<double>& interlaced)
+{
+  if(countTargetChannels <= 0 || countSourceChannels <= 0 || interlaced.empty())
+  {
+    interlaced.clear();
+    return;
+  }
+  
+  const int64_t countFrames = interlaced.size() / countSourceChannels;
+  
+  if(countSourceChannels > countTargetChannels)
+  {
+    // we need to skip some channels.
+    for(int64_t frame = 0; frame < countFrames; ++frame)
+    {
+      const size_t sourceBaseIndex = frame * countSourceChannels;
+      const size_t targetBaseIndex = frame * countTargetChannels;
+      for(int chanIdx = 0; chanIdx<countTargetChannels; ++chanIdx)
+      {
+        const size_t targetIdx = targetBaseIndex + chanIdx;
+        const size_t sourceIdx = sourceBaseIndex + chanIdx;
+        // sourceIdx >= targetIdx
+        interlaced[targetIdx] = interlaced[sourceIdx];
+      }
+    }
+    interlaced.resize(countFrames * countTargetChannels);
+  }
+  else if(countSourceChannels < countTargetChannels)
+  {
+    // we need to duplicate some channels.
+    interlaced.resize(countFrames * countTargetChannels);
+    for(int64_t frame = countFrames - 1ll; frame >= 0; --frame)
+    {
+      const size_t sourceBaseIndex = frame * countSourceChannels;
+      const size_t targetBaseIndex = frame * countTargetChannels;
+      for(int chanIdx = 0; chanIdx<countTargetChannels; ++chanIdx)
+      {
+        const size_t targetIdx = targetBaseIndex + chanIdx;
+        const size_t sourceIdx = sourceBaseIndex + (chanIdx % countSourceChannels);
+        // sourceIdx <= targetIdx
+        interlaced[targetIdx] = interlaced[sourceIdx];
+      }
+    }    
+  }
+}
+
+void
+writeSamples(std::filesystem::path const & samplesFile,
+             SampleRanges const & ranges,
+             std::filesystem::path const & outDir)
+{
+  if(std::filesystem::exists(outDir) && !std::filesystem::is_empty(outDir))
+    throw std::logic_error("out dir is not empty");
+  
+  std::filesystem::create_directories(outDir);
+  
+  auto reader = WAVReader(samplesFile);
+  std::vector<double> interleaved;
+  int const countChannels = read_wav_as_interleaved_floats(reader, interleaved);
+  if(interleaved.empty())
+    throw std::logic_error("Failed to read sample");
+  interlacedAdaptChannelCount(countChannels, audioelement::countSamplerChannels, interleaved);
+
+  const int32_t countFrames = interleaved.size() / countChannels;
+
+  auto writeSample=[&](const SampleRange& r)
+  {
+    // Should some parts of the sample be avoided?
+    // i.e in "Si", the "S" part is not relevant to the pitch.
+
+    FrequenciesSqMag<double> freqs_sqmag;
+    int constexpr zero_padding_factor = 1;
+
+    std::vector<double> half_window;
+    
+    // cf. comment in testDeduceNotes() for the choice of these constants.
+    const int windowLength = floor_power_of_two(std::min(8192*4, r.getLength()));
+    const int sigmaFactor{8};
+    
+    half_gaussian_window<double>(sigmaFactor, windowLength/2, half_window);
+    normalize_window(half_window);
+
+    // offset the range to focus on the center of the sample which is more likely to contain
+    // relevant information wrt pitch.
+    const int startOffset = (r.getLength() - windowLength) / 2;
+
+    auto itStart = interleaved.begin() + (countChannels * (r.firstFrame + startOffset));
+    auto itEnd = interleaved.begin() + (countChannels * (r.firstFrame + startOffset + windowLength));
+    const int windowed_signal_stride = countChannels; // because the buffer is interleaved.
+    findFrequenciesSqMagSlow(itStart, itEnd, windowed_signal_stride, half_window, zero_padding_factor, freqs_sqmag);
+    std::vector<FreqMag<double>> localMaxFreqsMags;
+    extractLocalMaxFreqsMags(reader.getSampleRate(),
+                             freqs_sqmag,
+                             SqMagToDb<double>(),
+                             localMaxFreqsMags);
+    if(localMaxFreqsMags.empty())
+      throw std::logic_error("Failed to compute local max freqs mags");
+    
+    std::optional<FreqMag<double>> fundamentalFreqMag = extractFundamental(localMaxFreqsMags);
+    if(!fundamentalFreqMag.has_value())
+      throw std::logic_error("Failed to compute fundamentalFreqMag");
+    Midi midi;
+    std::optional<MidiPitch> pitch = midi.frequency_to_midi_pitch(fundamentalFreqMag->freq);
+    if(!pitch.has_value())
+      throw std::logic_error("Failed to compute pitch");
+    std::cout << "pitch " << pitch->get() << "  window: " << windowLength << std::endl;
+    write_wav(outDir / (std::to_string(r.firstFrame) + std::string{"_"} + std::to_string(r.lastFrame) + std::string{".wav"}),
+              interleaved.begin() + (countChannels * r.firstFrame),
+              interleaved.begin() + (countChannels * (r.lastFrame + 1)),
+              CountChannels{countChannels},
+              reader.getSampleRate());
+  };
+
+  for(const auto & range : ranges.ranges)
+  {
+    if(range.lastFrame >= countFrames)
+      throw std::logic_error("wav file has not enough frames");
+
+    writeSample(range);
+  }
+}
+
+void
+makeSamples(std::filesystem::path const & samplesFile,
+            std::filesystem::path const & outDir,
+            const DurationNanos slidingAverageDuration = DurationNanos(0.34 * 1e6), // 15 / 44100 
+            const DurationNanos minSampleDuration = DurationNanos(150 * 1e6),
+            // Lookahead default : 40 milliseconds.
+            // It is possible that the same sample decreases in amplitude drastically
+            // and then increases within the lookahead.
+            // It happens for "Sol" where there are 2 sound parts, "S" and "ol",
+            // separated by ~15 milliseconds of low amplitude signal.
+            const DurationNanos lookAhead = DurationNanos(40 * 1e6))
+{
+  // Do computeSampleRanges on each channel, then
+  // - merge ranges that overlap across channels.
+  // - discard ranges that are smaller than 'minSampleDuration'.
+  
+  auto reader = std::make_unique<WAVReader>(samplesFile);
+
+  std::vector<std::vector<double>> deinterlaced;
+  read_wav_as_floats(*reader, deinterlaced);
+  if(deinterlaced.empty())
+    throw std::logic_error("Failed to read sample");
+  
+  const int fileSampleRate = reader->getSampleRate();
+
+  const int32_t minSampleFrameCount = nanoseconds_to_frames(minSampleDuration, fileSampleRate);
+  const int32_t lookAheadFrameCount = nanoseconds_to_frames(lookAhead, fileSampleRate);
+  
+  std::vector<SampleRanges> sampleRangesPerChannel;
+  const int countChannels = deinterlaced.size();
+  sampleRangesPerChannel.reserve(countChannels);
+  for(int chan = 0; chan < countChannels; ++chan)
+    sampleRangesPerChannel.push_back(computeSampleRanges(deinterlaced[chan],
+                                                         fileSampleRate * (slidingAverageDuration.get() / 1e9),
+                                                         lookAheadFrameCount));
+
+  SampleRanges sampleRanges = unionRanges(sampleRangesPerChannel);
+
+  sampleRanges = removeShortRanges(minSampleFrameCount, sampleRanges);
+  
+  reader.reset();
+  writeSamples(samplesFile, sampleRanges, outDir);
+}
+
+std::vector<std::pair<NoteOctave, std::filesystem::path>>
+readSamples(std::filesystem::path const & dir)
+{}
+
+std::map<double, std::vector<double>>
+readSamples()
+{
+  auto folder = std::filesystem::path{"/Users/Olivier/Music/Samples/Manual"};
   Midi midi;
   std::vector<std::pair<NoteOctave, std::filesystem::path>> files{
     {NoteOctave{Note::Do, 4}, "Do1.wav"},
@@ -1136,14 +1431,15 @@ std::map<double, std::vector<double>> readSamples()
   {
     auto reader = WAVReader(folder / f);
     
-    std::vector<std::vector<double>> deinterlaced;
-    read_wav_as_floats(reader, deinterlaced);
-    if(deinterlaced.empty())
+    std::vector<double> interlaced;
+    int const countChannels = read_wav_as_interleaved_floats(reader, interlaced);
+    if(interlaced.empty())
       throw std::logic_error("Failed to read sample");
+    interlacedAdaptChannelCount(countChannels, audioelement::countSamplerChannels, interlaced);
     auto pitch = midi.get_pitch(noteOctave);
     auto freq = midi.midi_pitch_to_freq(pitch);
     auto ai = freq_to_angle_increment(freq, m_sampleRate);
-    res[ai] = deinterlaced[0];
+    res[ai] = interlaced;
   }
   return res;
 }
@@ -1867,9 +2163,10 @@ int main() {
 #if 0
   playFeuillardTwoVoices();
 #else
-
   using namespace imajuscule::audio;
   using namespace std::filesystem;
+
+  makeSamples("/Users/Olivier/Music/Samples/gamme.wav", "/Users/Olivier/Music/Samples/gen");
 
   const size_t countOscSynths{2};
   const size_t countSamplerSynths{2};
@@ -1877,11 +2174,15 @@ int main() {
     
   // The ZeroEnvelope file produces drum sounds.
   const path zeroEnv{synth / "EnvelopeZero.txt"};
+  const path oneEnv{synth / "EnvelopeOne.txt"};
   const path fastEnv{synth / "EnvelopeFast.txt"};
   const path fastFunEnv{synth / "EnvelopeFastFun.txt"};
   const path slowEnv{synth / "EnvelopeSlow.txt"};
 
   const path harSimple{synth / "HarmonicsSimple.txt"};
+
+  a.samplerSynth(0).setEnvelopeFile(oneEnv);
+  a.samplerSynth(1).setEnvelopeFile(oneEnv);
 
   a.oscSynth(0).setHarmonicsFile(harSimple);
 

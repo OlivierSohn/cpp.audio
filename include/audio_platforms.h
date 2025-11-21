@@ -149,7 +149,7 @@ struct AsyncWavWriter {
 #endif
     auto header = pcm(WaveFormat::IEEE_FLOAT,
                       sample_rate,
-                      numberToNChannels(n_audio_chans),
+                      CountChannels(n_audio_chans),
                       AudioSample<SAMPLE>::format);
     
     std::string const filename = prefix + ".wav";

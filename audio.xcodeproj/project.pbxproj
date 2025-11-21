@@ -607,6 +607,7 @@
 		099E06F61E36ECE50012348E /* Project.Release.xcconfig */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.xcconfig; name = Project.Release.xcconfig; path = xcode.config/Project.Release.xcconfig; sourceTree = "<group>"; };
 		099E06F71E36ECE50012348E /* Project.Shared.xcconfig */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.xcconfig; name = Project.Shared.xcconfig; path = xcode.config/Project.Shared.xcconfig; sourceTree = "<group>"; };
 		09A8F2291E442C3A0071C141 /* soundengine.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = soundengine.cpp; path = source/soundengine.cpp; sourceTree = "<group>"; };
+		09AF19012ED0F26C007F03A7 /* EnvelopeOne.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = EnvelopeOne.txt; sourceTree = "<group>"; };
 		09B01D4025152EE10068FCFD /* unity.build.rt.resynth.ui.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = unity.build.rt.resynth.ui.cpp; path = source/unity.build.rt.resynth.ui.cpp; sourceTree = "<group>"; };
 		09B01D4A25152EE10068FCFD /* rt.resynth.lib.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = rt.resynth.lib.cpp; path = source/rt.resynth.lib.cpp; sourceTree = "<group>"; };
 		09B01D5B25152F0A0068FCFD /* rt.resynth.ui */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = rt.resynth.ui; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -836,6 +837,7 @@
 			isa = PBXGroup;
 			children = (
 				093707ED2EC7EB4F009A4EEA /* EnvelopeZero.txt */,
+				09AF19012ED0F26C007F03A7 /* EnvelopeOne.txt */,
 				093708342ECE7F27009A4EEA /* EnvelopeFastFun.txt */,
 				093707F22EC81CDD009A4EEA /* LowPass.txt */,
 				093707F12EC80BD0009A4EEA /* EnvelopeFast.txt */,
