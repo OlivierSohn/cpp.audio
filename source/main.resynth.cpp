@@ -5,7 +5,7 @@ namespace imajuscule::audio {
 void testDeduceNotes() {
   int const window_center_stride = 400;
   int const windowed_signal_stride = 1;
-  std::string const dir("/Users/Olivier/Documents/Quand je t'aime/Bounced Files/");
+  std::filesystem::path const dir("/Users/Olivier/Documents/Quand je t'aime/Bounced Files/");
   std::string prefix("Quand je t'aime_1");
   
   // The frequency detection is too imprecise with hann window:
@@ -31,7 +31,7 @@ void testDeduceNotes() {
   
   int const zero_padding_factor = 1;
   //int const zero_padding_factor = 10;
-  auto reader = WAVReader(dir, prefix + ".wav");
+  auto reader = WAVReader(dir / (prefix + ".wav"));
   
   std::vector<std::vector<double>> deinterlaced;
   read_wav_as_floats(reader, deinterlaced);
@@ -72,13 +72,12 @@ void testDeduceNotes() {
   
   drawDeducedNotes(filtered_notes,
                    lowest_detectable_frequency,
-                   "/Users/Olivier/" + prefix + ".notes.bmp");
+                   std::filesystem::path{"/Users/Olivier/"} / (prefix + ".notes.bmp"));
   
   resynth(filtered_notes,
           window_center_stride,
           44100.,
-          "/Users/Olivier/",
-          prefix + ".resynth.wav");
+          std::filesystem::path{"/Users/Olivier/"} / (prefix + ".resynth.wav"));
 }
 
 } // NS

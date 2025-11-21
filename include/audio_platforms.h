@@ -126,7 +126,7 @@ struct AsyncWavWriter {
   , active(true)
   , m_maxSamples(maxSamples){
     thread = std::make_unique<std::thread>([this, prefix]() {
-    auto rootDir = "/Users/Olivier/dev/hs.hamazed/";
+      const std::filesystem::path rootDir{"/Users/Olivier/dev/hs.hamazed/"};
 #if 0
     // verify interpolation curves
     {
@@ -154,16 +154,16 @@ struct AsyncWavWriter {
     
     std::string const filename = prefix + ".wav";
     
-    WAVWriter writer(rootDir,
-                     filename,
+    const auto path = rootDir / filename;
+    WAVWriter writer(path,
                      header);
     auto res = writer.Initialize();
     
     if(ILE_SUCCESS != res) {
-      LG(ERR, "Audio debug : failed to open '%s' in '%s' to write audio", filename.c_str(), rootDir);
+      LG(ERR, "Audio debug : failed to open '%s' to write audio", path.u8string().c_str());
       return;
     } else {
-      LG(INFO, "Audio debug : opened '%s' in '%s' to write audio", filename.c_str(), rootDir);
+      LG(INFO, "Audio debug : opened '%s' to write audio", path.u8string().c_str());
     }
     
     int countSamples = 0;

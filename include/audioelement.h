@@ -244,9 +244,16 @@ struct Enveloped {
 
   void onKeyPressed(int32_t delay) {
     env.onKeyPressed(delay);
+    // samplers need to synchronize the start of the sample, so:
+    algo.onKeyPressed(delay);
   }
   void onKeyReleased(int32_t delay) {
     env.onKeyReleased(delay);
+
+    // Not calling this allows to use nested envelopes and not release the underlying envelope,
+    // which could be interesting.
+    
+    // algo.onKeyReleased(delay);
   }
   bool canHandleExplicitKeyReleaseNow(int32_t delay) const {
     return env.canHandleExplicitKeyReleaseNow(delay);
@@ -546,11 +553,11 @@ struct MultiEnveloped {
   }
 
   void onKeyPressed(int32_t delay) {
-    forEachHarmonic([delay](auto & algo) { algo.editEnvelope().onKeyPressed(delay); } );
+    forEachHarmonic([delay](auto & algo) { algo.onKeyPressed(delay); } );
     stateAcquisition.relaxedWrite(EnvelopeState::KeyPressed);
   }
   void onKeyReleased(int32_t delay) {
-    forEachHarmonic([delay](auto & algo) { algo.editEnvelope().onKeyReleased(delay); } );
+    forEachHarmonic([delay](auto & algo) { algo.onKeyReleased(delay); } );
     // we do not write "key released" in stateAcquisition here, because maybe the envelope has been finished already in step()
   }
   bool canHandleExplicitKeyReleaseNow(int32_t delay) const {
@@ -558,7 +565,7 @@ struct MultiEnveloped {
     //   ** some ** of the envelopes autorelease.
     return std::any_of(harmonics.begin(),
                        harmonics.end(),
-                       [delay](auto const & a){ return a.first.getEnvelope().canHandleExplicitKeyReleaseNow(delay); });
+                       [delay](auto const & a){ return a.first.canHandleExplicitKeyReleaseNow(delay); });
   }
   bool isEnvelopeFinished() const {
     return stateAcquisition.isEnvelopeFinished();
@@ -827,6 +834,18 @@ private:
   }
 };
 
+
+// Whether to enforce a minimum attack time
+// to avoid cases where the attack would be too brutal.
+enum class AllowZeroAttack
+{
+  // Use this when the underlying audio element handles the attack (e.g a sampler).
+  Yes,
+  // Use this when the underlying audio element does not handle the attack (e.g an oscillator).
+  No
+};
+
+template <AllowZeroAttack ZeroAttack>
 struct WithMinChangeDuration {
   void setMinChangeDurationSamples(int nSamples) {
     // we don't change 'minChangeDuration' now as it could break
@@ -834,18 +853,25 @@ struct WithMinChangeDuration {
     nextMinChangeDuration = nSamples;
   }
 
-  // fast moog attacks are 1ms according to
-  // cf. https://www.muffwiggler.com/forum/viewtopic.php?t=65964&sid=0f628fc3793b76de64c7bceabfbd80ff
-  // so we set the max normalized enveloppe velocity to 1ms (i.e the time to go from 0 to 1)
-  static constexpr auto normalizedMinDt(int const sample_rate) { return sample_rate/1000; };
+  static constexpr auto normalizedMinDt(int const sample_rate)
+  {
+    if constexpr (ZeroAttack == AllowZeroAttack::Yes)
+      return 0;
+    else
+      // fast moog attacks are 1ms according to
+      // cf. https://www.muffwiggler.com/forum/viewtopic.php?t=65964&sid=0f628fc3793b76de64c7bceabfbd80ff
+      // so we set the max normalized enveloppe velocity to 1ms (i.e the time to go from 0 to 1)
+      return sample_rate/1000;
+  };
 
-protected:
+private:
   int32_t minChangeDuration = 0; // allowed to change when the counter is 0, to avoid discontinuities
   int32_t nextMinChangeDuration = 0; // copied to 'minChangeDuration' when 'ahdCounter' == 0
 
   // TODO do the same mechanism for all envelope params (AHDSR)
   // to allow realtime envelop changes without audio cracks
 
+protected:
   void updateMinChangeDuration() {
     minChangeDuration = nextMinChangeDuration;
   }
@@ -876,17 +902,19 @@ inline Optional<AHD> rotateAHD(AHD s) {
   }
 }
 
-template <typename T, EnvelopeRelease Rel>
-struct AHDSREnvelopeBase : public WithMinChangeDuration {
+template <typename T, EnvelopeRelease Rel, AllowZeroAttack ZeroAttack>
+struct AHDSREnvelopeBase : public WithMinChangeDuration<ZeroAttack> {
   using FPT = T;
   using Param = AHDSR;
   static constexpr auto Release = Rel;
+  
+//  using normalizedMinDt = WithMinChangeDuration<ZeroAttack>::normalizedMinDt;
 
   void set_sample_rate(int s) {
   }
 
   void setAHDSR(AHDSR const & s, int const sample_rate) {
-    int32_t const min_dt = normalizedMinDt(sample_rate);
+    int32_t const min_dt = this->normalizedMinDt(sample_rate);
 
     Assert(min_dt > 0);
 
@@ -965,7 +993,7 @@ protected:
   }
 
   int32_t getReleaseTime() const {
-    return std::max(getMinChangeDuration(), R); // safe release
+    return std::max(this->getMinChangeDuration(), R); // safe release
   }
 
   itp::interpolation getReleaseItp() const { return releaseItp; }
@@ -1007,7 +1035,7 @@ private:
 
     // We are at a "safe point" where we can change 'minChangeDuration'
     // whilst preserving the envelope continuity:
-    updateMinChangeDuration();
+    this->updateMinChangeDuration();
 
     if(!ahdState) {
       return;
@@ -1031,14 +1059,17 @@ private:
   int32_t getMaxCounterForAHD() const {
     switch(get_value(ahdState)) {
       case AHD::Attacking:
-        return std::max(minChangeDuration, A); // safe attack
+        if constexpr (ZeroAttack == AllowZeroAttack::Yes)
+          return A;
+        else
+          return std::max(this->getMinChangeDuration(), A); // safe attack
       case AHD::Holding:
         return H;
       case AHD::Decaying:
         return
         (D == 0) ?
         0 : // skip decay
-        std::max(minChangeDuration, D); // safe decay
+        std::max(this->getMinChangeDuration(), D); // safe decay
       default:
         Assert(0);
         return 0;
@@ -1060,8 +1091,8 @@ private:
   }
 };
 
-template <Atomicity A, typename T, EnvelopeRelease Rel>
-using AHDSREnvelope = EnvelopeCRT < A, AHDSREnvelopeBase <T, Rel> >;
+template <Atomicity A, typename T, EnvelopeRelease Rel, AllowZeroAttack ZeroAttack>
+using AHDSREnvelope = EnvelopeCRT < A, AHDSREnvelopeBase <T, Rel, ZeroAttack> >;
 
 /** Adjusts the volume of a mono-frequency algo.
  *
@@ -1131,6 +1162,9 @@ struct BaseVolumeAdjusted {
     osc.forgetPastSignals();
     volume.reset();
     volume_target.reset();
+  }
+  bool canHandleExplicitKeyReleaseNow(int32_t delay) const {
+    return osc.canHandleExplicitKeyReleaseNow(delay);
   }
   void onKeyPressed(int32_t delay) {
     osc.onKeyPressed(delay);
@@ -1371,10 +1405,8 @@ struct Phased {
     return false;
   }
   void onKeyPressed(int32_t) {
-    Assert(0);
   }
   void onKeyReleased(int32_t) {
-    Assert(0);
   }
 
   void forgetPastSignals() {
@@ -1507,10 +1539,8 @@ struct soundBufferWrapperAlgo {
     --index; // because index will be incremented in step before being used
   }
   void onKeyPressed(int32_t) {
-    Assert(0);
   }
   void onKeyReleased(int32_t) {
-    Assert(0);
   }
 
   T imag() const {
@@ -1557,10 +1587,8 @@ struct ConstOne {
     return false;
   }
   void onKeyPressed(int32_t) {
-    Assert(0);
   }
   void onKeyReleased(int32_t) {
-    Assert(0);
   }
 };
 
@@ -1748,10 +1776,8 @@ struct Mix {
     return false;
   }
   void onKeyPressed(int32_t) {
-    Assert(0);
   }
   void onKeyReleased(int32_t) {
-    Assert(0);
   }
 
   using T = typename NthTypeOf<0, AEs...>::FPT;
@@ -1850,10 +1876,8 @@ struct UnityGainMix {
     return false;
   }
   void onKeyPressed(int32_t) {
-    Assert(0);
   }
   void onKeyReleased(int32_t) {
-    Assert(0);
   }
 
   using T = typename NthTypeOf<0, AEs...>::FPT;
@@ -2346,10 +2370,8 @@ struct SineOscillatorAlgo {
   void forgetPastSignals() {
   }
   void onKeyPressed(int32_t) {
-    Assert(0);
   }
   void onKeyReleased(int32_t) {
-    Assert(0);
   }
 
   void setFiltersOrder(int order) const {
@@ -3197,26 +3219,12 @@ struct RingModulationAlgo {
     return false;
   }
   void onKeyPressed(int32_t delay) {
-    if constexpr (A1::hasEnvelope) {
-      osc1.onKeyPressed(delay);
-    }
-    if constexpr (A2::hasEnvelope) {
-      osc2.onKeyPressed(delay);
-    }
-    if constexpr (!A1::hasEnvelope && !A2::hasEnvelope) {
-      Assert(0);
-    }
+    osc1.onKeyPressed(delay);
+    osc2.onKeyPressed(delay);
   }
   void onKeyReleased(int32_t delay) {
-    if constexpr (A1::hasEnvelope) {
-      osc1.onKeyReleased(delay);
-    }
-    if constexpr (A2::hasEnvelope) {
-      osc2.onKeyReleased(delay);
-    }
-    if constexpr (!A1::hasEnvelope && !A2::hasEnvelope) {
-      Assert(0);
-    }
+    osc1.onKeyReleased(delay);
+    osc2.onKeyReleased(delay);
   }
 
   bool canHandleExplicitKeyReleaseNow(int32_t delay) const {
@@ -3240,5 +3248,104 @@ private:
 
 template<typename A1, typename A2>
 using RingModulation = FinalAudioElement<RingModulationAlgo<A1,A2>>;
+
+
+
+template<typename T>
+struct SamplerAlgo {
+  using MeT = SamplerAlgo<T>;
+  static constexpr auto hasEnvelope = false;
+  static constexpr auto isMonoHarmonic = true;
+  static constexpr auto baseVolume = reduceUnadjustedVolumes;
+  static constexpr int count_channels = 1;
+  
+  using Tr = NumTraits<T>;
+  using FPT = T;
+  
+  constexpr SamplerAlgo() {}
+  
+  auto const & getOsc() const { return *this; }
+  auto       & getOsc()       { return *this; }
+  
+  void setSamples(const std::map<T, std::vector<T>> * samples)
+  {
+    m_samples = samples;
+  }
+
+  void set_sample_rate(int s) {
+  }
+  
+  void setLoudnessParams(int sample_rate, int low_index, float log_ratio, float loudness_level) {
+  }
+  void forgetPastSignals() {
+  }
+  void onKeyPressed(int32_t delay) {
+    m_sampleProgress = -delay;
+  }
+  void onKeyReleased(int32_t delay) {
+    // If you want to rely on this functionality, use Envelopped to wrap this SamplerAlgo.
+  }
+  
+  void setFiltersOrder(int order) const {
+  }
+  
+  void synchronizeAngles(MeT const & other) {
+    // Only used to avoid phase cancellation issues, will likely not happen with samples
+    // (or if it happens it will not be simple to handle).
+  }
+  
+  void setStartAngle(T f) {
+  }
+  void setAngleIncrements(T ai) {
+    if (angle_increments && *angle_increments == ai) {
+      return;
+    }
+    angle_increments = ai;
+    Assert(m_samples);
+    if(m_samples)
+    {
+      auto it = m_samples->lower_bound(ai);
+      if(it == m_samples->end())
+        m_sample = nullptr;
+      else
+        m_sample = &it->second;      
+    }
+  }
+  
+  void step() {
+    ++m_sampleProgress;
+  }
+  
+  T imag() const {
+    if(m_sampleProgress < 0)
+      return 0.;
+    if(m_sample && m_sampleProgress < m_sample->size())
+    {
+      return (*m_sample)[m_sampleProgress];
+    }
+    return 0.;
+  }
+
+  T angle() const {
+    Assert(0); // TODO (?)
+    return 0.;
+  }
+  T angleIncrements() const {
+    // Or should we return the angle increment associated to the current sample?
+    Assert(angle_increments);
+    return *angle_increments;
+  }
+
+  bool isEnvelopeFinished() const {
+    Assert(0);
+    return false;
+  }
+
+private:
+  const std::map<T, std::vector<T>> * m_samples;
+  const std::vector<T> * m_sample{};
+  int64_t m_sampleProgress{};
+  std::optional<T> angle_increments;
+};
 
 } // NS imajuscule::audio::audioelement

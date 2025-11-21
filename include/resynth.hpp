@@ -5,14 +5,13 @@ template<typename T>
 void resynth(std::vector<DeducedNote<T>> const & notes,
              int const stride,
              int const sampling_rate,
-             DirectoryPath const & dir_wav,
-             FileName const & file_wav) {
+             const std::filesystem::path & path_wav) {
   // For now, simply "drive" audioelements, and manually mix them.
 
   using namespace audioelement;
 
   using AE = VolumeAdjusted<SineOscillatorAlgo<double>>; // no loudness volume adjustment
-  using Envelope = AHDSREnvelope<Atomicity::No, double, EnvelopeRelease::WaitForKeyRelease>;
+  using Envelope = AHDSREnvelope<Atomicity::No, double, EnvelopeRelease::WaitForKeyRelease, AllowZeroAttack::No>;
   using EnvelopedAE = Enveloped<AE, Envelope>;
 
   std::vector<std::unique_ptr<EnvelopedAE>> pool;
@@ -33,7 +32,7 @@ void resynth(std::vector<DeducedNote<T>> const & notes,
                     NChannels::ONE,
                     AudioSample<double>::format);
 
-  WAVWriter writer(dir_wav, file_wav, header);
+  WAVWriter writer(path_wav, header);
   writer.Initialize();
 
   auto recordFrame = [&pool, &writer] () {

@@ -12,7 +12,7 @@ FreqCtrl_<
 SineOscillatorAlgo<T, eNormalizePolicy::FAST>,
 InterpolatedFreq<T>
 >,
-AHDSREnvelope<Atomicity::Yes, T, EnvelopeRelease::WaitForKeyRelease>
+AHDSREnvelope<Atomicity::Yes, T, EnvelopeRelease::WaitForKeyRelease, AllowZeroAttack::No>
 >
 >
 >
@@ -45,7 +45,7 @@ PulseTrainAlgo<T>
 >,
 InterpolatedFreq<T>
 >,
-AHDSREnvelope<Atomicity::Yes, T, EnvelopeRelease::WaitForKeyRelease>
+AHDSREnvelope<Atomicity::Yes, T, EnvelopeRelease::WaitForKeyRelease, AllowZeroAttack::No>
 >,
 BaseVolumeDef::One // because it's used as a carrier
 >

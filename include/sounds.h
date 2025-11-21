@@ -16,15 +16,15 @@ namespace imajuscule::audio {
       using EnvelopeRelease = audioelement::EnvelopeRelease;
       
       std::array<audioelement::Square<
-        audioelement::AHDSREnvelope<A, float, EnvelopeRelease::WaitForKeyRelease>>,
+        audioelement::AHDSREnvelope<A, float, EnvelopeRelease::WaitForKeyRelease, audioelement::AllowZeroAttack::No>>,
         8
       > squares;
       std::array<
-        audioelement::Oscillator<audioelement::AHDSREnvelope<A, float, EnvelopeRelease::WaitForKeyRelease>>,
+        audioelement::Oscillator<audioelement::AHDSREnvelope<A, float, EnvelopeRelease::WaitForKeyRelease, audioelement::AllowZeroAttack::No>>,
         8>
       oscillators;
       std::array<audioelement::FreqRamp<
-        audioelement::AHDSREnvelope<A, float, EnvelopeRelease::WaitForKeyRelease>>,
+        audioelement::AHDSREnvelope<A, float, EnvelopeRelease::WaitForKeyRelease, audioelement::AllowZeroAttack::No>>,
         6>
       ramps;
 
@@ -35,7 +35,7 @@ namespace imajuscule::audio {
               audioelement::LowPassAlgo<audioelement::PulseTrainAlgo<float>, 1>,
               audioelement::SineOscillatorAlgo<float>
             >,
-            audioelement::AHDSREnvelope<A, float, EnvelopeRelease::WaitForKeyRelease>
+            audioelement::AHDSREnvelope<A, float, EnvelopeRelease::WaitForKeyRelease, audioelement::AllowZeroAttack::No>
           >
         >
       , 6> ringmods;

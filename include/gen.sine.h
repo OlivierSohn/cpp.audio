@@ -1,5 +1,5 @@
 // The name is historical : initially we were using only sine oscillators with
-// this synth, but it is suited to all kinds of oscillators
+// this synth, but it is suited to all kinds of oscillators / samplers.
 namespace imajuscule::audio::sine {
 
   struct SynthImpl {

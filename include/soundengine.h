@@ -246,7 +246,7 @@ namespace imajuscule::audio::audioelement {
       audioelement::VolumeAdjusted<
       audioelement::Enveloped <
       Algo,
-      audioelement::AHDSREnvelope<A, FPT, audioelement::EnvelopeRelease::WaitForKeyRelease>
+      audioelement::AHDSREnvelope<A, FPT, audioelement::EnvelopeRelease::WaitForKeyRelease, Algo::EnsuresSmoothAttack ? AllowZeroAttack::Yes : AllowZeroAttack::No>
       >
       >;
       
@@ -345,7 +345,7 @@ namespace imajuscule::audio::audioelement {
         if(auto i = goOn()) {
           stop(i); // TODO we should delay the stop
           for(auto & r: ramps) {
-            r.editEnvelope().onKeyReleased(delay);
+            r.onKeyReleased(delay);
           }
         }
       }
@@ -796,8 +796,8 @@ namespace imajuscule::audio::audioelement {
           static_cast<int>(.5f + new_ramp->getVolumeAdjustment().getOsc().getAlgo().getCtrl().get_duration_in_samples()) - xfade_len;
         Assert(time_to_release >= 0);
 
-        new_ramp->editEnvelope().onKeyPressed(0);
-        new_ramp->editEnvelope().onKeyReleased(std::max(time_to_release, 0));
+        new_ramp->onKeyPressed(0);
+        new_ramp->onKeyReleased(std::max(time_to_release, 0));
      }
 
     public:

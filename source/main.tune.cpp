@@ -1,14 +1,13 @@
 #if 0
 
+automatiser la detection de samples. 
+
+Tenir compte de la range de samples dans le streaming du pitch midi
+pour produire des picthes valides.
+
 Sampler le violoncelle pour utiliser les samples dans le pdf feuillard.
 - sons courts, piano.
 
-creer un audioelement qui permet d'associer un sample a un pitch (angle increment).
-
-currently audioelements are controlled by angle increment (not frequency, not pitch)
-there is a notion of startAngle which will not apply to the sampler (rather applies to oscillators).
-
-  
 Analyse d'un enregistrement pour la justesse, pour voir les tendances que j'ai.
 
 Analyse en temps reel de la justesse?
@@ -19,8 +18,17 @@ namespace imajuscule::audio {
 
 namespace audioelement {
 
+// The base oscillator (SineOscillatorAlgo) is a sine wave
+// and we define harmonics (MultiEnveloped).
+//
+// An alternative approach would be to use a more complex base oscillator
+// without explicitely defning harmonis, for example:
+// FOscillatorAlgo<T, FOscillator::SAW, OscillatorUsage::Raw>
+// FOscillatorAlgo<T, FOscillator::TRIANGLE, OscillatorUsage::Raw>
+// FOscillatorAlgo<T, FOscillator::SQUARE, OscillatorUsage::Raw>
+
 template <typename T>
-using TuneElement =
+using TuneOscElement =
 //StereoPanned<
 LowPassAlgo<
 VolumeAdjusted<
@@ -31,19 +39,17 @@ MultiEnveloped
 SineOscillatorAlgo<T, eNormalizePolicy::FAST>
 //, InterpolatedFreq<T>
 //>
-, AHDSREnvelope<Atomicity::Yes, T, EnvelopeRelease::WaitForKeyRelease>
+, AHDSREnvelope<Atomicity::Yes, T, EnvelopeRelease::WaitForKeyRelease, AllowZeroAttack::No>
 >
 >
-,
-2
+, 2
 >
 //>
 ;
 
-
 template<typename T>
-struct TuneElementInitializer {
-  TuneElementInitializer(int const sample_rate,
+struct TuneOscElementInitializer {
+  TuneOscElementInitializer(int const sample_rate,
                          int const stride,
                          float const stereo_spread,
                          float lowPassFreq,
@@ -57,7 +63,7 @@ struct TuneElementInitializer {
   , m_lowPassFreq(lowPassFreq)
   {}
   
-  void operator()(audioelement::TuneElement<T> & e) const {
+  void operator()(audioelement::TuneOscElement<T> & e) const {
     // order is important, first set harmonics then AHDSR
     e.editEnvelope().setHarmonics(m_harmonics,
                                   sample_rate);
@@ -78,12 +84,12 @@ struct TuneElementInitializer {
     //                                                           itp::LINEAR);
   }
   
-  bool operator ==(TuneElementInitializer const& o) const {
+  bool operator ==(TuneOscElementInitializer const& o) const {
     return
-    std::make_tuple(sample_rate, stride, stereo_spread_, ahdsr) ==
-    std::make_tuple(o.sample_rate, o.stride, o.stereo_spread_, o.ahdsr);
+    std::tie(sample_rate, stride, stereo_spread_, m_lowPassFreq, ahdsr, m_harmonics) ==
+    std::tie(o.sample_rate, o.stride, o.stereo_spread_, o.m_lowPassFreq, o.ahdsr, o.m_harmonics);
   }
-  bool operator !=(TuneElementInitializer const& o) const {
+  bool operator !=(TuneOscElementInitializer const& o) const {
     return !this->operator ==(o);
   }
   
@@ -94,6 +100,78 @@ private:
   float m_lowPassFreq;
   audioelement::AHDSR ahdsr;
   std::vector<harmonicProperties_t> m_harmonics;
+};
+
+
+
+// TODO: later, find a way to artificially make the sample longer to play long notes.
+template <typename T>
+using TuneSamplerElement =
+//StereoPanned<
+//LoudnessVolumeAdjusted<
+//LowPassAlgo< // is this needed?
+VolumeAdjusted<
+Enveloped <
+//FreqCtrl_<
+audioelement::SamplerAlgo<T>
+//, InterpolatedFreq<T>
+, AHDSREnvelope<Atomicity::Yes, T, EnvelopeRelease::WaitForKeyRelease, AllowZeroAttack::Yes>
+>
+>
+//, 2 >
+//>
+//>
+;
+
+template<typename T>
+struct TuneSamplerElementInitializer {
+  TuneSamplerElementInitializer(int const sample_rate,
+                                int const stride,
+                                audioelement::AHDSR const & a,
+                                std::reference_wrapper<const std::map<T, std::vector<T>>> samples)
+  : sample_rate(sample_rate)
+  , stride(stride)
+  , ahdsr(a)
+  , m_samples(samples)
+  {}
+  
+  void operator()(audioelement::TuneSamplerElement<T> & e) const {
+
+    e.getOsc().getOsc().setSamples(&m_samples.get());
+
+    e.editEnvelope().setAHDSR(ahdsr,
+                              sample_rate);
+    
+    // limit the speed of volume adjustment:
+    
+    e.getVolumeAdjustment().setMaxFilterIncrement(2. / static_cast<double>(stride));
+    
+    // filtering
+    
+    //e.setFilterAngleIncrements(freq_to_angle_increment(m_lowPassFreq,
+    //                                                   sample_rate));
+
+    // frequency control
+    
+    //e.getVolumeAdjustment().getOsc().getAlgo().getCtrl().setup(stride,
+    //                                                           itp::LINEAR);
+  }
+  
+  bool operator ==(TuneSamplerElementInitializer const& o) const {
+    return
+    std::tie(sample_rate, stride, ahdsr, m_harmonics, m_samples) ==
+    std::tie(o.sample_rate, o.stride, o.ahdsr, o.m_harmonics, o.m_samples);
+  }
+  bool operator !=(TuneSamplerElementInitializer const& o) const {
+    return !this->operator ==(o);
+  }
+  
+private:
+  int sample_rate;
+  int stride;
+  audioelement::AHDSR ahdsr;
+  std::vector<harmonicProperties_t> m_harmonics;
+  std::reference_wrapper<const std::map<T, std::vector<T>>> m_samples;
 };
 
 } // NS audioelement
@@ -192,6 +270,15 @@ struct EventStream
   // Calling materializeNextEvents after StreamStatus::EndOfStream
   // will return StreamStatus::EndOfStream until startStream is called.
   virtual StreamStatus materializeNextEvents(Events & events, TimeNanos maxTime) = 0;
+};
+
+struct NullEventStream: public EventStream
+{
+  void startStream(TimeNanos refTime) override {}
+  
+  void stopStream() override {}
+  
+  StreamStatus materializeNextEvents(Events & events, TimeNanos maxTime) override { return StreamStatus::EndOfStream; }
 };
 
 struct LoopEventStream : public EventStream
@@ -904,24 +991,91 @@ EventStreamFromBinary::materializeNextEvents(Events & events, TimeNanos maxTime)
 }
 
 constexpr int nAudioOut = 2;
-constexpr int m_sampleRate{96000};      
+constexpr int m_sampleRate{
+  //96000
+  44100
+};
 auto ms_to_frames (float ms){
   return audio::ms_to_frames(ms, m_sampleRate);
 }
 
-struct SynthDef
-{
-  static constexpr int nVoices = 128;
+struct SynthDef{
+  // We probably only need a few voices,
+  // in particular for synths that play one note at a time.
+  static constexpr int nVoices = 32;
+    
+  // This file defines the envelope of the synthesizer.
+  //
+  // The following syntax is used in this file:
+  // A .
+  // H ..
+  // D ....
+  // S ...
+  // R ...
+  std::filesystem::path envelopeFile{"/Users/Olivier/Dev/cpp.audio/Synth/EnvelopeFast.txt"};
+  
+  // Represents the max time of the synth files that were
+  // last used to produce the AE initializer.
+  // This is a way to avoid reading multiple time the same file content.
+  std::optional<std::filesystem::file_time_type> m_lastWriteSynthFiles;
 
-  using Synth = sine::Synth <
+  void setEnvelopeFile(std::filesystem::path e)
+  {
+    if(e == envelopeFile)
+      return;
+    std::cout << "Using envelope " << e << std::endl;
+    envelopeFile = e;
+    m_lastWriteSynthFiles.reset();
+  }
+
+  audioelement::AHDSR mkEnvelope() const;
+};
+
+
+audioelement::AHDSR SynthDef::mkEnvelope() const
+{
+  std::ifstream file(envelopeFile);
+  std::string str;
+  std::map<char, int> e;
+  e['a'] = 0;
+  e['h'] = 0;
+  e['d'] = 0;
+  e['s'] = 0;
+  e['r'] = 0;
+  const float constant = 10.f;
+  while (std::getline(file, str))
+  {
+    if(!str.empty())
+      e[tolower(str[0])] = constant * std::count(str.begin(), str.end(), '.');
+  }
+  return audioelement::AHDSR{
+    // attack
+    ms_to_frames(e['a']),
+    itp::interpolation::LINEAR,
+    // hold
+    ms_to_frames(e['h']),
+    // decay
+    ms_to_frames(e['d']),
+    itp::interpolation::EASE_OUT_CUBIC,
+    // release
+    ms_to_frames(e['r']),
+    itp::interpolation::EASE_OUT_CUBIC,
+    // sustain
+    0.1f * e['s'] / constant
+  };
+}
+
+struct OscSynthDef : public SynthDef
+{
+  using OscSynth = sine::Synth <
   nAudioOut,
-  audioelement::TuneElement<double>,
+  audioelement::TuneOscElement<double>,
   TryAccountForTimeSourceJitter::No,
   SynchronizePhase::Yes,
   DefaultStartPhase::Zero,
   HandleNoteOff::Yes,
   nVoices,
-  audioelement::TuneElementInitializer<double>>;
+  audioelement::TuneOscElementInitializer<double>>;
 
   void updateInitializerIfNeeded();
 
@@ -930,14 +1084,6 @@ struct SynthDef
     if(e == harmonicsFile)
       return;
     harmonicsFile = e;
-    m_lastWriteSynthFiles.reset();
-  }
-  void setEnvelopeFile(std::filesystem::path e)
-  {
-    if(e == envelopeFile)
-      return;
-    std::cout << "Using envelope " << e << std::endl;
-    envelopeFile = e;
     m_lastWriteSynthFiles.reset();
   }
   
@@ -951,30 +1097,61 @@ struct SynthDef
   // ...    // 4th harmonic has a relative weight 3
   std::filesystem::path harmonicsFile{"/Users/Olivier/Dev/cpp.audio/Synth/Harmonics.txt"};
   
-  // This file defines the envelope of the synthesizer.
-  //
-  // The following syntax is used in this file:
-  // A .
-  // H ..
-  // D ....
-  // S ...
-  // R ...
-  std::filesystem::path envelopeFile{"/Users/Olivier/Dev/cpp.audio/Synth/EnvelopeFast.txt"};
-  
   std::filesystem::path lowPassFile{"/Users/Olivier/Dev/cpp.audio/Synth/LowPass.txt"};
-  
-  // Represents the min time of the harmonics/envelope files that were
-  // last used to produce the AE initializer.
-  std::optional<std::filesystem::file_time_type> m_lastWriteSynthFiles;
-  
-  Synth m_synth;    
+    
+  OscSynth m_synth;    
 };
 
+
+struct SamplerSynthDef : public SynthDef
+{  
+  using SamplerSynth = sine::Synth <
+  nAudioOut,
+  audioelement::TuneSamplerElement<double>,
+  TryAccountForTimeSourceJitter::No,
+  SynchronizePhase::Yes,
+  DefaultStartPhase::Zero,
+  HandleNoteOff::Yes,
+  nVoices,
+  audioelement::TuneSamplerElementInitializer<double>>;
+  
+  void updateInitializerIfNeeded(std::map<double, std::vector<double>> const& samples);
+  
+  SamplerSynth m_synth;    
+};
+
+std::map<double, std::vector<double>> readSamples()
+{
+  auto folder = std::filesystem::path{"/Users/Olivier/Music/Samples"};
+  Midi midi;
+  std::vector<std::pair<NoteOctave, std::filesystem::path>> files{
+    {NoteOctave{Note::Do, 4}, "Do1.wav"},
+    {NoteOctave{Note::Mi, 4}, "Mi1.wav"},
+    {NoteOctave{Note::Fa, 4}, "Fa1.wav"},
+    {NoteOctave{Note::Sol, 4}, "Sol1.wav"},
+  };
+  
+  std::map<double, std::vector<double>> res;
+  for(const auto & [noteOctave, f] : files)
+  {
+    auto reader = WAVReader(folder / f);
+    
+    std::vector<std::vector<double>> deinterlaced;
+    read_wav_as_floats(reader, deinterlaced);
+    if(deinterlaced.empty())
+      throw std::logic_error("Failed to read sample");
+    auto pitch = midi.get_pitch(noteOctave);
+    auto freq = midi.midi_pitch_to_freq(pitch);
+    auto ai = freq_to_angle_increment(freq, m_sampleRate);
+    res[ai] = deinterlaced[0];
+  }
+  return res;
+}
 
 // Main class.
 struct AppTune
 {
-  AppTune(size_t countSynths);
+  AppTune(size_t countOscSynths, size_t countSamplerSynths);
   ~AppTune();
   
   void playEventStreams(std::vector<std::unique_ptr<EventStream>>& streams);
@@ -987,7 +1164,8 @@ struct AppTune
     playEventStreams(streams);
   }
   
-  SynthDef& synth(size_t i) {return m_synths[i];}
+  OscSynthDef& oscSynth(size_t i) {return m_oscSynths[i];}
+  SamplerSynthDef& samplerSynth(size_t i) {return m_samplerSynths[i];}
 private:
   
   static constexpr auto audioEnginePolicy = AudioOutPolicy::MasterLockFree;
@@ -1006,7 +1184,10 @@ private:
   
   Ctxt m_ctxt;
   Stepper m_stepper;
-  std::vector<SynthDef> m_synths;
+  std::vector<OscSynthDef> m_oscSynths;
+  std::vector<SamplerSynthDef> m_samplerSynths;
+
+  std::map<double, std::vector<double>> m_samples;
 
   std::atomic<size_t> m_countCinChars{};
   std::atomic_bool m_runCinListener{true};
@@ -1014,16 +1195,27 @@ private:
   
   void updateInitializersIfNeeded();
   
-  void allNotesOff() {
-    for(auto & s : m_synths)
-      s.m_synth.allNotesOff(m_stepper);
+  template<typename F>
+  void forEachSynth(F && f)
+  {
+    for(auto & s : m_oscSynths)
+      f(s);
+    for(auto & s : m_samplerSynths)
+      f(s);
   }
+
+  void allNotesOff() {
+    forEachSynth([&](auto & s){
+      s.m_synth.allNotesOff(m_stepper);      
+    });
+  }  
 };
 
-AppTune::AppTune(size_t countSynths)
+AppTune::AppTune(size_t countOscSynths, size_t countSamplerSynths)
 : m_stepper(GlobalAudioLock<audioEnginePolicy>::get(),
-            countSynths * SynthDef::Synth::n_channels * 4 /* one shot */,
-            countSynths * 1 /* a single compute is needed per synth*/)
+            countOscSynths * OscSynthDef::OscSynth::n_channels * 4 /* one shot */ +
+            countSamplerSynths * SamplerSynthDef::SamplerSynth::n_channels * 4 /* one shot */,
+            (countOscSynths + countSamplerSynths) * 1 /* a single compute is needed per synth*/)
 , m_cinListener{[&]()
   {
     std::string str;
@@ -1039,10 +1231,16 @@ AppTune::AppTune(size_t countSynths)
       {}
     }
   }}
-, m_synths(countSynths)
+, m_oscSynths(countOscSynths)
+, m_samplerSynths(countSamplerSynths)
 {
-  for(auto & synth : m_synths)
+  if(countSamplerSynths)
+  {
+    m_samples = readSamples();
+  }
+  forEachSynth([&](auto&synth){
     synth.m_synth.initialize(m_stepper);
+  });
   
   if (!m_ctxt.doInit(0.008,
                      m_sampleRate,
@@ -1065,8 +1263,9 @@ AppTune::AppTune(size_t countSynths)
 
 AppTune::~AppTune()
 {
-  for(auto & synth : m_synths)
+  forEachSynth([&](auto&synth){
     synth.m_synth.finalize(m_stepper);
+  });
   
   // We sleep so that the audio produced during finalization has a chance to be played
   // (taking into account the delay between when the audio is written in the buffer
@@ -1082,11 +1281,13 @@ AppTune::~AppTune()
 
 void AppTune::updateInitializersIfNeeded()
 {
-  for(auto & s : m_synths)
-    s.updateInitializerIfNeeded();
+  for(auto & synth : m_oscSynths)
+    synth.updateInitializerIfNeeded();
+  for(auto & synth : m_samplerSynths)
+    synth.updateInitializerIfNeeded(m_samples);
 }
 
-void SynthDef::updateInitializerIfNeeded()
+void OscSynthDef::updateInitializerIfNeeded()
 {
   {
     const std::filesystem::file_time_type newLastWriteHarmonics =
@@ -1149,49 +1350,36 @@ void SynthDef::updateInitializerIfNeeded()
       });
     return res;
   };
-  
-  auto mkEnvelope = [&]()
-  {
-    std::ifstream file(envelopeFile);
-    std::string str;
-    std::map<char, int> e;
-    e['a'] = 0;
-    e['h'] = 0;
-    e['d'] = 0;
-    e['s'] = 0;
-    e['r'] = 0;
-    const float constant = 10.f;
-    while (std::getline(file, str))
-    {
-      if(!str.empty())
-        e[tolower(str[0])] = constant * std::count(str.begin(), str.end(), '.');
-    }
-    return audioelement::AHDSR{
-      // attack
-      ms_to_frames(e['a']),
-      itp::interpolation::LINEAR,
-      // hold
-      ms_to_frames(e['h']),
-      // decay
-      ms_to_frames(e['d']),
-      itp::interpolation::EASE_OUT_CUBIC,
-      // release
-      ms_to_frames(e['r']),
-      itp::interpolation::EASE_OUT_CUBIC,
-      // sustain
-      0.1f * e['s'] / constant
-    };
-  };
-  std::vector<harmonicProperties_t> harmonics = mkHarmonics();
-  audioelement::AHDSR env = mkEnvelope();
-  
-  auto initializer = audioelement::TuneElementInitializer<double>{
+    
+  auto initializer = audioelement::TuneOscElementInitializer<double>{
     m_sampleRate,
     1, // not used,
     0., // not used,
     mkLowPass(),
-    env,
-    harmonics
+    mkEnvelope(),
+    mkHarmonics()
+  };
+  m_synth.setSynchronousElementInitializer(initializer);
+}
+
+
+void SamplerSynthDef::updateInitializerIfNeeded(std::map<double, std::vector<double>> const& samples)
+{
+  {
+    const std::filesystem::file_time_type newLastWriteHarmonics =
+      std::filesystem::last_write_time(envelopeFile);
+    if(m_lastWriteSynthFiles.has_value() && newLastWriteHarmonics <= *m_lastWriteSynthFiles)
+      // No need to update, the files have not changed since last time the initializer has been updated.
+      return;
+    // This initializer update will affect any note that has not started yet.
+    m_lastWriteSynthFiles = newLastWriteHarmonics;
+  }
+  
+  auto initializer = audioelement::TuneSamplerElementInitializer<double>{
+    m_sampleRate,
+    1, // not used,
+    mkEnvelope(),
+    std::reference_wrapper{samples}
   };
   m_synth.setSynchronousElementInitializer(initializer);
 }
@@ -1505,8 +1693,9 @@ void AppTune::playEventStreams(std::vector<std::unique_ptr<EventStream>>& stream
   }
 
   const auto sz = streams.size();
-  if(sz > m_synths.size())
+  if(sz > (m_oscSynths.size() + m_samplerSynths.size()))
     throw std::logic_error("too many streams");
+  const auto firstSamplerIdx = m_oscSynths.size();
 
   Events events;
   for(;;)
@@ -1538,11 +1727,22 @@ void AppTune::playEventStreams(std::vector<std::unique_ptr<EventStream>>& stream
       {
         for(const auto & event : events)
         {
-          auto const res = m_synths[i].m_synth.onEvent(m_sampleRate,
-                                           event.second,
-                                           m_stepper,
-                                           m_stepper,
-                                           event.first);
+          if(i < firstSamplerIdx)
+          {
+            auto const res = m_oscSynths[i].m_synth.onEvent(m_sampleRate,
+                                                            event.second,
+                                                            m_stepper,
+                                                            m_stepper,
+                                                            event.first);
+          }
+          else
+          {
+            auto const res = m_samplerSynths[i - firstSamplerIdx].m_synth.onEvent(m_sampleRate,
+                                                                                  event.second,
+                                                                                  m_stepper,
+                                                                                  m_stepper,
+                                                                                  event.first);            
+          }
         }
         continue;
       }
@@ -1565,11 +1765,10 @@ void AppTune::playEventStreams(std::vector<std::unique_ptr<EventStream>>& stream
 
   // All notes have started (and stopped) but some envelope tails may still be active.
   
-  for(auto & synth : m_synths)
+  forEachSynth([](auto&synth){
     while(!synth.m_synth.allEnvelopesFinished())
-    {
       std::this_thread::yield();
-    }
+  });
 }
 
 // moduloPitch is a way to reduce the range of generated pitches.
@@ -1606,12 +1805,75 @@ Loop moduloPitch(Loop && l)
 
 } // NS
 
-int main() {
+
+// This function has as many explicit parameters as possible,
+// so that if we change the defaults later on we will be able to replay
+// the music.
+void playFeuillardTwoVoices()
+{
   using namespace imajuscule::audio;
   using namespace std::filesystem;
 
-  const size_t countSynths{2};
-  auto a = AppTune{countSynths};
+  const size_t countOscSynths{2};
+  const size_t countSamplerSynths{0};
+  auto a = AppTune{countOscSynths, countSamplerSynths};
+
+  const path fastEnv{synth / "EnvelopeFast.txt"};
+  const path fastFunEnv{synth / "EnvelopeFastFun.txt"};
+
+  const path harSimple{synth / "HarmonicsSimple.txt"};
+  const path har{synth / "Harmonics.txt"};
+
+  const path lowPass{synth / "LowPass.txt"};
+  
+  a.oscSynth(0).lowPassFile = lowPass;
+  a.oscSynth(0).setHarmonicsFile(harSimple);
+  a.oscSynth(0).setEnvelopeFile(fastFunEnv);
+
+  a.oscSynth(1).lowPassFile = lowPass;
+  a.oscSynth(1).setHarmonicsFile(har);
+  a.oscSynth(1).setEnvelopeFile(fastEnv);
+  
+  const auto file = "/Users/Olivier/Downloads/IMSLP874967-PMLP1036212-Feuillard_La_Technique_du_Violoncelle_Vol.4.pdf";
+  
+  const auto timing1 = EventsTiming{0.09};
+  auto stream1 = toEventStream(streamFromBinaryPitchesEncoding(file, timing1, Polyphony{1}), timing1);
+  const auto timing2 = EventsTiming{0.18};
+  auto stream2 = toEventStream(streamFromBinaryPitchesEncoding(file, timing2, Polyphony{1}), timing2);
+  // ^^ With:
+  //              polyphony  speed
+  // - stream1    1          2
+  // - stream2    1          1
+  //
+  // Both stream play the same melody but one plays at half speed,
+  // which results in interesting patterns.
+  
+  // ^^ With:
+  //              polyphony  speed
+  // - stream1    1          2   
+  // - stream2    2          1
+  //
+  // The "slow" stream (stream2) plays simultaneously the 2 notes
+  // that the fast stream (stream1) plays in sequence.
+  // This is interesting but not as interesting as the previous set of settings.
+  
+  std::vector<std::unique_ptr<EventStream>> streams;
+  streams.push_back(std::move(stream1));
+  streams.push_back(std::move(stream2));
+  a.playEventStreams(streams);
+}
+
+int main() {
+#if 0
+  playFeuillardTwoVoices();
+#else
+
+  using namespace imajuscule::audio;
+  using namespace std::filesystem;
+
+  const size_t countOscSynths{2};
+  const size_t countSamplerSynths{2};
+  auto a = AppTune{countOscSynths, countSamplerSynths};
     
   // The ZeroEnvelope file produces drum sounds.
   const path zeroEnv{synth / "EnvelopeZero.txt"};
@@ -1621,11 +1883,11 @@ int main() {
 
   const path harSimple{synth / "HarmonicsSimple.txt"};
 
-  a.synth(0).setHarmonicsFile(harSimple);
+  a.oscSynth(0).setHarmonicsFile(harSimple);
 
   for(auto const &env : {zeroEnv, fastFunEnv})
   {
-    a.synth(0).setEnvelopeFile(env);
+    a.oscSynth(0).setEnvelopeFile(env);
 
     const auto file = "/Users/Olivier/Downloads/IMSLP874967-PMLP1036212-Feuillard_La_Technique_du_Violoncelle_Vol.4.pdf";
 
@@ -1633,26 +1895,17 @@ int main() {
     auto stream1 = toEventStream(streamFromBinaryPitchesEncoding(file, timing1, Polyphony{1}), timing1);
     const auto timing2 = EventsTiming{0.18};
     auto stream2 = toEventStream(streamFromBinaryPitchesEncoding(file, timing2, Polyphony{1}), timing2);
-    // ^^ With:
-    //              polyphony  speed
-    // - stream1    1          2
-    // - stream2    1          1
-    //
-    // Both stream play the same melody but one plays at half speed,
-    // which results in interesting patterns.
-    
-    // ^^ With:
-    //              polyphony  speed
-    // - stream1    1          2   
-    // - stream2    2          1
-    //
-    // The "slow" stream (stream2) plays simultaneously the 2 notes
-    // that the fast stream (stream1) plays in sequence.
     
     std::vector<std::unique_ptr<EventStream>> streams;
+    // osc synth streams:
+    streams.push_back(std::make_unique<NullEventStream>());
+    streams.push_back(std::make_unique<NullEventStream>());
+    // sampler synth streams:
     streams.push_back(std::move(stream1));
     streams.push_back(std::move(stream2));
+    
     a.playEventStreams(streams);
+
 /*
     a.playLoop(moduloPitch(loopFromBinary(file, Polyphony{1})), 1);
 
@@ -1666,5 +1919,6 @@ int main() {
     a.playLoop(mkEvents(250), 1);
  */
   }
+#endif
   return 0;
 }

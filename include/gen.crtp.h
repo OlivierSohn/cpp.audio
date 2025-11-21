@@ -302,7 +302,7 @@ public:
     MIDI_LG(INFO, "all notes off");
     chans.enqueueOneShot([this](auto &, auto){
       for(auto & c : seconds(channels)) {
-        c.elem.editEnvelope().onKeyReleased(0);
+        c.elem.onKeyReleased(0);
       }
     });
   }
@@ -312,7 +312,7 @@ public:
     MIDI_LG(INFO, "all sounds off");
     chans.enqueueOneShot([this](auto &, auto){
       for(auto & c : seconds(channels)) {
-        c.elem.editEnvelope().onKeyReleased(0);
+        c.elem.onKeyReleased(0);
       }
     });
   }
@@ -510,18 +510,18 @@ public:
                 // we're late.
                 // Note: to avoid this case when the events are sent over the network for example,
                 //       the caller can use TryPreventTimeSourceJitter::Yes.
-                c.elem.editEnvelope().onKeyPressed(0);
+                c.elem.onKeyPressed(0);
                 if constexpr (Jitter == TryAccountForTimeSourceJitter::Yes)
                   c.midiTimeDelay = {{delayNanos + (curTimeNanos - targetNanos), srcKey}};
               } else {
                 // we're on time.
-                c.elem.editEnvelope().onKeyPressed(nanoseconds_to_frames(targetNanos-curTimeNanos,
+                c.elem.onKeyPressed(nanoseconds_to_frames(targetNanos-curTimeNanos,
                                                                          sample_rate));
                 if constexpr (Jitter == TryAccountForTimeSourceJitter::Yes)
                   c.midiTimeDelay = {{delayNanos, srcKey}};
               }
             } else {
-              c.elem.editEnvelope().onKeyPressed(0);
+              c.elem.onKeyPressed(0);
               if constexpr (Jitter == TryAccountForTimeSourceJitter::Yes)
                 c.midiTimeDelay.reset();
             }
@@ -564,8 +564,8 @@ public:
               
               auto delay = (targetNanos < curTimeNanos) ? 0 : nanoseconds_to_frames(targetNanos-curTimeNanos,
                                                                                     sample_rate);
-              if(c.elem.getEnvelope().canHandleExplicitKeyReleaseNow(delay)) {
-                c.elem.editEnvelope().onKeyReleased(delay);
+              if(c.elem.canHandleExplicitKeyReleaseNow(delay)) {
+                c.elem.onKeyReleased(delay);
               }
               else{
                 // This can happen when for the same note id, we schedule
@@ -574,8 +574,8 @@ public:
               }
             } else {
               Assert(!c.midiTimeDelay);
-              if(c.elem.getEnvelope().canHandleExplicitKeyReleaseNow(0)) {
-                c.elem.editEnvelope().onKeyReleased(0);
+              if(c.elem.canHandleExplicitKeyReleaseNow(0)) {
+                c.elem.onKeyReleased(0);
               }
               else
               {
