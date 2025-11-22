@@ -1,9 +1,9 @@
 #if 0
 
-automatiser la detection de samples. 
-
-Tenir compte de la range de samples dans le streaming du pitch midi
-pour produire des picthes valides.
+Sample en boucle, en definissant:
+- frame 1
+- frame 2 (avant ou apres frame 1)
+utilisant les marker wav, region wav ou un fichier separe.
 
 Sampler le violoncelle pour utiliser les samples dans le pdf feuillard.
 - sons courts, piano.
@@ -874,6 +874,7 @@ MidiPitchStreamFromBinary::restart()
 
 void MidiPitchStreamFromBinary::reinitCycles()
 {
+  // 48/12 = 4 (octaves)
   int maxByte = 48;
   if(m_midiPitchRange.min && m_midiPitchRange.max)
   {
@@ -1083,6 +1084,7 @@ audioelement::AHDSR SynthDef::mkEnvelope() const
     ms_to_frames(e['r']),
     itp::interpolation::EASE_OUT_CUBIC,
     // sustain
+    // 10 dots in the file mean a sustain of 1 (which is the max sustain value).
     0.1f * e['s'] / constant
   };
 }
@@ -1120,13 +1122,25 @@ struct OscSynthDef : public SynthDef
   std::filesystem::path harmonicsFile{"/Users/Olivier/Dev/cpp.audio/Synth/Harmonics.txt"};
   
   std::filesystem::path lowPassFile{"/Users/Olivier/Dev/cpp.audio/Synth/LowPass.txt"};
-    
+
+  OscSynth & mutSynth() { return m_synth; }
+private:
   OscSynth m_synth;    
 };
 
 
+struct SamplesDef
+{
+  const std::map<double, std::vector<double>> * samplesPtr{};
+  MidiPitchRange range;
+};
+
 struct SamplerSynthDef : public SynthDef
-{  
+{
+  void setSamples(const SamplesDef& s) {
+    m_samplesDef = s;
+  }
+
   using SamplerSynth = sine::Synth <
   nAudioOut,
   audioelement::TuneSamplerElement<double>,
@@ -1137,9 +1151,14 @@ struct SamplerSynthDef : public SynthDef
   nVoices,
   audioelement::TuneSamplerElementInitializer<double>>;
   
-  void updateInitializerIfNeeded(std::map<double, std::vector<double>> const& samples);
+  void updateInitializerIfNeeded();
   
-  SamplerSynth m_synth;    
+  MidiPitchRange const & samplerMidiPitchRange() const { return m_samplesDef.range; }
+  SamplerSynth& mutSynth() { return m_synth; }
+
+private:
+  SamplerSynth m_synth;
+  SamplesDef m_samplesDef;
 };
 
 struct SampleRange
@@ -1319,7 +1338,9 @@ writeSamples(std::filesystem::path const & samplesFile,
              std::filesystem::path const & outDir)
 {
   if(std::filesystem::exists(outDir) && !std::filesystem::is_empty(outDir))
+  {
     throw std::logic_error("out dir is not empty");
+  }
   
   std::filesystem::create_directories(outDir);
   
@@ -1405,7 +1426,7 @@ writeSamples(std::filesystem::path const & samplesFile,
 }
 
 void
-makeSamples(std::filesystem::path const & samplesFile,
+makeSamplesIfDirEmpty(std::filesystem::path const & samplesFile,
             std::filesystem::path const & outDir,
             const DurationNanos slidingAverageDuration = DurationNanos(0.34 * 1e6), // 15 / 44100 
             const DurationNanos minSampleDuration = DurationNanos(150 * 1e6),
@@ -1416,6 +1437,12 @@ makeSamples(std::filesystem::path const & samplesFile,
             // separated by ~15 milliseconds of low amplitude signal.
             const DurationNanos lookAhead = DurationNanos(40 * 1e6))
 {
+  if(std::filesystem::exists(outDir) && !std::filesystem::is_empty(outDir))
+  {
+    std::cout << "WARN: skip samples generation, out dir is not empty" << std::endl;
+    return;
+  }
+
   // Do computeSampleRanges on each channel, then
   // - merge ranges that overlap across channels.
   // - discard ranges that are smaller than 'minSampleDuration'.
@@ -1472,20 +1499,11 @@ readSamples(std::filesystem::path const & dir)
 
 constexpr const char * c_samplesDir = "/Users/Olivier/Music/Samples/gen";
 
-std::map<double, std::vector<double>>
-readSamples(MidiPitchRange& range)
+std::unique_ptr<std::map<double, std::vector<double>>>
+readSamples(const std::filesystem::path& folder, MidiPitchRange& range)
 {
   range = {};
-#if 0
-  auto folder = std::filesystem::path{"/Users/Olivier/Music/Samples/Manual"};
-  const std::vector<std::pair<NoteOctave, std::filesystem::path>> files{
-    {NoteOctave{Note::Do, 4}, "Do1.wav"},
-    {NoteOctave{Note::Mi, 4}, "Mi1.wav"},
-    {NoteOctave{Note::Fa, 4}, "Fa1.wav"},
-    {NoteOctave{Note::Sol, 4}, "Sol1.wav"},
-  };
-#endif
-  auto folder = std::filesystem::path{c_samplesDir};
+
   const std::vector<std::pair<NoteOctave, std::filesystem::path>> files = readSamples(folder);
 
   Midi midi;
@@ -1505,13 +1523,13 @@ readSamples(MidiPitchRange& range)
     auto ai = freq_to_angle_increment(freq, m_sampleRate);
     res[ai] = interlaced;
   }
-  return res;
+  return std::make_unique<std::map<double, std::vector<double>>>(std::move(res));
 }
 
 // Main class.
 struct AppTune
 {
-  AppTune(size_t countOscSynths, size_t countSamplerSynths);
+  AppTune(size_t countOscSynths, const std::vector<SamplesDef>& vecSamples);
   ~AppTune();
   
   void playEventStreams(std::vector<std::unique_ptr<EventStream>>& streams);
@@ -1526,7 +1544,6 @@ struct AppTune
   
   OscSynthDef& oscSynth(size_t i) {return m_oscSynths[i];}
   SamplerSynthDef& samplerSynth(size_t i) {return m_samplerSynths[i];}
-  MidiPitchRange const & samplerMidiPitchRange() const { return m_samplerMidiPitchRange; }
 
 private:
   
@@ -1548,10 +1565,7 @@ private:
   Stepper m_stepper;
   std::vector<OscSynthDef> m_oscSynths;
   std::vector<SamplerSynthDef> m_samplerSynths;
-
-  std::map<double, std::vector<double>> m_samples;
-  MidiPitchRange m_samplerMidiPitchRange;
-
+  
   std::atomic<size_t> m_countCinChars{};
   std::atomic_bool m_runCinListener{true};
   std::thread m_cinListener;
@@ -1569,16 +1583,16 @@ private:
 
   void allNotesOff() {
     forEachSynth([&](auto & s){
-      s.m_synth.allNotesOff(m_stepper);      
+      s.mutSynth().allNotesOff(m_stepper);      
     });
   }  
 };
 
-AppTune::AppTune(size_t countOscSynths, size_t countSamplerSynths)
+AppTune::AppTune(size_t countOscSynths, const std::vector<SamplesDef> & vecSamples)
 : m_stepper(GlobalAudioLock<audioEnginePolicy>::get(),
             countOscSynths * OscSynthDef::OscSynth::n_channels * 4 /* one shot */ +
-            countSamplerSynths * SamplerSynthDef::SamplerSynth::n_channels * 4 /* one shot */,
-            (countOscSynths + countSamplerSynths) * 1 /* a single compute is needed per synth*/)
+            vecSamples.size() * SamplerSynthDef::SamplerSynth::n_channels * 4 /* one shot */,
+            (countOscSynths + vecSamples.size()) * 1 /* a single compute is needed per synth*/)
 , m_cinListener{[&]()
   {
     std::string str;
@@ -1595,14 +1609,17 @@ AppTune::AppTune(size_t countOscSynths, size_t countSamplerSynths)
     }
   }}
 , m_oscSynths(countOscSynths)
-, m_samplerSynths(countSamplerSynths)
+, m_samplerSynths(vecSamples.size())
 {
-  if(countSamplerSynths)
   {
-    m_samples = readSamples(m_samplerMidiPitchRange);
+    size_t i{};
+    for(const auto & s : vecSamples)
+    {      
+      m_samplerSynths[i++].setSamples(s);
+    }
   }
   forEachSynth([&](auto&synth){
-    synth.m_synth.initialize(m_stepper);
+    synth.mutSynth().initialize(m_stepper);
   });
   
   if (!m_ctxt.doInit(0.008,
@@ -1627,7 +1644,7 @@ AppTune::AppTune(size_t countOscSynths, size_t countSamplerSynths)
 AppTune::~AppTune()
 {
   forEachSynth([&](auto&synth){
-    synth.m_synth.finalize(m_stepper);
+    synth.mutSynth().finalize(m_stepper);
   });
   
   // We sleep so that the audio produced during finalization has a chance to be played
@@ -1644,10 +1661,9 @@ AppTune::~AppTune()
 
 void AppTune::updateInitializersIfNeeded()
 {
-  for(auto & synth : m_oscSynths)
+  forEachSynth([](auto&synth){
     synth.updateInitializerIfNeeded();
-  for(auto & synth : m_samplerSynths)
-    synth.updateInitializerIfNeeded(m_samples);
+  });
 }
 
 void OscSynthDef::updateInitializerIfNeeded()
@@ -1726,7 +1742,7 @@ void OscSynthDef::updateInitializerIfNeeded()
 }
 
 
-void SamplerSynthDef::updateInitializerIfNeeded(std::map<double, std::vector<double>> const& samples)
+void SamplerSynthDef::updateInitializerIfNeeded()
 {
   {
     const std::filesystem::file_time_type newLastWriteHarmonics =
@@ -1742,7 +1758,7 @@ void SamplerSynthDef::updateInitializerIfNeeded(std::map<double, std::vector<dou
     m_sampleRate,
     1, // not used,
     mkEnvelope(),
-    std::reference_wrapper{samples}
+    std::reference_wrapper{*m_samplesDef.samplesPtr}
   };
   m_synth.setSynchronousElementInitializer(initializer);
 }
@@ -2096,19 +2112,19 @@ void AppTune::playEventStreams(std::vector<std::unique_ptr<EventStream>>& stream
         {
           if(i < firstSamplerIdx)
           {
-            auto const res = m_oscSynths[i].m_synth.onEvent(m_sampleRate,
-                                                            event.second,
-                                                            m_stepper,
-                                                            m_stepper,
-                                                            event.first);
+            auto const res = m_oscSynths[i].mutSynth().onEvent(m_sampleRate,
+                                                               event.second,
+                                                               m_stepper,
+                                                               m_stepper,
+                                                               event.first);
           }
           else
           {
-            auto const res = m_samplerSynths[i - firstSamplerIdx].m_synth.onEvent(m_sampleRate,
-                                                                                  event.second,
-                                                                                  m_stepper,
-                                                                                  m_stepper,
-                                                                                  event.first);            
+            auto const res = m_samplerSynths[i - firstSamplerIdx].mutSynth().onEvent(m_sampleRate,
+                                                                                     event.second,
+                                                                                     m_stepper,
+                                                                                     m_stepper,
+                                                                                     event.first);            
           }
         }
         continue;
@@ -2133,7 +2149,7 @@ void AppTune::playEventStreams(std::vector<std::unique_ptr<EventStream>>& stream
   // All notes have started (and stopped) but some envelope tails may still be active.
   
   forEachSynth([](auto&synth){
-    while(!synth.m_synth.allEnvelopesFinished())
+    while(!synth.mutSynth().allEnvelopesFinished())
       std::this_thread::yield();
   });
 }
@@ -2182,8 +2198,7 @@ void playFeuillardTwoVoices()
   using namespace std::filesystem;
 
   const size_t countOscSynths{2};
-  const size_t countSamplerSynths{0};
-  auto a = AppTune{countOscSynths, countSamplerSynths};
+  auto a = AppTune{countOscSynths, {}};
 
   const path fastEnv{synth / "EnvelopeFast.txt"};
   const path fastFunEnv{synth / "EnvelopeFastFun.txt"};
@@ -2204,9 +2219,9 @@ void playFeuillardTwoVoices()
   const auto file = "/Users/Olivier/Downloads/IMSLP874967-PMLP1036212-Feuillard_La_Technique_du_Violoncelle_Vol.4.pdf";
   
   const auto timing1 = EventsTiming{0.09};
-  auto stream1 = toEventStream(streamFromBinaryPitchesEncoding(file, a.samplerMidiPitchRange(), timing1, Polyphony{1}), timing1);
+  auto stream1 = toEventStream(streamFromBinaryPitchesEncoding(file, MidiPitchRange{}, timing1, Polyphony{1}), timing1);
   const auto timing2 = EventsTiming{0.18};
-  auto stream2 = toEventStream(streamFromBinaryPitchesEncoding(file, a.samplerMidiPitchRange(), timing2, Polyphony{1}), timing2);
+  auto stream2 = toEventStream(streamFromBinaryPitchesEncoding(file, MidiPitchRange{}, timing2, Polyphony{1}), timing2);
   // ^^ With:
   //              polyphony  speed
   // - stream1    1          2
@@ -2237,10 +2252,22 @@ int main() {
   using namespace imajuscule::audio;
   using namespace std::filesystem;
 
-  makeSamples("/Users/Olivier/Music/Samples/gamme.wav", c_samplesDir);
+  makeSamplesIfDirEmpty("/Users/Olivier/Music/Samples/gamme.wav", c_samplesDir);
   const size_t countOscSynths{2};
+
+  std::vector<std::unique_ptr<std::map<double, std::vector<double>>>> samples;
+
+  MidiPitchRange samplerMidiPitchRange;
+
+  samples.push_back(readSamples(c_samplesDir, samplerMidiPitchRange));
+
+  auto samplesDef = SamplesDef{samples[0].get(), samplerMidiPitchRange};
+
   const size_t countSamplerSynths{2};
-  auto a = AppTune{countOscSynths, countSamplerSynths};
+  std::vector<SamplesDef> vecSamples;
+  vecSamples.push_back(samplesDef);
+  vecSamples.push_back(samplesDef);
+  auto a = AppTune{countOscSynths, vecSamples};
     
   // The ZeroEnvelope file produces drum sounds.
   const path zeroEnv{synth / "EnvelopeZero.txt"};
@@ -2263,9 +2290,9 @@ int main() {
     const auto file = "/Users/Olivier/Downloads/IMSLP874967-PMLP1036212-Feuillard_La_Technique_du_Violoncelle_Vol.4.pdf";
 
     const auto timing1 = EventsTiming{0.09};
-    auto stream1 = toEventStream(streamFromBinaryPitchesEncoding(file, a.samplerMidiPitchRange(), timing1, Polyphony{1}), timing1);
+    auto stream1 = toEventStream(streamFromBinaryPitchesEncoding(file, a.samplerSynth(0).samplerMidiPitchRange(), timing1, Polyphony{1}), timing1);
     const auto timing2 = EventsTiming{0.18};
-    auto stream2 = toEventStream(streamFromBinaryPitchesEncoding(file, a.samplerMidiPitchRange(), timing2, Polyphony{1}), timing2);
+    auto stream2 = toEventStream(streamFromBinaryPitchesEncoding(file, a.samplerSynth(1).samplerMidiPitchRange(), timing2, Polyphony{1}), timing2);
     
     std::vector<std::unique_ptr<EventStream>> streams;
     // osc synth streams:
