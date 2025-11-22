@@ -92,6 +92,31 @@ static constexpr double soundBaseVolume(Sound::Type t) {
   }
 }
 
+template<typename V>
+void normalize_audio(V & values)
+{
+  using T = typename V::value_type;
+  static_assert(std::is_floating_point_v<T>);
+  if(values.empty()) {
+    return;
+  }
+  range<float> r;
+  for(auto v: values) {
+    r.extend(v);
+  }
+  Assert(!r.empty());
+  if(r.delta() < 0.f) {
+    return;
+  }
+  
+  auto M = std::max(-r.getMin(), r.getMax());
+  float just_below_one = 1.f - FLOAT_EPSILON;
+  M = just_below_one / M; // just_below_one is to be sure the signal doesn't go over 1 with numerical errors
+  for(auto & v: values) {
+    v *= M;
+  }  
+}
+
 template<typename T>
 struct soundBuffer {
   using value_type = T;

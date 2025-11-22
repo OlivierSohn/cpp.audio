@@ -246,7 +246,9 @@ namespace imajuscule::audio::audioelement {
       audioelement::VolumeAdjusted<
       audioelement::Enveloped <
       Algo,
-      audioelement::AHDSREnvelope<A, FPT, audioelement::EnvelopeRelease::WaitForKeyRelease, Algo::EnsuresSmoothAttack ? AllowZeroAttack::Yes : AllowZeroAttack::No>
+      // TODO: introduce EnsuresSmoothAttack trait, and here
+      // use Algo::EnsuresSmoothAttack ? AllowZeroAttack::Yes : AllowZeroAttack::No
+      audioelement::AHDSREnvelope<A, FPT, audioelement::EnvelopeRelease::WaitForKeyRelease, AllowZeroAttack::No>
       >
       >;
       

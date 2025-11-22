@@ -273,24 +273,7 @@ void soundBuffer<T>::logSummary(int nsamples_per_extremity) const {
 
 template<typename T>
 void soundBuffer<T>::normalize() {
-    if(values.empty()) {
-        return;
-    }
-    range<float> r;
-    for(auto v: values) {
-        r.extend(v);
-    }
-    Assert(!r.empty());
-    if(r.delta() < 0.f) {
-        return;
-    }
-
-    auto M = std::max(-r.getMin(), r.getMax());
-    float just_below_one = 1.f - FLOAT_EPSILON;
-    M = just_below_one / M; // just_below_one is to be sure the signal doesn't go over 1 with numerical errors
-    for(auto & v: values) {
-        v *= M;
-    }
+  normalize_audio(values);
 }
 
 template class soundBuffer<double>;

@@ -1327,6 +1327,13 @@ struct StereoPanned {
 
   using FPT = typename ALGO::FPT;
 
+  void onKeyPressed(int32_t delay) {
+    algo.onKeyPressed(delay);
+  }
+  void onKeyReleased(int32_t delay) {
+    algo.onKeyReleased(delay);
+  }
+
   auto & editEnvelope() { return algo.editEnvelope(); }
   auto const & getEnvelope() const { return algo.getEnvelope(); }
 

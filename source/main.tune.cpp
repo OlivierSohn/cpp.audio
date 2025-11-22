@@ -396,11 +396,6 @@ char encodePitchAsSimpleAscii(MidiPitch p)
   return semitones + 'A' - 10;
 }
 
-MidiPitch decodePitchFromBinaryStatEncoding(size_t c)
-{
-  return MidiPitch{A_pitch - 24 + c + 3};
-}
-
 
 struct ByteHistogram
 {
@@ -802,6 +797,19 @@ enum class ReinitCycleAtRangeBoundary{Yes, No};
 // Whether all cycles start at the same locations (min value of the cycle)
 enum class UniformCycleInitialization{Yes, No};
 
+
+struct MidiPitchRange
+{
+  void include (MidiPitch p)
+  {
+    min = std::min(p, min.value_or(p));
+    max = std::max(p, max.value_or(p));
+  }
+  
+  std::optional<MidiPitch> min, max;
+};
+
+
 // If a small number of bytes occur very often in the file,
 // mapping a byte to a single MidiPitch would produce a boring melody.
 //
@@ -810,6 +818,7 @@ enum class UniformCycleInitialization{Yes, No};
 struct MidiPitchStreamFromBinary
 {
   MidiPitchStreamFromBinary(std::filesystem::path const& scoreBinaryFile,
+                            MidiPitchRange midiPitchRange,
                             ByteRangesIterator ranges,
                             ReinitCycleAtRangeBoundary r,
                             UniformCycleInitialization u,
@@ -827,12 +836,14 @@ private:
   std::optional<ByteRangeIterator> m_curRange;
   // one vector per voice
   std::vector<std::vector<CyclicByteRangeIterator>> m_byteToByteIterator;
+  MidiPitchRange m_midiPitchRange;
   ReinitCycleAtRangeBoundary m_reinitCycleAtRangeBoundary;
   UniformCycleInitialization m_uniformCycleInitialization;
   void reinitCycles();
 };
 
 MidiPitchStreamFromBinary::MidiPitchStreamFromBinary(std::filesystem::path const& scoreBinaryFile,
+                                                     MidiPitchRange midiPitchRange,
                                                      ByteRangesIterator ranges,
                                                      ReinitCycleAtRangeBoundary r,
                                                      UniformCycleInitialization u,
@@ -842,6 +853,7 @@ MidiPitchStreamFromBinary::MidiPitchStreamFromBinary(std::filesystem::path const
 , m_reinitCycleAtRangeBoundary(r)
 , m_uniformCycleInitialization(u)
 , m_byteToByteIterator(countVoices.get())
+, m_midiPitchRange(midiPitchRange)
 {
   std::cout << "Reading binary " << scoreBinaryFile << std::endl;
   
@@ -862,10 +874,17 @@ MidiPitchStreamFromBinary::restart()
 
 void MidiPitchStreamFromBinary::reinitCycles()
 {
+  int maxByte = 48;
+  if(m_midiPitchRange.min && m_midiPitchRange.max)
+  {
+    maxByte = std::min(static_cast<int>(std::numeric_limits<uint8_t>::max()),
+                       static_cast<int>(0.5 + m_midiPitchRange.max->get() - m_midiPitchRange.min->get()));
+  }
+
   for(auto & iterators : m_byteToByteIterator)
   {
     iterators.clear();
-    iterators.resize(256, CyclicByteRangeIterator(static_cast<uint8_t>(0), static_cast<uint8_t>(48)));
+    iterators.resize(256, CyclicByteRangeIterator(static_cast<uint8_t>(0), static_cast<uint8_t>(maxByte)));
     if(m_uniformCycleInitialization == UniformCycleInitialization::No)
     {
       for(size_t i = 1; i<iterators.size(); ++i)
@@ -892,7 +911,9 @@ MidiPitchStreamFromBinary::operator()(size_t voiceIndex)
         return std::nullopt;
       //std::cout << static_cast<int>(c) << ' ';
       //std::cout << c;
-      return decodePitchFromBinaryStatEncoding(m_byteToByteIterator[voiceIndex][c]());        
+      const uint8_t byte = m_byteToByteIterator[voiceIndex][c]();
+      const MidiPitch minPitch = m_midiPitchRange.min.value_or(A_pitch - 21);
+      return MidiPitch{ minPitch + byte };
     }
   }
   
@@ -1290,6 +1311,8 @@ void interlacedAdaptChannelCount(int countSourceChannels, int countTargetChannel
   }
 }
 
+constexpr const char * c_samplesDescriptionsFile{"Samples.txt"};
+
 void
 writeSamples(std::filesystem::path const & samplesFile,
              SampleRanges const & ranges,
@@ -1309,9 +1332,10 @@ writeSamples(std::filesystem::path const & samplesFile,
 
   const int32_t countFrames = interleaved.size() / countChannels;
 
+  std::vector<std::pair<MidiPitch, std::string>> files;
   auto writeSample=[&](const SampleRange& r)
   {
-    // Should some parts of the sample be avoided?
+    // TODO: For pitch estimation, should some parts of the sample be avoided?
     // i.e in "Si", the "S" part is not relevant to the pitch.
 
     FrequenciesSqMag<double> freqs_sqmag;
@@ -1350,11 +1374,19 @@ writeSamples(std::filesystem::path const & samplesFile,
     if(!pitch.has_value())
       throw std::logic_error("Failed to compute pitch");
     std::cout << "pitch " << pitch->get() << "  window: " << windowLength << std::endl;
-    write_wav(outDir / (std::to_string(r.firstFrame) + std::string{"_"} + std::to_string(r.lastFrame) + std::string{".wav"}),
-              interleaved.begin() + (countChannels * r.firstFrame),
-              interleaved.begin() + (countChannels * (r.lastFrame + 1)),
+    const std::string filename{std::to_string(r.firstFrame) + std::string{"_"} + std::to_string(r.lastFrame) + std::string{".wav"}};
+    std::vector<float> sample;
+    sample.reserve(countChannels * r.getLength());
+    for(auto it = interleaved.begin() + (countChannels * r.firstFrame),
+        end = interleaved.begin() + (countChannels * (r.lastFrame + 1));
+        it < end; ++it)
+      sample.push_back(*it);
+    normalize_audio(sample);
+    write_wav(outDir / filename,
+              sample,
               CountChannels{countChannels},
               reader.getSampleRate());
+    files.emplace_back(*pitch, filename);
   };
 
   for(const auto & range : ranges.ranges)
@@ -1363,6 +1395,12 @@ writeSamples(std::filesystem::path const & samplesFile,
       throw std::logic_error("wav file has not enough frames");
 
     writeSample(range);
+  }
+  
+  {
+    std::ofstream f{outDir / c_samplesDescriptionsFile};
+    for(const auto & [pitch, name] : files)
+      f << name << " " << pitch.get() << std::endl;
   }
 }
 
@@ -1412,20 +1450,45 @@ makeSamples(std::filesystem::path const & samplesFile,
 
 std::vector<std::pair<NoteOctave, std::filesystem::path>>
 readSamples(std::filesystem::path const & dir)
-{}
+{
+  std::vector<std::pair<NoteOctave, std::filesystem::path>> res;
+  {
+    std::ifstream f{dir / c_samplesDescriptionsFile};
+    std::string line;
+    
+    while (getline(f, line)) {
+      auto space = line.find(" ");
+      const auto sampleFilename = line.substr(0, space);
+      const auto pitch = MidiPitch{std::stod(line.substr(space + 1))};
+      
+      Midi midi;
+      auto note = midi_pitch_to_note_deviation(pitch).first;
+      
+      res.emplace_back(note, dir / sampleFilename);
+    }
+  }
+  return res;
+}
+
+constexpr const char * c_samplesDir = "/Users/Olivier/Music/Samples/gen";
 
 std::map<double, std::vector<double>>
-readSamples()
+readSamples(MidiPitchRange& range)
 {
+  range = {};
+#if 0
   auto folder = std::filesystem::path{"/Users/Olivier/Music/Samples/Manual"};
-  Midi midi;
-  std::vector<std::pair<NoteOctave, std::filesystem::path>> files{
+  const std::vector<std::pair<NoteOctave, std::filesystem::path>> files{
     {NoteOctave{Note::Do, 4}, "Do1.wav"},
     {NoteOctave{Note::Mi, 4}, "Mi1.wav"},
     {NoteOctave{Note::Fa, 4}, "Fa1.wav"},
     {NoteOctave{Note::Sol, 4}, "Sol1.wav"},
   };
-  
+#endif
+  auto folder = std::filesystem::path{c_samplesDir};
+  const std::vector<std::pair<NoteOctave, std::filesystem::path>> files = readSamples(folder);
+
+  Midi midi;
   std::map<double, std::vector<double>> res;
   for(const auto & [noteOctave, f] : files)
   {
@@ -1437,6 +1500,7 @@ readSamples()
       throw std::logic_error("Failed to read sample");
     interlacedAdaptChannelCount(countChannels, audioelement::countSamplerChannels, interlaced);
     auto pitch = midi.get_pitch(noteOctave);
+    range.include(pitch);
     auto freq = midi.midi_pitch_to_freq(pitch);
     auto ai = freq_to_angle_increment(freq, m_sampleRate);
     res[ai] = interlaced;
@@ -1462,6 +1526,8 @@ struct AppTune
   
   OscSynthDef& oscSynth(size_t i) {return m_oscSynths[i];}
   SamplerSynthDef& samplerSynth(size_t i) {return m_samplerSynths[i];}
+  MidiPitchRange const & samplerMidiPitchRange() const { return m_samplerMidiPitchRange; }
+
 private:
   
   static constexpr auto audioEnginePolicy = AudioOutPolicy::MasterLockFree;
@@ -1484,6 +1550,7 @@ private:
   std::vector<SamplerSynthDef> m_samplerSynths;
 
   std::map<double, std::vector<double>> m_samples;
+  MidiPitchRange m_samplerMidiPitchRange;
 
   std::atomic<size_t> m_countCinChars{};
   std::atomic_bool m_runCinListener{true};
@@ -1532,7 +1599,7 @@ AppTune::AppTune(size_t countOscSynths, size_t countSamplerSynths)
 {
   if(countSamplerSynths)
   {
-    m_samples = readSamples();
+    m_samples = readSamples(m_samplerMidiPitchRange);
   }
   forEachSynth([&](auto&synth){
     synth.m_synth.initialize(m_stepper);
@@ -1714,7 +1781,7 @@ Score readScoreFromSimpleAsciiPitchesEncoding(std::filesystem::path const& score
   return score;
 }
 
-MidiPitchStreamFromBinary streamFromBinaryPitchesEncoding(std::filesystem::path const& scoreBinaryFile, EventsTiming loopTiming, Polyphony countVoices)
+MidiPitchStreamFromBinary streamFromBinaryPitchesEncoding(std::filesystem::path const& scoreBinaryFile, MidiPitchRange const & midiPitchRange, EventsTiming loopTiming, Polyphony countVoices)
 {
   const size_t batchSize = 10000;
   const auto maxConsecutiveBytes = MaxConsecutiveBytes{11};
@@ -1788,6 +1855,7 @@ MidiPitchStreamFromBinary streamFromBinaryPitchesEncoding(std::filesystem::path 
   }
   
   return MidiPitchStreamFromBinary(scoreBinaryFile,
+                                   midiPitchRange,
                                    ByteRangesIterator{std::move(byteRangesByByteMaxFreq)},
                                    ReinitCycleAtRangeBoundary::No,
                                    // when we use batches that are not "boring",
@@ -1838,9 +1906,12 @@ Score scoreFromStream(Stream& stream, Polyphony countVoices)
   return score;
 }
 
-Score readScoreFromBinaryPitchesEncoding(std::filesystem::path const& scoreBinaryFile, EventsTiming loopTiming, Polyphony countVoices)
+Score readScoreFromBinaryPitchesEncoding(std::filesystem::path const& scoreBinaryFile,
+                                         MidiPitchRange const & midiPitchRange,
+                                         EventsTiming loopTiming,
+                                         Polyphony countVoices)
 {
-  auto stream = streamFromBinaryPitchesEncoding(scoreBinaryFile, loopTiming, countVoices);
+  auto stream = streamFromBinaryPitchesEncoding(scoreBinaryFile, midiPitchRange, loopTiming, countVoices);
   return scoreFromStream(stream, countVoices);
 }
 
@@ -1957,9 +2028,9 @@ Loop loopFromAscii(std::filesystem::path const& scoreFile, EventsTiming loopTimi
   return loopFromScore(score, loopTiming);
 }
 
-Loop loopFromBinary(std::filesystem::path const& scoreFile, Polyphony countVoices, EventsTiming loopTiming = {})
+Loop loopFromBinary(std::filesystem::path const& scoreFile, MidiPitchRange const & midiPitchRange, Polyphony countVoices, EventsTiming loopTiming = {})
 {
-  const Score score = readScoreFromBinaryPitchesEncoding(scoreFile, loopTiming, countVoices);
+  const Score score = readScoreFromBinaryPitchesEncoding(scoreFile, midiPitchRange, loopTiming, countVoices);
   
   return loopFromScore(score, loopTiming);
 }
@@ -2133,9 +2204,9 @@ void playFeuillardTwoVoices()
   const auto file = "/Users/Olivier/Downloads/IMSLP874967-PMLP1036212-Feuillard_La_Technique_du_Violoncelle_Vol.4.pdf";
   
   const auto timing1 = EventsTiming{0.09};
-  auto stream1 = toEventStream(streamFromBinaryPitchesEncoding(file, timing1, Polyphony{1}), timing1);
+  auto stream1 = toEventStream(streamFromBinaryPitchesEncoding(file, a.samplerMidiPitchRange(), timing1, Polyphony{1}), timing1);
   const auto timing2 = EventsTiming{0.18};
-  auto stream2 = toEventStream(streamFromBinaryPitchesEncoding(file, timing2, Polyphony{1}), timing2);
+  auto stream2 = toEventStream(streamFromBinaryPitchesEncoding(file, a.samplerMidiPitchRange(), timing2, Polyphony{1}), timing2);
   // ^^ With:
   //              polyphony  speed
   // - stream1    1          2
@@ -2166,8 +2237,7 @@ int main() {
   using namespace imajuscule::audio;
   using namespace std::filesystem;
 
-  makeSamples("/Users/Olivier/Music/Samples/gamme.wav", "/Users/Olivier/Music/Samples/gen");
-
+  makeSamples("/Users/Olivier/Music/Samples/gamme.wav", c_samplesDir);
   const size_t countOscSynths{2};
   const size_t countSamplerSynths{2};
   auto a = AppTune{countOscSynths, countSamplerSynths};
@@ -2193,9 +2263,9 @@ int main() {
     const auto file = "/Users/Olivier/Downloads/IMSLP874967-PMLP1036212-Feuillard_La_Technique_du_Violoncelle_Vol.4.pdf";
 
     const auto timing1 = EventsTiming{0.09};
-    auto stream1 = toEventStream(streamFromBinaryPitchesEncoding(file, timing1, Polyphony{1}), timing1);
+    auto stream1 = toEventStream(streamFromBinaryPitchesEncoding(file, a.samplerMidiPitchRange(), timing1, Polyphony{1}), timing1);
     const auto timing2 = EventsTiming{0.18};
-    auto stream2 = toEventStream(streamFromBinaryPitchesEncoding(file, timing2, Polyphony{1}), timing2);
+    auto stream2 = toEventStream(streamFromBinaryPitchesEncoding(file, a.samplerMidiPitchRange(), timing2, Polyphony{1}), timing2);
     
     std::vector<std::unique_ptr<EventStream>> streams;
     // osc synth streams:
@@ -2208,10 +2278,10 @@ int main() {
     a.playEventStreams(streams);
 
 /*
-    a.playLoop(moduloPitch(loopFromBinary(file, Polyphony{1})), 1);
+    a.playLoop(moduloPitch(loopFromBinary(file, a.samplerMidiPitchRange(), Polyphony{1})), 1);
 
-    a.playLoop(loopFromBinary(scores / "Phrase.txt", Polyphony{1}), 1);
-    a.playLoop(moduloPitch(loopFromBinary(scores / "Phrase.txt", Polyphony{1})), 1);
+    a.playLoop(loopFromBinary(scores / "Phrase.txt", a.samplerMidiPitchRange(), Polyphony{1}), 1);
+    a.playLoop(moduloPitch(loopFromBinary(scores / "Phrase.txt", a.samplerMidiPitchRange(), Polyphony{1})), 1);
 
     a.playLoop(loopFromAscii(scores / "Phrase.txt"), 4);
     a.playLoop(loopFromAscii(scores / "StrangeBots.txt"), 4);
