@@ -1333,6 +1333,9 @@ struct StereoPanned {
   void onKeyReleased(int32_t delay) {
     algo.onKeyReleased(delay);
   }
+  bool canHandleExplicitKeyReleaseNow(int32_t delay) const {
+    return algo.canHandleExplicitKeyReleaseNow(delay);
+  }
 
   auto & editEnvelope() { return algo.editEnvelope(); }
   auto const & getEnvelope() const { return algo.getEnvelope(); }

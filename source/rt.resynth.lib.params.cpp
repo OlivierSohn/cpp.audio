@@ -352,8 +352,7 @@ private:
                       CountChannels{2},
                       AudioSample<output_T>::format);
     
-    writer = std::make_unique<WAVWriter>(p.parent_path().native(),
-                                         p.filename(),
+    writer = std::make_unique<WAVWriter>(p,
                                          header);
     
     try {
@@ -370,8 +369,7 @@ private:
     }
     std::filesystem::path p(filename);
     
-    reader = std::make_unique<WAVReader>(p.parent_path().native(),
-                                         p.filename());
+    reader = std::make_unique<WAVReader>(p);
     
     try {
       reader->Initialize();
