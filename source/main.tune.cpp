@@ -5,9 +5,6 @@ Sample en boucle, en definissant:
 - frame 2 (avant ou apres frame 1)
 utilisant les marker wav, region wav ou un fichier separe.
 
-Sampler le violoncelle pour utiliser les samples dans le pdf feuillard.
-- sons courts, piano.
-
 Analyse d'un enregistrement pour la justesse, pour voir les tendances que j'ai.
 
 Analyse en temps reel de la justesse?
@@ -1074,12 +1071,12 @@ audioelement::AHDSR SynthDef::mkEnvelope() const
   return audioelement::AHDSR{
     // attack
     ms_to_frames(e['a']),
-    itp::interpolation::LINEAR,
+    itp::interpolation::EASE_OUT_CUBIC,
     // hold
     ms_to_frames(e['h']),
     // decay
     ms_to_frames(e['d']),
-    itp::interpolation::EASE_OUT_CUBIC,
+    itp::interpolation::LINEAR,
     // release
     ms_to_frames(e['r']),
     itp::interpolation::EASE_OUT_CUBIC,
@@ -1239,6 +1236,8 @@ SampleRanges unionRanges(const std::vector<SampleRanges>& ranges)
 //   - from first location where signal started to be low, fwd until (sliding average of absolute) increases again.
 SampleRanges
 computeSampleRanges(const std::vector<double>& signal,
+                    float noiseThresholdFactorStart,
+                    float noiseThresholdFactorEnd,
                     int const slidingAvgFrameCount,
                     const int32_t lookAheadFrameCount)
 {
@@ -1249,22 +1248,40 @@ computeSampleRanges(const std::vector<double>& signal,
   
   const double noise_level = compute_noise_floor(it, end, lookAheadFrameCount);
   
-  const float maxSoundAmplitudeEnd = noise_level * 3.;
-  const float minSoundAmplitudeStart = noise_level * 3.;
+  const float minSoundAmplitudeStart = noise_level * noiseThresholdFactorStart;
+  const float maxSoundAmplitudeEnd = noise_level * noiseThresholdFactorEnd;
 
   for(;it != end;)
   {
-    it = find_relevant_start_relaxed(it, end, minSoundAmplitudeStart, slidingAvgFrameCount);
-    if(it == end)
+    auto it_start = first_relevant_value(it, end, minSoundAmplitudeStart);
+    if(it_start == end) {
+      // not found
       break;
-    // by now 'it' is the start of the sample range.
+    }
+    if(it_start != it) {
+      using reverse_iterator = std::reverse_iterator<decltype(it)>;
+      auto rit = reverse_iterator(it_start+1);
+      auto rend = reverse_iterator(it);
+      auto rzero = first_non_abs_avg_decreasing( rit, rend, slidingAvgFrameCount);
+      // first_non_abs_avg_decreasing returns the iterator after the zero crossing (in the reverse direction)
+      // so rzero.base() is the iterator on the other side of the zero crossing
+      it_start = rzero.base();
+    }
     
-    const int32_t startFrame(static_cast<int32_t>(std::distance(signal.begin(), it)));
-    it = find_relevant_end_relaxed(it, end, maxSoundAmplitudeEnd, slidingAvgFrameCount, lookAheadFrameCount);
-    
+    const int32_t startFrame(static_cast<int32_t>(std::distance(signal.begin(), it_start)));
+
+    it = find_relevant_end_relaxed(it_start, end, maxSoundAmplitudeEnd, slidingAvgFrameCount, lookAheadFrameCount);
     int32_t lastFrame = static_cast<int32_t>(std::distance(signal.begin(), it));
     if(it == end)
       lastFrame -= 1;
+
+    if(it_start == signal.begin())
+      // skip: it is likely that this corresponds to noise when handling the recorder at the beginning.
+      continue;
+    if(it == signal.end())
+      // skip: it is likely that this corresponds to noise when handling the recorder at the end.
+      continue;
+
     if(lastFrame > startFrame)
       res.ranges.push_back(SampleRange{startFrame, lastFrame});
   }
@@ -1332,10 +1349,28 @@ void interlacedAdaptChannelCount(int countSourceChannels, int countTargetChannel
 
 constexpr const char * c_samplesDescriptionsFile{"Samples.txt"};
 
+void writeMarkerFile(const SampleRanges& ranges,
+                     const std::vector<std::string> & regionNames,
+                     std::filesystem::path const & path)
+{
+  std::ofstream f(path);
+
+  f << "Marker file version: 1" << std::endl;
+  f << "Time format: Samples" << std::endl;
+  
+  int i{};
+  for(const auto & r : ranges.ranges)
+  {
+    f << regionNames[i] << "\t" << r.firstFrame << "\t" << r.lastFrame;
+    f << std::endl;
+    ++i;
+  }
+}
 void
 writeSamples(std::filesystem::path const & samplesFile,
              SampleRanges const & ranges,
-             std::filesystem::path const & outDir)
+             std::filesystem::path const & outDir,
+             const std::optional<NoteOctave> firstOfChromaticPitches)
 {
   if(std::filesystem::exists(outDir) && !std::filesystem::is_empty(outDir))
   {
@@ -1353,49 +1388,67 @@ writeSamples(std::filesystem::path const & samplesFile,
 
   const int32_t countFrames = interleaved.size() / countChannels;
 
-  std::vector<std::pair<MidiPitch, std::string>> files;
-  auto writeSample=[&](const SampleRange& r)
+  std::vector<std::tuple<std::vector<FreqMag<double>>, double, MidiPitch, std::string>> files;
+  auto writeSample=[&](const SampleRange& r) -> std::string
   {
-    // TODO: For pitch estimation, should some parts of the sample be avoided?
-    // i.e in "Si", the "S" part is not relevant to the pitch.
-
-    FrequenciesSqMag<double> freqs_sqmag;
-    int constexpr zero_padding_factor = 1;
-
-    std::vector<double> half_window;
-    
-    // cf. comment in testDeduceNotes() for the choice of these constants.
-    const int windowLength = floor_power_of_two(std::min(8192*4, r.getLength()));
-    const int sigmaFactor{8};
-    
-    half_gaussian_window<double>(sigmaFactor, windowLength/2, half_window);
-    normalize_window(half_window);
-
-    // offset the range to focus on the center of the sample which is more likely to contain
-    // relevant information wrt pitch.
-    const int startOffset = (r.getLength() - windowLength) / 2;
-
-    auto itStart = interleaved.begin() + (countChannels * (r.firstFrame + startOffset));
-    auto itEnd = interleaved.begin() + (countChannels * (r.firstFrame + startOffset + windowLength));
-    const int windowed_signal_stride = countChannels; // because the buffer is interleaved.
-    findFrequenciesSqMagSlow(itStart, itEnd, windowed_signal_stride, half_window, zero_padding_factor, freqs_sqmag);
-    std::vector<FreqMag<double>> localMaxFreqsMags;
-    extractLocalMaxFreqsMags(reader.getSampleRate(),
-                             freqs_sqmag,
-                             SqMagToDb<double>(),
-                             localMaxFreqsMags);
-    if(localMaxFreqsMags.empty())
-      throw std::logic_error("Failed to compute local max freqs mags");
-    
-    std::optional<FreqMag<double>> fundamentalFreqMag = extractFundamental(localMaxFreqsMags);
-    if(!fundamentalFreqMag.has_value())
-      throw std::logic_error("Failed to compute fundamentalFreqMag");
     Midi midi;
-    std::optional<MidiPitch> pitch = midi.frequency_to_midi_pitch(fundamentalFreqMag->freq);
-    if(!pitch.has_value())
-      throw std::logic_error("Failed to compute pitch");
-    std::cout << "pitch " << pitch->get() << "  window: " << windowLength << std::endl;
-    const std::string filename{std::to_string(r.firstFrame) + std::string{"_"} + std::to_string(r.lastFrame) + std::string{".wav"}};
+    std::optional<MidiPitch> pitch;
+    std::string filename;
+    std::vector<FreqMag<double>> localMaxFreqsMags;
+    if(firstOfChromaticPitches.has_value())
+    {
+      // assume the samples are a chromatic scale, and the first note is *firstOfChromaticPitches.
+      const auto note = firstOfChromaticPitches->add_halftones(static_cast<int>(files.size()));
+      pitch = midi.get_pitch(note);
+      std::ostringstream fname;
+      fname << pitch->get() << "_" << r.firstFrame << "_" << r.lastFrame << ".wav";
+      filename = fname.str();
+      files.emplace_back(localMaxFreqsMags, midi.midi_pitch_to_freq(*pitch), *pitch, filename);
+    }
+    else
+    {
+      // TODO: For pitch estimation, should some parts of the sample be avoided?
+      // i.e in "Si", the "S" part is not relevant to the pitch.
+      
+      FrequenciesSqMag<double> freqs_sqmag;
+      int constexpr zero_padding_factor = 1;
+      
+      std::vector<double> half_window;
+      
+      // cf. comment in testDeduceNotes() for the choice of these constants.
+      const int windowLength = floor_power_of_two(std::min(8192*4, r.getLength()));
+      const int sigmaFactor{8};
+      
+      half_gaussian_window<double>(sigmaFactor, windowLength/2, half_window);
+      normalize_window(half_window);
+      
+      // offset the range to focus on the center of the sample which is more likely to contain
+      // relevant information wrt pitch.
+      const int startOffset = (r.getLength() - windowLength) / 2;
+      
+      auto itStart = interleaved.begin() + (countChannels * (r.firstFrame + startOffset));
+      auto itEnd = interleaved.begin() + (countChannels * (r.firstFrame + startOffset + windowLength));
+      const int windowed_signal_stride = countChannels; // because the buffer is interleaved.
+      findFrequenciesSqMagSlow(itStart, itEnd, windowed_signal_stride, half_window, zero_padding_factor, freqs_sqmag);
+      extractLocalMaxFreqsMags(reader.getSampleRate(),
+                               freqs_sqmag,
+                               SqMagToDb<double>(),
+                               localMaxFreqsMags);
+      if(localMaxFreqsMags.empty())
+        throw std::logic_error("Failed to compute local max freqs mags");
+      
+      std::optional<FreqMag<double>> fundamentalFreqMag = extractFundamental(localMaxFreqsMags);
+      if(!fundamentalFreqMag.has_value())
+        throw std::logic_error("Failed to compute fundamentalFreqMag");
+      pitch = midi.frequency_to_midi_pitch(fundamentalFreqMag->freq);
+      if(!pitch.has_value())
+        throw std::logic_error("Failed to compute pitch");
+      std::cout << "pitch " << pitch->get() << "  window: " << windowLength << std::endl;
+      std::ostringstream fname;
+      fname << pitch->get() << "_" << r.firstFrame << "_" << r.lastFrame << ".wav";
+      filename = fname.str();
+      files.emplace_back(localMaxFreqsMags, fundamentalFreqMag->freq, *pitch, filename);
+    }
     std::vector<float> sample;
     sample.reserve(countChannels * r.getLength());
     for(auto it = interleaved.begin() + (countChannels * r.firstFrame),
@@ -1407,35 +1460,61 @@ writeSamples(std::filesystem::path const & samplesFile,
               sample,
               CountChannels{countChannels},
               reader.getSampleRate());
-    files.emplace_back(*pitch, filename);
+    return filename;
   };
 
+  std::vector<std::string> fileNames;
   for(const auto & range : ranges.ranges)
   {
     if(range.lastFrame >= countFrames)
       throw std::logic_error("wav file has not enough frames");
 
-    writeSample(range);
+    fileNames.push_back(writeSample(range));
   }
   
   {
     std::ofstream f{outDir / c_samplesDescriptionsFile};
-    for(const auto & [pitch, name] : files)
-      f << name << " " << pitch.get() << std::endl;
+    for(const auto & [localMaxFreqsMags, freq, pitch, name] : files)
+    {
+      f << name << " " << pitch.get() << " freq:" << freq;
+#if 1
+      f << "|";
+      auto copy = localMaxFreqsMags;
+      std::sort(copy.begin(), copy.end(), [](auto a, auto b){ return a.mag_db > b.mag_db; });
+      for(const auto & p : copy)
+      {
+        f << p.freq;
+        f << " ";
+        f << p.mag_db;
+        f << "|";
+      }
+#endif
+      f << std::endl;
+    }
   }
+  
+  writeMarkerFile(ranges, fileNames, outDir / "markers.txt");
 }
 
 void
 makeSamplesIfDirEmpty(std::filesystem::path const & samplesFile,
-            std::filesystem::path const & outDir,
-            const DurationNanos slidingAverageDuration = DurationNanos(0.34 * 1e6), // 15 / 44100 
-            const DurationNanos minSampleDuration = DurationNanos(150 * 1e6),
-            // Lookahead default : 40 milliseconds.
-            // It is possible that the same sample decreases in amplitude drastically
-            // and then increases within the lookahead.
-            // It happens for "Sol" where there are 2 sound parts, "S" and "ol",
-            // separated by ~15 milliseconds of low amplitude signal.
-            const DurationNanos lookAhead = DurationNanos(40 * 1e6))
+                      std::filesystem::path const & outDir,
+                      // TODO: remove and use an automatic threshold for start,
+                      // based on max amplitude and noise floor.
+                      //
+                      // multiplied by noise floor to deduce start of samples.
+                      const float noiseThresholdFactorStart = 3.f,
+                      // multiplied by noise floor to deduce end of samples.
+                      const float noiseThresholdFactorEnd = 3.f,
+                      const std::optional<NoteOctave> firstOfChromaticPitches = std::nullopt,
+                      const DurationNanos slidingAverageDuration = DurationNanos(0.34 * 1e6), // 15 / 44100 
+                      const DurationNanos minSampleDuration = DurationNanos(150 * 1e6),
+                      // Lookahead default : 40 milliseconds.
+                      // It is possible that the same sample decreases in amplitude drastically
+                      // and then increases within the lookahead.
+                      // It happens for "Sol" where there are 2 sound parts, "S" and "ol",
+                      // separated by ~15 milliseconds of low amplitude signal.
+                      const DurationNanos lookAhead = DurationNanos(40 * 1e6))
 {
   if(std::filesystem::exists(outDir) && !std::filesystem::is_empty(outDir))
   {
@@ -1464,6 +1543,8 @@ makeSamplesIfDirEmpty(std::filesystem::path const & samplesFile,
   sampleRangesPerChannel.reserve(countChannels);
   for(int chan = 0; chan < countChannels; ++chan)
     sampleRangesPerChannel.push_back(computeSampleRanges(deinterlaced[chan],
+                                                         noiseThresholdFactorStart,
+                                                         noiseThresholdFactorEnd,
                                                          fileSampleRate * (slidingAverageDuration.get() / 1e9),
                                                          lookAheadFrameCount));
 
@@ -1472,7 +1553,7 @@ makeSamplesIfDirEmpty(std::filesystem::path const & samplesFile,
   sampleRanges = removeShortRanges(minSampleFrameCount, sampleRanges);
   
   reader.reset();
-  writeSamples(samplesFile, sampleRanges, outDir);
+  writeSamples(samplesFile, sampleRanges, outDir, firstOfChromaticPitches);
 }
 
 std::vector<std::pair<NoteOctave, std::filesystem::path>>
@@ -1497,7 +1578,8 @@ readSamples(std::filesystem::path const & dir)
   return res;
 }
 
-constexpr const char * c_samplesDir = "/Users/Olivier/Music/Samples/gen";
+constexpr const char * c_samplesDirVoice = "/Users/Olivier/Music/Samples/gen";
+constexpr const char * c_samplesDirCelloPizz = "/Users/Olivier/Music/Samples/genCelloPizz";
 
 std::unique_ptr<std::map<double, std::vector<double>>>
 readSamples(const std::filesystem::path& folder, MidiPitchRange& range)
@@ -2252,34 +2334,41 @@ int main() {
   using namespace imajuscule::audio;
   using namespace std::filesystem;
 
-  makeSamplesIfDirEmpty("/Users/Olivier/Music/Samples/gamme.wav", c_samplesDir);
-  const size_t countOscSynths{2};
-
+  makeSamplesIfDirEmpty("/Users/Olivier/Music/Samples/gamme.wav", c_samplesDirVoice);
+  makeSamplesIfDirEmpty("/Users/Olivier/Music/Samples/celloPizz.wav", c_samplesDirCelloPizz,
+                        // start noise floor threshold.
+                        30,
+                        // end noise floor threshold
+                        3,
+                        NoteOctave{Note::Do, 3}
+                        );
   std::vector<std::unique_ptr<std::map<double, std::vector<double>>>> samples;
 
   MidiPitchRange samplerMidiPitchRange;
 
-  samples.push_back(readSamples(c_samplesDir, samplerMidiPitchRange));
+  samples.push_back(readSamples(c_samplesDirCelloPizz, samplerMidiPitchRange));
 
   auto samplesDef = SamplesDef{samples[0].get(), samplerMidiPitchRange};
 
-  const size_t countSamplerSynths{2};
-  std::vector<SamplesDef> vecSamples;
-  vecSamples.push_back(samplesDef);
-  vecSamples.push_back(samplesDef);
-  auto a = AppTune{countOscSynths, vecSamples};
+  std::vector<SamplesDef> samplersDefs;
+  samplersDefs.push_back(samplesDef);
+  samplersDefs.push_back(samplesDef);
+
+  const size_t countOscSynths{2};
+  auto a = AppTune{countOscSynths, samplersDefs};
     
   // The ZeroEnvelope file produces drum sounds.
   const path zeroEnv{synth / "EnvelopeZero.txt"};
   const path oneEnv{synth / "EnvelopeOne.txt"};
+  const path pizzEnv{synth / "EnvelopePizz.txt"};
   const path fastEnv{synth / "EnvelopeFast.txt"};
   const path fastFunEnv{synth / "EnvelopeFastFun.txt"};
   const path slowEnv{synth / "EnvelopeSlow.txt"};
 
   const path harSimple{synth / "HarmonicsSimple.txt"};
 
-  a.samplerSynth(0).setEnvelopeFile(oneEnv);
-  a.samplerSynth(1).setEnvelopeFile(oneEnv);
+  a.samplerSynth(0).setEnvelopeFile(pizzEnv);
+  a.samplerSynth(1).setEnvelopeFile(pizzEnv);
 
   a.oscSynth(0).setHarmonicsFile(harSimple);
 
