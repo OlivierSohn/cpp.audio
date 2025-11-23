@@ -1,5 +1,18 @@
 #if 0
 
+optimiser la detection du debut des samples de celloPizz:
+il faut avoir toute l'attaque, donc peut wtre utiliser 
+une sliding average plus grande?
+ou bien un algo symmetrique a l'algo qui detecte la fin du sample?
+
+pluie:
+beaucoup de samples lointains a faible volume, quelques samples proches a plus fort volume.
+- moment de "note on":
+  - random
+  - ou alors une goutte toutes les x ms
+- volume deduit de distance goute - micro:
+  - micro positionne a 0,0, dans un carre -1 1 -1 1. on sample x et y random.
+
 Sample en boucle, en definissant:
 - frame 1
 - frame 2 (avant ou apres frame 1)
