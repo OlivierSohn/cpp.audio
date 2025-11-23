@@ -1075,7 +1075,10 @@ audioelement::AHDSR SynthDef::mkEnvelope() const
   e['d'] = 0;
   e['s'] = 0;
   e['r'] = 0;
+
+  // Each '.' corresponds to 10 milliseconds.
   const float constant = 10.f;
+
   while (std::getline(file, str))
   {
     if(!str.empty())
@@ -1459,10 +1462,32 @@ void writeMarkerFile(const SampleRanges& ranges,
     ++i;
   }
 }
+
+void xfade_end_to_zero(int64_t halfCountFramesXfade, std::vector<float> & v)
+{
+  const int64_t fullSize = 2 * halfCountFramesXfade;
+
+  EqualGainXFade<double> xfade;
+  
+  xfade.set(fullSize, EqualGainCrossFade::Sinusoidal);
+  
+  const int64_t vecSize = static_cast<int64_t>(v.size());
+  for(int64_t i = 0; i < fullSize; ++i)
+  {
+    const float xfadeVal = xfade.get(i).old_signal_mult;
+    const int64_t vecIndex = vecSize - fullSize + i;
+    if(vecIndex >= 0)
+    {
+      v[vecIndex] *= xfadeVal;      
+    }
+  }
+}
+
 void
 writeSamples(std::filesystem::path const & samplesFile,
              SampleRanges const & ranges,
              std::filesystem::path const & outDir,
+             const int64_t halfCountFramesXFadeEndToZero,
              const std::optional<NoteOctave> firstOfChromaticPitches)
 {
   if(std::filesystem::exists(outDir) && !std::filesystem::is_empty(outDir))
@@ -1547,8 +1572,14 @@ writeSamples(std::filesystem::path const & samplesFile,
     for(auto it = interleaved.begin() + (countChannels * r.firstFrame),
         end = interleaved.begin() + (countChannels * (r.lastFrame + 1));
         it < end; ++it)
+    {
       sample.push_back(*it);
+    }
     normalize_audio(sample);
+    if(halfCountFramesXFadeEndToZero)
+    {
+      xfade_end_to_zero(halfCountFramesXFadeEndToZero, sample);
+    }
     write_wav(outDir / filename,
               sample,
               CountChannels{countChannels},
@@ -1589,6 +1620,16 @@ writeSamples(std::filesystem::path const & samplesFile,
   writeMarkerFile(ranges, fileNames, outDir / "markers.txt");
 }
 
+// Whether to cross fade the end of the sample with zero.
+//
+// Note that we don't need to cross fade the start of the sample because
+// the envelope attack will handle this.
+enum class XFadeEndToZero
+{
+  Yes,
+  No
+};
+
 void
 makeSamplesIfDirEmpty(std::filesystem::path const & samplesFile,
                       std::filesystem::path const & outDir,
@@ -1599,6 +1640,7 @@ makeSamplesIfDirEmpty(std::filesystem::path const & samplesFile,
                       const float noiseThresholdFactorStart = 3.f,
                       // multiplied by noise floor to deduce end of samples.
                       const float noiseThresholdFactorEnd = 3.f,
+                      const XFadeEndToZero xFadeEndToZero = XFadeEndToZero::Yes,
                       const std::optional<NoteOctave> firstOfChromaticPitches = std::nullopt,
                       // for analogic sounds, the very beginning of the attack is often not distinguishable
                       // in amplitude from noise (but the frequency content is different from noise).
@@ -1654,7 +1696,15 @@ makeSamplesIfDirEmpty(std::filesystem::path const & samplesFile,
   sampleRanges = removeShortRanges(minSampleFrameCount, sampleRanges);
   
   reader.reset();
-  writeSamples(samplesFile, sampleRanges, outDir, firstOfChromaticPitches);
+  
+  // The end xfade should be 2 milliseconds.
+  constexpr auto xfadeHalfDuration = DurationNanos(1e6);
+
+  const int64_t halfXfadeSize =
+  (xFadeEndToZero == XFadeEndToZero::Yes)
+  ? (fileSampleRate * (xfadeHalfDuration.get() / 1e9))
+  : 0;
+  writeSamples(samplesFile, sampleRanges, outDir, halfXfadeSize, firstOfChromaticPitches);
 }
 
 std::vector<std::pair<NoteOctave, std::filesystem::path>>
@@ -2441,6 +2491,7 @@ void playFeuillardTwoVoicesCelloPizz()
                         30,
                         // end noise floor threshold
                         3,
+                        XFadeEndToZero::Yes,
                         NoteOctave{Note::Do, 3}
                         );
   std::vector<std::unique_ptr<std::map<double, std::vector<double>>>> samples;
@@ -2493,6 +2544,7 @@ int main() {
                         30,
                         // end noise floor threshold
                         3,
+                        XFadeEndToZero::Yes,
                         NoteOctave{Note::Do, 3}
                         );
   std::vector<std::unique_ptr<std::map<double, std::vector<double>>>> samples;
