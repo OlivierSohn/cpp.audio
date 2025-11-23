@@ -1463,26 +1463,6 @@ void writeMarkerFile(const SampleRanges& ranges,
   }
 }
 
-void xfade_end_to_zero(int64_t halfCountFramesXfade, std::vector<float> & v)
-{
-  const int64_t fullSize = 2 * halfCountFramesXfade;
-
-  EqualGainXFade<double> xfade;
-  
-  xfade.set(fullSize, EqualGainCrossFade::Sinusoidal);
-  
-  const int64_t vecSize = static_cast<int64_t>(v.size());
-  for(int64_t i = 0; i < fullSize; ++i)
-  {
-    const float xfadeVal = xfade.get(i).old_signal_mult;
-    const int64_t vecIndex = vecSize - fullSize + i;
-    if(vecIndex >= 0)
-    {
-      v[vecIndex] *= xfadeVal;      
-    }
-  }
-}
-
 void
 writeSamples(std::filesystem::path const & samplesFile,
              SampleRanges const & ranges,
