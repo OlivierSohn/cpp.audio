@@ -1,10 +1,5 @@
 #if 0
 
-optimiser la detection du debut des samples de celloPizz:
-il faut avoir toute l'attaque, donc peut wtre utiliser 
-une sliding average plus grande?
-ou bien un algo symmetrique a l'algo qui detecte la fin du sample?
-
 pluie:
 beaucoup de samples lointains a faible volume, quelques samples proches a plus fort volume.
 - moment de "note on":
@@ -17,6 +12,8 @@ Sample en boucle, en definissant:
 - frame 1
 - frame 2 (avant ou apres frame 1)
 utilisant les marker wav, region wav ou un fichier separe.
+
+implementer un prestart dans le sampler pour qu'on commence a jouer un sample un peu avant le temps.
 
 Analyse d'un enregistrement pour la justesse, pour voir les tendances que j'ai.
 
@@ -126,7 +123,10 @@ Enveloped <
 //FreqCtrl_<
 audioelement::SamplerAlgo<T, countSamplerChannels>
 //, InterpolatedFreq<T>
-, AHDSREnvelope<Atomicity::Yes, T, EnvelopeRelease::WaitForKeyRelease, AllowZeroAttack::Yes>
+// Using AllowZeroAttack::No because we do not xfade the beginnings of samples.
+//   The sample starts at a zero crossing, but only either for the left or right channel,
+//   not for both.
+, AHDSREnvelope<Atomicity::Yes, T, EnvelopeRelease::WaitForKeyRelease, AllowZeroAttack::No>
 >
 >
 //, 2 >
@@ -1171,11 +1171,33 @@ private:
   SamplesDef m_samplesDef;
 };
 
+// -----------------------------------------------------
+// ^          ^     ^     ^                      ^    ^
+// firstFrame |     |     |                      |    lastFrame
+//            startBeforeZeroCrossing            lastFrameBeforeZeroCrossing
+//                  |     |
+//                  startBeforePresampling
+//                        |
+//                        firstRelevantValue
+struct SampleAlgoDetailStats
+{
+  int32_t firstRelevantValueFrame;
+  int32_t startBeforePresamplingFrame;
+  int32_t startBeforeZeroCrossingFrame;
+  int32_t lastBeforeZeroCrossingFrame;
+};
+
 struct SampleRange
 {
+  // The first frame
   int32_t firstFrame;
-  // last frame is included.
+  // The last frame (i.e is included).
   int32_t lastFrame;
+  
+  // statistics useful for debugging the sampling algorithm.
+  //
+  // Note that this ignores range unions (see unionRanges)
+  SampleAlgoDetailStats stats;
   
   int32_t getLength() const { return lastFrame - firstFrame + 1; }
 };
@@ -1251,6 +1273,7 @@ SampleRanges
 computeSampleRanges(const std::vector<double>& signal,
                     float noiseThresholdFactorStart,
                     float noiseThresholdFactorEnd,
+                    int const preSamplingFrameCount,
                     int const slidingAvgFrameCount,
                     const int32_t lookAheadFrameCount)
 {
@@ -1259,6 +1282,8 @@ computeSampleRanges(const std::vector<double>& signal,
   auto it = signal.begin();
   auto end = signal.end();
   
+  using reverse_iterator = std::reverse_iterator<decltype(it)>;
+
   const double noise_level = compute_noise_floor(it, end, lookAheadFrameCount);
   
   const float minSoundAmplitudeStart = noise_level * noiseThresholdFactorStart;
@@ -1266,37 +1291,89 @@ computeSampleRanges(const std::vector<double>& signal,
 
   for(;it != end;)
   {
-    auto it_start = first_relevant_value(it, end, minSoundAmplitudeStart);
-    if(it_start == end) {
+    const auto it_first_relevant = first_relevant_value(it, end, minSoundAmplitudeStart);
+    if(it_first_relevant == end)
       // not found
       break;
+    const int32_t firstRelevantValueFrame = static_cast<int32_t>(std::distance(signal.begin(), it_first_relevant));
+    if(it_first_relevant == it)
+    {
+      std::cout << "WARN : sample has no attack at frame " << firstRelevantValueFrame << std::endl;
     }
-    if(it_start != it) {
-      using reverse_iterator = std::reverse_iterator<decltype(it)>;
-      auto rit = reverse_iterator(it_start+1);
+    else
+    {
+      auto rit = reverse_iterator(it_first_relevant+1);
       auto rend = reverse_iterator(it);
-      auto rzero = first_non_abs_avg_decreasing( rit, rend, slidingAvgFrameCount);
+      
+      // Using a lookahead of 0 otherwise the start of the sample is too early.
+      //
+      // This way the start of the sample is still slightly too late
+      // (we lose the early part of the attack)
+      // but it seems to sound good anyway,
+      // and we can compensate for this effect using preSampling.
+      auto rzero = find_relevant_end_relaxed(rit, rend, maxSoundAmplitudeEnd, slidingAvgFrameCount, 0/*lookAheadFrameCount*/);
+
+      // previous version which was not detecting enough of the attack.
+      //auto rzero = first_non_abs_avg_decreasing( rit, rend, slidingAvgFrameCount);
+
+      // TODO: The comment below is obsolete because we use a sliding average.
+      // TODO: instead, we should continue backwards until we find the next zero crossing.
+
       // first_non_abs_avg_decreasing returns the iterator after the zero crossing (in the reverse direction)
       // so rzero.base() is the iterator on the other side of the zero crossing
-      it_start = rzero.base();
+      it = rzero.base();
     }
-    
-    const int32_t startFrame(static_cast<int32_t>(std::distance(signal.begin(), it_start)));
 
-    it = find_relevant_end_relaxed(it_start, end, maxSoundAmplitudeEnd, slidingAvgFrameCount, lookAheadFrameCount);
+    const int32_t startBeforePresamplingFrame(static_cast<int32_t>(std::distance(signal.begin(), it)));
+
+    if(std::distance(signal.begin(), it) >= preSamplingFrameCount)
+    {
+      it -= preSamplingFrameCount;
+    }
+
+    const int32_t startBeforeZeroCrossingFrame(static_cast<int32_t>(std::distance(signal.begin(), it)));
+
+    // go back to previous zero crossing (if any)
+    it = zero_crossing_backward(it, signal.begin());
+
+    const int32_t startFrame(static_cast<int32_t>(std::distance(signal.begin(), it)));    
+    
+    it = find_relevant_end_relaxed(it_first_relevant, end, maxSoundAmplitudeEnd, slidingAvgFrameCount, lookAheadFrameCount);
+
+    int32_t lastFrameBeforeZeroCrossing = static_cast<int32_t>(std::distance(signal.begin(), it));
+    if(it == end)
+      lastFrameBeforeZeroCrossing -= 1;
+
+    // go to next zero crossing (if any)
+    it = zero_crossing_forward(it, signal.end());
+
     int32_t lastFrame = static_cast<int32_t>(std::distance(signal.begin(), it));
     if(it == end)
       lastFrame -= 1;
 
-    if(it_start == signal.begin())
+    if(startFrame == 0)
+    {
       // skip: it is likely that this corresponds to noise when handling the recorder at the beginning.
+      std::cout << "WARN : skipping sample starting at frame " << startFrame << std::endl;
       continue;
+    }
     if(it == signal.end())
+    {
       // skip: it is likely that this corresponds to noise when handling the recorder at the end.
+      std::cout << "WARN : skipping sample starting at frame " << startFrame << std::endl;
       continue;
+    }
 
     if(lastFrame > startFrame)
-      res.ranges.push_back(SampleRange{startFrame, lastFrame});
+    {
+      res.ranges.push_back(SampleRange{startFrame, lastFrame,
+        {
+          firstRelevantValueFrame,
+          startBeforePresamplingFrame,
+          startBeforeZeroCrossingFrame,
+          lastFrameBeforeZeroCrossing
+        }});
+    }
   }
   return res;
 }
@@ -1374,8 +1451,11 @@ void writeMarkerFile(const SampleRanges& ranges,
   int i{};
   for(const auto & r : ranges.ranges)
   {
-    f << regionNames[i] << "\t" << r.firstFrame << "\t" << r.lastFrame;
-    f << std::endl;
+    f << regionNames[i] << "\t" << r.firstFrame << "\t" << r.lastFrame << std::endl;
+    f << "rel_" << regionNames[i] << "\t" << r.stats.firstRelevantValueFrame << std::endl;
+    f << "pre_" << regionNames[i] << "\t" << r.stats.startBeforePresamplingFrame << std::endl;
+    f << "fz_" << regionNames[i] << "\t" << r.stats.startBeforeZeroCrossingFrame << std::endl;
+    f << "lz_" << regionNames[i] << "\t" << r.stats.lastBeforeZeroCrossingFrame << std::endl;
     ++i;
   }
 }
@@ -1520,7 +1600,14 @@ makeSamplesIfDirEmpty(std::filesystem::path const & samplesFile,
                       // multiplied by noise floor to deduce end of samples.
                       const float noiseThresholdFactorEnd = 3.f,
                       const std::optional<NoteOctave> firstOfChromaticPitches = std::nullopt,
-                      const DurationNanos slidingAverageDuration = DurationNanos(0.34 * 1e6), // 15 / 44100 
+                      // for analogic sounds, the very beginning of the attack is often not distinguishable
+                      // in amplitude from noise (but the frequency content is different from noise).
+                      // to account for that we use some presampling.
+                      // Also note that in the envelope used to play the sample,
+                      // the minimum attack and release times are 1 millisecond.
+                      const DurationNanos preSamplingDuration = DurationNanos(15. * 1e6),
+                      // If this is too small, we don't get the entire attack at the beginning of the sample.
+                      const DurationNanos slidingAverageDuration = DurationNanos(6.8 * 1e6), // 300 / 44100 
                       const DurationNanos minSampleDuration = DurationNanos(150 * 1e6),
                       // Lookahead default : 40 milliseconds.
                       // It is possible that the same sample decreases in amplitude drastically
@@ -1531,7 +1618,7 @@ makeSamplesIfDirEmpty(std::filesystem::path const & samplesFile,
 {
   if(std::filesystem::exists(outDir) && !std::filesystem::is_empty(outDir))
   {
-    std::cout << "WARN: skip samples generation, out dir is not empty" << std::endl;
+    std::cout << "WARN: skip samples generation, out dir " << outDir << " is not empty" << std::endl;
     return;
   }
 
@@ -1558,6 +1645,7 @@ makeSamplesIfDirEmpty(std::filesystem::path const & samplesFile,
     sampleRangesPerChannel.push_back(computeSampleRanges(deinterlaced[chan],
                                                          noiseThresholdFactorStart,
                                                          noiseThresholdFactorEnd,
+                                                         fileSampleRate * (preSamplingDuration.get() / 1e9),
                                                          fileSampleRate * (slidingAverageDuration.get() / 1e9),
                                                          lookAheadFrameCount));
 
