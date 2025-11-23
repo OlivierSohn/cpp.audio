@@ -2375,7 +2375,7 @@ Loop moduloPitch(Loop && l)
 // This function has as many explicit parameters as possible,
 // so that if we change the defaults later on we will be able to replay
 // the music.
-void playFeuillardTwoVoices()
+void playFeuillardTwoVoicesElectro()
 {
   using namespace imajuscule::audio;
   using namespace std::filesystem;
@@ -2428,14 +2428,66 @@ void playFeuillardTwoVoices()
   a.playEventStreams(streams);
 }
 
+// This function has as many explicit parameters as possible,
+// so that if we change the defaults later on we will be able to replay
+// the music.
+void playFeuillardTwoVoicesCelloPizz()
+{
+  using namespace imajuscule::audio;
+  using namespace std::filesystem;
+  
+  makeSamplesIfDirEmpty("/Users/Olivier/Music/Samples/celloPizz.wav", c_samplesDirCelloPizz,
+                        // start noise floor threshold.
+                        30,
+                        // end noise floor threshold
+                        3,
+                        NoteOctave{Note::Do, 3}
+                        );
+  std::vector<std::unique_ptr<std::map<double, std::vector<double>>>> samples;
+  
+  MidiPitchRange samplerMidiPitchRange;
+  
+  samples.push_back(readSamples(c_samplesDirCelloPizz, samplerMidiPitchRange));
+  
+  auto samplesDef = SamplesDef{samples[0].get(), samplerMidiPitchRange};
+  
+  std::vector<SamplesDef> samplersDefs;
+  samplersDefs.push_back(samplesDef);
+  samplersDefs.push_back(samplesDef);
+  
+  const size_t countOscSynths{0};
+  auto a = AppTune{countOscSynths, samplersDefs};
+  
+  const path pizzEnv{synth / "EnvelopePizz.txt"};
+  
+  a.samplerSynth(0).setEnvelopeFile(pizzEnv);
+  a.samplerSynth(1).setEnvelopeFile(pizzEnv);
+  
+  const auto file = "/Users/Olivier/Downloads/IMSLP874967-PMLP1036212-Feuillard_La_Technique_du_Violoncelle_Vol.4.pdf";
+  
+  const auto timing1 = EventsTiming{0.09};
+  auto stream1 = toEventStream(streamFromBinaryPitchesEncoding(file, a.samplerSynth(0).samplerMidiPitchRange(), timing1, Polyphony{1}), timing1);
+  const auto timing2 = EventsTiming{0.18};
+  auto stream2 = toEventStream(streamFromBinaryPitchesEncoding(file, a.samplerSynth(1).samplerMidiPitchRange(), timing2, Polyphony{1}), timing2);
+  
+  std::vector<std::unique_ptr<EventStream>> streams;
+  // osc synth streams:
+  // sampler synth streams:
+  streams.push_back(std::move(stream1));
+  streams.push_back(std::move(stream2));
+  
+  a.playEventStreams(streams);
+}
+
 int main() {
 #if 0
-  playFeuillardTwoVoices();
+  playFeuillardTwoVoicesElectro();
+#elif 0
+  playFeuillardTwoVoicesCelloPizz();
 #else
   using namespace imajuscule::audio;
   using namespace std::filesystem;
 
-  makeSamplesIfDirEmpty("/Users/Olivier/Music/Samples/gamme.wav", c_samplesDirVoice);
   makeSamplesIfDirEmpty("/Users/Olivier/Music/Samples/celloPizz.wav", c_samplesDirCelloPizz,
                         // start noise floor threshold.
                         30,
