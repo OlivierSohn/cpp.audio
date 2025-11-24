@@ -1,13 +1,5 @@
 #if 0
 
-pluie:
-beaucoup de samples lointains a faible volume, quelques samples proches a plus fort volume.
-- moment de "note on":
-  - random
-  - ou alors une goutte toutes les x ms
-- volume deduit de distance goute - micro:
-  - micro positionne a 0,0, dans un carre -1 1 -1 1. on sample x et y random.
-
 Sample en boucle, en definissant:
 - frame 1
 - frame 2 (avant ou apres frame 1)
@@ -188,7 +180,114 @@ private:
 } // NS audioelement
 
 
-using Events = std::vector<std::pair<TimestampAndSource, Event>>;
+static NoteId mk_note_id() {
+  static int64_t i = 0;
+  ++i;
+  return NoteId{i};
+}
+
+
+// Mimicks rain: i.e lots of far away samples, few close samples with higher volume.
+// - "note on" ca either occur randomly or periodically
+// - volume is deduced from distance from sampled position in circle of radius 1 to the center of the circle.
+struct RainEventStream : public EventStream
+{
+  RainEventStream(DurationNanos minPeriod = DurationNanos(0.03 * 1e9),
+                  DurationNanos maxPeriod = DurationNanos(0.18 * 1e9),
+                  DurationNanos minNoteDuration = DurationNanos(0.05 * 1e9),
+                  DurationNanos maxNoteDuration = DurationNanos(0.1 * 1e9))
+  : m_minPeriod(minPeriod)
+  , m_maxPeriod(maxPeriod)
+  , m_minNoteDuration(minNoteDuration)
+  , m_maxNoteDuration(maxNoteDuration)
+  {
+  }
+
+  void startStream(TimeNanos refTime) override
+  {
+    m_rng.seed(0);
+    m_prevTime = refTime;
+  }
+  
+  void stopStream() override {}
+  
+  StreamStatus materializeNextEvents(Events & events, TimeNanos maxTime) override
+  {
+    // generate events between m_prevTime and maxTime.
+    while(m_prevTime < maxTime)
+    {
+      const auto voice = m_voice++;
+      const auto noteid = mk_note_id();
+
+      const auto volume = sampleVolume();
+      // Using volume to mimick a low pass filter for far away sounds
+      auto pitchDistrib = std::uniform_real_distribution<double>{0., 2.};
+      const float frequency = m_midi.midi_pitch_to_freq(A_pitch + pitchDistrib(m_rng) - 25. +  7. * (volume));
+      events.emplace_back(TimestampAndSource{m_prevTime, voice},
+                          mkNoteOn(noteid,
+                                   // mimicks a low pass filter for far away sounds
+                                   frequency,
+                                   volume));
+      auto distribNoteDuration = std::uniform_int_distribution<uint64_t>{m_minNoteDuration.get(), m_maxNoteDuration.get()};
+      auto noteDuration = DurationNanos{distribNoteDuration(m_rng)};
+      events.emplace_back(TimestampAndSource{m_prevTime + noteDuration, voice},
+                          mkNoteOff(noteid));
+      auto distribPeriod = std::uniform_int_distribution<uint64_t>{m_minPeriod.get(), m_maxPeriod.get()};
+      m_prevTime += DurationNanos{distribPeriod(m_rng)};
+    }
+    return StreamStatus::OK;
+  }
+private:
+  std::mt19937 m_rng;
+  std::uniform_real_distribution<double> m_distrib{-1.0, 1.0};
+
+  TimeNanos m_prevTime;
+  DurationNanos m_minPeriod;
+  DurationNanos m_maxPeriod;
+  DurationNanos m_minNoteDuration;
+  DurationNanos m_maxNoteDuration;
+  uint64_t m_voice{};
+  Midi m_midi;
+  
+  float sampleVolume()
+  {
+  retry:
+    const double x = m_distrib(m_rng);
+    const double y = m_distrib(m_rng);
+    // dist to circle center
+    const double sqDist = x*x + y*y;
+    if(sqDist > 1.)
+      // point is outside the circle
+      goto retry;
+    constexpr double minDist{0.05};
+    constexpr double minSqDist{minDist * minDist};
+    if(sqDist < minSqDist)
+      // point is too close to the center of the circle
+      goto retry;
+    
+    const auto dist = std::sqrt(sqDist);
+
+    // The energy of a wave is proportional to
+    // the volume squared.
+    // 
+    // (in a free field) The energy of a wave is proportional to the 
+    // inverse of the distance to the source squared.
+    //
+    // So the volume is proportional to the inverse of the distance.
+    //
+    // volume = A / dist
+    //
+    // at the minimum distance we want the volume to be 1, so
+    // 1 = A / minDist
+    // A = minDist
+    //
+    // so
+    //
+    // volume = minDist / dist
+    return minDist / dist;
+  }
+};
+
 
 struct LoopOffsets
 {
@@ -251,46 +350,6 @@ private:
   int64_t m_maxNoteId;
 };
 
-static NoteId mk_note_id() {
-  static int64_t i = 0;
-  ++i;
-  return NoteId{i};
-}
-
-enum class StreamStatus{OK, EndOfStream};
-
-struct EventStream
-{
-  virtual ~EventStream() = default;
-
-  // This is called at least once before materializeNextEvents.
-  //
-  // can be called multiple times to restart the stream.
-  virtual void startStream(TimeNanos refTime) = 0;
-
-  // Stops the stream.
-  // May be called multiple times.
-  virtual void stopStream() = 0;
-  
-  // startStream will be called before this method to give the reference "start" time.
-  //
-  // materializes events that have not yet been materialized yet and that will occur up to maxTime.
-  //
-  // For convenience, it is ok to materialize more events (i.e some events that would occur after maxTime).
-  //
-  // Calling materializeNextEvents after StreamStatus::EndOfStream
-  // will return StreamStatus::EndOfStream until startStream is called.
-  virtual StreamStatus materializeNextEvents(Events & events, TimeNanos maxTime) = 0;
-};
-
-struct NullEventStream: public EventStream
-{
-  void startStream(TimeNanos refTime) override {}
-  
-  void stopStream() override {}
-  
-  StreamStatus materializeNextEvents(Events & events, TimeNanos maxTime) override { return StreamStatus::EndOfStream; }
-};
 
 struct LoopEventStream : public EventStream
 {
@@ -2293,6 +2352,9 @@ void AppTune::playEventStreams(std::vector<std::unique_ptr<EventStream>>& stream
     throw std::logic_error("too many streams");
   const auto firstSamplerIdx = m_oscSynths.size();
 
+  std::optional<std::chrono::time_point<std::chrono::system_clock>> prevInitializerCheck;
+  const std::chrono::milliseconds minDurationBetweenConsecutiveInitializerChecks(50);
+
   Events events;
   for(;;)
   {
@@ -2307,8 +2369,13 @@ void AppTune::playEventStreams(std::vector<std::unique_ptr<EventStream>>& stream
       break;
     }
 
-    updateInitializersIfNeeded();
-    
+    const auto now = std::chrono::system_clock::now();
+    if(!prevInitializerCheck.has_value() || ((now - *prevInitializerCheck) > minDurationBetweenConsecutiveInitializerChecks))
+    {
+      updateInitializersIfNeeded();
+      prevInitializerCheck = std::chrono::system_clock::now();
+    }
+
     const TimeNanos ctxtCurTimeNanos(nanos_per_frame<double>(m_sampleRate) * m_ctxt.getCountFrames());
     
     size_t countEOS{};
@@ -2519,31 +2586,12 @@ int main() {
   using namespace imajuscule::audio;
   using namespace std::filesystem;
 
-  makeSamplesIfDirEmpty("/Users/Olivier/Music/Samples/celloPizz.wav", c_samplesDirCelloPizz,
-                        // start noise floor threshold.
-                        30,
-                        // end noise floor threshold
-                        3,
-                        XFadeEndToZero::Yes,
-                        NoteOctave{Note::Do, 3}
-                        );
-  std::vector<std::unique_ptr<std::map<double, std::vector<double>>>> samples;
-
-  MidiPitchRange samplerMidiPitchRange;
-
-  samples.push_back(readSamples(c_samplesDirCelloPizz, samplerMidiPitchRange));
-
-  auto samplesDef = SamplesDef{samples[0].get(), samplerMidiPitchRange};
-
-  std::vector<SamplesDef> samplersDefs;
-  samplersDefs.push_back(samplesDef);
-  samplersDefs.push_back(samplesDef);
-
   const size_t countOscSynths{2};
-  auto a = AppTune{countOscSynths, samplersDefs};
+  auto a = AppTune{countOscSynths, {}};
     
   // The ZeroEnvelope file produces drum sounds.
   const path zeroEnv{synth / "EnvelopeZero.txt"};
+  const path rainEnv{synth / "EnvelopeRain.txt"};
   const path oneEnv{synth / "EnvelopeOne.txt"};
   const path pizzEnv{synth / "EnvelopePizz.txt"};
   const path fastEnv{synth / "EnvelopeFast.txt"};
@@ -2552,29 +2600,17 @@ int main() {
 
   const path harSimple{synth / "HarmonicsSimple.txt"};
 
-  a.samplerSynth(0).setEnvelopeFile(pizzEnv);
-  a.samplerSynth(1).setEnvelopeFile(pizzEnv);
-
   a.oscSynth(0).setHarmonicsFile(harSimple);
 
-  for(auto const &env : {zeroEnv, fastFunEnv})
+  for(auto const &env : {rainEnv, zeroEnv, fastFunEnv})
   {
     a.oscSynth(0).setEnvelopeFile(env);
-
-    const auto file = "/Users/Olivier/Downloads/IMSLP874967-PMLP1036212-Feuillard_La_Technique_du_Violoncelle_Vol.4.pdf";
-
-    const auto timing1 = EventsTiming{0.09};
-    auto stream1 = toEventStream(streamFromBinaryPitchesEncoding(file, a.samplerSynth(0).samplerMidiPitchRange(), timing1, Polyphony{1}), timing1);
-    const auto timing2 = EventsTiming{0.18};
-    auto stream2 = toEventStream(streamFromBinaryPitchesEncoding(file, a.samplerSynth(1).samplerMidiPitchRange(), timing2, Polyphony{1}), timing2);
     
     std::vector<std::unique_ptr<EventStream>> streams;
     // osc synth streams:
-    streams.push_back(std::make_unique<NullEventStream>());
+    streams.push_back(std::make_unique<RainEventStream>());
     streams.push_back(std::make_unique<NullEventStream>());
     // sampler synth streams:
-    streams.push_back(std::move(stream1));
-    streams.push_back(std::move(stream2));
     
     a.playEventStreams(streams);
 

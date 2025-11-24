@@ -609,6 +609,8 @@
 		09A8F2291E442C3A0071C141 /* soundengine.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = soundengine.cpp; path = source/soundengine.cpp; sourceTree = "<group>"; };
 		09AF19012ED0F26C007F03A7 /* EnvelopeOne.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = EnvelopeOne.txt; sourceTree = "<group>"; };
 		09AF19022ED290E8007F03A7 /* EnvelopePizz.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = EnvelopePizz.txt; sourceTree = "<group>"; };
+		09AF19052ED3CC47007F03A7 /* eventstream.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = eventstream.h; path = include/eventstream.h; sourceTree = "<group>"; };
+		09AF19062ED3E1ED007F03A7 /* EnvelopeRain.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = EnvelopeRain.txt; sourceTree = "<group>"; };
 		09B01D4025152EE10068FCFD /* unity.build.rt.resynth.ui.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = unity.build.rt.resynth.ui.cpp; path = source/unity.build.rt.resynth.ui.cpp; sourceTree = "<group>"; };
 		09B01D4A25152EE10068FCFD /* rt.resynth.lib.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = rt.resynth.lib.cpp; path = source/rt.resynth.lib.cpp; sourceTree = "<group>"; };
 		09B01D5B25152F0A0068FCFD /* rt.resynth.ui */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = rt.resynth.ui; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -841,6 +843,7 @@
 				09AF19012ED0F26C007F03A7 /* EnvelopeOne.txt */,
 				09AF19022ED290E8007F03A7 /* EnvelopePizz.txt */,
 				093708342ECE7F27009A4EEA /* EnvelopeFastFun.txt */,
+				09AF19062ED3E1ED007F03A7 /* EnvelopeRain.txt */,
 				093707F22EC81CDD009A4EEA /* LowPass.txt */,
 				093707F12EC80BD0009A4EEA /* EnvelopeFast.txt */,
 				093707EE2EC7ECB5009A4EEA /* EnvelopeSlow.txt */,
@@ -990,30 +993,29 @@
 		099E06E31E36EC850012348E /* include */ = {
 			isa = PBXGroup;
 			children = (
-				093708272ECA063E009A4EEA /* pitch_generators.h */,
-				093708262ECA0634009A4EEA /* scales.h */,
+				09AF19052ED3CC47007F03A7 /* eventstream.h */,
 				09F16A7B20B7130000555324 /* audio_context.h */,
 				094BFE3420B80D32001F1D81 /* audio_platform_au.h */,
 				094BFE3F20B80DF7001F1D81 /* audio_platform_pa.h */,
 				094BFE3E20B80D8D001F1D81 /* audio_platforms.h */,
 				099E06E61E36EC920012348E /* audioelement.h */,
 				099E06E41E36EC920012348E /* channel.h */,
-				094BFE4420B879DD001F1D81 /* channels_aggregate.h */,
 				094BFE4520B879DD001F1D81 /* channels.h */,
+				094BFE4420B879DD001F1D81 /* channels_aggregate.h */,
 				09529DFA1E439D8D00705B99 /* events.h */,
 				09D4BAC11E883BA400C9472E /* events.impl.h */,
 				091E76EC1E46D03B009CFBA5 /* gen.crtp.h */,
 				09DC9A0B208F4CDC0057F6EE /* gen.sine.h */,
 				09529DF81E439D8D00705B99 /* gen.voice.h */,
-				090B14C21E75CCAE005A47C5 /* loudness_enum_limits_impl.h */,
+				091177B41E5B2F9100343D54 /* loudness.h */,
 				090B14C01E75CC2C005A47C5 /* loudness_enum_limits.h */,
+				090B14C21E75CCAE005A47C5 /* loudness_enum_limits_impl.h */,
 				090B14BF1E75CC04005A47C5 /* loudness_enum_names.h */,
-				097D56C81E86D42D00018F14 /* loudness_filter_coefficients_gen.h */,
-				0984742B1E809F650014465E /* loudness_filter_coefficients.h */,
 				09FD59EB1E7F266D0052B2FD /* loudness_filter.h */,
+				0984742B1E809F650014465E /* loudness_filter_coefficients.h */,
+				097D56C81E86D42D00018F14 /* loudness_filter_coefficients_gen.h */,
 				090B14C51E75D771005A47C5 /* loudness_init_values.h */,
 				090B14C41E75CDF9005A47C5 /* loudness_params_specs.h */,
-				091177B41E5B2F9100343D54 /* loudness.h */,
 				09529DFE1E439FD800705B99 /* midi.h */,
 				098EFCCA1E6C5E50000ADD0D /* noise.h */,
 				091E76E91E46BE78009CFBA5 /* normalization.h */,
@@ -1022,18 +1024,20 @@
 				09529DFB1E439E5F00705B99 /* paramspec.h */,
 				099E06E81E36EC920012348E /* parse.music.h */,
 				091E76EB1E46C08F009CFBA5 /* pernamespace.implparams.h */,
+				093708272ECA063E009A4EEA /* pitch_generators.h */,
 				09529DFC1E439EC000705B99 /* program.h */,
 				099E06E91E36EC920012348E /* public.h */,
 				099E06EA1E36EC920012348E /* request.h */,
 				093671D32514E2A300620289 /* resynth.hpp */,
+				093708262ECA0634009A4EEA /* scales.h */,
+				092AF0462536FB9D0022EA59 /* simple_audio_context.h */,
 				09529DFD1E439F2700705B99 /* smoothparam.h */,
+				099E06ED1E36EC920012348E /* sound.h */,
 				099E06EB1E36EC920012348E /* sound.defines.h */,
 				099E06EC1E36EC920012348E /* sound.functions.h */,
-				099E06ED1E36EC920012348E /* sound.h */,
 				091E76E81E46B4FE009CFBA5 /* soundengine.h */,
 				098EFCC21E677FBD000ADD0D /* sounds.h */,
 				099E06EE1E36EC920012348E /* stereo.h */,
-				092AF0462536FB9D0022EA59 /* simple_audio_context.h */,
 			);
 			name = include;
 			sourceTree = "<group>";

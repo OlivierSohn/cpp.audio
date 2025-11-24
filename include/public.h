@@ -58,6 +58,7 @@
 #include "soundengine.h"
 #include "parse.music.h"
 #include "events.h"
+#include "eventstream.h"
 #include "paramspec.h"
 #include "smoothparam.h"
 #include "program.h"
